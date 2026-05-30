@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -40,6 +40,7 @@ export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
   const router = useRouter();
 
   // Dialog states
@@ -87,7 +88,7 @@ export default function Dashboard() {
       });
       if (!res.ok) throw new Error('Failed to create');
       const newDoc = await res.json();
-      router.push(`/editor/${newDoc.id}`);
+      handleNavigate(`/editor/${newDoc.id}`);
     } catch (error) {
       toast.error("Failed to create diagram");
     }
@@ -96,6 +97,13 @@ export default function Dashboard() {
   const openDeleteDialog = (id: string) => {
     setDeleteId(id);
     setIsDeleteOpen(true);
+  };
+
+  const handleNavigate = (url: string) => {
+    setIsNavigating(true);
+    setTimeout(() => {
+      router.push(url);
+    }, 400);
   };
 
   const handleDeleteConfirm = async () => {
@@ -165,6 +173,15 @@ export default function Dashboard() {
         </div>
       </nav>
 
+      {isNavigating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+            <p className="text-lg font-medium text-foreground animate-pulse">Loading Workspace...</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
         <div className="flex items-end justify-between mb-12">
@@ -201,6 +218,7 @@ export default function Dashboard() {
                 diagram={diagram} 
                 onRename={openRenameDialog}
                 onDelete={openDeleteDialog}
+                onNavigate={handleNavigate}
               />
             ))}
           </div>

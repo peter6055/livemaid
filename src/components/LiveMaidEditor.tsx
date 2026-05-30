@@ -140,6 +140,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isNavigatingHome, setIsNavigatingHome] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -159,6 +160,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [currentTheme, setCurrentTheme] = useState('default');
   const [currentFont, setCurrentFont] = useState('Default');
   const [parseError, setParseError] = useState<string | null>(null);
+  
+  // Drag to Connect State
+  const [connectionState, setConnectionState] = useState<{
+      active: boolean;
+      startNodeId: string | null;
+      mousePos: { x: number, y: number } | null;
+      isDragging: boolean;
+  }>({ active: false, startNodeId: null, mousePos: null, isDragging: false });
 
   const FONT_OPTIONS = [
     { label: 'Default', value: 'sans-serif' },
@@ -438,7 +447,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
         let elementToMeasure = currentNode;
-        const innerText = currentNode.querySelector('.label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
+        const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
         if (innerText) {
             elementToMeasure = innerText as SVGElement;
         } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
@@ -583,6 +592,82 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   }, [isLocked, getClickedNode]);
 
+  const getNextNodeId = (codeStr: string, prefix: string = 'n'): string => {
+      let i = 1;
+      while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, 'm').test(codeStr)) {
+          i++;
+      }
+      return `${prefix}${i}`;
+  };
+
+  const handleAddNodeFromSelected = useCallback((targetNodeId?: string) => {
+      if (!selectedNodeId) return;
+      
+      const diagramType = determineDiagramType(code);
+      let newCode = code;
+
+      if (diagramType === 'flowchart' || diagramType === 'graph') {
+          if (targetNodeId && targetNodeId !== selectedNodeId) {
+              // Connect to existing node
+              const newEdgeCode = `\n    ${selectedNodeId} --> ${targetNodeId}`;
+              newCode += newEdgeCode;
+          } else {
+              // Connect to new node
+              const prefix = selectedNodeId.match(/^([a-zA-Z]+)/)?.[1] || 'n';
+              const newNodeId = getNextNodeId(code, prefix);
+              const newEdgeCode = `\n    ${selectedNodeId} --> ${newNodeId}[New Node]`;
+              newCode += newEdgeCode;
+          }
+      } else if (diagramType === 'sequence') {
+          const actor = selectedNodeId.replace('SEQ_', '');
+          if (targetNodeId && targetNodeId !== selectedNodeId && targetNodeId.startsWith('SEQ_')) {
+              const targetActor = targetNodeId.replace('SEQ_', '');
+              const newEdgeCode = `\n    ${actor}->>${targetActor}: New Message`;
+              newCode += newEdgeCode;
+          } else {
+              const newEdgeCode = `\n    ${actor}->>NewActor: New Message`;
+              newCode += newEdgeCode;
+          }
+      }
+      
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      if (!connectionState.active || !containerRef.current) return;
+      
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      
+      const newPos = {
+          x: (e.clientX - containerRect.left + containerRef.current.scrollLeft) / scale,
+          y: (e.clientY - containerRect.top + containerRef.current.scrollTop) / scale
+      };
+      
+      setConnectionState(prev => ({
+          ...prev,
+          mousePos: newPos,
+          isDragging: true
+      }));
+  }, [connectionState.active]);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      if (!connectionState.active) return;
+      
+      const targetNode = getClickedNode(e.target as Element);
+      const targetNodeId = targetNode?.cleanId;
+      
+      // If we dropped on a node OR we just clicked (no drag distance), create node
+      if (connectionState.isDragging || !targetNodeId) {
+          handleAddNodeFromSelected(targetNodeId || undefined);
+      } else if (!connectionState.isDragging && targetNodeId === selectedNodeId) {
+          // It was just a click on the + button
+          handleAddNodeFromSelected();
+      }
+      
+      setConnectionState({ active: false, startNodeId: null, mousePos: null, isDragging: false });
+  }, [connectionState, getClickedNode, handleAddNodeFromSelected, selectedNodeId]);
+
   const handleEditSubmit = () => {
     if (!selectedNodeId || !isInlineEditing) {
         setIsInlineEditing(false);
@@ -677,35 +762,35 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
     }, 10);
   };
-  const handleFormatNodeLabel = useCallback((format: 'bold' | 'italic' | 'color', colorValue?: string) => {
+  const handleUpdateStyle = useCallback((property: string, value: string) => {
       if (!selectedNodeId) return;
       let newCode = code;
-      
-      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[\\/|\\[\\\\|\\[\\(|\\[|\\[\\[|\\(\\[|\\(\\(\\(|\\(\\(|\\(|\\{\\{|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]))`, 'm');
-      const match = newCode.match(nodeRegex);
-      
-      if (!match) return; // if node doesn't have an explicit label yet, do nothing or fallback
-      
-      let label = match[3];
-      let before = '';
-      let after = '';
-      
-      if (format === 'bold') {
-          before = '<b>';
-          after = '</b>';
-      } else if (format === 'italic') {
-          before = '<i>';
-          after = '</i>';
-      } else if (format === 'color' && colorValue) {
-          before = `<span style='color:${colorValue}'>`;
-          after = '</span>';
+      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
+      const match = newCode.match(styleRegex);
+      if (match) {
+          let styleProps = match[1];
+          const propRegex = new RegExp(`${property}:[^,]+`);
+          if (propRegex.test(styleProps)) {
+              styleProps = styleProps.replace(propRegex, `${property}:${value}`);
+          } else {
+              styleProps += `,${property}:${value}`;
+          }
+          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+      } else {
+          newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
       }
-      
-      const newLabel = `${before}${label}${after}`;
-      newCode = newCode.replace(nodeRegex, `$1$2${newLabel}$4`);
-      
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleFormatNodeLabel = useCallback((format: 'bold' | 'italic' | 'color', colorValue?: string) => {
+      if (format === 'bold') {
+          handleUpdateStyle('font-weight', 'bold');
+      } else if (format === 'italic') {
+          handleUpdateStyle('font-style', 'italic');
+      } else if (format === 'color' && colorValue) {
+          handleUpdateStyle('color', colorValue);
+      }
+  }, [handleUpdateStyle]);
 
   const handleRenameSubmit = async () => {
     if (!renameName.trim()) return;
@@ -727,25 +812,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   };
 
-  const handleUpdateStyle = useCallback((property: string, value: string) => {
-      if (!selectedNodeId) return;
-      let newCode = code;
-      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
-      const match = newCode.match(styleRegex);
-      if (match) {
-          let styleProps = match[1];
-          const propRegex = new RegExp(`${property}:[^,]+`);
-          if (propRegex.test(styleProps)) {
-              styleProps = styleProps.replace(propRegex, `${property}:${value}`);
-          } else {
-              styleProps += `,${property}:${value}`;
-          }
-          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
-      } else {
-          newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
-      }
-      handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
 
   const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
       if (!selectedNodeId) return;
@@ -887,28 +953,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       setSelectedNodeId(null);
   }, [code, handleCodeChange, selectedNodeId]);
 
-  const handleAddNodeFromSelected = useCallback(() => {
-      if (!selectedNodeId) return;
-      
-      const diagramType = determineDiagramType(code);
-      let newCode = code;
-
-      if (diagramType === 'flowchart' || diagramType === 'graph') {
-          let i = 1;
-          while (code.includes(`NewNode${i}`)) i++;
-          const newNodeId = `NewNode${i}`;
-          const newEdgeCode = `\n    ${selectedNodeId} --> ${newNodeId}[New Node]`;
-          newCode += newEdgeCode;
-      } else if (diagramType === 'sequence') {
-          // If it's a sequence diagram, selectedNodeId is likely an actor
-          const actor = selectedNodeId.replace('SEQ_', '');
-          const newEdgeCode = `\n    ${actor}->>NewActor: New Message`;
-          newCode += newEdgeCode;
-      }
-      
-      handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
-
   const handleCreateSubmit = async () => {
     if (!createName.trim()) return;
     try {
@@ -930,6 +974,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     } catch (e) {
       toast.error("Failed to create diagram");
     }
+  };
+
+  const handleNavigateHome = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsNavigatingHome(true);
+    setTimeout(() => {
+      router.push('/');
+    }, 400);
   };
 
   const handleDuplicate = async () => {
@@ -972,6 +1024,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
+      {isNavigatingHome && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+            <p className="text-lg font-medium text-foreground animate-pulse">Returning to Projects...</p>
+          </div>
+        </div>
+      )}
       <header className="h-14 border-b border-border bg-background dark:bg-[#121212] flex items-center px-4 justify-between shrink-0 z-20">
         <div className="flex items-center">
           <DropdownMenu>
@@ -988,14 +1048,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                   <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
                 </div>
               </DropdownMenuItem>
-              <Link href="/"><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></Link>
+              <a href="/" onClick={handleNavigateHome}><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></a>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Link href="/">
+          <a href="/" onClick={handleNavigateHome}>
             <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
               <LayoutTemplate className="w-5 h-5 text-white" />
             </div>
-          </Link>
+          </a>
           
           <div className="flex flex-col mr-6 border-r border-border pr-6">
             <span className="font-bold text-sm leading-tight text-foreground tracking-tight">LiveMaid</span>
@@ -1005,7 +1065,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbLink render={<Link href="/" />}>
+                <BreadcrumbLink render={<a href="/" onClick={handleNavigateHome} />}>
                   Projects
                 </BreadcrumbLink>
               </BreadcrumbItem>
@@ -1275,6 +1335,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
                       onClick={!isLocked ? handleSvgClick : undefined}
                       onDoubleClick={(e) => { if (!isLocked) handleEditClick(e); }}
+                      onMouseMove={handleMouseMove}
+                      onMouseUp={handleMouseUp}
+                      onMouseLeave={handleMouseUp}
                     >
                       {parseError && (
                         <div 
@@ -1318,6 +1381,36 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                             boxShadow: `0 0 0 ${4 / state.scale}px rgba(99, 102, 241, 0.2)`
                           }}
                         >
+                          
+                          {/* Drag Connection Overlay */}
+                          {connectionState.isDragging && connectionState.mousePos && (
+                            <svg 
+                                className="absolute pointer-events-none z-30" 
+                                style={{
+                                    top: selectionBox.height + 4, // Start from bottom of the selection box
+                                    left: selectionBox.width / 2, // Start from center horizontally
+                                    width: Math.abs(connectionState.mousePos.x - (selectionBox.x + selectionBox.width / 2)) + 100,
+                                    height: Math.abs(connectionState.mousePos.y - (selectionBox.y + selectionBox.height)) + 100,
+                                    overflow: 'visible'
+                                }}
+                            >
+                                <defs>
+                                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                        <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+                                    </marker>
+                                </defs>
+                                <line 
+                                    x1={0} 
+                                    y1={0} 
+                                    x2={connectionState.mousePos.x - (selectionBox.x + selectionBox.width / 2)} 
+                                    y2={connectionState.mousePos.y - (selectionBox.y + selectionBox.height + 4)} 
+                                    stroke="#6366f1" 
+                                    strokeWidth={2 / state.scale} 
+                                    strokeDasharray="5,5"
+                                    markerEnd="url(#arrowhead)"
+                                />
+                            </svg>
+                          )}
                           
                           {/* Node Manipulation Toolbar (Only on Single Click) */}
                           {!isInlineEditing && (currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
@@ -1532,16 +1625,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     onDoubleClick={(e) => e.stopPropagation()}
                                     style={{
                                         // Center the textarea exactly over the textBox
-                                        // The parent div is positioned at `selectionBox.x - 4`
                                         left: (textBox.x - (selectionBox.x - 4)) + textBox.width / 2,
                                         top: (textBox.y - (selectionBox.y - 4)) + textBox.height / 2,
                                         transform: 'translate(-50%, -50%)',
-                                        width: Math.max(textBox.width + 100, 150),
-                                        height: Math.max(textBox.height + 40, 60),
-                                        fontSize: '16px',
+                                        width: Math.max(textBox.width + 20, 50),
+                                        height: Math.max(textBox.height + 20, 30),
+                                        fontSize: document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fontSize : '16px',
                                         lineHeight: 1.2,
                                         color: document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#333',
-                                        paddingTop: Math.max(20, (Math.max(textBox.height + 40, 60) - textBox.height) / 2)
+                                        paddingTop: Math.max(4, (Math.max(textBox.height + 20, 30) - textBox.height) / 2)
                                     }}
                                 />
                                 )}
@@ -1551,15 +1643,28 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           {/* Quick Add Node (+) Button */}
                           {!isInlineEditing && (
                             <div 
-                              className="absolute pointer-events-auto"
-                              style={plusStyle}
+                              className="absolute left-1/2 pointer-events-auto origin-top"
+                              style={{ 
+                                bottom: `-${12 / state.scale}px`,
+                                transform: `translateX(-50%) translateY(100%) scale(${1 / state.scale})`
+                              }}
                             >
                               <button
-                                 onClick={(e) => { e.stopPropagation(); handleAddNodeFromSelected(); }}
+                                 onMouseDown={(e) => { 
+                                     e.stopPropagation(); 
+                                     e.preventDefault();
+                                     setConnectionState({
+                                         active: true,
+                                         startNodeId: selectedNodeId,
+                                         mousePos: null,
+                                         isDragging: false
+                                     });
+                                 }}
+                                 onClick={(e) => e.stopPropagation()} // Prevent click from bubbling
                                  className="w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
-                                 title="Add Connected Node"
+                                 title="Drag to Connect or Click to Add Node"
                               >
-                                 <Plus className="w-3 h-3" />
+                                 <Plus className="w-3 h-3 pointer-events-none" />
                               </button>
                             </div>
                           )}

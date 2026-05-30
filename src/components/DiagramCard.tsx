@@ -22,11 +22,13 @@ export interface DiagramDocument {
 export function DiagramCard({ 
   diagram, 
   onRename, 
-  onDelete 
+  onDelete,
+  onNavigate
 }: { 
   diagram: DiagramDocument, 
   onRename: (id: string, name: string) => void,
-  onDelete: (id: string) => void 
+  onDelete: (id: string) => void,
+  onNavigate: (url: string) => void
 }) {
   const [svgContent, setSvgContent] = useState<string>('');
 
@@ -77,7 +79,7 @@ export function DiagramCard({
         </div>
       </CardHeader>
       <CardContent className="flex-grow">
-        <Link href={`/editor/${diagram.id}`}>
+        <a href={`/editor/${diagram.id}`} onClick={(e) => { e.preventDefault(); onNavigate(`/editor/${diagram.id}`); }}>
           <div className="w-full h-32 bg-slate-50 rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
             {svgContent ? (
                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900" />
@@ -85,7 +87,7 @@ export function DiagramCard({
                <span className="text-zinc-500 text-xs font-medium">Preview Unavailable</span>
             )}
           </div>
-        </Link>
+        </a>
       </CardContent>
       <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
         <Clock className="h-3 w-3 mr-1" />
