@@ -288,6 +288,12 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
         break;
       }
+      // Sequence diagram elements
+      if (currentNode.classList?.contains('actor') || currentNode.classList?.contains('messageText') || currentNode.classList?.contains('noteText')) {
+        foundNodeClass = true;
+        nodeId = `SEQ_${currentNode.textContent?.trim()}`;
+        break;
+      }
       currentNode = currentNode.parentElement as SVGElement | null;
     }
 
@@ -304,7 +310,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         });
         
         let cleanId = nodeId;
-        if (cleanId && renderIdRef.current && cleanId.includes(renderIdRef.current)) {
+        if (cleanId?.startsWith('SEQ_')) {
+             // Keep it as is for sequence diagrams
+        } else if (cleanId && renderIdRef.current && cleanId.includes(renderIdRef.current)) {
             const prefixRegex = new RegExp(`^.*?-?${renderIdRef.current}-`);
             cleanId = cleanId.replace(prefixRegex, '');
             if (cleanId.startsWith('flowchart-')) {
@@ -334,7 +342,11 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     
     let currentText = selectedNodeId;
     
-    if (selectedNodeId.startsWith('L_')) {
+    if (selectedNodeId.startsWith('SEQ_')) {
+        currentText = selectedNodeId.replace('SEQ_', '');
+        // Replace <br/> with \n for editing
+        currentText = currentText.replace(/<br\/>/g, '\n');
+    } else if (selectedNodeId.startsWith('L_')) {
         const parts = selectedNodeId.split('_');
         if (parts.length >= 3) {
             const src = parts[1];
@@ -368,7 +380,21 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     
     let newCode = code;
     
-    if (selectedNodeId.startsWith('L_')) {
+    if (selectedNodeId.startsWith('SEQ_')) {
+        const oldText = selectedNodeId.replace('SEQ_', '');
+        // Mermaid sequence text often uses <br/> for newlines
+        const newText = editingText.replace(/\n/g, '<br/>');
+        // Simple string replacement (careful to replace only the first occurrence or globally if needed, 
+        // but let's replace globally for safety, or specifically just replace the string)
+        newCode = newCode.split('\n').map(line => {
+             // For messages, notes, participants
+             if (line.includes(oldText)) {
+                 // only replace the text part, it's safer to just replace oldText with newText on the line
+                 return line.replace(oldText, newText);
+             }
+             return line;
+        }).join('\n');
+    } else if (selectedNodeId.startsWith('L_')) {
         const parts = selectedNodeId.split('_');
         if (parts.length >= 3) {
             const src = parts[1];
