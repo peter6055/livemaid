@@ -30,7 +30,24 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 
 To ensure we can safely rollback changes if anything goes wrong, you MUST follow this git workflow:
 1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
-2. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST include a specific note or tag in the commit message (e.g., `[Human Verified]` or `[Approved]`) so that it is easily identifiable as a known-good state.
+2. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST include a specific note or tag in the commit message (e.g., `[Human Verified]`) so that it is easily identifiable as a known-good state.
 3. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the *current request*, unless previously agreed upon. 
 4. **No Historical Precedent for Tags**: Do NOT use conversation history as a precedent for applying the `[Human Verified]` tag. The tag must ONLY be applied if the user explicitly authorizes it for the specific, current action.
 <!-- END:git-workflow-rules -->
+
+<!-- BEGIN:conventional-commits-rules -->
+# Conventional Commits Rules
+
+You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows:
+
+<type>[optional scope]: <description>
+
+[optional body]
+
+[optional footer(s)]
+
+- `fix`: patches a bug in your codebase.
+- `feat`: introduces a new feature to the codebase.
+- `BREAKING CHANGE`: a commit that has a footer `BREAKING CHANGE:`, or appends a `!` after the type/scope, introduces a breaking API change.
+- Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
+<!-- END:conventional-commits-rules -->
