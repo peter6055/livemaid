@@ -649,6 +649,35 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
     }, 10);
   };
+  const handleFormatNodeLabel = useCallback((format: 'bold' | 'italic' | 'color', colorValue?: string) => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      
+      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+      const match = newCode.match(nodeRegex);
+      
+      if (!match) return; // if node doesn't have an explicit label yet, do nothing or fallback
+      
+      let label = match[3];
+      let before = '';
+      let after = '';
+      
+      if (format === 'bold') {
+          before = '<b>';
+          after = '</b>';
+      } else if (format === 'italic') {
+          before = '<i>';
+          after = '</i>';
+      } else if (format === 'color' && colorValue) {
+          before = `<span style="color:${colorValue}">`;
+          after = '</span>';
+      }
+      
+      const newLabel = `${before}${label}${after}`;
+      newCode = newCode.replace(nodeRegex, `$1$2${newLabel}$4`);
+      
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
 
   const handleRenameSubmit = async () => {
     if (!renameName.trim()) return;
@@ -843,35 +872,46 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
         <ResizablePanel defaultSize={isCodePanelOpen ? 70 : 100} className="bg-slate-50 relative overflow-hidden text-zinc-900">
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
-            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground">
-                <svg viewBox="0 0 24 24" className="w-5 h-5"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
+            <div className="flex items-center gap-2 rounded-2xl bg-background p-2.5 border border-border shadow-sm">
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground">
+                <svg viewBox="0 0 24 24" className="w-6 h-6"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
               </Button>
-              <div className="h-5 w-px bg-border" />
+              <div className="h-6 w-px bg-border mx-1" />
 
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'undo', null)} title="Undo">
-                <Undo2 className="w-4 h-4" />
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'undo', null)} title="Undo">
+                <Undo2 className="w-5 h-5" />
               </Button>
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'redo', null)} title="Redo">
-                <Redo2 className="w-4 h-4" />
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'redo', null)} title="Redo">
+                <Redo2 className="w-5 h-5" />
               </Button>
-              <div className="h-5 w-px bg-border" />
+              
+              {!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
+                <>
+                  <div className="h-6 w-px bg-border mx-1" />
+                  <div className="flex items-center px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-sm font-medium gap-2" title="This diagram type does not support interactive editing yet. Please edit the code directly.">
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    Code Edit Only
+                  </div>
+                </>
+              )}
+
+              <div className="h-6 w-px bg-border mx-1" />
               
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center" />}>
-                  <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center" />}>
+                  <div className={`w-6 h-6 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
-                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
+                    <p className="text-sm font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                     <div className="flex flex-col">
                       {['default', 'forest', 'dark', 'neutral', 'base', 'mc', 'redux'].map((t) => (
                          <DropdownMenuItem 
                            key={t}
                            onClick={() => handleThemeChange(t)}
-                           className="flex items-center gap-3 cursor-pointer"
+                           className={`flex items-center gap-3 cursor-pointer py-2 ${currentTheme === t ? 'bg-indigo-50 text-indigo-600 focus:bg-indigo-100 focus:text-indigo-700' : ''}`}
                          >
                            <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'mc' ? 'bg-cyan-200 border-cyan-300' : t === 'redux' ? 'bg-purple-200 border-purple-300' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
-                           <span className="capitalize">{t}</span>
+                           <span className={`capitalize text-sm ${currentTheme === t ? 'font-bold' : ''}`}>{t}</span>
                          </DropdownMenuItem>
                       ))}
                     </div>
@@ -879,24 +919,24 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               </DropdownMenu>
 
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"><Type className="w-4 h-4"/></Button>} />
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"><Type className="w-5 h-5"/></Button>} />
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
-                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                    <p className="text-sm font-medium text-slate-500 px-2 pt-2">Font Family</p>
                     <div className="flex flex-col">
                       {FONT_OPTIONS.map((f) => (
                          <DropdownMenuItem 
                            key={f.label}
                            onClick={() => handleFontChange(f)}
-                           className="flex items-center gap-3 cursor-pointer"
+                           className={`flex items-center gap-3 cursor-pointer py-2 ${currentFont === f.label ? 'bg-indigo-50 text-indigo-600 focus:bg-indigo-100 focus:text-indigo-700' : ''}`}
                          >
-                           <span className={currentFont === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
+                           <span className={`text-sm ${currentFont === f.label ? 'font-bold' : ''}`}>{f.label}</span>
                          </DropdownMenuItem>
                       ))}
                     </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-5 w-px bg-border" />
+              <div className="h-6 w-px bg-border mx-1" />
               
               {plugin && plugin.ToolbarComponent && (
                 <plugin.ToolbarComponent 
