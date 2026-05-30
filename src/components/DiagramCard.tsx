@@ -7,6 +7,8 @@ import { Plus, FileEdit, Trash2, Clock, GitCommitVertical } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
+import { Badge } from '@/components/ui/badge';
+import { determineDiagramType } from './LiveMaidEditor';
 
 export interface DiagramDocument {
   id: string;
@@ -45,6 +47,9 @@ export function DiagramCard({
     }
   }, [diagram.code, diagram.id]);
 
+  const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
+  const isSupported = parsedType === 'graph' || parsedType === 'flowchart' || parsedType === 'sequence';
+
   return (
     <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-sm transition-all group">
       <CardHeader className="pb-2">
@@ -63,7 +68,12 @@ export function DiagramCard({
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1">
            <GitCommitVertical className="h-3 w-3 mr-1" />
-           <span className="capitalize">{diagram.type}</span>
+           <span className="capitalize mr-2">{parsedType}</span>
+           {!isSupported && (
+             <Badge variant="outline" className="px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">
+               Code Edit Only
+             </Badge>
+           )}
         </div>
       </CardHeader>
       <CardContent className="flex-grow">

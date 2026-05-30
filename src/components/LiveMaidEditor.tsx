@@ -7,6 +7,7 @@ import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock, Undo2, Redo2, PanelLeftClose, PanelLeftOpen, Link as LinkIcon, Trash2, Palette, Square } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import * as htmlToImage from 'html-to-image';
 import Link from "next/link";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -51,7 +52,7 @@ function updateMermaidTheme(code: string, newTheme: string): string {
     }
 }
 
-function determineDiagramType(sourceCode: string): string {
+export function determineDiagramType(sourceCode: string): string {
     const lines = sourceCode.split('\n');
     let inConfig = false;
     for (const line of lines) {
@@ -142,6 +143,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const [isHyperlinkOpen, setIsHyperlinkOpen] = useState(false);
+  const [hyperlinkUrl, setHyperlinkUrl] = useState("");
 
   // SVG State
   const [svgContent, setSvgContent] = useState<string>("");
@@ -156,6 +159,21 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     { label: 'Inter', value: '"Inter Variable", sans-serif' },
     { label: 'Merriweather', value: '"Merriweather Variable", serif' },
     { label: 'Source Code Pro', value: '"Source Code Pro Variable", monospace' },
+  ];
+
+  const PRESET_COLORS = [
+    { name: 'Red', value: '#ef4444' },
+    { name: 'Orange', value: '#f97316' },
+    { name: 'Yellow', value: '#eab308' },
+    { name: 'Green', value: '#22c55e' },
+    { name: 'Blue', value: '#3b82f6' },
+    { name: 'Indigo', value: '#6366f1' },
+    { name: 'Purple', value: '#a855f7' },
+    { name: 'Pink', value: '#ec4899' },
+    { name: 'Slate', value: '#64748b' },
+    { name: 'Black', value: '#000000' },
+    { name: 'White', value: '#ffffff' },
+    { name: 'Transparent', value: 'transparent' },
   ];
 
   // Interaction State
@@ -455,6 +473,11 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const handleEditClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
+    const currentType = determineDiagramType(code);
+    if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
+        return;
+    }
+
     // Always resolve the node from the target to guarantee it works even if click was too fast
     const result = getClickedNode(e.target as Element);
     let targetNodeId = selectedNodeId;
@@ -756,20 +779,26 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
-  const handleSetHyperlink = useCallback(() => {
-      if (!selectedNodeId) return;
-      const url = window.prompt("Enter URL for hyperlink:");
-      if (!url) return;
+  const applyHyperlink = useCallback(() => {
+      if (!selectedNodeId || !hyperlinkUrl) return;
       
       let newCode = code;
       const clickRegex = new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
       if (clickRegex.test(newCode)) {
-          newCode = newCode.replace(clickRegex, `click ${selectedNodeId} "${url}"`);
+          newCode = newCode.replace(clickRegex, `click ${selectedNodeId} "${hyperlinkUrl}"`);
       } else {
-          newCode += `\n    click ${selectedNodeId} "${url}"`;
+          newCode += `\n    click ${selectedNodeId} "${hyperlinkUrl}"`;
       }
       handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+      setIsHyperlinkOpen(false);
+      setHyperlinkUrl("");
+  }, [code, handleCodeChange, selectedNodeId, hyperlinkUrl]);
+
+  const handleSetHyperlinkClick = useCallback(() => {
+      if (!selectedNodeId) return;
+      setHyperlinkUrl("");
+      setIsHyperlinkOpen(true);
+  }, [selectedNodeId]);
 
   const handleDuplicateNode = useCallback(() => {
       if (!selectedNodeId) return;
@@ -779,14 +808,28 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       while (newCode.includes(`${selectedNodeId}_copy${i}`)) i++;
       const newNodeId = `${selectedNodeId}_copy${i}`;
       
-      let currentLabel = selectedNodeId;
       const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
       const match = newCode.match(nodeRegex);
-      if (match && match[3]) {
-          currentLabel = match[3];
+      if (match) {
+          newCode += `\n    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
+      } else {
+          newCode += `\n    ${newNodeId}["${selectedNodeId}"]`;
       }
       
-      newCode += `\n    ${newNodeId}["${currentLabel}"]`;
+      // Duplicate styles and click events
+      const lines = newCode.split('\n');
+      const propertiesToDuplicate: string[] = [];
+      lines.forEach(line => {
+          if (line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${selectedNodeId}`), `style ${newNodeId}`));
+          }
+          if (line.match(new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${selectedNodeId}`), `click ${newNodeId}`));
+          }
+      });
+      if (propertiesToDuplicate.length > 0) {
+          newCode += '\n' + propertiesToDuplicate.join('\n');
+      }
       
       const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
       let edgesToAppend = [];
@@ -1040,10 +1083,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               {!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
                 <>
                   <div className="h-6 w-px bg-border mx-1" />
-                  <div className="flex items-center px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-md text-sm font-medium gap-2" title="This diagram type does not support interactive editing yet. Please edit the code directly.">
+                  <Badge variant="outline" className="px-3 py-1.5 bg-amber-50 text-amber-700 border-amber-200 text-sm font-bold gap-2" title="This diagram type does not support interactive editing yet. Please edit the code directly.">
                     <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
                     Code Edit Only
-                  </div>
+                  </Badge>
                 </>
               )}
 
@@ -1056,13 +1099,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-sm font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                     <div className="flex flex-col">
-                      {['default', 'forest', 'dark', 'neutral', 'base', 'mc', 'redux'].map((t) => (
+                      {['default', 'forest', 'dark', 'neutral', 'base', 'redux'].map((t) => (
                          <DropdownMenuItem 
                            key={t}
                            onClick={() => handleThemeChange(t)}
                            className={`flex items-center gap-3 cursor-pointer py-2 ${currentTheme === t ? 'bg-indigo-50 text-indigo-600 focus:bg-indigo-100 focus:text-indigo-700' : ''}`}
                          >
-                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'mc' ? 'bg-cyan-200 border-cyan-300' : t === 'redux' ? 'bg-purple-200 border-purple-300' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                           <div className={`w-4 h-4 rounded border flex items-center justify-center ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-purple-200 border-purple-300' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`}>
+                             {currentTheme === t && <Check className={`w-3 h-3 ${t === 'dark' ? 'text-white' : 'text-indigo-600'}`} />}
+                           </div>
                            <span className={`capitalize text-sm ${currentTheme === t ? 'font-bold' : ''}`}>{t}</span>
                          </DropdownMenuItem>
                       ))}
@@ -1081,6 +1126,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                            onClick={() => handleFontChange(f)}
                            className={`flex items-center gap-3 cursor-pointer py-2 ${currentFont === f.label ? 'bg-indigo-50 text-indigo-600 focus:bg-indigo-100 focus:text-indigo-700' : ''}`}
                          >
+                           <div className="w-4 h-4 flex items-center justify-center">
+                             {currentFont === f.label && <Check className="w-4 h-4 text-indigo-600" />}
+                           </div>
                            <span className={`text-sm ${currentFont === f.label ? 'font-bold' : ''}`}>{f.label}</span>
                          </DropdownMenuItem>
                       ))}
@@ -1203,7 +1251,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                         >
                           
                           {/* Node Manipulation Toolbar (Only on Single Click) */}
-                          {!isInlineEditing && (
+                          {!isInlineEditing && (currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
                             <div 
                                 className="absolute left-1/2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700"
                                 style={{ 
@@ -1216,45 +1264,51 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 onDoubleClick={(e) => e.stopPropagation()}
                             >
                                 {/* Background Color */}
-                                <div className="relative group">
-                                    <input 
-                                        type="color" 
-                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
-                                        onInput={(e) => handleUpdateStyle('fill', (e.target as HTMLInputElement).value)}
-                                        title="Background Color"
-                                    />
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger render={
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Background Color" />
+                                  }>
                                         <Palette className="w-5 h-5" />
-                                    </button>
-                                </div>
+                                        <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).fill : 'transparent' }} />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                    {PRESET_COLORS.map(c => (
+                                      <button key={c.name} onClick={() => handleUpdateStyle('fill', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                                 
                                 {/* Border Color */}
-                                <div className="relative group">
-                                    <input 
-                                        type="color" 
-                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
-                                        onInput={(e) => handleUpdateStyle('stroke', (e.target as HTMLInputElement).value)}
-                                        title="Border Color"
-                                    />
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger render={
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Border Color" />
+                                  }>
                                         <Square className="w-5 h-5" />
-                                    </button>
-                                </div>
+                                        <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).stroke : 'transparent' }} />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                    {PRESET_COLORS.map(c => (
+                                      <button key={c.name} onClick={() => handleUpdateStyle('stroke', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
 
                                 <div className="w-px h-6 bg-slate-200 mx-1.5" />
 
                                 {/* Text Color */}
-                                <div className="relative group">
-                                    <input 
-                                        type="color" 
-                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
-                                        onInput={(e) => handleFormatNodeLabel('color', (e.target as HTMLInputElement).value)}
-                                        title="Text Color"
-                                    />
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger render={
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Text Color" />
+                                  }>
                                         <Type className="w-5 h-5" />
-                                    </button>
-                                </div>
+                                        <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#000000' }} />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                    {PRESET_COLORS.map(c => (
+                                      <button key={c.name} onClick={() => handleFormatNodeLabel('color', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
+                                    ))}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
                                 {/* Bold */}
                                 <button 
                                     onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('bold'); }}
@@ -1275,26 +1329,31 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 <div className="w-px h-6 bg-slate-200 mx-1.5" />
 
                                 {/* Shape Selector */}
-                                <select 
-                                    className="bg-transparent border-none text-base font-medium focus:ring-0 cursor-pointer outline-none hover:bg-slate-100 rounded-md px-2 py-1.5"
-                                    onChange={(e) => handleChangeShape(e.target.value)}
-                                    defaultValue="rectangle"
-                                    title="Change Shape"
-                                >
-                                    <option value="rectangle">Rectangle</option>
-                                    <option value="rounded">Rounded</option>
-                                    <option value="circle">Circle</option>
-                                    <option value="cylinder">Cylinder</option>
-                                    <option value="rhombus">Rhombus</option>
-                                    <option value="hexagon">Hexagon</option>
-                                    <option value="stadium">Stadium</option>
-                                </select>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger render={
+                                    <button 
+                                      className="h-10 px-3 flex items-center justify-center rounded-md hover:bg-slate-100 transition-colors text-sm font-medium gap-1"
+                                      title="Change Shape"
+                                    />
+                                  }>
+                                      Shape <ChevronsDown className="w-3 h-3" />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-36 bg-white border-slate-200 rounded-xl" align="center" side="top" sideOffset={10}>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('rectangle')}>Rectangle</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('rounded')}>Rounded</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('circle')}>Circle</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('cylinder')}>Cylinder</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('rhombus')}>Rhombus</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('hexagon')}>Hexagon</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => handleChangeShape('stadium')}>Stadium</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
 
                                 <div className="w-px h-6 bg-slate-200 mx-1.5" />
 
                                 {/* Hyperlink */}
                                 <button 
-                                    onClick={(e) => { e.preventDefault(); handleSetHyperlink(); }}
+                                    onClick={(e) => { e.preventDefault(); handleSetHyperlinkClick(); }}
                                     className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
                                     title="Add/Edit Hyperlink"
                                 >
@@ -1556,6 +1615,30 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
             <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Hyperlink Dialog */}
+      <Dialog open={isHyperlinkOpen} onOpenChange={setIsHyperlinkOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add / Edit Hyperlink</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input 
+              value={hyperlinkUrl}
+              onChange={(e) => setHyperlinkUrl(e.target.value)}
+              placeholder="https://example.com"
+              className="w-full"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') applyHyperlink();
+              }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsHyperlinkOpen(false)}>Cancel</Button>
+            <Button onClick={applyHyperlink} className="bg-indigo-600 hover:bg-indigo-700 text-white">Apply</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
