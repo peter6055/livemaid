@@ -6,7 +6,8 @@ import Editor from "@monaco-editor/react";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, BookOpen, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy } from "lucide-react";
+import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock } from "lucide-react";
+import * as htmlToImage from 'html-to-image';
 import Link from "next/link";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import {
@@ -74,6 +75,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editingText, setEditingText] = useState("");
+  const [isLocked, setIsLocked] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -213,64 +215,25 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       a.click();
       URL.revokeObjectURL(url);
     } else if (exportFormat === 'PNG') {
-      const img = new Image();
-      // Ensure proper SVG namespace
-      let svgData = finalSvgContent.includes('xmlns=') ? finalSvgContent : finalSvgContent.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
-      
-      // Parse intrinsic width and height
-      let w = 800;
-      let h = 600;
-      const viewBoxMatch = svgData.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
-      if (viewBoxMatch) {
-        w = parseFloat(viewBoxMatch[1]);
-        h = parseFloat(viewBoxMatch[2]);
+      try {
+        const svgContainer = containerRef.current?.querySelector('svg');
+        if (!svgContainer) throw new Error("No SVG found");
+        
+        // Use html-to-image to properly render foreignObjects and bypass canvas taint
+        const dataUrl = await htmlToImage.toPng(svgContainer, {
+          backgroundColor: exportBg === 'transparent' ? undefined : exportBg,
+          pixelRatio: 3,
+          skipFonts: true // speeds up if no external fonts
+        });
+        
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `${doc?.name || 'diagram'}.png`;
+        a.click();
+      } catch (err) {
+        console.error("PNG export error", err);
+        toast.error("Failed to export PNG");
       }
-      const widthMatch = svgData.match(/max-width:\s*([\d.]+)px/);
-      if (widthMatch) {
-        w = parseFloat(widthMatch[1]);
-      }
-      
-      // Ensure explicit width/height attributes exist so Image renders correctly
-      svgData = svgData.replace(/\bwidth="[^"]*"/g, '').replace(/\bheight="[^"]*"/g, '');
-      svgData = svgData.replace('<svg ', `<svg width="${w}" height="${h}" `);
-
-      // Fix foreignObject namespace for Safari/Chrome strict SVG parser
-      // We wrap the contents in a valid XHTML div to ensure it parses successfully
-      svgData = svgData.replace(/<foreignObject([^>]*)>/g, '<foreignObject$1><div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;width:100%;height:100%;">');
-      svgData = svgData.replace(/<\/foreignObject>/g, '</div></foreignObject>');
-      
-      // Fix any unclosed <br> tags
-      svgData = svgData.replace(/<br>/g, '<br/>');
-
-      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      
-      img.onload = () => {
-        const scale = 3; // 3x resolution for high-quality PNG
-        const canvas = document.createElement('canvas');
-        canvas.width = w * scale;
-        canvas.height = h * scale;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          if (exportBg !== 'transparent') {
-            ctx.fillStyle = exportBg;
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
-          ctx.scale(scale, scale);
-          ctx.drawImage(img, 0, 0);
-          const pngUrl = canvas.toDataURL('image/png', 1.0);
-          const a = document.createElement('a');
-          a.href = pngUrl;
-          a.download = `${doc?.name || 'diagram'}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      };
-      img.onerror = () => {
-        toast.error("Failed to process SVG for PNG export.");
-        URL.revokeObjectURL(url);
-      };
-      img.src = url;
     } else if (exportFormat === 'MMD') {
       const blob = new Blob([code], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
@@ -326,12 +289,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
   }, [code, handleCodeChange]);
 
-  // Handle Canvas Clicks
-  const handleCanvasClick = (e: React.MouseEvent) => {
-    const target = e.target as SVGElement;
+  // Node Selection Logic
+  const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLocked) return;
+    const target = e.target as Element;
     
     // Attempt to find if we clicked a node
-    let currentNode: SVGElement | null = target;
+    let currentNode: SVGElement | null = target as SVGElement;
     let foundNodeClass = false;
     let nodeId = null;
 
@@ -386,7 +350,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             setSelectedNodeId(null);
         }
     }
-  };
+  }, [isLocked]);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -563,7 +527,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         </div>
         <div className="flex items-center gap-3 text-sm font-medium mr-4">
           <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-slate-700 hover:bg-slate-100 h-9">
-            <BookOpen className="w-4 h-4" />
+            <Download className="w-4 h-4" />
             <span>Export</span>
           </Button>
           {saving ? (
@@ -761,13 +725,22 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                        <Plus className="w-4 h-4" />
                     </Button>
                     <div className="h-px bg-slate-100" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => resetTransform()}>
+                       <span className="text-[10px] font-bold">1:1</span>
+                    </Button>
+                    <div className="h-px bg-slate-100" />
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => zoomOut()}>
                        <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
                     </Button>
                     <div className="h-px bg-slate-100" />
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => resetTransform()}>
-                       <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm5 11H7v-2h10v2z" opacity="0"/></svg>
-                       <span className="text-[10px] font-bold">1:1</span>
+                    <Button 
+                       variant="ghost" 
+                       size="icon" 
+                       className={`h-8 w-8 ${isLocked ? 'text-red-500' : 'text-slate-600'}`} 
+                       onClick={() => setIsLocked(!isLocked)}
+                       title={isLocked ? "Unlock diagram" : "Lock diagram"}
+                    >
+                       {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                     </Button>
                   </div>
 
@@ -778,7 +751,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                     <div 
                       ref={containerRef}
                       className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                      onClick={handleCanvasClick}
+                      onClick={handleSvgClick}
                       onDoubleClick={(e) => { if (selectedNodeId) handleEditClick(e); }}
                     >
 
@@ -831,6 +804,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                <Plus className="w-3 h-3" />
                             </button>
                           </div>
+                        </div>
+                      )}
+                      
+                      {/* Read-Only Lock Indicator */}
+                      {isLocked && (
+                        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur border border-red-200 text-red-600 px-3 py-1.5 rounded-md text-xs font-medium flex items-center shadow-sm pointer-events-none z-10">
+                          <Lock className="w-3.5 h-3.5 mr-1.5" /> Locked
                         </div>
                       )}
                     </div>

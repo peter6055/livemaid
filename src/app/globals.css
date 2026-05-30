@@ -128,3 +128,12 @@
     @apply font-sans;
   }
 }
+
+/* Hide Mermaid syntax error overlays globally so we can render our own custom errors */
+svg[id^="dpreview-"][aria-roledescription="error"],
+svg[id^="preview-"][aria-roledescription="error"],
+.mermaid-container > svg[id^="mermaid-svg-"][aria-roledescription="error"],
+.error-icon,
+.error-text {
+  display: none !important;
+}
