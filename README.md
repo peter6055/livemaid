@@ -69,3 +69,7 @@ The application auto-updates as you edit the files in the `src/` directory.
 * [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 * [Tailwind CSS](https://tailwindcss.com/)
 * [shadcn/ui](https://ui.shadcn.com/)
+
+## 💖 Support the Community
+
+If you plan to use this editor for commercial purposes or in an enterprise environment, we highly encourage you to support the Mermaid community by purchasing a [Mermaid Chart / Mermaid.ai](https://www.mermaidchart.com/) subscription. Your support helps sustain the continued development of the incredible diagramming tool that powers this application!
