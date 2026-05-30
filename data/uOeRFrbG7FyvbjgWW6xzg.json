@@ -1,0 +1,12 @@
+{
+  "id": "uOeRFrbG7FyvbjgWW6xzg",
+  "name": "Untitled Diagram",
+  "createdAt": "2026-05-30T03:35:00.793Z",
+  "updatedAt": "2026-05-30T03:36:49.696Z",
+  "deletedAt": null,
+  "code": "flowchart TD\n  subgraph Cluster1[\"Cloud Network\"]\n      A[\"Web Server\"] -- Request --> B{\"Load Balancer\"}\n      B -. Route .-> C[(\"Database\")]\n      C == Query ==> D[\"Backend\"]\n  end\n  E[\"User\"] -->|Login| Cluster1",
+  "type": "flowchart",
+  "subPages": [],
+  "comments": [],
+  "versionHistory": []
+}

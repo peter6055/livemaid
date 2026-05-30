@@ -1,0 +1,12 @@
+{
+  "id": "n1M6Qt9HZN7VoecO3Q1WF",
+  "name": "Untitled Diagram",
+  "createdAt": "2026-05-29T13:21:48.437Z",
+  "updatedAt": "2026-05-29T13:21:48.437Z",
+  "deletedAt": null,
+  "code": "flowchart LR\n    A[Start] --> B[End]",
+  "type": "flowchart",
+  "subPages": [],
+  "comments": [],
+  "versionHistory": []
+}

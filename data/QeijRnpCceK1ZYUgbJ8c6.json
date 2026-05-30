@@ -1,0 +1,12 @@
+{
+  "id": "QeijRnpCceK1ZYUgbJ8c6",
+  "name": "Test flowchart",
+  "createdAt": "2026-05-29T14:06:49.125Z",
+  "updatedAt": "2026-05-30T02:44:58.931Z",
+  "deletedAt": null,
+  "code": "flowchart TD\n  A@{ shape: doc, label: \"Document Shape\" }\n  B@{ shape: cyl, label: \"Database Cylinder\" }\n  C@{ shape: hourglass, label: \"Collate Hourglass\" }\n  D@{ shape: display, label: \"Display Screen\" }\n  E@{ shape: docs, label: \"Multiple Docs\" }\n  \n  A --> B --> C --> D --> E",
+  "type": "flowchart",
+  "subPages": [],
+  "comments": [],
+  "versionHistory": []
+}
