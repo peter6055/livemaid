@@ -33,6 +33,44 @@ import mermaid from "mermaid";
 
 const DEBOUNCE_MS = 1000;
 
+function updateMermaidTheme(code: string, newTheme: string): string {
+    const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+    const match = code.match(regex);
+    if (match) {
+        let configBlock = match[1];
+        if (/theme:\s*(?:'|")[^'"]+(?:'|")/.test(configBlock)) {
+            configBlock = configBlock.replace(/theme:\s*(?:'|")[^'"]+(?:'|")/, `theme: '${newTheme}'`);
+        } else if (/theme:\s*[^\s\n]+/.test(configBlock)) {
+            configBlock = configBlock.replace(/theme:\s*[^\s\n]+/, `theme: ${newTheme}`);
+        } else {
+            configBlock += `\n  theme: ${newTheme}`;
+        }
+        return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+    } else {
+        return `---\nconfig:\n  theme: ${newTheme}\n---\n` + code;
+    }
+}
+
+function determineDiagramType(sourceCode: string): string {
+    const lines = sourceCode.split('\n');
+    let inConfig = false;
+    for (const line of lines) {
+       const trimmed = line.trim();
+       if (trimmed === '---') {
+          inConfig = !inConfig;
+          continue;
+       }
+       if (inConfig || trimmed.startsWith('%%') || trimmed === '') continue;
+       
+       if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) return 'flowchart';
+       if (trimmed.startsWith('sequenceDiagram')) return 'sequence';
+       
+       const match = trimmed.match(/^([a-zA-Z]+)/);
+       if (match) return match[1];
+    }
+    return 'flowchart';
+}
+
 function updateMermaidConfigProperty(code: string, property: string, value: string): string {
     const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
     const match = code.match(regex);
@@ -76,6 +114,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [textBox, setTextBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [editingText, setEditingText] = useState("");
@@ -136,6 +175,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       setSelectionBox(null);
       setTextBox(null);
       setSelectedNodeId(null);
+      setSelectedSvgId(null);
       setIsInlineEditing(false);
     } catch (e: any) {
       setParseError(e?.message || "Syntax Error");
@@ -267,19 +307,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   };
 
   // Node Selection Logic
-  const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (isLocked) return;
-    const target = e.target as Element;
-    
-    // Attempt to find if we clicked a node
+  const getClickedNode = useCallback((target: Element) => {
     let currentNode: SVGElement | null = target as SVGElement;
     let foundNodeClass = false;
     let nodeId = null;
 
     while (currentNode && currentNode.tagName !== 'svg') {
-      if (currentNode.classList?.contains('node')) {
+      if (currentNode.classList?.contains('node') || currentNode.classList?.contains('cluster')) {
         foundNodeClass = true;
-        nodeId = currentNode.id; // Mermaid usually sets id like `flowchart-node_123-1`
+        nodeId = currentNode.id;
         break;
       }
       if (currentNode.classList?.contains('flowchart-link') || currentNode.classList?.contains('edgeLabel')) {
@@ -301,12 +337,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
 
     if (foundNodeClass && currentNode && containerRef.current) {
+        const rawSvgId = currentNode.id;
         const rect = currentNode.getBoundingClientRect();
         const containerRect = containerRef.current.getBoundingClientRect();
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
         let elementToMeasure = currentNode;
-        const innerText = currentNode.querySelector('.label, foreignObject, text, .messageText, .noteText, .nodeLabel');
+        const innerText = currentNode.querySelector('.label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
         if (innerText) {
             elementToMeasure = innerText as SVGElement;
         } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
@@ -314,19 +351,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
         const textRect = elementToMeasure.getBoundingClientRect();
         
-        setSelectionBox({
+        const newSelectionBox = {
             x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
             y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
             width: rect.width / scale,
             height: rect.height / scale
-        });
+        };
 
-        setTextBox({
+        const newTextBox = {
             x: (textRect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
             y: (textRect.top - containerRect.top + containerRef.current.scrollTop) / scale,
             width: textRect.width / scale,
             height: textRect.height / scale
-        });
+        };
         
         let cleanId = nodeId;
         if (cleanId?.startsWith('SEQ_')) {
@@ -344,29 +381,56 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                 cleanId = cleanId.replace('flowchart-', '');
             }
         }
-        setSelectedNodeId(cleanId);
+        return { cleanId, rawSvgId, newSelectionBox, newTextBox };
+    }
+    return null;
+  }, []);
+
+  const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLocked) return;
+    const result = getClickedNode(e.target as Element);
+    
+    if (result) {
+        setSelectionBox(result.newSelectionBox);
+        setTextBox(result.newTextBox);
+        setSelectedNodeId(result.cleanId);
+        setSelectedSvgId(result.rawSvgId);
     } else {
-        if ((target as any).tagName === 'svg' || (target as any).classList?.contains('react-transform-component')) {
+        if ((e.target as any).tagName === 'svg' || (e.target as any).classList?.contains('react-transform-component')) {
             setSelectionBox(null);
             setTextBox(null);
             setSelectedNodeId(null);
+            setSelectedSvgId(null);
+            setIsInlineEditing(false);
         }
     }
-  }, [isLocked]);
+  }, [isLocked, getClickedNode]);
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     
-    if (!selectedNodeId) return;
+    // Always resolve the node from the target to guarantee it works even if click was too fast
+    const result = getClickedNode(e.target as Element);
+    let targetNodeId = selectedNodeId;
+
+    if (result) {
+        setSelectionBox(result.newSelectionBox);
+        setTextBox(result.newTextBox);
+        setSelectedNodeId(result.cleanId);
+        setSelectedSvgId(result.rawSvgId);
+        targetNodeId = result.cleanId;
+    }
     
-    let currentText = selectedNodeId;
+    if (!targetNodeId) return;
     
-    if (selectedNodeId.startsWith('SEQ_')) {
-        currentText = selectedNodeId.replace('SEQ_', '');
+    let currentText = targetNodeId;
+    
+    if (targetNodeId.startsWith('SEQ_')) {
+        currentText = targetNodeId.replace('SEQ_', '');
         // Replace <br/> with \n for editing
         currentText = currentText.replace(/<br\/>/g, '\n');
-    } else if (selectedNodeId.startsWith('L_')) {
-        const parts = selectedNodeId.split('_');
+    } else if (targetNodeId.startsWith('L_')) {
+        const parts = targetNodeId.split('_');
         if (parts.length >= 3) {
             const src = parts[1];
             const dst = parts[2];
@@ -382,7 +446,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             }
         }
     } else {
-        const nodeRegex = new RegExp(`(^|\\s)(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\[\\/?|\\[\\\\|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\[?\\/\\]|\\]|\\]\\]))`, 'm');
+        const nodeRegex = new RegExp(`(^|\\s)(${targetNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\[\\/?|\\[\\\\|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\[?\\/\\]|\\]|\\]\\]))`, 'm');
         const match = code.match(nodeRegex);
         if (match && match[3]) {
             currentText = match[3];
@@ -512,6 +576,26 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   };
 
+  const handleAddNodeFromSelected = useCallback(() => {
+      if (!selectedNodeId) return;
+      
+      const diagramType = determineDiagramType(code);
+      let newCode = code;
+
+      if (diagramType === 'flowchart' || diagramType === 'graph') {
+          const newNodeId = `node_${Date.now()}`;
+          const newEdgeCode = `\n    ${selectedNodeId} --> ${newNodeId}[New Node]`;
+          newCode += newEdgeCode;
+      } else if (diagramType === 'sequence') {
+          // If it's a sequence diagram, selectedNodeId is likely an actor
+          const actor = selectedNodeId.replace('SEQ_', '');
+          const newEdgeCode = `\n    ${actor}->>NewActor: New Message`;
+          newCode += newEdgeCode;
+      }
+      
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
   const handleCreateSubmit = async () => {
     if (!createName.trim()) return;
     try {
@@ -561,26 +645,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center bg-white text-zinc-500">Loading editor...</div>;
   }
-
-  const determineDiagramType = (sourceCode: string) => {
-    const lines = sourceCode.split('\n');
-    let inConfig = false;
-    for (const line of lines) {
-       const trimmed = line.trim();
-       if (trimmed === '---') {
-          inConfig = !inConfig;
-          continue;
-       }
-       if (inConfig || trimmed.startsWith('%%') || trimmed === '') continue;
-       
-       if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) return 'flowchart';
-       if (trimmed.startsWith('sequenceDiagram')) return 'sequence';
-       
-       const match = trimmed.match(/^([a-zA-Z]+)/);
-       if (match) return match[1];
-    }
-    return 'flowchart';
-  };
 
   const currentType = determineDiagramType(code);
   const plugin = DiagramRegistry[currentType] || null;
@@ -803,6 +867,21 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                         dangerouslySetInnerHTML={{ __html: svgContent }} 
                       />
 
+                      {/* Hide the original text when editing so the editor perfectly overlays without double text */}
+                      {isInlineEditing && selectedSvgId && (
+                         <style>{`
+                            #${selectedSvgId} .label,
+                            #${selectedSvgId} text,
+                            #${selectedSvgId} foreignObject,
+                            #${selectedSvgId} .nodeLabel,
+                            #${selectedSvgId} .cluster-label,
+                            #${selectedSvgId} .messageText,
+                            #${selectedSvgId} .noteText {
+                                opacity: 0 !important;
+                            }
+                         `}</style>
+                      )}
+
                       {/* Selection Bounding Box */}
                       {selectionBox && !isLocked && (
                         <div 
@@ -874,7 +953,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {textBox && (
                                 <textarea
                                     ref={inlineInputRef}
-                                    className="absolute p-0.5 bg-background pointer-events-auto resize-none outline-none focus:ring-2 focus:ring-indigo-500 border-none rounded text-center flex items-center justify-center font-sans break-words z-40 overflow-auto shadow-md"
+                                    className="absolute p-0.5 bg-transparent pointer-events-auto resize-none outline-none focus:ring-2 focus:ring-indigo-500 border-none rounded text-center flex items-center justify-center font-sans break-words z-40 overflow-auto shadow-sm text-foreground"
                                     value={editingText}
                                     onChange={(e) => setEditingText(e.target.value)}
                                     onKeyDown={(e) => {
@@ -897,16 +976,35 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     onDoubleClick={(e) => e.stopPropagation()}
                                     style={{
                                         // Adjust position relative to the selectionBox coordinates, since this textarea is rendered inside the selectionBox div
-                                        left: textBox.x - selectionBox.x - 2,
-                                        top: textBox.y - selectionBox.y - 2,
-                                        width: textBox.width + 4,
-                                        height: Math.max(textBox.height + 4, 30),
+                                        left: textBox.x - selectionBox.x,
+                                        top: textBox.y - selectionBox.y,
+                                        width: textBox.width,
+                                        height: Math.max(textBox.height, 20),
                                         fontSize: `${Math.max(12, 16 / state.scale)}px`,
                                         lineHeight: 1.2
                                     }}
                                 />
                                 )}
                             </>
+                          )}
+
+                          {/* Quick Add Node (+) Button */}
+                          {!isInlineEditing && (
+                            <div 
+                              className="absolute left-1/2 pointer-events-auto origin-top"
+                              style={{ 
+                                bottom: `-${12 / state.scale}px`,
+                                transform: `translateX(-50%) translateY(100%) scale(${1 / state.scale})`
+                              }}
+                            >
+                              <button
+                                 onClick={(e) => { e.stopPropagation(); handleAddNodeFromSelected(); }}
+                                 className="w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                                 title="Add Connected Node"
+                              >
+                                 <Plus className="w-3 h-3" />
+                              </button>
+                            </div>
                           )}
                         </div>
                       )}
