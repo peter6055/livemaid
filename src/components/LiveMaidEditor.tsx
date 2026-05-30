@@ -6,7 +6,7 @@ import Editor from "@monaco-editor/react";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock, Undo2, Redo2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock, Undo2, Redo2, PanelLeftClose, PanelLeftOpen, Link as LinkIcon, Trash2, Palette, Square } from "lucide-react";
 import * as htmlToImage from 'html-to-image';
 import Link from "next/link";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -699,6 +699,152 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   };
 
+  const handleUpdateStyle = useCallback((property: string, value: string) => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
+      const match = newCode.match(styleRegex);
+      if (match) {
+          let styleProps = match[1];
+          const propRegex = new RegExp(`${property}:[^,]+`);
+          if (propRegex.test(styleProps)) {
+              styleProps = styleProps.replace(propRegex, `${property}:${value}`);
+          } else {
+              styleProps += `,${property}:${value}`;
+          }
+          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+      } else {
+          newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
+      }
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleChangeShape = useCallback((shapeType: string) => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      
+      const brackets: Record<string, [string, string]> = {
+          'rectangle': ['[', ']'],
+          'rounded': ['(', ')'],
+          'stadium': ['([', '])'],
+          'subroutine': ['(((', ')))'],
+          'cylinder': ['[(', ')]'],
+          'circle': ['((', '))'],
+          'asymmetric': ['>', ']'],
+          'rhombus': ['{', '}'],
+          'hexagon': ['{{', '}}'],
+          'parallelogram': ['[/', '/]'],
+          'parallelogram_alt': ['[\\\\', '\\]'],
+          'trapezoid': ['[/', '\\]'],
+          'trapezoid_alt': ['[\\\\', '/]'],
+      };
+
+      const [open, close] = brackets[shapeType] || brackets['rectangle'];
+      
+      const shapeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*)(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\])`, 'gm');
+      
+      let replaced = false;
+      newCode = newCode.replace(shapeRegex, (match, p1, p2, p3) => {
+          replaced = true;
+          return `${p1}${p2}${open}"${p3}"${close}`;
+      });
+      
+      if (!replaced) {
+          newCode += `\n    ${selectedNodeId}${open}"${selectedNodeId}"${close}`;
+      }
+      
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleSetHyperlink = useCallback(() => {
+      if (!selectedNodeId) return;
+      const url = window.prompt("Enter URL for hyperlink:");
+      if (!url) return;
+      
+      let newCode = code;
+      const clickRegex = new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
+      if (clickRegex.test(newCode)) {
+          newCode = newCode.replace(clickRegex, `click ${selectedNodeId} "${url}"`);
+      } else {
+          newCode += `\n    click ${selectedNodeId} "${url}"`;
+      }
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleDuplicateNode = useCallback(() => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      
+      let i = 1;
+      while (newCode.includes(`${selectedNodeId}_copy${i}`)) i++;
+      const newNodeId = `${selectedNodeId}_copy${i}`;
+      
+      let currentLabel = selectedNodeId;
+      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+      const match = newCode.match(nodeRegex);
+      if (match && match[3]) {
+          currentLabel = match[3];
+      }
+      
+      newCode += `\n    ${newNodeId}["${currentLabel}"]`;
+      
+      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+      let edgesToAppend = [];
+      let matchTo;
+      while ((matchTo = toRegex.exec(code)) !== null) {
+          edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
+      }
+      
+      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+      let matchFrom;
+      while ((matchFrom = fromRegex.exec(code)) !== null) {
+          edgesToAppend.push(`\n    ${newNodeId} ${matchFrom[2]} ${matchFrom[3]}`);
+      }
+      
+      newCode += edgesToAppend.join('');
+      handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleDeleteNode = useCallback(() => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      
+      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+      
+      let parents = [];
+      let matchTo;
+      while ((matchTo = toRegex.exec(code)) !== null) {
+          parents.push({ id: matchTo[1], arrow: matchTo[2] });
+      }
+      
+      let children = [];
+      let matchFrom;
+      while ((matchFrom = fromRegex.exec(code)) !== null) {
+          children.push({ id: matchFrom[3], arrow: matchFrom[2] });
+      }
+      
+      let newEdges = [];
+      for (const parent of parents) {
+          for (const child of children) {
+              newEdges.push(`\n    ${parent.id} ${parent.arrow} ${child.id}`);
+          }
+      }
+      newCode += newEdges.join('');
+      
+      const lines = newCode.split('\n');
+      const filteredLines = lines.filter(line => {
+          const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
+          return !mentionRegex.test(line);
+      });
+      
+      newCode = filteredLines.join('\n');
+      
+      handleCodeChange(newCode);
+      setSelectionBox(null);
+      setSelectedNodeId(null);
+  }, [code, handleCodeChange, selectedNodeId]);
+
   const handleAddNodeFromSelected = useCallback(() => {
       if (!selectedNodeId) return;
       
@@ -796,17 +942,18 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             </DropdownMenuContent>
           </DropdownMenu>
           <Link href="/">
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-4 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
+            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
               <LayoutTemplate className="w-5 h-5 text-white" />
             </div>
           </Link>
           
-          <Button variant="ghost" size="icon" onClick={() => setIsCodePanelOpen(!isCodePanelOpen)} className="mr-2 text-muted-foreground hover:text-foreground hover:bg-accent" title={isCodePanelOpen ? "Close sidebar" : "Open sidebar"}>
-            {isCodePanelOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-          </Button>
+          <div className="flex flex-col mr-6 border-r border-border pr-6">
+            <span className="font-bold text-sm leading-tight text-foreground tracking-tight">LiveMaid</span>
+            <span className="text-[10px] text-muted-foreground leading-tight tracking-wider uppercase font-medium">Code Your Thoughts</span>
+          </div>
 
-          <div className="flex items-center text-lg font-semibold text-muted-foreground tracking-tight ml-2">
-            <Link href="/" className="hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent">Projects</Link>
+          <div className="flex items-center text-lg font-semibold text-muted-foreground tracking-tight">
+            <Link href="/" className="hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent text-sm">Projects</Link>
             <span className="mx-2 text-border font-light">/</span>
             <span className="text-indigo-500 px-2 py-1">{doc?.name}</span>
           </div>
@@ -873,6 +1020,11 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         <ResizablePanel defaultSize={isCodePanelOpen ? 70 : 100} className="bg-slate-50 relative overflow-hidden text-zinc-900">
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
             <div className="flex items-center gap-2 rounded-2xl bg-background p-2.5 border border-border shadow-sm">
+              <Button variant="ghost" size="icon" onClick={() => setIsCodePanelOpen(!isCodePanelOpen)} className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground" title={isCodePanelOpen ? "Hide code panel" : "Show code panel"}>
+                {isCodePanelOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+              </Button>
+              <div className="h-6 w-px bg-border mx-1" />
+
               <Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground">
                 <svg viewBox="0 0 24 24" className="w-6 h-6"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
               </Button>
@@ -1050,6 +1202,125 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           }}
                         >
                           
+                          {/* Node Manipulation Toolbar (Only on Single Click) */}
+                          {!isInlineEditing && (
+                            <div 
+                                className="absolute left-1/2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700"
+                                style={{ 
+                                    top: `-${60 / state.scale}px`,
+                                    transform: `translateX(-50%) scale(${1 / state.scale})`,
+                                    transformOrigin: 'bottom center'
+                                }}
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={(e) => e.stopPropagation()}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                            >
+                                {/* Background Color */}
+                                <div className="relative group">
+                                    <input 
+                                        type="color" 
+                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
+                                        onInput={(e) => handleUpdateStyle('fill', (e.target as HTMLInputElement).value)}
+                                        title="Background Color"
+                                    />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                        <Palette className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                
+                                {/* Border Color */}
+                                <div className="relative group">
+                                    <input 
+                                        type="color" 
+                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
+                                        onInput={(e) => handleUpdateStyle('stroke', (e.target as HTMLInputElement).value)}
+                                        title="Border Color"
+                                    />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                        <Square className="w-5 h-5" />
+                                    </button>
+                                </div>
+
+                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
+
+                                {/* Text Color */}
+                                <div className="relative group">
+                                    <input 
+                                        type="color" 
+                                        className="opacity-0 absolute inset-0 w-full h-full cursor-pointer z-10" 
+                                        onInput={(e) => handleFormatNodeLabel('color', (e.target as HTMLInputElement).value)}
+                                        title="Text Color"
+                                    />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors">
+                                        <Type className="w-5 h-5" />
+                                    </button>
+                                </div>
+                                {/* Bold */}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('bold'); }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 font-bold font-serif transition-colors text-lg"
+                                    title="Bold Text"
+                                >
+                                    B
+                                </button>
+                                {/* Italic */}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('italic'); }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 italic font-serif transition-colors text-lg"
+                                    title="Italic Text"
+                                >
+                                    I
+                                </button>
+
+                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
+
+                                {/* Shape Selector */}
+                                <select 
+                                    className="bg-transparent border-none text-base font-medium focus:ring-0 cursor-pointer outline-none hover:bg-slate-100 rounded-md px-2 py-1.5"
+                                    onChange={(e) => handleChangeShape(e.target.value)}
+                                    defaultValue="rectangle"
+                                    title="Change Shape"
+                                >
+                                    <option value="rectangle">Rectangle</option>
+                                    <option value="rounded">Rounded</option>
+                                    <option value="circle">Circle</option>
+                                    <option value="cylinder">Cylinder</option>
+                                    <option value="rhombus">Rhombus</option>
+                                    <option value="hexagon">Hexagon</option>
+                                    <option value="stadium">Stadium</option>
+                                </select>
+
+                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
+
+                                {/* Hyperlink */}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); handleSetHyperlink(); }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                                    title="Add/Edit Hyperlink"
+                                >
+                                    <LinkIcon className="w-5 h-5" />
+                                </button>
+
+                                {/* Duplicate */}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); handleDuplicateNode(); }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+                                    title="Duplicate Node"
+                                >
+                                    <Copy className="w-5 h-5" />
+                                </button>
+
+                                {/* Delete */}
+                                <button 
+                                    onClick={(e) => { e.preventDefault(); handleDeleteNode(); }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-red-50 text-red-600 transition-colors"
+                                    title="Delete Node"
+                                >
+                                    <Trash2 className="w-5 h-5" />
+                                </button>
+                            </div>
+                          )}
+
                           {/* Inline Editor Overlay */}
                           {isInlineEditing && (
                             <>
