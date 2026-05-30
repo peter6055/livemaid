@@ -1192,8 +1192,56 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               limitToBounds={false}
               doubleClick={{ disabled: true }}
             >
-              {({ zoomIn, zoomOut, resetTransform, state }) => (
-                <>
+              {({ zoomIn, zoomOut, resetTransform, state }) => {
+                const currentDirection = (() => {
+                    const m = code.match(/(flowchart|graph)\s+(TD|TB|BT|RL|LR)/);
+                    return m ? m[2] : 'TB';
+                })();
+                
+                let toolbarStyle: React.CSSProperties = { 
+                    top: `-${60 / state.scale}px`,
+                    transform: `translateX(-50%) scale(${1 / state.scale})`,
+                    transformOrigin: 'bottom center',
+                    left: '50%'
+                };
+                let plusStyle: React.CSSProperties = { 
+                    bottom: `-${12 / state.scale}px`,
+                    transform: `translateX(-50%) translateY(100%) scale(${1 / state.scale})`,
+                    left: '50%',
+                    transformOrigin: 'top center'
+                };
+
+                if (currentDirection === 'BT') {
+                    toolbarStyle = {
+                        bottom: `-${60 / state.scale}px`,
+                        transform: `translateX(-50%) scale(${1 / state.scale})`,
+                        transformOrigin: 'top center',
+                        left: '50%'
+                    };
+                    plusStyle = {
+                        top: `-${12 / state.scale}px`,
+                        transform: `translateX(-50%) translateY(-100%) scale(${1 / state.scale})`,
+                        left: '50%',
+                        transformOrigin: 'bottom center'
+                    };
+                } else if (currentDirection === 'LR') {
+                    plusStyle = {
+                        right: `-${12 / state.scale}px`,
+                        top: '50%',
+                        transform: `translateY(-50%) translateX(100%) scale(${1 / state.scale})`,
+                        transformOrigin: 'left center'
+                    };
+                } else if (currentDirection === 'RL') {
+                    plusStyle = {
+                        left: `-${12 / state.scale}px`,
+                        top: '50%',
+                        transform: `translateY(-50%) translateX(-100%) scale(${1 / state.scale})`,
+                        transformOrigin: 'right center'
+                    };
+                }
+
+                return (
+                  <>
                   <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-background border border-border p-1 rounded-lg shadow-sm">
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => zoomIn()}>
                        <Plus className="w-4 h-4" />
@@ -1274,12 +1322,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           {/* Node Manipulation Toolbar (Only on Single Click) */}
                           {!isInlineEditing && (currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
                             <div 
-                                className="absolute left-1/2 flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700"
-                                style={{ 
-                                    top: `-${60 / state.scale}px`,
-                                    transform: `translateX(-50%) scale(${1 / state.scale})`,
-                                    transformOrigin: 'bottom center'
-                                }}
+                                className="absolute flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700"
+                                style={toolbarStyle}
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={(e) => e.stopPropagation()}
                                 onDoubleClick={(e) => e.stopPropagation()}
@@ -1507,11 +1551,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           {/* Quick Add Node (+) Button */}
                           {!isInlineEditing && (
                             <div 
-                              className="absolute left-1/2 pointer-events-auto origin-top"
-                              style={{ 
-                                bottom: `-${12 / state.scale}px`,
-                                transform: `translateX(-50%) translateY(100%) scale(${1 / state.scale})`
-                              }}
+                              className="absolute pointer-events-auto"
+                              style={plusStyle}
                             >
                               <button
                                  onClick={(e) => { e.stopPropagation(); handleAddNodeFromSelected(); }}
@@ -1534,7 +1575,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                     </div>
                   )}
                 </>
-              )}
+                );
+              }}
             </TransformWrapper>
           </div>
         </ResizablePanel>
