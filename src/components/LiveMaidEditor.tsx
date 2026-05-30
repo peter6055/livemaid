@@ -468,7 +468,28 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     return <div className="min-h-screen flex items-center justify-center bg-white text-zinc-500">Loading editor...</div>;
   }
 
-  const plugin = doc ? DiagramRegistry[doc.type || 'flowchart'] : null;
+  const determineDiagramType = (sourceCode: string) => {
+    const lines = sourceCode.split('\n');
+    let inConfig = false;
+    for (const line of lines) {
+       const trimmed = line.trim();
+       if (trimmed === '---') {
+          inConfig = !inConfig;
+          continue;
+       }
+       if (inConfig || trimmed.startsWith('%%') || trimmed === '') continue;
+       
+       if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) return 'flowchart';
+       if (trimmed.startsWith('sequenceDiagram')) return 'sequence';
+       
+       const match = trimmed.match(/^([a-zA-Z]+)/);
+       if (match) return match[1];
+    }
+    return 'flowchart';
+  };
+
+  const currentType = determineDiagramType(code);
+  const plugin = DiagramRegistry[currentType] || null;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
