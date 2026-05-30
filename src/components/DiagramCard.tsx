@@ -32,7 +32,7 @@ export function DiagramCard({
     if (diagram.code) {
       const renderPreview = async () => {
         try {
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: false }, sequence: { htmlLabels: false } });
           await mermaid.parse(diagram.code!, { suppressErrors: true });
           const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
           setSvgContent(svg);

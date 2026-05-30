@@ -76,12 +76,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [editingText, setEditingText] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef<string | null>(null);
-
   useEffect(() => {
     mermaid.initialize({
       startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose', // allow clicks
+      flowchart: { htmlLabels: false },
+      sequence: { htmlLabels: false },
     });
   }, []);
 
@@ -213,7 +214,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       URL.revokeObjectURL(url);
     } else if (exportFormat === 'PNG') {
       const img = new Image();
-      img.crossOrigin = "anonymous";
       // Ensure proper SVG namespace
       let svgData = finalSvgContent.includes('xmlns=') ? finalSvgContent : finalSvgContent.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
       
@@ -231,9 +231,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       }
       
       // Ensure explicit width/height attributes exist so Image renders correctly
-      if (!svgData.match(/<svg[^>]*\swidth=/)) {
-        svgData = svgData.replace('<svg ', `<svg width="${w}" height="${h}" `);
-      }
+      svgData = svgData.replace(/\bwidth="[^"]*"/g, '').replace(/\bheight="[^"]*"/g, '');
+      svgData = svgData.replace('<svg ', `<svg width="${w}" height="${h}" `);
 
       // Convert SVG string to base64 Data URI to avoid tainted canvas
       const base64Data = btoa(unescape(encodeURIComponent(svgData)));
@@ -242,8 +241,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       img.onload = () => {
         const scale = 3; // 3x resolution for high-quality PNG
         const canvas = document.createElement('canvas');
-        canvas.width = (img.width || w) * scale;
-        canvas.height = (img.height || h) * scale;
+        canvas.width = w * scale;
+        canvas.height = h * scale;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           if (exportBg !== 'transparent') {
