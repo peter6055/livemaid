@@ -130,10 +130,28 @@
 }
 
 /* Hide Mermaid syntax error overlays globally so we can render our own custom errors */
-svg[id^="dpreview-"][aria-roledescription="error"],
-svg[id^="preview-"][aria-roledescription="error"],
-.mermaid-container > svg[id^="mermaid-svg-"][aria-roledescription="error"],
+svg[aria-roledescription="error"],
 .error-icon,
 .error-text {
   display: none !important;
+}
+
+/* Hide Mermaid's temporary rendering containers so they don't create blank space at the bottom of the page when an error leaves them behind. 
+   We cannot use display: none here because Mermaid relies on these containers having layout dimensions to compute SVG bounds. */
+[id^="dpreview-"],
+[id^="dmermaid-"] {
+  position: absolute !important;
+  top: -99999px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+/* Ensure the react-zoom-pan-pinch component perfectly centers the diagram to eliminate big white spaces */
+.react-transform-component {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
 }

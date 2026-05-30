@@ -78,6 +78,27 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [isLocked, setIsLocked] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef<string | null>(null);
+  const editorRef = useRef<any>(null);
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    editorRef.current = editor;
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        if (e.shiftKey) {
+          editorRef.current?.trigger('keyboard', 'redo', null);
+        } else {
+          editorRef.current?.trigger('keyboard', 'undo', null);
+        }
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   useEffect(() => {
     mermaid.initialize({
       startOnLoad: false,
@@ -110,7 +131,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       setSelectedNodeId(null);
       setIsEditing(false);
     } catch (e: any) {
-      console.error(e);
       setParseError(e?.message || "Syntax Error");
     }
   }, []);
@@ -219,11 +239,24 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         const svgContainer = containerRef.current?.querySelector('svg');
         if (!svgContainer) throw new Error("No SVG found");
         
+        let w = 800; let h = 600;
+        const viewBoxMatch = svgContainer.outerHTML.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
+        if (viewBoxMatch) { w = parseFloat(viewBoxMatch[1]); h = parseFloat(viewBoxMatch[2]); }
+
         // Use html-to-image to properly render foreignObjects and bypass canvas taint
         const dataUrl = await htmlToImage.toPng(svgContainer, {
           backgroundColor: exportBg === 'transparent' ? undefined : exportBg,
-          pixelRatio: 3,
-          skipFonts: true // speeds up if no external fonts
+          pixelRatio: 5,
+          skipFonts: true,
+          fontEmbedCSS: '',
+          width: w,
+          height: h,
+          style: {
+             transform: 'none',
+             transformOrigin: 'top left',
+             width: `${w}px`,
+             height: `${h}px`
+          }
         });
         
         const a = document.createElement('a');
@@ -526,7 +559,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm font-medium mr-4">
-          <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-slate-700 hover:bg-slate-100 h-9">
+          <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-slate-700 hover:bg-slate-100 h-9 border border-slate-200">
             <Download className="w-4 h-4" />
             <span>Export</span>
           </Button>
@@ -549,27 +582,29 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <div className="h-10 border-b border-slate-200 bg-slate-50 flex items-center px-4 shrink-0 justify-between">
             <span className="text-xs font-mono text-zinc-800 font-bold tracking-wide uppercase">Mermaid Code</span>
           </div>
-          <div className="flex-grow relative flex flex-col">
-            <div className="flex-grow min-h-0">
+          <div className="flex-grow relative flex flex-col min-h-0">
+            <div className="flex-grow min-h-0 relative">
               <Editor
                 height="100%"
                 defaultLanguage="markdown"
                 theme="light"
                 value={code}
                 onChange={handleCodeChange}
+                onMount={handleEditorDidMount}
                 options={{
+                  readOnly: false,
                   minimap: { enabled: false },
                   fontSize: 13,
                   wordWrap: "on",
                   lineNumbers: "on",
                   scrollBeyondLastLine: false,
-                  padding: { top: 16 }
+                  padding: { top: 16, bottom: 40 }
                 }}
               />
             </div>
             {parseError && (
-              <div className="shrink-0 bg-red-50 text-red-600 p-3 text-xs font-mono border-t border-red-200 max-h-40 overflow-y-auto whitespace-pre-wrap">
-                <span className="font-bold mb-1 block">Syntax Error</span>
+              <div className="flex-shrink-0 relative z-10 bg-red-50 text-red-600 p-4 text-[13px] leading-relaxed font-mono border-t border-red-200 max-h-[50%] overflow-y-auto whitespace-pre-wrap shadow-[0_-8px_20px_-5px_rgba(0,0,0,0.1)]">
+                <span className="font-bold text-base mb-2 block sticky top-0 bg-red-50 py-1">Syntax Error</span>
                 {parseError}
               </div>
             )}
@@ -715,8 +750,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               minScale={0.05}
               maxScale={50}
               centerOnInit={true}
-              wheel={{ step: 0.1 }}
-              panning={{ velocityDisabled: false, disabled: isEditing }}
+              wheel={{ step: 0.1, activationKeys: ["Control", "Meta", "Alt", "Shift"] }}
+              panning={{ velocityDisabled: false, disabled: isEditing, wheelPanning: true } as any}
             >
               {({ zoomIn, zoomOut, resetTransform, state }) => (
                 <>
@@ -754,10 +789,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       onClick={handleSvgClick}
                       onDoubleClick={(e) => { if (selectedNodeId) handleEditClick(e); }}
                     >
+                      {parseError && (
+                        <div 
+                          className="absolute inset-0 z-40 bg-white/60 backdrop-blur-[4px] cursor-not-allowed flex items-center justify-center pointer-events-auto" 
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {/* Empty container to capture clicks and blur out the broken diagram underneath */}
+                        </div>
+                      )}
 
-                      
                       <div 
-                        className="mermaid-container transition-all"
+                        className={`mermaid-container transition-all ${parseError ? 'opacity-30' : ''}`}
                         dangerouslySetInnerHTML={{ __html: svgContent }} 
                       />
 
@@ -806,15 +848,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           </div>
                         </div>
                       )}
-                      
-                      {/* Read-Only Lock Indicator */}
-                      {isLocked && (
-                        <div className="absolute top-4 right-4 bg-white/80 backdrop-blur border border-red-200 text-red-600 px-3 py-1.5 rounded-md text-xs font-medium flex items-center shadow-sm pointer-events-none z-10">
-                          <Lock className="w-3.5 h-3.5 mr-1.5" /> Locked
-                        </div>
-                      )}
                     </div>
                   </TransformComponent>
+                  
+                  {/* Read-Only Lock Indicator - Moved outside TransformComponent so it doesn't zoom! */}
+                  {isLocked && (
+                    <div className="absolute top-4 right-4 bg-white/80 backdrop-blur border border-red-200 text-red-600 px-3 py-1.5 rounded-md text-xs font-medium flex items-center shadow-sm pointer-events-none z-50">
+                      <Lock className="w-3.5 h-3.5 mr-1.5" /> Locked
+                    </div>
+                  )}
                 </>
               )}
             </TransformWrapper>

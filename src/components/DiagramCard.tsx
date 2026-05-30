@@ -72,7 +72,7 @@ export function DiagramCard({
             {svgContent ? (
                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50" />
             ) : (
-               <span className="text-slate-400 text-sm font-medium">Preview Unavailable</span>
+               <span className="text-slate-400 text-xs font-medium">Preview Unavailable</span>
             )}
           </div>
         </Link>
