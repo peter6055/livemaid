@@ -1,8 +1,10 @@
 <!-- BEGIN:livemaid-architecture-rules -->
 # Architecture and Feature Truths
 
-Before implementing ANY features or modifying the editor logic, you MUST read `reference/FEATURES_AND_TRUTHS.md`. This document outlines critical implementations like the pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints.
-Furthermore, you MUST constantly update `reference/FEATURES_AND_TRUTHS.md` whenever you implement a new feature or change core architecture logic so that it remains an accurate source of truth for future agents.
+Before implementing ANY features or modifying the editor logic, you MUST read the following core documentation files in the `reference/` directory:
+1. `reference/FEATURES_AND_TRUTHS.md`: Outlines critical implementations like pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints. Furthermore, you MUST constantly update this file whenever you implement a new feature or change core architecture logic so that it remains an accurate source of truth.
+2. `reference/ARCHITECTURE.md`: High-level system architecture overview.
+3. `reference/DESIGN.md`: UI/UX design specifications and aesthetic guidelines.
 <!-- END:livemaid-architecture-rules -->
 
 <!-- BEGIN:nextjs-agent-rules -->
@@ -19,7 +21,6 @@ Before planning or implementing any Mermaid diagram logic (parsers, rendering, f
 1. Navigate to or clone the relevant docs from the official repository: https://github.com/mermaid-js/mermaid/tree/develop/docs
 2. Read the specific `.md` files related to the syntax you are trying to implement.
 3. Do not perform the implementation until you have thoroughly understood the official syntax.
-4. You can also refer to any local documentation instructions left in `reference/README.md` if available.
 <!-- END:mermaid-agent-rules -->
 
 <!-- BEGIN:testing-agent-rules -->
