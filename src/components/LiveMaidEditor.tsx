@@ -211,13 +211,30 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       a.download = `${doc?.name || 'diagram'}.svg`;
       a.click();
       URL.revokeObjectURL(url);
-      setIsExportOpen(false);
     } else if (exportFormat === 'PNG') {
       const img = new Image();
       img.crossOrigin = "anonymous";
       // Ensure proper SVG namespace
-      const svgData = finalSvgContent.includes('xmlns=') ? finalSvgContent : finalSvgContent.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+      let svgData = finalSvgContent.includes('xmlns=') ? finalSvgContent : finalSvgContent.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
       
+      // Parse intrinsic width and height
+      let w = 800;
+      let h = 600;
+      const viewBoxMatch = svgData.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
+      if (viewBoxMatch) {
+        w = parseFloat(viewBoxMatch[1]);
+        h = parseFloat(viewBoxMatch[2]);
+      }
+      const widthMatch = svgData.match(/max-width:\s*([\d.]+)px/);
+      if (widthMatch) {
+        w = parseFloat(widthMatch[1]);
+      }
+      
+      // Ensure explicit width/height attributes exist so Image renders correctly
+      if (!svgData.match(/<svg[^>]*\swidth=/)) {
+        svgData = svgData.replace('<svg ', `<svg width="${w}" height="${h}" `);
+      }
+
       // Convert SVG string to base64 Data URI to avoid tainted canvas
       const base64Data = btoa(unescape(encodeURIComponent(svgData)));
       const url = `data:image/svg+xml;base64,${base64Data}`;
@@ -225,8 +242,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       img.onload = () => {
         const scale = 3; // 3x resolution for high-quality PNG
         const canvas = document.createElement('canvas');
-        canvas.width = (img.width || 800) * scale;
-        canvas.height = (img.height || 600) * scale;
+        canvas.width = (img.width || w) * scale;
+        canvas.height = (img.height || h) * scale;
         const ctx = canvas.getContext('2d');
         if (ctx) {
           if (exportBg !== 'transparent') {
@@ -240,7 +257,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           a.href = pngUrl;
           a.download = `${doc?.name || 'diagram'}.png`;
           a.click();
-          setIsExportOpen(false);
         }
       };
       img.src = url;
@@ -252,7 +268,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       a.download = `${doc?.name || 'diagram'}.mmd`;
       a.click();
       URL.revokeObjectURL(url);
-      setIsExportOpen(false);
     } else {
       toast.info(`${exportFormat} export coming soon!`);
     }
