@@ -1470,7 +1470,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Bold */}
                                 <button 
                                     onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('bold'); }}
-                                    className={`h-10 w-10 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-lg ${selectedSvgId && document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`) && ['bold', '700', '800', '900'].includes(window.getComputedStyle(document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`)!).fontWeight) ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+                                    className={`h-10 w-10 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-lg ${selectedSvgId && document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text') && ['bold', '700', '800', '900'].includes(window.getComputedStyle(document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text')!).fontWeight) ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
                                     title="Bold Text"
                                 >
                                     B
@@ -1478,7 +1478,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Italic */}
                                 <button 
                                     onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('italic'); }}
-                                    className={`h-10 w-10 flex items-center justify-center rounded-full italic font-serif transition-colors text-lg ${selectedSvgId && document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`) && window.getComputedStyle(document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`)!).fontStyle === 'italic' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+                                    className={`h-10 w-10 flex items-center justify-center rounded-full italic font-serif transition-colors text-lg ${selectedSvgId && document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text') && window.getComputedStyle(document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text')!).fontStyle === 'italic' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
                                     title="Italic Text"
                                 >
                                     I
