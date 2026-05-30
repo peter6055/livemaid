@@ -385,28 +385,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
     return null;
   }, []);
-
-  const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (isLocked) return;
-    const result = getClickedNode(e.target as Element);
-    
-    if (result) {
-        setSelectionBox(result.newSelectionBox);
-        setTextBox(result.newTextBox);
-        setSelectedNodeId(result.cleanId);
-        setSelectedSvgId(result.rawSvgId);
-    } else {
-        if ((e.target as any).tagName === 'svg' || (e.target as any).classList?.contains('react-transform-component')) {
-            setSelectionBox(null);
-            setTextBox(null);
-            setSelectedNodeId(null);
-            setSelectedSvgId(null);
-            setIsInlineEditing(false);
-        }
-    }
-  }, [isLocked, getClickedNode]);
-
-  const handleEditClick = (e: React.MouseEvent) => {
+  const handleEditClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     
     // Always resolve the node from the target to guarantee it works even if click was too fast
@@ -446,10 +425,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             }
         }
     } else {
-        const nodeRegex = new RegExp(`(^|\\s)(${targetNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\[\\/?|\\[\\\\|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\[?\\/\\]|\\]|\\]\\]))`, 'm');
+        // Regex to match node ID and its label, e.g., A[Start], B((End)), C{Choice}
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
         const match = code.match(nodeRegex);
         if (match && match[3]) {
             currentText = match[3];
+        } else {
+            // Fallback: try to grab text from the SVG directly if the code regex fails
+            const innerText = result?.rawSvgId ? document.querySelector(`#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`) : null;
+            if (innerText && innerText.textContent) {
+                currentText = innerText.textContent.trim();
+            }
         }
     }
     setEditingText(currentText);
@@ -461,7 +447,41 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             inlineInputRef.current.select();
         }
     }, 10);
-  };
+  }, [code, getClickedNode, selectedNodeId]);
+
+  const lastClickTimeRef = useRef<number>(0);
+
+  const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (isLocked) return;
+
+    const currentTime = new Date().getTime();
+    const timeSinceLastClick = currentTime - lastClickTimeRef.current;
+    
+    if (timeSinceLastClick < 300) {
+        // Double click detected!
+        lastClickTimeRef.current = 0; // reset
+        handleEditClick(e);
+        return;
+    }
+    lastClickTimeRef.current = currentTime;
+
+    const result = getClickedNode(e.target as Element);
+    
+    if (result) {
+        setSelectionBox(result.newSelectionBox);
+        setTextBox(result.newTextBox);
+        setSelectedNodeId(result.cleanId);
+        setSelectedSvgId(result.rawSvgId);
+    } else {
+        if ((e.target as any).tagName === 'svg' || (e.target as any).classList?.contains('react-transform-component')) {
+            setSelectionBox(null);
+            setTextBox(null);
+            setSelectedNodeId(null);
+            setSelectedSvgId(null);
+            setIsInlineEditing(false);
+        }
+    }
+  }, [isLocked, getClickedNode]);
 
   const handleEditSubmit = () => {
     if (!selectedNodeId || !isInlineEditing) {
@@ -503,11 +523,18 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             }
         }
     } else {
-        const nodeRegex = new RegExp(`(^|\\s)(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\[\\/?|\\[\\\\|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\[?\\/\\]|\\]|\\]\\]))`, 'm');
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
         if (nodeRegex.test(newCode)) {
             newCode = newCode.replace(nodeRegex, `$1$2${editingText}$4`);
         } else {
-            newCode += `\n    ${selectedNodeId}["${editingText}"]`;
+            // Node exists but has no label brackets yet (e.g. just `A` in `A --> B`)
+            // We should find the first standalone occurrence of the ID and append the label
+            const standaloneNodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId})([^a-zA-Z0-9_]|$)`, 'm');
+            if (standaloneNodeRegex.test(newCode)) {
+                newCode = newCode.replace(standaloneNodeRegex, `$1$2["${editingText}"]$3`);
+            } else {
+                newCode += `\n    ${selectedNodeId}["${editingText}"]`;
+            }
         }
     }
     
@@ -583,7 +610,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       let newCode = code;
 
       if (diagramType === 'flowchart' || diagramType === 'graph') {
-          const newNodeId = `node_${Date.now()}`;
+          let i = 1;
+          while (code.includes(`NewNode${i}`)) i++;
+          const newNodeId = `NewNode${i}`;
           const newEdgeCode = `\n    ${selectedNodeId} --> ${newNodeId}[New Node]`;
           newCode += newEdgeCode;
       } else if (diagramType === 'sequence') {
@@ -851,7 +880,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       ref={containerRef}
                       className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
                       onClick={!isLocked ? handleSvgClick : undefined}
-                      onDoubleClick={(e) => { if (selectedNodeId && !isLocked) handleEditClick(e); }}
+                      onDoubleClick={(e) => { if (!isLocked) handleEditClick(e); }}
                     >
                       {parseError && (
                         <div 
@@ -895,18 +924,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                             boxShadow: `0 0 0 ${4 / state.scale}px rgba(99, 102, 241, 0.2)`
                           }}
                         >
-                          {/* Node ID indicator */}
-                          <div 
-                            className="absolute left-0 pointer-events-auto origin-bottom-left flex gap-1 items-end"
-                            style={{ 
-                              top: `-${24 / state.scale}px`,
-                              transform: `scale(${1 / state.scale})`
-                            }}
-                          >
-                            <div className="bg-indigo-500 text-white font-mono text-[10px] px-2 py-0.5 rounded-t-md whitespace-nowrap">
-                              {selectedNodeId}
-                            </div>
-                          </div>
                           
                           {/* Inline Editor Overlay */}
                           {isInlineEditing && (
@@ -953,7 +970,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {textBox && (
                                 <textarea
                                     ref={inlineInputRef}
-                                    className="absolute p-0.5 bg-transparent pointer-events-auto resize-none outline-none focus:ring-2 focus:ring-indigo-500 border-none rounded text-center flex items-center justify-center font-sans break-words z-40 overflow-auto shadow-sm text-foreground"
+                                    className="absolute bg-transparent pointer-events-auto resize-none outline-none border-none text-center font-sans break-words z-40 overflow-hidden"
                                     value={editingText}
                                     onChange={(e) => setEditingText(e.target.value)}
                                     onKeyDown={(e) => {
@@ -975,13 +992,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     onClick={(e) => e.stopPropagation()}
                                     onDoubleClick={(e) => e.stopPropagation()}
                                     style={{
-                                        // Adjust position relative to the selectionBox coordinates, since this textarea is rendered inside the selectionBox div
-                                        left: textBox.x - selectionBox.x,
-                                        top: textBox.y - selectionBox.y,
-                                        width: textBox.width,
-                                        height: Math.max(textBox.height, 20),
-                                        fontSize: `${Math.max(12, 16 / state.scale)}px`,
-                                        lineHeight: 1.2
+                                        // Center the textarea exactly over the textBox
+                                        // The parent div is positioned at `selectionBox.x - 4`
+                                        left: (textBox.x - (selectionBox.x - 4)) + textBox.width / 2,
+                                        top: (textBox.y - (selectionBox.y - 4)) + textBox.height / 2,
+                                        transform: 'translate(-50%, -50%)',
+                                        width: Math.max(textBox.width + 100, 150),
+                                        height: Math.max(textBox.height + 40, 60),
+                                        fontSize: '16px',
+                                        lineHeight: 1.2,
+                                        color: document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#333',
+                                        paddingTop: Math.max(20, (Math.max(textBox.height + 40, 60) - textBox.height) / 2)
                                     }}
                                 />
                                 )}
