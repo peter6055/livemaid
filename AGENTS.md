@@ -50,4 +50,11 @@ You MUST follow the Conventional Commits specification for all git commits. The 
 - `feat`: introduces a new feature to the codebase.
 - `BREAKING CHANGE`: a commit that has a footer `BREAKING CHANGE:`, or appends a `!` after the type/scope, introduces a breaking API change.
 - Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
+
+## Combining with Human Verification Tags
+When a commit is explicitly requested or verified by the human user, you MUST append the `[Human Verified]` tag to the end of the first line (the description) of your Conventional Commit. 
+
+Examples:
+`fix(editor): resolve trackpad panning conflicts [Human Verified]`
+`feat: support sequence diagram syntax [Human Verified]`
 <!-- END:conventional-commits-rules -->
