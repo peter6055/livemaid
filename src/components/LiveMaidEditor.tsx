@@ -95,25 +95,25 @@ function updateMermaidFontFamily(code: string, fontString: string): string {
         let configBlock = match[1];
         
         // Update top-level fontFamily
-        const fontRegex = /fontFamily:\s*[^\n]+/;
+        const fontRegex = /(^|\n)  fontFamily:\s*[^\n]+/;
         if (fontRegex.test(configBlock)) {
-            configBlock = configBlock.replace(fontRegex, `fontFamily: '${fontString}'`);
+            configBlock = configBlock.replace(fontRegex, `$1  fontFamily: '${fontString}'`);
         } else {
             configBlock += `\n  fontFamily: '${fontString}'`;
         }
 
         // Update themeVariables: fontFamily
-        const themeVarsRegex = /themeVariables:([\s\S]*?)(?=(?:^[a-zA-Z]|\Z))/m;
+        const themeVarsRegex = /(^|\n)  themeVariables:([\s\S]*?)(?=\n  [a-zA-Z0-9]+:|$)/;
         const themeVarsMatch = configBlock.match(themeVarsRegex);
         
         if (themeVarsMatch) {
-            let varsBlock = themeVarsMatch[1];
-            if (/fontFamily:\s*[^\n]+/.test(varsBlock)) {
-                varsBlock = varsBlock.replace(/fontFamily:\s*[^\n]+/, `fontFamily: '${fontString}'`);
+            let varsBlock = themeVarsMatch[2];
+            if (/\n    fontFamily:\s*[^\n]+/.test(varsBlock)) {
+                varsBlock = varsBlock.replace(/\n    fontFamily:\s*[^\n]+/, `\n    fontFamily: '${fontString}'`);
             } else {
                 varsBlock = varsBlock.replace(/\n*$/, `\n    fontFamily: '${fontString}'\n`);
             }
-            configBlock = configBlock.replace(themeVarsRegex, `themeVariables:${varsBlock}`);
+            configBlock = configBlock.replace(themeVarsRegex, `$1  themeVariables:${varsBlock}`);
         } else {
             configBlock += `\n  themeVariables:\n    fontFamily: '${fontString}'`;
         }
