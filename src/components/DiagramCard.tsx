@@ -8,7 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
 import { Badge } from '@/components/ui/badge';
-import { determineDiagramType } from './LiveMaidEditor';
+import { determineDiagramType } from '@/lib/diagrams/utils';
 
 export interface DiagramDocument {
   id: string;
