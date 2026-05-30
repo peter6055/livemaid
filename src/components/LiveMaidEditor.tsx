@@ -67,7 +67,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isInlineEditing, setIsInlineEditing] = useState(false);
 
   // SVG State
   const [svgContent, setSvgContent] = useState<string>("");
@@ -77,13 +77,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
   const [editingText, setEditingText] = useState("");
   const [isLocked, setIsLocked] = useState(false);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef<string | null>(null);
   const editorRef = useRef<any>(null);
+  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
@@ -133,7 +134,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       // Clear selection on new render, coordinates might be stale
       setSelectionBox(null);
       setSelectedNodeId(null);
-      setIsEditing(false);
+      setIsInlineEditing(false);
     } catch (e: any) {
       setParseError(e?.message || "Syntax Error");
     }
@@ -336,7 +337,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsEditModalOpen(true);
     
     if (!selectedNodeId) return;
     
@@ -370,11 +370,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
     }
     setEditingText(currentText);
+    setIsInlineEditing(true);
+    setTimeout(() => {
+        if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            // Optional: select all
+            inlineInputRef.current.select();
+        }
+    }, 10);
   };
 
   const handleEditSubmit = () => {
-    if (!selectedNodeId) {
-        setIsEditModalOpen(false);
+    if (!selectedNodeId || !isInlineEditing) {
+        setIsInlineEditing(false);
         return;
     }
     
@@ -421,7 +429,48 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
     
     handleCodeChange(newCode);
-    setIsEditModalOpen(false);
+    setIsInlineEditing(false);
+  };
+
+  const handleFormatText = (format: 'bold' | 'italic' | 'color', colorValue?: string) => {
+    if (!inlineInputRef.current) return;
+    
+    const start = inlineInputRef.current.selectionStart;
+    const end = inlineInputRef.current.selectionEnd;
+    const selectedText = editingText.substring(start, end);
+    
+    if (!selectedText && format !== 'color') return;
+    
+    let before = '';
+    let after = '';
+    
+    if (format === 'bold') {
+        before = '<b>';
+        after = '</b>';
+    } else if (format === 'italic') {
+        before = '<i>';
+        after = '</i>';
+    } else if (format === 'color' && colorValue) {
+        // Find if we are coloring specific text or the whole block
+        if (!selectedText) {
+            // Apply to all
+            setEditingText(`<span style="color:${colorValue}">${editingText}</span>`);
+            return;
+        }
+        before = `<span style="color:${colorValue}">`;
+        after = '</span>';
+    }
+    
+    const newText = editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
+    setEditingText(newText);
+    
+    // Reselect
+    setTimeout(() => {
+        if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            inlineInputRef.current.setSelectionRange(start, start + before.length + selectedText.length + after.length);
+        }
+    }, 10);
   };
 
   const handleRenameSubmit = async () => {
@@ -679,8 +728,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               maxScale={50}
               centerOnInit={true}
               smooth={true}
-              wheel={{ wheelDisabled: false, step: 0.1 }}
-              panning={{ velocityDisabled: false, disabled: isEditing }}
+              wheel={{ wheelDisabled: true, step: 0.05 }}
+              panning={{ velocityDisabled: false, disabled: isInlineEditing }}
               trackPadPanning={{ disabled: false }}
               doubleClick={{ disabled: true }}
             >
@@ -760,9 +809,74 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                             </div>
                           </div>
                           
-                          {/* Inline Text Edit Overlay Removed */}
-
-
+                          {/* Inline Editor Overlay */}
+                          {isInlineEditing && (
+                            <>
+                                {/* Formatting Toolbar */}
+                                <div 
+                                    className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1c1c21] rounded-lg p-1 pointer-events-auto shadow-xl z-50 text-white"
+                                    style={{ 
+                                        top: `-${45 / state.scale}px`,
+                                        transform: `scale(${1 / state.scale}) translateX(-50%)`,
+                                        transformOrigin: 'bottom left'
+                                    }}
+                                    onMouseDown={(e) => e.preventDefault()}
+                                >
+                                    <div className="relative">
+                                        <input 
+                                            type="color" 
+                                            ref={colorInputRef}
+                                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer" 
+                                            onInput={(e) => handleFormatText('color', (e.target as HTMLInputElement).value)}
+                                        />
+                                        <button className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors">
+                                            <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: 'linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet)' }} />
+                                        </button>
+                                    </div>
+                                    <div className="w-px h-4 bg-white/20 mx-0.5" />
+                                    <button 
+                                        onClick={(e) => { e.preventDefault(); handleFormatText('bold'); }} 
+                                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10 font-bold font-serif transition-colors"
+                                    >
+                                        B
+                                    </button>
+                                    <button 
+                                        onClick={(e) => { e.preventDefault(); handleFormatText('italic'); }} 
+                                        className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10 italic font-serif transition-colors"
+                                    >
+                                        I
+                                    </button>
+                                </div>
+                                
+                                {/* Textarea Overlay */}
+                                <textarea
+                                    ref={inlineInputRef}
+                                    className="absolute inset-0 w-full h-full p-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm pointer-events-auto resize-none outline-none focus:ring-0 border border-indigo-500/50 rounded-md text-center flex items-center justify-center font-sans break-words z-40 overflow-hidden shadow-lg"
+                                    value={editingText}
+                                    onChange={(e) => setEditingText(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                            e.preventDefault();
+                                            handleEditSubmit();
+                                        } else if (e.key === 'Escape') {
+                                            e.preventDefault();
+                                            setIsInlineEditing(false);
+                                        }
+                                        e.stopPropagation();
+                                    }}
+                                    onBlur={(e) => {
+                                        // Ignore blur if it's from clicking the color picker
+                                        if (e.relatedTarget === colorInputRef.current) return;
+                                        handleEditSubmit();
+                                    }}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    style={{
+                                        fontSize: `${Math.max(12, 16 / state.scale)}px`,
+                                        lineHeight: 1.2
+                                    }}
+                                />
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -896,27 +1010,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
             <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      {/* Edit Label Dialog */}
-      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Label</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Input 
-              value={editingText} 
-              onChange={(e) => setEditingText(e.target.value)} 
-              placeholder="Label text"
-              autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleEditSubmit()}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
-            <Button onClick={() => handleEditSubmit()} className="bg-black text-white hover:bg-zinc-800">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
