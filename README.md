@@ -1,8 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LiveMaid 🧜‍♀️
 
-## Getting Started
+**The WYSIWYG Mermaid Editor**
 
-First, run the development server:
+LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
+
+## 🎯 Purpose
+
+Writing Mermaid code can sometimes be tedious without immediate visual feedback. The purpose of LiveMaid is to provide a local, fast, and intuitive environment where you can write Mermaid syntax and instantly see the rendered diagrams. It acts as a personal diagram management dashboard, allowing you to organize all your charts, flowcharts, and sequence diagrams in one place without relying on external cloud services.
+
+## ✨ Features
+
+* **Live WYSIWYG Editor:** Instantly preview your Mermaid diagrams as you type.
+* **Diagram Management:** Easily create, rename, and delete diagrams from a centralized dashboard.
+* **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
+* **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
+* **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
+
+## 🚀 Getting Started
+
+Follow these instructions to set up the project locally for development.
+
+### Prerequisites
+
+* Node.js (v18 or higher recommended)
+* npm (or yarn, pnpm, bun)
+
+### Installation
+
+1. Ensure you are in the project root directory:
+   ```bash
+   cd livemaid
+   ```
+
+2. Install the dependencies:
+   ```bash
+   npm install
+   # or
+   yarn install
+   # or
+   pnpm install
+   # or
+   bun install
+   ```
+
+### Running the Development Server
+
+Start the local development server:
 
 ```bash
 npm run dev
@@ -14,23 +57,15 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The application auto-updates as you edit the files in the `src/` directory.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🛠️ Tech Stack
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* [Next.js](https://nextjs.org/)
+* [React](https://react.dev/)
+* [Mermaid.js](https://mermaid.js.org/)
+* [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+* [Tailwind CSS](https://tailwindcss.com/)
+* [shadcn/ui](https://ui.shadcn.com/)

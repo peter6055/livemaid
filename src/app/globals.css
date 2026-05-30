@@ -84,7 +84,7 @@
 }
 
 .dark {
-  --background: #121212;
+  --background: rgb(27, 27, 31);
   --foreground: oklch(0.985 0 0);
   --card: #1c1c1c;
   --card-foreground: oklch(0.985 0 0);

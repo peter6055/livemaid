@@ -6,7 +6,7 @@ import Editor from "@monaco-editor/react";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock } from "lucide-react";
+import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, Download, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy, Lock, Unlock, Undo2, Redo2, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import * as htmlToImage from 'html-to-image';
 import Link from "next/link";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -78,6 +78,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editingText, setEditingText] = useState("");
   const [isLocked, setIsLocked] = useState(false);
+  const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderIdRef = useRef<string | null>(null);
   const editorRef = useRef<any>(null);
@@ -107,7 +108,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       theme: 'default',
       securityLevel: 'loose', // allow clicks
       flowchart: { htmlLabels: false },
-      sequence: { htmlLabels: false },
     });
   }, []);
 
@@ -246,7 +246,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         if (viewBoxMatch) { w = parseFloat(viewBoxMatch[1]); h = parseFloat(viewBoxMatch[2]); }
 
         // Use html-to-image to properly render foreignObjects and bypass canvas taint
-        const dataUrl = await htmlToImage.toPng(svgContainer, {
+        const dataUrl = await htmlToImage.toPng(svgContainer as unknown as HTMLElement, {
           backgroundColor: exportBg === 'transparent' ? undefined : exportBg,
           pixelRatio: 5,
           skipFonts: true,
@@ -282,25 +282,31 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   };
 
-  const handleAddShape = useCallback((shape: {b: [string, string] | null, isText?: boolean}) => {
+  const handleAddShape = useCallback((shape: {b?: [string, string] | null, isText?: boolean, expanded?: string}) => {
       const newNodeId = `node_${Date.now()}`;
-      
-      if (shape.isText) {
-          const newCode = code + `\n    ${newNodeId}["Text Block"]`;
-          handleCodeChange(newCode);
-          return;
-      }
-
-      const brackets = shape.b as [string, string];
       const label = "New Node";
       let newCode = code;
+
+      let nodeDef = "";
+      if (shape.isText) {
+          nodeDef = `${newNodeId}["Text Block"]`;
+      } else if (shape.expanded) {
+          nodeDef = `${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
+      } else if (shape.b) {
+          const brackets = shape.b as [string, string];
+          nodeDef = `${newNodeId}${brackets[0]}${label}${brackets[1]}`;
+      }
       
       if (selectedNodeId) {
           // If a node is selected, branch off from it
-          newCode += `\n    ${selectedNodeId} --> ${newNodeId}${brackets[0]}${label}${brackets[1]}`;
+          if (shape.expanded) {
+              newCode += `\n    ${nodeDef}\n    ${selectedNodeId} --> ${newNodeId}`;
+          } else {
+              newCode += `\n    ${selectedNodeId} --> ${nodeDef}`;
+          }
       } else {
           // Otherwise add floating
-          newCode += `\n    ${newNodeId}${brackets[0]}${label}${brackets[1]}`;
+          newCode += `\n    ${nodeDef}`;
       }
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
@@ -532,10 +538,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   if (!doc) {
     return <div className="min-h-screen flex items-center justify-center bg-white text-red-500">Diagram not found</div>;
   }
-
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
-      <header className="h-14 border-b border-border bg-background flex items-center justify-between px-4 shrink-0 z-20">
+      <header className="h-14 border-b border-border bg-background dark:bg-[#121212] flex items-center px-4 justify-between shrink-0 z-20">
         <div className="flex items-center">
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-foreground hover:bg-accent" />}>
@@ -555,11 +560,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             </DropdownMenuContent>
           </DropdownMenu>
           <Link href="/">
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-6 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
+            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-4 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
               <LayoutTemplate className="w-5 h-5 text-white" />
             </div>
           </Link>
           
+          <Button variant="ghost" size="icon" onClick={() => setIsCodePanelOpen(!isCodePanelOpen)} className="mr-2 text-muted-foreground hover:text-foreground hover:bg-accent" title={isCodePanelOpen ? "Close sidebar" : "Open sidebar"}>
+            {isCodePanelOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
+          </Button>
+
           <div className="flex items-center text-lg font-semibold text-muted-foreground tracking-tight ml-2">
             <Link href="/" className="hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent">Projects</Link>
             <span className="mx-2 text-border font-light">/</span>
@@ -586,11 +595,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
-        <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
-          <div className="h-10 border-b border-border bg-muted/50 flex items-center px-4 shrink-0 justify-between">
-            <span className="text-xs font-mono text-foreground font-bold tracking-wide uppercase">Mermaid Code</span>
-          </div>
-          <div className="flex-grow relative flex flex-col min-h-0">
+        {isCodePanelOpen && (
+          <>
+            <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
+              <div className="h-10 border-b border-border bg-muted/50 flex items-center px-4 shrink-0 justify-between">
+                <span className="text-xs font-mono text-foreground font-bold tracking-wide uppercase">Mermaid Code</span>
+              </div>
+              <div className="flex-grow relative flex flex-col min-h-0">
             <div className="flex-grow min-h-0 relative">
               <Editor
                 height="100%"
@@ -620,12 +631,22 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         </ResizablePanel>
 
         <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
+          </>
+        )}
 
-        <ResizablePanel defaultSize={70} className="bg-slate-50 relative overflow-hidden text-zinc-900">
+        <ResizablePanel defaultSize={isCodePanelOpen ? 70 : 100} className="bg-slate-50 relative overflow-hidden text-zinc-900">
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
             <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
               <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground">
                 <svg viewBox="0 0 24 24" className="w-5 h-5"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
+              </Button>
+              <div className="h-5 w-px bg-border" />
+
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'undo', null)} title="Undo">
+                <Undo2 className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'redo', null)} title="Redo">
+                <Redo2 className="w-4 h-4" />
               </Button>
               <div className="h-5 w-px bg-border" />
               
@@ -730,6 +751,73 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                         ))}
                      </div>
                    </div>
+
+                   {/* Extended Shapes */}
+                   <div className="flex flex-col gap-3 mt-4">
+                     <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Extended (Mermaid v11+)</p>
+                     <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                        {[
+                          { expanded: 'bang', l: 'Bang', i: <path d="M12 2 L15 9 L22 9 L16 14 L18 21 L12 17 L6 21 L8 14 L2 9 L9 9 Z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'notch-rect', l: 'Card', i: <path d="M4 4 h12 l4 4 v12 h-16 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'cloud', l: 'Cloud', i: <path d="M7 17 a4 4 0 1 1 0 -8 a5 5 0 1 1 10 -2 a4.5 4.5 0 1 1 1 8.5 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'hourglass', l: 'Collate', i: <polygon points="6 4, 18 4, 12 12, 18 20, 6 20, 12 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'bolt', l: 'Com Link', i: <path d="M13 3 L4 14 h7 l-2 7 11 -13 h-7 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'brace', l: 'Comment', i: <path d="M15 4 Q10 4 10 12 Q10 20 15 20 M10 12 Q5 12 5 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'brace-r', l: 'Comment Right', i: <path d="M9 4 Q14 4 14 12 Q14 20 9 20 M14 12 Q19 12 19 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'braces', l: 'Comment Braces', i: <path d="M9 4 Q4 4 4 12 Q4 20 9 20 M15 4 Q20 4 20 12 Q20 20 15 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'lean-r', l: 'Data IO (R)', i: <polygon points="6 20, 20 20, 18 4, 4 4" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'lean-l', l: 'Data IO (L)', i: <polygon points="4 20, 18 20, 20 4, 6 4" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'datastore', l: 'Data Store', i: <path d="M4 6 h16 M4 18 h16 M4 6 v12 M20 6 v12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'cyl', l: 'Database', i: <path d="M4 6 C4 4, 20 4, 20 6 V18 C20 20, 4 20, 4 18 Z M4 6 C4 8, 20 8, 20 6" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'diam', l: 'Decision', i: <polygon points="12 3, 21 12, 12 21, 3 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'delay', l: 'Delay', i: <path d="M4 4 h8 a8 8 0 0 1 0 16 h-8 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'h-cyl', l: 'Direct Access', i: <path d="M6 4 C4 4, 4 20, 6 20 H18 C20 20, 20 4, 18 4 Z M6 4 C8 4, 8 20, 6 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'lin-cyl', l: 'Disk Storage', i: <path d="M4 6 C4 4, 20 4, 20 6 V18 C20 20, 4 20, 4 18 Z M4 6 C4 8, 20 8, 20 6 M4 10 h16 M4 14 h16" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'curv-trap', l: 'Display', i: <path d="M4 12 C4 4, 8 4, 8 4 H20 V20 H8 C8 20, 4 20, 4 12 Z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'div-rect', l: 'Divided Process', i: <g><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /><line x1="4" y1="10" x2="20" y2="10" stroke="currentColor" strokeWidth="1.5" /></g> },
+                          { expanded: 'doc', l: 'Document', i: <path d="M4 4 h16 v12 c-4 -4, -8 4, -16 0 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'event', l: 'Event', i: <rect x="4" y="4" width="16" height="16" rx="8" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'tri', l: 'Extract', i: <polygon points="12 4, 20 20, 4 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'fork', l: 'Fork/Join', i: <rect x="4" y="10" width="16" height="4" fill="currentColor" /> },
+                          { expanded: 'win-pane', l: 'Internal Storage', i: <g><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /><line x1="4" y1="8" x2="20" y2="8" stroke="currentColor" strokeWidth="1.5" /><line x1="8" y1="4" x2="8" y2="20" stroke="currentColor" strokeWidth="1.5" /></g> },
+                          { expanded: 'f-circ', l: 'Junction', i: <circle cx="12" cy="12" r="8" fill="currentColor" /> },
+                          { expanded: 'lin-doc', l: 'Lined Document', i: <path d="M4 4 h16 v12 c-4 -4, -8 4, -16 0 z M4 8 h16 M4 12 h16" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'lin-rect', l: 'Lined Process', i: <g><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /><line x1="7" y1="4" x2="7" y2="20" stroke="currentColor" strokeWidth="1.5" /><line x1="17" y1="4" x2="17" y2="20" stroke="currentColor" strokeWidth="1.5" /></g> },
+                          { expanded: 'notch-pent', l: 'Loop Limit', i: <polygon points="4 10, 12 4, 20 10, 20 20, 4 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'flip-tri', l: 'Manual File', i: <polygon points="4 4, 20 4, 12 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'sl-rect', l: 'Manual Input', i: <polygon points="4 8, 20 4, 20 20, 4 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'trap-t', l: 'Manual Op', i: <polygon points="6 4, 18 4, 22 20, 2 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'docs', l: 'Multi-Document', i: <path d="M8 8 h12 v10 c-3 -3, -6 3, -12 0 z M6 6 h12 v10 M4 4 h12 v10" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'st-rect', l: 'Multi-Process', i: <g><rect x="8" y="8" width="12" height="12" stroke="currentColor" fill="none" strokeWidth="1.5" /><rect x="6" y="6" width="12" height="12" stroke="currentColor" fill="none" strokeWidth="1.5" /><rect x="4" y="4" width="12" height="12" stroke="currentColor" fill="none" strokeWidth="1.5" /></g> },
+                          { expanded: 'odd', l: 'Odd', i: <polygon points="12 4, 20 12, 12 20, 4 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'flag', l: 'Paper Tape', i: <path d="M4 4 q 4 -2, 8 0 t 8 0 v12 q -4 2, -8 0 t -8 0 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'hex', l: 'Prepare', i: <polygon points="8 4, 16 4, 20 12, 16 20, 8 20, 4 12" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'trap-b', l: 'Priority Action', i: <polygon points="2 4, 22 4, 18 20, 6 20" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'rect', l: 'Process', i: <rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'circle', l: 'Start', i: <circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'sm-circ', l: 'Start (Small)', i: <circle cx="12" cy="12" r="5" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'dbl-circ', l: 'Stop', i: <g><circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" strokeWidth="1.5" /><circle cx="12" cy="12" r="6" stroke="currentColor" fill="none" strokeWidth="1.5" /></g> },
+                          { expanded: 'fr-circ', l: 'Stop (Framed)', i: <g><circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" strokeWidth="1.5" /><circle cx="12" cy="12" r="7.5" stroke="currentColor" fill="none" strokeWidth="0.5" /></g> },
+                          { expanded: 'bow-rect', l: 'Stored Data', i: <path d="M6 4 h12 a4 12 0 0 0 0 16 h-12 a4 12 0 0 1 0 -16 z" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
+                          { expanded: 'fr-rect', l: 'Subprocess', i: <g><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /><rect x="6" y="6" width="12" height="12" stroke="currentColor" fill="none" strokeWidth="1.5" /></g> },
+                          { expanded: 'cross-circ', l: 'Summary', i: <g><circle cx="12" cy="12" r="9" stroke="currentColor" fill="none" strokeWidth="1.5" /><line x1="6" y1="6" x2="18" y2="18" stroke="currentColor" strokeWidth="1.5" /><line x1="6" y1="18" x2="18" y2="6" stroke="currentColor" strokeWidth="1.5" /></g> },
+                          { expanded: 'tag-doc', l: 'Tagged Doc', i: <g><path d="M4 4 h16 v12 c-4 -4, -8 4, -16 0 z" stroke="currentColor" fill="none" strokeWidth="1.5" /><path d="M4 4 l6 6 v4" stroke="currentColor" fill="none" strokeWidth="1.5" /></g> },
+                          { expanded: 'tag-rect', l: 'Tagged Process', i: <g><rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /><polygon points="4 4, 12 4, 12 12" stroke="currentColor" fill="none" strokeWidth="1.5" /></g> },
+                          { expanded: 'stadium', l: 'Terminal', i: <rect x="4" y="6" width="16" height="12" rx="6" stroke="currentColor" fill="none" strokeWidth="1.5" /> }
+                        ].map((shape, i) => (
+                           <DropdownMenuItem 
+                             key={i}
+                             onClick={() => handleAddShape(shape as any)}
+                             className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                             title={shape.l}
+                           >
+                              <svg viewBox="0 0 24 24" className="w-5 h-5">
+                                 {shape.i}
+                              </svg>
+                           </DropdownMenuItem>
+                        ))}
+                     </div>
+                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddTextBlock}>
@@ -754,7 +842,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             />
 
             <TransformWrapper
-              initialScale={1}
+              initialScale={1.5}
               minScale={0.05}
               maxScale={50}
               centerOnInit={true}

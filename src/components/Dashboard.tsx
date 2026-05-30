@@ -140,10 +140,10 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Top Nav */}
-      <nav className="h-16 border-b border-border bg-background flex items-center px-4 shrink-0 sticky top-0 z-10">
+      <nav className="h-16 border-b border-border bg-background dark:bg-[#121212] flex items-center px-4 shrink-0 sticky top-0 z-10">
         <div className="flex items-center">
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 hover:bg-slate-100" />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 bg-slate-100 hover:bg-slate-200 dark:text-muted-foreground dark:hover:text-foreground dark:bg-[#1b1b1f] dark:hover:bg-[#252529]" />}>
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
