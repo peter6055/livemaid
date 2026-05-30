@@ -88,6 +88,42 @@ function updateMermaidConfigProperty(code: string, property: string, value: stri
     }
 }
 
+function updateMermaidFontFamily(code: string, fontString: string): string {
+    const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+    const match = code.match(regex);
+    if (match) {
+        let configBlock = match[1];
+        
+        // Update top-level fontFamily
+        const fontRegex = /fontFamily:\s*[^\n]+/;
+        if (fontRegex.test(configBlock)) {
+            configBlock = configBlock.replace(fontRegex, `fontFamily: '${fontString}'`);
+        } else {
+            configBlock += `\n  fontFamily: '${fontString}'`;
+        }
+
+        // Update themeVariables: fontFamily
+        const themeVarsRegex = /themeVariables:([\s\S]*?)(?=(?:^[a-zA-Z]|\Z))/m;
+        const themeVarsMatch = configBlock.match(themeVarsRegex);
+        
+        if (themeVarsMatch) {
+            let varsBlock = themeVarsMatch[1];
+            if (/fontFamily:\s*[^\n]+/.test(varsBlock)) {
+                varsBlock = varsBlock.replace(/fontFamily:\s*[^\n]+/, `fontFamily: '${fontString}'`);
+            } else {
+                varsBlock = varsBlock.replace(/\n*$/, `\n    fontFamily: '${fontString}'\n`);
+            }
+            configBlock = configBlock.replace(themeVarsRegex, `themeVariables:${varsBlock}`);
+        } else {
+            configBlock += `\n  themeVariables:\n    fontFamily: '${fontString}'`;
+        }
+        
+        return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+    } else {
+        return `---\nconfig:\n  fontFamily: '${fontString}'\n  themeVariables:\n    fontFamily: '${fontString}'\n---\n` + code;
+    }
+}
+
 export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [doc, setDoc] = useState<DiagramDocument | null>(null);
   const [code, setCode] = useState("");
@@ -110,7 +146,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   // SVG State
   const [svgContent, setSvgContent] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState('default');
+  const [currentFont, setCurrentFont] = useState('Default');
   const [parseError, setParseError] = useState<string | null>(null);
+
+  const FONT_OPTIONS = [
+    { label: 'Default', value: 'sans-serif' },
+    { label: 'Recursive', value: '"Recursive Variable", sans-serif' },
+    { label: 'Open Sans', value: '"Open Sans Variable", sans-serif' },
+    { label: 'Inter', value: '"Inter Variable", sans-serif' },
+    { label: 'Merriweather', value: '"Merriweather Variable", serif' },
+    { label: 'Source Code Pro', value: '"Source Code Pro Variable", monospace' },
+  ];
 
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -169,6 +215,21 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           setCurrentTheme(match[1]);
       } else {
           setCurrentTheme('default');
+      }
+
+      // Try to extract font
+      const fontMatch = mermaidCode.match(/fontFamily:\s*(?:'|")?([^'"\n]+)/);
+      if (fontMatch) {
+          const fontVal = fontMatch[1].trim();
+          // Find the label by checking if the value in config contains the first part of our option
+          const found = FONT_OPTIONS.find(f => f.value.includes(fontVal.split(',')[0].replace(/["']/g, '')));
+          if (found) {
+              setCurrentFont(found.label);
+          } else {
+              setCurrentFont('Default');
+          }
+      } else {
+          setCurrentFont('Default');
       }
       
       // Clear selection on new render, coordinates might be stale
@@ -234,6 +295,12 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const handleThemeChange = (theme: string) => {
     setCurrentTheme(theme);
     const updatedCode = updateMermaidConfigProperty(code, 'theme', theme);
+    handleCodeChange(updatedCode);
+  };
+
+  const handleFontChange = (font: typeof FONT_OPTIONS[0]) => {
+    setCurrentFont(font.label);
+    const updatedCode = updateMermaidFontFamily(code, font.value);
     handleCodeChange(updatedCode);
   };
 
@@ -797,14 +864,32 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                     <div className="flex flex-col">
-                      {['default', 'forest', 'dark', 'neutral', 'base'].map((t) => (
+                      {['default', 'forest', 'dark', 'neutral', 'base', 'mc', 'redux'].map((t) => (
                          <DropdownMenuItem 
                            key={t}
                            onClick={() => handleThemeChange(t)}
                            className="flex items-center gap-3 cursor-pointer"
                          >
-                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'mc' ? 'bg-cyan-200 border-cyan-300' : t === 'redux' ? 'bg-purple-200 border-purple-300' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
                            <span className="capitalize">{t}</span>
+                         </DropdownMenuItem>
+                      ))}
+                    </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"><Type className="w-4 h-4"/></Button>} />
+                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                    <div className="flex flex-col">
+                      {FONT_OPTIONS.map((f) => (
+                         <DropdownMenuItem 
+                           key={f.label}
+                           onClick={() => handleFontChange(f)}
+                           className="flex items-center gap-3 cursor-pointer"
+                         >
+                           <span className={currentFont === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
                          </DropdownMenuItem>
                       ))}
                     </div>
