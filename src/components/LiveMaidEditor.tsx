@@ -77,6 +77,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   // Interaction State
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
+  const [textBox, setTextBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [editingText, setEditingText] = useState("");
   const [isLocked, setIsLocked] = useState(false);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
@@ -133,6 +134,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       
       // Clear selection on new render, coordinates might be stale
       setSelectionBox(null);
+      setTextBox(null);
       setSelectedNodeId(null);
       setIsInlineEditing(false);
     } catch (e: any) {
@@ -303,11 +305,27 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         const containerRect = containerRef.current.getBoundingClientRect();
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
+        let elementToMeasure = currentNode;
+        const innerText = currentNode.querySelector('.label, foreignObject, text, .messageText, .noteText, .nodeLabel');
+        if (innerText) {
+            elementToMeasure = innerText as SVGElement;
+        } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
+            elementToMeasure = currentNode;
+        }
+        const textRect = elementToMeasure.getBoundingClientRect();
+        
         setSelectionBox({
             x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
             y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
             width: rect.width / scale,
             height: rect.height / scale
+        });
+
+        setTextBox({
+            x: (textRect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
+            y: (textRect.top - containerRect.top + containerRef.current.scrollTop) / scale,
+            width: textRect.width / scale,
+            height: textRect.height / scale
         });
         
         let cleanId = nodeId;
@@ -330,6 +348,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     } else {
         if ((target as any).tagName === 'svg' || (target as any).classList?.contains('react-transform-component')) {
             setSelectionBox(null);
+            setTextBox(null);
             setSelectedNodeId(null);
         }
     }
@@ -731,6 +750,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               wheel={{ wheelDisabled: true, step: 0.05 }}
               panning={{ velocityDisabled: false, disabled: isInlineEditing }}
               trackPadPanning={{ disabled: false }}
+              limitToBounds={false}
               doubleClick={{ disabled: true }}
             >
               {({ zoomIn, zoomOut, resetTransform, state }) => (
@@ -779,7 +799,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       )}
 
                       <div 
-                        className={`mermaid-container ${parseError ? 'opacity-30' : ''}`}
+                        className={`mermaid-container select-none ${parseError ? 'opacity-30' : ''}`}
                         dangerouslySetInnerHTML={{ __html: svgContent }} 
                       />
 
@@ -821,6 +841,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                         transformOrigin: 'bottom left'
                                     }}
                                     onMouseDown={(e) => e.preventDefault()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onDoubleClick={(e) => e.stopPropagation()}
                                 >
                                     <div className="relative">
                                         <input 
@@ -849,9 +871,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 </div>
                                 
                                 {/* Textarea Overlay */}
+                                {textBox && (
                                 <textarea
                                     ref={inlineInputRef}
-                                    className="absolute inset-0 w-full h-full p-2 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm pointer-events-auto resize-none outline-none focus:ring-0 border border-indigo-500/50 rounded-md text-center flex items-center justify-center font-sans break-words z-40 overflow-hidden shadow-lg"
+                                    className="absolute p-0.5 bg-background pointer-events-auto resize-none outline-none focus:ring-2 focus:ring-indigo-500 border-none rounded text-center flex items-center justify-center font-sans break-words z-40 overflow-auto shadow-md"
                                     value={editingText}
                                     onChange={(e) => setEditingText(e.target.value)}
                                     onKeyDown={(e) => {
@@ -870,11 +893,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                         handleEditSubmit();
                                     }}
                                     onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onDoubleClick={(e) => e.stopPropagation()}
                                     style={{
+                                        // Adjust position relative to the selectionBox coordinates, since this textarea is rendered inside the selectionBox div
+                                        left: textBox.x - selectionBox.x - 2,
+                                        top: textBox.y - selectionBox.y - 2,
+                                        width: textBox.width + 4,
+                                        height: Math.max(textBox.height + 4, 30),
                                         fontSize: `${Math.max(12, 16 / state.scale)}px`,
                                         lineHeight: 1.2
                                     }}
                                 />
+                                )}
                             </>
                           )}
                         </div>
