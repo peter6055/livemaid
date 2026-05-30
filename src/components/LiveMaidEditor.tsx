@@ -679,8 +679,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               maxScale={50}
               centerOnInit={true}
               smooth={true}
-              wheel={{ wheelDisabled: true }}
+              wheel={{ wheelDisabled: false, step: 0.1 }}
               panning={{ velocityDisabled: false, disabled: isEditing }}
+              trackPadPanning={{ disabled: false }}
+              doubleClick={{ disabled: true }}
             >
               {({ zoomIn, zoomOut, resetTransform, state }) => (
                 <>
@@ -846,15 +848,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                             setExportFormat(fmt.id);
                             if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
                           }}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/30' : 'border-border hover:border-foreground/20'}`}
                         >
                            <div className="flex items-center gap-2 mb-1">
-                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-teal-500' : 'border-slate-300'}`}>
+                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-teal-500' : 'border-border'}`}>
                                {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-teal-500" />}
                              </div>
-                             <span className="font-semibold text-slate-700">{fmt.label}</span>
+                             <span className="font-semibold text-foreground">{fmt.label}</span>
                            </div>
-                           <p className="text-xs text-slate-500 ml-6">{fmt.desc}</p>
+                           <p className="text-xs text-muted-foreground ml-6">{fmt.desc}</p>
                         </div>
                      ))}
                    </div>
@@ -866,7 +868,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                         <div 
                           key={c}
                           onClick={() => setExportBg(c)}
-                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-teal-500' : 'border-slate-200'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
+                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-teal-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
                           style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
                         />
                      ))}
@@ -877,7 +879,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
              <div className="w-2/3 flex flex-col">
                 <p className="text-sm font-semibold mb-2">Preview</p>
                 <div 
-                  className="flex-grow border border-slate-200 rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]" 
+                  className="flex-grow border border-border rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]" 
                   style={{ 
                     backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
                     backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
