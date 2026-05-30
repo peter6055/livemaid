@@ -1341,7 +1341,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                     >
                       {parseError && (
                         <div 
-                          className="absolute inset-0 z-40 bg-white/60 backdrop-blur-[4px] cursor-not-allowed flex items-center justify-center pointer-events-auto" 
+                          className="absolute inset-0 z-40 bg-white/60 dark:bg-zinc-900/60 cursor-not-allowed flex items-center justify-center pointer-events-auto" 
                           onClick={(e) => e.stopPropagation()}
                         >
                           {/* Empty container to capture clicks and blur out the broken diagram underneath */}
@@ -1415,7 +1415,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                           {/* Node Manipulation Toolbar (Only on Single Click) */}
                           {!isInlineEditing && (currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence') && (
                             <div 
-                                className="absolute flex items-center gap-1 bg-white border border-slate-200 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700"
+                                className="absolute flex items-center gap-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700 dark:text-zinc-300"
                                 style={toolbarStyle}
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={(e) => e.stopPropagation()}
@@ -1424,12 +1424,12 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Background Color */}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Background Color" />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Background Color" />
                                   }>
                                         <Palette className="w-5 h-5" />
                                         <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).fill : 'transparent' }} />
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
                                     {PRESET_COLORS.map(c => (
                                       <button key={c.name} onClick={() => handleUpdateStyle('fill', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
                                     ))}
@@ -1439,29 +1439,29 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Border Color */}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Border Color" />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Border Color" />
                                   }>
                                         <Square className="w-5 h-5" />
                                         <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).stroke : 'transparent' }} />
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
                                     {PRESET_COLORS.map(c => (
                                       <button key={c.name} onClick={() => handleUpdateStyle('stroke', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
                                     ))}
                                   </DropdownMenuContent>
                                 </DropdownMenu>
 
-                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
+                                <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
 
                                 {/* Text Color */}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={
-                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors relative" title="Text Color" />
+                                    <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Text Color" />
                                   }>
                                         <Type className="w-5 h-5" />
                                         <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#000000' }} />
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                  <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
                                     {PRESET_COLORS.map(c => (
                                       <button key={c.name} onClick={() => handleFormatNodeLabel('color', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
                                     ))}
@@ -1470,7 +1470,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Bold */}
                                 <button 
                                     onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('bold'); }}
-                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 font-bold font-serif transition-colors text-lg"
+                                    className={`h-10 w-10 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-lg ${selectedSvgId && document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`) && ['bold', '700', '800', '900'].includes(window.getComputedStyle(document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`)!).fontWeight) ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
                                     title="Bold Text"
                                 >
                                     B
@@ -1478,19 +1478,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {/* Italic */}
                                 <button 
                                     onClick={(e) => { e.preventDefault(); handleFormatNodeLabel('italic'); }}
-                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 italic font-serif transition-colors text-lg"
+                                    className={`h-10 w-10 flex items-center justify-center rounded-full italic font-serif transition-colors text-lg ${selectedSvgId && document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`) && window.getComputedStyle(document.querySelector(\`#\${selectedSvgId} .label, #\${selectedSvgId} text\`)!).fontStyle === 'italic' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
                                     title="Italic Text"
                                 >
                                     I
                                 </button>
 
-                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
+                                <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
 
                                 {/* Shape Selector */}
                                 <DropdownMenu>
                                   <DropdownMenuTrigger render={
                                     <button 
-                                      className="h-10 px-3 flex items-center justify-center rounded-md hover:bg-slate-100 transition-colors text-sm font-medium gap-1"
+                                      className="h-10 px-3 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors text-sm font-medium gap-1"
                                       title="Change Shape"
                                     />
                                   }>
@@ -1546,11 +1546,16 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     <Copy className="w-5 h-5" />
                                 </button>
 
+                                <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
+                                
                                 {/* Delete */}
                                 <button 
-                                    onClick={(e) => { e.preventDefault(); handleDeleteNode(); }}
-                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-red-50 text-red-600 transition-colors"
-                                    title="Delete Node"
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        handleDeleteNode();
+                                    }}
+                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+                                    title="Delete Node (Backspace/Delete)"
                                 >
                                     <Trash2 className="w-5 h-5" />
                                 </button>
@@ -1610,7 +1615,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                 {textBox && (
                                 <textarea
                                     ref={inlineInputRef}
-                                    className="absolute bg-transparent pointer-events-auto resize-none outline-none border-none text-center font-sans break-words z-40 overflow-hidden"
+                                    className="absolute p-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center flex items-center justify-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl"
                                     value={editingText}
                                     onChange={(e) => setEditingText(e.target.value)}
                                     onKeyDown={(e) => {
@@ -1624,7 +1629,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                         e.stopPropagation();
                                     }}
                                     onBlur={(e) => {
-                                        // Ignore blur if it's from clicking the color picker
                                         if (e.relatedTarget === colorInputRef.current) return;
                                         handleEditSubmit();
                                     }}
@@ -1632,16 +1636,14 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     onClick={(e) => e.stopPropagation()}
                                     onDoubleClick={(e) => e.stopPropagation()}
                                     style={{
-                                        // Center the textarea exactly over the textBox
                                         left: (textBox.x - (selectionBox.x - 4)) + textBox.width / 2,
                                         top: (textBox.y - (selectionBox.y - 4)) + textBox.height / 2,
-                                        transform: 'translate(-50%, -50%)',
-                                        width: Math.max(textBox.width + 20, 50),
-                                        height: Math.max(textBox.height + 20, 30),
-                                        fontSize: document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fontSize : '16px',
-                                        lineHeight: 1.2,
-                                        color: document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#333',
-                                        paddingTop: Math.max(4, (Math.max(textBox.height + 20, 30) - textBox.height) / 2)
+                                        transform: `translate(-50%, -50%) scale(${1 / state.scale})`,
+                                        width: Math.max(textBox.width * state.scale + 40, 150),
+                                        height: Math.max(textBox.height * state.scale + 20, 40),
+                                        fontSize: '14px',
+                                        lineHeight: 1.4,
+                                        color: theme === 'dark' ? '#f4f4f5' : '#1e1e24',
                                     }}
                                 />
                                 )}
