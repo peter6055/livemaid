@@ -14,9 +14,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- BEGIN:mermaid-agent-rules -->
 # Mermaid Implementation Rules
 
-Before planning or implementing any Mermaid diagram logic (parsers, rendering, features, themes, etc.), you MUST thoroughly read the relevant Mermaid documentation to understand the official syntax and standard behavior. 
-You can refer to the documentation instructions left in `reference/README.md`.
-Never assume the syntax—always verify with the official specs first.
+Before planning or implementing any Mermaid diagram logic (parsers, rendering, features, themes, etc.) or support for new diagram types, you MUST thoroughly read the relevant Mermaid documentation to understand the official syntax and standard behavior. **Do not guess the syntax.**
+
+1. Navigate to or clone the relevant docs from the official repository: https://github.com/mermaid-js/mermaid/tree/develop/docs
+2. Read the specific `.md` files related to the syntax you are trying to implement.
+3. Do not perform the implementation until you have thoroughly understood the official syntax.
+4. You can also refer to any local documentation instructions left in `reference/README.md` if available.
 <!-- END:mermaid-agent-rules -->
 
 <!-- BEGIN:testing-agent-rules -->
@@ -36,32 +39,16 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 # Git Workflow & Commit Rules
 
 To ensure we can safely rollback changes if anything goes wrong, you MUST follow this git workflow:
+
 1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
-2. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST include a specific note or tag in the commit message (e.g., `[Human Verified]`) so that it is easily identifiable as a known-good state.
-3. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the *current request*, unless previously agreed upon. 
-4. **No Historical Precedent for Tags**: Do NOT use conversation history as a precedent for applying the `[Human Verified]` tag. The tag must ONLY be applied if the user explicitly authorizes it for the specific, current action.
+2. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the *current request*, unless previously agreed upon. 
+3. **Conventional Commits**: You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows: `<type>[optional scope]: <description>`
+   - `fix`: patches a bug in your codebase.
+   - `feat`: introduces a new feature to the codebase.
+   - `BREAKING CHANGE`: introduces a breaking API change.
+   - Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
+4. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST append the `[Human Verified]` tag to the end of the first line (the description) of your Conventional Commit.
+   - *Example*: `fix(editor): resolve trackpad panning conflicts [Human Verified]`
+   - *Example*: `feat: support sequence diagram syntax [Human Verified]`
+5. **No Historical Precedent for Tags**: Do NOT use conversation history as a precedent for applying the `[Human Verified]` tag. The tag must ONLY be applied if the user explicitly authorizes it for the specific, current action.
 <!-- END:git-workflow-rules -->
-
-<!-- BEGIN:conventional-commits-rules -->
-# Conventional Commits Rules
-
-You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows:
-
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-
-- `fix`: patches a bug in your codebase.
-- `feat`: introduces a new feature to the codebase.
-- `BREAKING CHANGE`: a commit that has a footer `BREAKING CHANGE:`, or appends a `!` after the type/scope, introduces a breaking API change.
-- Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
-
-## Combining with Human Verification Tags
-When a commit is explicitly requested or verified by the human user, you MUST append the `[Human Verified]` tag to the end of the first line (the description) of your Conventional Commit. 
-
-Examples:
-`fix(editor): resolve trackpad panning conflicts [Human Verified]`
-`feat: support sequence diagram syntax [Human Verified]`
-<!-- END:conventional-commits-rules -->
