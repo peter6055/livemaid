@@ -6,7 +6,7 @@ import Editor from "@monaco-editor/react";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Loader2, Type, LayoutTemplate, Menu, Plus } from "lucide-react";
+import { Loader2, Type, LayoutTemplate, Menu, Plus, Network, BookOpen, ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Copy } from "lucide-react";
 import Link from "next/link";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import {
@@ -29,21 +29,20 @@ import mermaid from "mermaid";
 
 const DEBOUNCE_MS = 1000;
 
-function updateMermaidTheme(code: string, newTheme: string): string {
+function updateMermaidConfigProperty(code: string, property: string, value: string): string {
     const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
     const match = code.match(regex);
     if (match) {
         let configBlock = match[1];
-        if (/theme:\s*(?:'|")[^'"]+(?:'|")/.test(configBlock)) {
-            configBlock = configBlock.replace(/theme:\s*(?:'|")[^'"]+(?:'|")/, `theme: '${newTheme}'`);
-        } else if (/theme:\s*[^\s\n]+/.test(configBlock)) {
-            configBlock = configBlock.replace(/theme:\s*[^\s\n]+/, `theme: ${newTheme}`);
+        const propRegex = new RegExp(`${property}:\\s*(?:'|")?[^'"\\n]+(?:'|")?`);
+        if (propRegex.test(configBlock)) {
+            configBlock = configBlock.replace(propRegex, `${property}: ${value}`);
         } else {
-            configBlock += `\n  theme: ${newTheme}`;
+            configBlock += `\n  ${property}: ${value}`;
         }
         return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
     } else {
-        return `---\nconfig:\n  theme: ${newTheme}\n---\n` + code;
+        return `---\nconfig:\n  ${property}: ${value}\n---\n` + code;
     }
 }
 
@@ -60,6 +59,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [renameName, setRenameName] = useState("");
   const [isNewDiagramOpen, setIsNewDiagramOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('PNG');
+  const [exportBg, setExportBg] = useState('transparent');
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   // SVG State
   const [svgContent, setSvgContent] = useState<string>("");
@@ -85,6 +88,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const renderMermaid = useCallback(async (mermaidCode: string) => {
     try {
       setParseError(null);
+      await mermaid.parse(mermaidCode, { suppressErrors: true });
       const id = `mermaid-svg-${Date.now()}`;
       renderIdRef.current = id;
       const { svg } = await mermaid.render(id, mermaidCode);
@@ -159,8 +163,96 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   const handleThemeChange = (theme: string) => {
     setCurrentTheme(theme);
-    const updatedCode = updateMermaidTheme(code, theme);
+    const updatedCode = updateMermaidConfigProperty(code, 'theme', theme);
     handleCodeChange(updatedCode);
+  };
+
+  const currentDirection = (() => {
+      const m = code.match(/(flowchart|graph)\s+(TD|TB|BT|RL|LR)/);
+      return m ? m[2] : 'TD';
+  })();
+
+  const currentLayout = (() => {
+      const match = code.match(/layout:\s*([^\n]+)/);
+      return match ? match[1].trim() : 'dagre';
+  })();
+
+  const handleDirectionChange = (newDir: string) => {
+      let newCode = code;
+      const regex = /(flowchart|graph)\s+(TD|TB|BT|RL|LR)/;
+      if (regex.test(newCode)) {
+          newCode = newCode.replace(regex, `$1 ${newDir}`);
+      } else {
+          newCode = newCode.replace(/(flowchart|graph)/, `$1 ${newDir}`);
+      }
+      handleCodeChange(newCode);
+  };
+
+  const handleLayoutChange = (newLayout: string) => {
+      let newCode = code;
+      newCode = updateMermaidConfigProperty(newCode, 'layout', newLayout);
+      handleCodeChange(newCode);
+  };
+
+  const handleExport = async () => {
+    let finalSvgContent = svgContent;
+    
+    // Inject background if needed for SVG/PNG
+    if (exportBg !== 'transparent') {
+      const bgRect = `<rect width="100%" height="100%" fill="${exportBg}" />`;
+      finalSvgContent = finalSvgContent.replace(/(<svg[^>]*>)/, `$1${bgRect}`);
+    }
+
+    if (exportFormat === 'SVG') {
+      const blob = new Blob([finalSvgContent], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc?.name || 'diagram'}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (exportFormat === 'PNG') {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      // Ensure proper SVG namespace
+      const svgData = finalSvgContent.includes('xmlns=') ? finalSvgContent : finalSvgContent.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ');
+      
+      // Convert SVG string to base64 Data URI to avoid tainted canvas
+      const base64Data = btoa(unescape(encodeURIComponent(svgData)));
+      const url = `data:image/svg+xml;base64,${base64Data}`;
+      
+      img.onload = () => {
+        const scale = 3; // 3x resolution for high-quality PNG
+        const canvas = document.createElement('canvas');
+        canvas.width = (img.width || 800) * scale;
+        canvas.height = (img.height || 600) * scale;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          if (exportBg !== 'transparent') {
+            ctx.fillStyle = exportBg;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+          }
+          ctx.scale(scale, scale);
+          ctx.drawImage(img, 0, 0);
+          const pngUrl = canvas.toDataURL('image/png', 1.0);
+          const a = document.createElement('a');
+          a.href = pngUrl;
+          a.download = `${doc?.name || 'diagram'}.png`;
+          a.click();
+        }
+      };
+      img.src = url;
+    } else if (exportFormat === 'MMD') {
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc?.name || 'diagram'}.mmd`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      toast.info(`${exportFormat} export coming soon!`);
+    }
   };
 
   const handleAddShape = useCallback((shape: {b: [string, string] | null, isText?: boolean}) => {
@@ -186,10 +278,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
-  const handleAddFloatingNode = useCallback(() => {
-      handleAddShape({b: ['[', ']']});
-  }, [handleAddShape]);
-
   const handleAddTextBlock = useCallback(() => {
       handleAddShape({b: null, isText: true});
   }, [handleAddShape]);
@@ -206,11 +294,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       const subId = `sub_${Date.now()}`;
       const nodeId = `node_${Date.now()}`;
       const newCode = code + `\n    subgraph ${subId}["Untitled subgraph"]\n        ${nodeId}["Untitled Node"]\n    end`;
-      handleCodeChange(newCode);
-  }, [code, handleCodeChange]);
-
-  const handleChangeDirection = useCallback((dir: 'TD' | 'LR' | 'RL' | 'BT') => {
-      const newCode = code.replace(/flowchart\s+(TD|LR|TB|RL|BT)/i, `flowchart ${dir}`);
       handleCodeChange(newCode);
   }, [code, handleCodeChange]);
 
@@ -233,8 +316,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         foundNodeClass = true;
         nodeId = currentNode.id;
         if (!nodeId) {
-            // Edge labels don't always have IDs directly, but the parent edgePaths/edgeTerminals might map to it, or we fallback to parent ID
-            // For now, if clicking label, try to find an id nearby
             const path = currentNode.parentElement?.querySelector('path.flowchart-link') || currentNode.closest('.edgeLabel')?.previousElementSibling;
             if (path && path.id) nodeId = path.id;
         }
@@ -244,11 +325,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
 
     if (foundNodeClass && currentNode && containerRef.current) {
-        // Find the bounding box relative to the container
         const rect = currentNode.getBoundingClientRect();
         const containerRect = containerRef.current.getBoundingClientRect();
-        
-        // Calculate the current zoom scale so we don't double-scale the bounding box
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
         setSelectionBox({
@@ -258,17 +336,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             height: rect.height / scale
         });
         
-        // Try to clean up the mermaid ID to get the real node ID
         let cleanId = nodeId;
         if (cleanId && renderIdRef.current && cleanId.includes(renderIdRef.current)) {
-            // Strip out flowchart-mermaid-svg-12345- prefix or similar
             const prefixRegex = new RegExp(`^.*?-?${renderIdRef.current}-`);
             cleanId = cleanId.replace(prefixRegex, '');
-            // Strip inner flowchart- prefix if Mermaid added it
             if (cleanId.startsWith('flowchart-')) {
                 cleanId = cleanId.replace('flowchart-', '');
             }
-            // Strip trailing random numbers
             cleanId = cleanId.replace(/-\d+$/, '');
         } else if (cleanId) {
             cleanId = cleanId.replace(/^.*?-/, '').replace(/-\d+$/, '');
@@ -277,20 +351,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             }
         }
         setSelectedNodeId(cleanId);
-        setIsEditing(false); // reset edit state when selecting a new element
     } else {
-        // Only deselect if we clicked on the background SVG or pan area, not if we clicked a UI button
         if ((target as any).tagName === 'svg' || (target as any).classList?.contains('react-transform-component')) {
             setSelectionBox(null);
             setSelectedNodeId(null);
-            setIsEditing(false);
         }
     }
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsEditing(true);
+    setIsEditModalOpen(true);
     
     if (!selectedNodeId) return;
     
@@ -304,7 +375,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             const linkRegex = new RegExp(`(^|\\n)(\\s*${src}\\s*)(?:-->|==>|-\\.->|--.*?-->|==.*?==>|-\\..*?\\.->|--.*?-|==.*?=|-\\..*?\\.)(?:.*?\\|)?(\\s*${dst}\\b)`, 'm');
             const match = code.match(linkRegex);
             if (match) {
-                // Try to extract text if it exists
                 const textMatch = match[0].match(/(?:--|==|-\.-)\s*["']?([\s\S]*?)["']?\s*(?:---|===|-\.-|>|->|=>)/);
                 if (textMatch && textMatch[1] && textMatch[1].trim() !== '') {
                     currentText = textMatch[1].trim();
@@ -323,10 +393,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     setEditingText(currentText);
   };
 
-  const handleEditSubmit = (e?: React.FormEvent | React.KeyboardEvent) => {
-    if (e) e.preventDefault();
+  const handleEditSubmit = () => {
     if (!selectedNodeId) {
-        setIsEditing(false);
+        setIsEditModalOpen(false);
         return;
     }
     
@@ -359,7 +428,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
     
     handleCodeChange(newCode);
-    setIsEditing(false);
+    setIsEditModalOpen(false);
   };
 
   const handleRenameSubmit = async () => {
@@ -438,7 +507,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-white text-zinc-900 overflow-hidden">
-      {/* Header */}
       <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center">
           <DropdownMenu>
@@ -467,6 +535,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm font-medium mr-4">
+          <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-slate-700 hover:bg-slate-100 h-9">
+            <BookOpen className="w-4 h-4" />
+            <span>Export</span>
+          </Button>
           {saving ? (
             <span className="flex items-center text-slate-400">
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -481,47 +553,48 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         </div>
       </header>
 
-      {/* Main Workspace */}
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
-        {/* Code Panel */}
         <ResizablePanel defaultSize={30} minSize={20} className="bg-white flex flex-col border-r border-slate-200">
           <div className="h-10 border-b border-slate-200 bg-slate-50 flex items-center px-4 shrink-0 justify-between">
             <span className="text-xs font-mono text-zinc-800 font-bold tracking-wide uppercase">Mermaid Code</span>
           </div>
-          <div className="flex-grow">
-            <Editor
-              height="100%"
-              defaultLanguage="markdown"
-              theme="light"
-              value={code}
-              onChange={handleCodeChange}
-              options={{
-                minimap: { enabled: false },
-                fontSize: 13,
-                wordWrap: "on",
-                lineNumbers: "on",
-                scrollBeyondLastLine: false,
-                padding: { top: 16 }
-              }}
-            />
+          <div className="flex-grow relative flex flex-col">
+            <div className="flex-grow min-h-0">
+              <Editor
+                height="100%"
+                defaultLanguage="markdown"
+                theme="light"
+                value={code}
+                onChange={handleCodeChange}
+                options={{
+                  minimap: { enabled: false },
+                  fontSize: 13,
+                  wordWrap: "on",
+                  lineNumbers: "on",
+                  scrollBeyondLastLine: false,
+                  padding: { top: 16 }
+                }}
+              />
+            </div>
+            {parseError && (
+              <div className="shrink-0 bg-red-50 text-red-600 p-3 text-xs font-mono border-t border-red-200 max-h-40 overflow-y-auto whitespace-pre-wrap">
+                <span className="font-bold mb-1 block">Syntax Error</span>
+                {parseError}
+              </div>
+            )}
           </div>
         </ResizablePanel>
 
         <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
 
-        {/* Visual Canvas Panel */}
         <ResizablePanel defaultSize={70} className="bg-slate-50 relative overflow-hidden">
-
-          {/* Modern Top-Left Floating Toolbar matching Reference UI */}
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
-            {/* Left Tools (Pan, Theme, AI) */}
             <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200">
               <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100">
                 <svg viewBox="0 0 24 24" className="w-5 h-5"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
               </Button>
               <div className="h-5 w-px bg-slate-200" />
               
-              {/* Theme Look Dropdown Mimic */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center">
@@ -544,9 +617,48 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                     </div>
                 </DropdownMenuContent>
               </DropdownMenu>
+
+              <div className="h-5 w-px bg-slate-200" />
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center">
+                    <ChevronsDown className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-48 p-2 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
+                    <div className="flex flex-col">
+                      {[
+                        { id: 'TD', label: 'Top to bottom', icon: <ArrowDown className="w-4 h-4" /> },
+                        { id: 'BT', label: 'Bottom to top', icon: <ArrowUp className="w-4 h-4" /> },
+                        { id: 'LR', label: 'Left to right', icon: <ArrowRight className="w-4 h-4" /> },
+                        { id: 'RL', label: 'Right to left', icon: <ArrowLeft className="w-4 h-4" /> },
+                      ].map((d) => (
+                         <DropdownMenuItem 
+                           key={d.id}
+                           onClick={() => handleDirectionChange(d.id)}
+                           className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100"
+                         >
+                           {d.icon}
+                           <span className="flex-1 text-sm font-medium">{d.label}</span>
+                           {currentDirection === d.id && <Check className="w-4 h-4 text-indigo-500" />}
+                         </DropdownMenuItem>
+                      ))}
+                    </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+
+
+              <div className="h-5 w-px bg-slate-200" />
+              <div className="flex items-center gap-2 px-2 opacity-70" title="Auto Layout is locked">
+                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Auto Layout</span>
+                 <div className="w-7 h-4 bg-indigo-500 rounded-full flex items-center px-0.5 cursor-not-allowed">
+                   <div className="w-3 h-3 bg-white rounded-full translate-x-3 shadow-sm" />
+                 </div>
+               </div>
             </div>
 
-            {/* Middle Tools (Shapes) */}
             <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -623,7 +735,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             >
               {({ zoomIn, zoomOut, resetTransform, state }) => (
                 <>
-                  <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-white shadow-md border border-slate-200 p-1 rounded-lg">
+                  <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-white border border-slate-200 p-1 rounded-lg">
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => zoomIn()}>
                        <Plus className="w-4 h-4" />
                     </Button>
@@ -648,11 +760,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       onClick={handleCanvasClick}
                       onDoubleClick={(e) => { if (selectedNodeId) handleEditClick(e); }}
                     >
-                      {parseError && (
-                        <div className="absolute top-0 left-1/2 -translate-x-1/2 bg-red-100 text-red-700 px-4 py-2 rounded-lg shadow-sm border border-red-200 z-10 font-mono text-sm max-w-md whitespace-pre-wrap -mt-16">
-                          {parseError}
-                        </div>
-                      )}
+
                       
                       <div 
                         className="mermaid-container transition-all"
@@ -685,44 +793,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                             </div>
                           </div>
                           
-                          {/* Inline Text Edit Overlay */}
-                          {isEditing && (
-                              <div 
-                                className="absolute pointer-events-auto z-30 flex items-center justify-center"
-                                style={{
-                                    left: 0,
-                                    top: 0,
-                                    width: '100%',
-                                    height: '100%',
-                                }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                onMouseDown={(e) => e.stopPropagation()}
-                                onTouchStart={(e) => e.stopPropagation()}
-                                onWheel={(e) => e.stopPropagation()}
-                              >
-                                  <textarea 
-                                      autoFocus
-                                      value={editingText}
-                                      onChange={(e) => setEditingText(e.target.value)}
-                                      onBlur={() => handleEditSubmit()}
-                                      onKeyDown={(e) => {
-                                          if (e.key === 'Enter' && !e.shiftKey) {
-                                              e.preventDefault();
-                                              handleEditSubmit();
-                                          }
-                                          if (e.key === 'Escape') {
-                                              setIsEditing(false);
-                                          }
-                                      }}
-                                      className="w-full h-full p-0 flex items-center justify-center text-center bg-white/95 backdrop-blur-sm text-indigo-900 border-0 focus:ring-0 focus:outline-none resize-none font-sans font-medium"
-                                      style={{
-                                          // Approximate standard scale visually by relying on container size, 
-                                          // but force text slightly smaller to fit if needed
-                                          fontSize: `min(16px, calc(100% * 0.4))`
-                                      }}
-                                  />
-                              </div>
-                          )}
+                          {/* Inline Text Edit Overlay Removed */}
 
                           {/* Quick Add Node (+) Button */}
                           <div 
@@ -790,6 +861,102 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsRenameOpen(false)}>Cancel</Button>
             <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">Rename</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent className="sm:max-w-[1200px] w-[90vw] max-w-[1200px]">
+          <DialogHeader>
+            <DialogTitle>Export diagram</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-6 py-4">
+             {/* Left Column (Options) */}
+             <div className="w-1/3 flex flex-col gap-4">
+                <div>
+                   <p className="text-sm font-semibold mb-2">Export format</p>
+                   <div className="flex flex-col gap-2">
+                     {[
+                       { id: 'PNG', label: 'PNG', desc: 'High quality raster image' },
+                       { id: 'SVG', label: 'SVG', desc: 'Scalable vector graphics' },
+                       { id: 'MMD', label: 'MMD', desc: 'Mermaid syntax code' },
+                     ].map(fmt => (
+                        <div 
+                          key={fmt.id}
+                          onClick={() => {
+                            setExportFormat(fmt.id);
+                            if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
+                          }}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-teal-500 bg-teal-50' : 'border-slate-200 hover:border-slate-300'}`}
+                        >
+                           <div className="flex items-center gap-2 mb-1">
+                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-teal-500' : 'border-slate-300'}`}>
+                               {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-teal-500" />}
+                             </div>
+                             <span className="font-semibold text-slate-700">{fmt.label}</span>
+                           </div>
+                           <p className="text-xs text-slate-500 ml-6">{fmt.desc}</p>
+                        </div>
+                     ))}
+                   </div>
+                </div>
+                <div>
+                   <p className="text-sm font-semibold mb-2">Background color</p>
+                   <div className="flex gap-2">
+                     {(exportFormat === 'PNG' ? ['transparent', 'white', 'black'] : ['white', 'black']).map(c => (
+                        <div 
+                          key={c}
+                          onClick={() => setExportBg(c)}
+                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-teal-500' : 'border-slate-200'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
+                          style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
+                        />
+                     ))}
+                   </div>
+                </div>
+             </div>
+             {/* Right Column (Preview) */}
+             <div className="w-2/3 flex flex-col">
+                <p className="text-sm font-semibold mb-2">Preview</p>
+                <div 
+                  className="flex-grow border border-slate-200 rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]" 
+                  style={{ 
+                    backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
+                    backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
+                    backgroundSize: '10px 10px'
+                  }}
+                >
+                    <div dangerouslySetInnerHTML={{ __html: svgContent }} className="max-w-full max-h-full object-contain p-4 relative z-10" />
+                    <Button variant="outline" size="icon" className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20">
+                       <Copy className="w-4 h-4" />
+                    </Button>
+                </div>
+             </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+            <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      {/* Edit Label Dialog */}
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Label</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input 
+              value={editingText} 
+              onChange={(e) => setEditingText(e.target.value)} 
+              placeholder="Label text"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleEditSubmit()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Cancel</Button>
+            <Button onClick={() => handleEditSubmit()} className="bg-black text-white hover:bg-zinc-800">Save</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

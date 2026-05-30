@@ -1,8 +1,12 @@
+"use client";
+
 import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, FileEdit, Trash2, Clock, GitCommitVertical } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useEffect, useState } from 'react';
+import mermaid from 'mermaid';
 
 export interface DiagramDocument {
   id: string;
@@ -10,6 +14,7 @@ export interface DiagramDocument {
   createdAt: string;
   updatedAt: string;
   type: string;
+  code?: string;
 }
 
 export function DiagramCard({ 
@@ -21,6 +26,25 @@ export function DiagramCard({
   onRename: (id: string, name: string) => void,
   onDelete: (id: string) => void 
 }) {
+  const [svgContent, setSvgContent] = useState<string>('');
+
+  useEffect(() => {
+    if (diagram.code) {
+      const renderPreview = async () => {
+        try {
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+          await mermaid.parse(diagram.code!, { suppressErrors: true });
+          const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
+          setSvgContent(svg);
+        } catch (e) {
+          // invalid syntax, don't render bomb error
+          setSvgContent('');
+        }
+      };
+      renderPreview();
+    }
+  }, [diagram.code, diagram.id]);
+
   return (
     <Card className="flex flex-col h-full bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all group">
       <CardHeader className="pb-2">
@@ -44,8 +68,12 @@ export function DiagramCard({
       </CardHeader>
       <CardContent className="flex-grow">
         <Link href={`/editor/${diagram.id}`}>
-          <div className="w-full h-32 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center cursor-pointer group-hover:border-slate-200 transition-colors">
-            <span className="text-slate-400 text-sm font-medium">Preview Unavailable</span>
+          <div className="w-full h-32 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center cursor-pointer group-hover:border-slate-200 transition-colors overflow-hidden relative">
+            {svgContent ? (
+               <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50" />
+            ) : (
+               <span className="text-slate-400 text-sm font-medium">Preview Unavailable</span>
+            )}
           </div>
         </Link>
       </CardContent>
