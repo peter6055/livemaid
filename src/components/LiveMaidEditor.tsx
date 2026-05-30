@@ -211,6 +211,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       a.download = `${doc?.name || 'diagram'}.svg`;
       a.click();
       URL.revokeObjectURL(url);
+      setIsExportOpen(false);
     } else if (exportFormat === 'PNG') {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -239,6 +240,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           a.href = pngUrl;
           a.download = `${doc?.name || 'diagram'}.png`;
           a.click();
+          setIsExportOpen(false);
         }
       };
       img.src = url;
@@ -250,6 +252,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       a.download = `${doc?.name || 'diagram'}.mmd`;
       a.click();
       URL.revokeObjectURL(url);
+      setIsExportOpen(false);
     } else {
       toast.info(`${exportFormat} export coming soon!`);
     }
@@ -510,10 +513,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center">
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 hover:bg-slate-100">
-                <Menu className="w-5 h-5" />
-              </Button>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 hover:bg-slate-100" />}>
+              <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
               <DropdownMenuItem onClick={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}>New Diagram</DropdownMenuItem>
@@ -596,10 +597,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               <div className="h-5 w-px bg-slate-200" />
               
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center">
-                    <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
-                  </Button>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center" />}>
+                  <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 p-2 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
@@ -621,10 +620,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               <div className="h-5 w-px bg-slate-200" />
               
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center">
-                    <ChevronsDown className="w-4 h-4" />
-                  </Button>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center" />}>
+                  <ChevronsDown className="w-4 h-4" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 p-2 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
                     <div className="flex flex-col">
@@ -661,11 +658,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
             <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200">
               <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 text-slate-700 hover:bg-slate-100 flex items-center gap-2">
-                    <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M6.5 11L12 2l5.5 9zm11 11q-1.875 0-3.187-1.312T13 17.5t1.313-3.187T17.5 13t3.188 1.313T22 17.5t-1.312 3.188T17.5 22M3 21.5v-8h8v8zM17.5 20q1.05 0 1.775-.725T20 17.5t-.725-1.775T17.5 15t-1.775.725T15 17.5t.725 1.775T17.5 20M5 19.5h4v-4H5zM10.05 9h3.9L12 5.85zm7.45 8.5"></path></svg>
-                    <span>Shape</span>
-                  </Button>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-slate-700 hover:bg-slate-100 flex items-center gap-2" />}>
+                  <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M6.5 11L12 2l5.5 9zm11 11q-1.875 0-3.187-1.312T13 17.5t1.313-3.187T17.5 13t3.188 1.313T22 17.5t-1.312 3.188T17.5 22M3 21.5v-8h8v8zM17.5 20q1.05 0 1.775-.725T20 17.5t-.725-1.775T17.5 15t-1.775.725T15 17.5t.725 1.775T17.5 20M5 19.5h4v-4H5zM10.05 9h3.9L12 5.85zm7.45 8.5"></path></svg>
+                  <span>Shape</span>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-6" sideOffset={10} align="start">
                    {/* Basic Shapes */}
