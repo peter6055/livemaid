@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDiagrams, saveDiagram, DiagramDocument } from '@/lib/api/storage';
 import { nanoid } from 'nanoid';
+import { DiagramRegistry } from '@/lib/diagrams/registry';
 
 export async function GET() {
   try {
@@ -20,13 +21,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
+    const plugin = DiagramRegistry[type] || DiagramRegistry['flowchart'];
+    const defaultCode = plugin.defaultCode;
+
     const newDiagram: DiagramDocument = {
       id: nanoid(),
       name,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deletedAt: null,
-      code: `flowchart LR\n    A[Start] --> B[End]`, // Default starter code
+      code: defaultCode,
       type,
       subPages: [],
       comments: [],

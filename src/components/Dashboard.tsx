@@ -45,6 +45,7 @@ export default function Dashboard() {
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [createType, setCreateType] = useState("flowchart");
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState("");
@@ -72,6 +73,7 @@ export default function Dashboard() {
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
+    setCreateType("flowchart");
     setIsCreateOpen(true);
   };
 
@@ -83,7 +85,7 @@ export default function Dashboard() {
       const res = await fetch('/api/diagrams', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: createName, type: 'flowchart' })
+        body: JSON.stringify({ name: createName, type: createType })
       });
       if (!res.ok) throw new Error('Failed to create');
       const newDoc = await res.json();
@@ -213,7 +215,7 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle>Create New Diagram</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 flex flex-col gap-4">
             <Input 
               value={createName} 
               onChange={(e) => setCreateName(e.target.value)} 
@@ -221,6 +223,24 @@ export default function Dashboard() {
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateSubmit()}
             />
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium text-slate-500">Diagram Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { id: 'flowchart', label: 'Flowchart', icon: 'M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5' },
+                  { id: 'sequence', label: 'Sequence Diagram', icon: 'M4 4h16v16H4V4zm0 4h16M8 4v16M16 4v16' }
+                ].map(type => (
+                  <div 
+                    key={type.id}
+                    onClick={() => setCreateType(type.id)}
+                    className={`flex items-center gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${createType === type.id ? 'border-indigo-500 bg-indigo-50 text-indigo-900 dark:bg-indigo-900/20 dark:text-indigo-100' : 'border-border hover:bg-slate-50 dark:hover:bg-zinc-800'}`}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-5 h-5 opacity-70"><path fill="currentColor" d={type.icon}></path></svg>
+                    <span className="text-sm font-medium">{type.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
