@@ -25,3 +25,11 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 7. **Iterate**: You are expected to extend your session and perform as many test/fix iterations as necessary. Your ultimate goal is to present a product to the user that is as bug-free as possible. Do not consider the task complete until this is achieved.
 <!-- END:testing-agent-rules -->
 
+<!-- BEGIN:git-workflow-rules -->
+# Git Workflow & Commit Rules
+
+To ensure we can safely rollback changes if anything goes wrong, you MUST follow this git workflow:
+1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
+2. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST include a specific note or tag in the commit message (e.g., `[Human Verified]` or `[Approved]`) so that it is easily identifiable as a known-good state.
+3. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so, unless previously agreed upon. If the user tells you to commit and push, always do so.
+<!-- END:git-workflow-rules -->
