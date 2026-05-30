@@ -140,7 +140,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [isNavigatingHome, setIsNavigatingHome] = useState(false);
+  const [navigatingState, setNavigatingState] = useState<{ isNavigating: boolean; message: string }>({ isNavigating: false, message: '' });
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
   const { theme, setTheme } = useTheme();
@@ -282,14 +282,18 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   useEffect(() => {
     const fetchDoc = async () => {
       try {
+        const startTime = Date.now();
         const res = await fetch(`/api/diagrams/${documentId}`);
-        if (!res.ok) throw new Error("Failed to load");
-        const data = await res.json();
-        setDoc(data);
-        setCode(data.code);
-        renderMermaid(data.code);
-        // Simulate delay for smooth UI transition
-        await new Promise(resolve => setTimeout(resolve, 300));
+        if (res.ok) {
+          const data = await res.json();
+          setDoc(data);
+          setCode(data.code);
+          renderMermaid(data.code);
+        }
+        const elapsedTime = Date.now() - startTime;
+        if (elapsedTime < 600) {
+            await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
+        }
       } catch (error) {
         toast.error("Failed to load diagram");
       } finally {
@@ -967,7 +971,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       if (res.ok) {
         const newDiagram = await res.json();
         setIsNewDiagramOpen(false);
-        router.push(`/editor/${newDiagram.id}`);
+        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...');
       } else {
         toast.error("Failed to create diagram");
       }
@@ -976,11 +980,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
     }
   };
 
-  const handleNavigateHome = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsNavigatingHome(true);
+  const handleNavigate = (url: string, message: string) => {
+    setNavigatingState({ isNavigating: true, message });
     setTimeout(() => {
-      router.push('/');
+      router.push(url);
     }, 400);
   };
 
@@ -998,7 +1001,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       if (res.ok) {
         const newDiagram = await res.json();
         toast.success("Diagram duplicated");
-        router.push(`/editor/${newDiagram.id}`);
+        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...');
       } else {
         toast.error("Failed to duplicate");
       }
@@ -1009,12 +1012,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background text-zinc-500 flex-col gap-4">
-        <Skeleton className="h-12 w-12 rounded-full" />
-        <div className="space-y-2">
-          <Skeleton className="h-4 w-[250px]" />
-          <Skeleton className="h-4 w-[200px]" />
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-background text-zinc-500 flex-col gap-4 transition-all duration-300">
+        <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+        <p className="text-lg font-medium text-foreground animate-pulse">Loading Workspace...</p>
       </div>
     );
   }
@@ -1024,11 +1024,11 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
-      {isNavigatingHome && (
+      {navigatingState.isNavigating && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-            <p className="text-lg font-medium text-foreground animate-pulse">Returning to Projects...</p>
+            <p className="text-lg font-medium text-foreground animate-pulse">{navigatingState.message}</p>
           </div>
         </div>
       )}
@@ -1048,10 +1048,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                   <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
                 </div>
               </DropdownMenuItem>
-              <a href="/" onClick={handleNavigateHome}><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></a>
+              <a href="/" onClick={(e) => { e.preventDefault(); handleNavigate('/', 'Returning to Projects...'); }}><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></a>
             </DropdownMenuContent>
           </DropdownMenu>
-          <a href="/" onClick={handleNavigateHome}>
+          <a href="/" onClick={(e) => { e.preventDefault(); handleNavigate('/', 'Returning to Projects...'); }}>
             <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
               <LayoutTemplate className="w-5 h-5 text-white" />
             </div>
@@ -1065,7 +1065,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem>
-                <BreadcrumbLink render={<a href="/" onClick={handleNavigateHome} />}>
+                <BreadcrumbLink render={<a href="/" onClick={(e) => { e.preventDefault(); handleNavigate('/', 'Returning to Projects...'); }} />}>
                   Projects
                 </BreadcrumbLink>
               </BreadcrumbItem>
@@ -1572,17 +1572,25 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                     onClick={(e) => e.stopPropagation()}
                                     onDoubleClick={(e) => e.stopPropagation()}
                                 >
-                                    <div className="relative">
-                                        <input 
-                                            type="color" 
-                                            ref={colorInputRef}
-                                            className="opacity-0 absolute inset-0 w-full h-full cursor-pointer" 
-                                            onInput={(e) => handleFormatText('color', (e.target as HTMLInputElement).value)}
-                                        />
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger render={
                                         <button className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white/10 transition-colors">
                                             <div className="w-4 h-4 rounded-full border border-white/20" style={{ background: 'linear-gradient(45deg, red, orange, yellow, green, blue, indigo, violet)' }} />
                                         </button>
-                                    </div>
+                                      }>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent className="w-48 p-2 bg-white border-slate-200 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+                                        {PRESET_COLORS.map(c => (
+                                          <button 
+                                              key={c.name} 
+                                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleFormatText('color', c.value); }} 
+                                              className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" 
+                                              style={{ backgroundColor: c.value }} 
+                                              title={c.name} 
+                                          />
+                                        ))}
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                     <div className="w-px h-4 bg-white/20 mx-0.5" />
                                     <button 
                                         onClick={(e) => { e.preventDefault(); handleFormatText('bold'); }} 

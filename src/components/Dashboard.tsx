@@ -8,6 +8,8 @@ import { Plus, LayoutTemplate, Menu, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
+import { Skeleton } from '@/components/ui/skeleton';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,9 +62,15 @@ export default function Dashboard() {
 
   const fetchDiagrams = async () => {
     try {
+      const startTime = Date.now();
       const res = await fetch('/api/diagrams');
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
+      
+      const elapsedTime = Date.now() - startTime;
+      if (elapsedTime < 600) {
+        await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
+      }
       setDiagrams(data);
     } catch (error) {
       toast.error("Failed to load diagrams");
@@ -198,7 +206,10 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center h-64 text-muted-foreground">Loading diagrams...</div>
+          <div className="flex justify-center items-center h-64 text-zinc-500 flex-col gap-4 transition-all duration-300">
+            <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
+            <p className="text-lg font-medium text-foreground animate-pulse">Loading Diagrams...</p>
+          </div>
         ) : diagrams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">
             <div className="bg-muted p-3 rounded-full mb-4">
