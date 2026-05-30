@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 
 import mermaid from "mermaid";
 
@@ -54,6 +55,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [saving, setSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
 
   // Dialog states
   const [isRenameOpen, setIsRenameOpen] = useState(false);
@@ -532,18 +534,24 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-white text-zinc-900 overflow-hidden">
-      <header className="h-14 border-b border-slate-200 bg-white flex items-center justify-between px-4 shrink-0 z-20">
+    <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
+      <header className="h-14 border-b border-border bg-background flex items-center justify-between px-4 shrink-0 z-20">
         <div className="flex items-center">
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 hover:bg-slate-100" />}>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-foreground hover:bg-accent" />}>
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}>New Diagram</DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDuplicate}>Duplicate</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }}>Rename</DropdownMenuItem>
-              <Link href="/"><DropdownMenuItem>Dashboard</DropdownMenuItem></Link>
+            <DropdownMenuContent align="start" className="w-48 bg-background border-border">
+              <DropdownMenuItem onClick={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">New Diagram</DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDuplicate} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Duplicate</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Rename</DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="flex justify-between items-center w-full cursor-pointer focus:bg-accent focus:text-accent-foreground">
+                <span>Dark Mode</span>
+                <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === 'dark' ? 'bg-indigo-500' : 'bg-slate-300'}`}>
+                  <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
+                </div>
+              </DropdownMenuItem>
+              <Link href="/"><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></Link>
             </DropdownMenuContent>
           </DropdownMenu>
           <Link href="/">
@@ -552,19 +560,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             </div>
           </Link>
           
-          <div className="flex items-center text-[15px] font-semibold text-slate-500 tracking-tight">
-            <Link href="/" className="hover:text-zinc-900 transition-colors text-slate-600">Projects</Link>
-            <span className="mx-3 text-slate-300 font-light">/</span>
-            <span className="text-[#4e3dd4]">{doc.name}</span>
+          <div className="flex items-center text-lg font-semibold text-muted-foreground tracking-tight ml-2">
+            <Link href="/" className="hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent">Projects</Link>
+            <span className="mx-2 text-border font-light">/</span>
+            <span className="text-indigo-500 px-2 py-1">{doc.name}</span>
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm font-medium mr-4">
-          <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-slate-700 hover:bg-slate-100 h-9 border border-slate-200">
+          <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-foreground hover:bg-accent h-9 border border-border">
             <Download className="w-4 h-4" />
             <span>Export</span>
           </Button>
           {saving ? (
-            <span className="flex items-center text-slate-400">
+            <span className="flex items-center text-muted-foreground">
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
               Saving...
             </span>
@@ -578,16 +586,16 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       </header>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
-        <ResizablePanel defaultSize={30} minSize={20} className="bg-white flex flex-col border-r border-slate-200">
-          <div className="h-10 border-b border-slate-200 bg-slate-50 flex items-center px-4 shrink-0 justify-between">
-            <span className="text-xs font-mono text-zinc-800 font-bold tracking-wide uppercase">Mermaid Code</span>
+        <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
+          <div className="h-10 border-b border-border bg-muted/50 flex items-center px-4 shrink-0 justify-between">
+            <span className="text-xs font-mono text-foreground font-bold tracking-wide uppercase">Mermaid Code</span>
           </div>
           <div className="flex-grow relative flex flex-col min-h-0">
             <div className="flex-grow min-h-0 relative">
               <Editor
                 height="100%"
                 defaultLanguage="markdown"
-                theme="light"
+                theme={theme === "dark" ? "vs-dark" : "light"}
                 value={code}
                 onChange={handleCodeChange}
                 onMount={handleEditorDidMount}
@@ -613,19 +621,19 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
         <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
 
-        <ResizablePanel defaultSize={70} className="bg-slate-50 relative overflow-hidden">
+        <ResizablePanel defaultSize={70} className="bg-slate-50 relative overflow-hidden text-zinc-900">
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
-            <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200">
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100">
+            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground">
                 <svg viewBox="0 0 24 24" className="w-5 h-5"><path fill="currentColor" d="M12.8 23q-2.05 0-3.85-.937T6 19.45L1.2 12.4l.475-.475q.5-.525 1.238-.6t1.337.35l2.75 1.9V4q0-.425.288-.712T8 3t.713.288T9 4v13.425L5.3 14.85l2.375 3.45q.875 1.275 2.225 1.988t2.9.712q2.575 0 4.388-1.812T19 14.8V5q0-.425.288-.712T20 4t.713.288T21 5v9.8q0 3.425-2.387 5.813T12.8 23M11 12V2q0-.425.288-.712T12 1t.713.288T13 2v10zm4 0V3q0-.425.288-.712T16 2t.713.288T17 3v9zm-2.85 4.5"></path></svg>
               </Button>
-              <div className="h-5 w-px bg-slate-200" />
+              <div className="h-5 w-px bg-border" />
               
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center" />}>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center" />}>
                   <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48 p-2 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                     <div className="flex flex-col">
                       {['default', 'forest', 'dark', 'neutral', 'base'].map((t) => (
@@ -642,13 +650,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-5 w-px bg-slate-200" />
+              <div className="h-5 w-px bg-border" />
               
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-slate-700 hover:bg-slate-100 flex items-center justify-center" />}>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center" />}>
                   <ChevronsDown className="w-4 h-4" />
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-48 p-2 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
+                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
                     <div className="flex flex-col">
                       {[
                         { id: 'TD', label: 'Top to bottom', icon: <ArrowDown className="w-4 h-4" /> },
@@ -672,22 +680,22 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
 
 
 
-              <div className="h-5 w-px bg-slate-200" />
+              <div className="h-5 w-px bg-border" />
               <div className="flex items-center gap-2 px-2 opacity-70" title="Auto Layout is locked">
-                 <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Auto Layout</span>
+                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Auto Layout</span>
                  <div className="w-7 h-4 bg-indigo-500 rounded-full flex items-center px-0.5 cursor-not-allowed">
                    <div className="w-3 h-3 bg-white rounded-full translate-x-3 shadow-sm" />
                  </div>
                </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-xl bg-white p-2 border border-slate-200">
+            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
               <DropdownMenu>
-                <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-slate-700 hover:bg-slate-100 flex items-center gap-2" />}>
+                <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" />}>
                   <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M6.5 11L12 2l5.5 9zm11 11q-1.875 0-3.187-1.312T13 17.5t1.313-3.187T17.5 13t3.188 1.313T22 17.5t-1.312 3.188T17.5 22M3 21.5v-8h8v8zM17.5 20q1.05 0 1.775-.725T20 17.5t-.725-1.775T17.5 15t-1.775.725T15 17.5t.725 1.775T17.5 20M5 19.5h4v-4H5zM10.05 9h3.9L12 5.85zm7.45 8.5"></path></svg>
                   <span>Shape</span>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-slate-50 border-slate-200 rounded-xl flex flex-col gap-6" sideOffset={10} align="start">
+                <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="start">
                    {/* Basic Shapes */}
                    <div className="flex flex-col gap-3">
                      <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Basic</p>
@@ -712,7 +720,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                            <DropdownMenuItem 
                              key={i}
                              onClick={() => handleAddShape(shape as any)}
-                             className="flex items-center justify-center w-10 h-10 bg-white border border-slate-200 rounded hover:border-indigo-400 hover:bg-indigo-50 cursor-pointer text-slate-700 p-0"
+                             className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
                              title={shape.l}
                            >
                               <svg viewBox="0 0 24 24" className="w-5 h-5">
@@ -724,18 +732,18 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                    </div>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <Button variant="ghost" size="sm" className="h-8 text-slate-700 hover:bg-slate-100 flex items-center gap-2" onClick={handleAddTextBlock}>
+              <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddTextBlock}>
                  <Type className="w-4 h-4" />
                  <span>Text</span>
               </Button>
-              <Button variant="ghost" size="sm" className="h-8 text-slate-700 hover:bg-slate-100 flex items-center gap-2" onClick={handleAddSubgraph}>
+              <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddSubgraph}>
                  <LayoutTemplate className="w-4 h-4" />
                  <span>Subgraph</span>
               </Button>
             </div>
           </div>
 
-          <div className="w-full h-full relative bg-slate-50 overflow-hidden">
+          <div className="w-full h-full relative bg-slate-50 overflow-hidden overscroll-none text-zinc-900">
             {/* The dot background pattern (fixed, absolute, or tied to transform) */}
             <div 
               className="absolute inset-0 z-0 pointer-events-none opacity-40" 
@@ -750,28 +758,29 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               minScale={0.05}
               maxScale={50}
               centerOnInit={true}
-              wheel={{ step: 0.1, activationKeys: ["Control", "Meta", "Alt", "Shift"] }}
-              panning={{ velocityDisabled: false, disabled: isEditing, wheelPanning: true } as any}
+              smooth={true}
+              wheel={{ wheelDisabled: true }}
+              panning={{ velocityDisabled: false, disabled: isEditing }}
             >
               {({ zoomIn, zoomOut, resetTransform, state }) => (
                 <>
-                  <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-white border border-slate-200 p-1 rounded-lg">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => zoomIn()}>
+                  <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-background border border-border p-1 rounded-lg shadow-sm">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => zoomIn()}>
                        <Plus className="w-4 h-4" />
                     </Button>
-                    <div className="h-px bg-slate-100" />
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => resetTransform()}>
+                    <div className="h-px bg-border" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => resetTransform()}>
                        <span className="text-[10px] font-bold">1:1</span>
                     </Button>
-                    <div className="h-px bg-slate-100" />
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-600" onClick={() => zoomOut()}>
+                    <div className="h-px bg-border" />
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => zoomOut()}>
                        <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M19 13H5v-2h14v2z"/></svg>
                     </Button>
-                    <div className="h-px bg-slate-100" />
+                    <div className="h-px bg-border" />
                     <Button 
                        variant="ghost" 
                        size="icon" 
-                       className={`h-8 w-8 ${isLocked ? 'text-red-500' : 'text-slate-600'}`} 
+                       className={`h-8 w-8 hover:bg-accent hover:text-accent-foreground ${isLocked ? 'text-red-500' : 'text-foreground'}`} 
                        onClick={() => setIsLocked(!isLocked)}
                        title={isLocked ? "Unlock diagram" : "Lock diagram"}
                     >
@@ -786,8 +795,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                     <div 
                       ref={containerRef}
                       className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                      onClick={handleSvgClick}
-                      onDoubleClick={(e) => { if (selectedNodeId) handleEditClick(e); }}
+                      onClick={!isLocked ? handleSvgClick : undefined}
+                      onDoubleClick={(e) => { if (selectedNodeId && !isLocked) handleEditClick(e); }}
                     >
                       {parseError && (
                         <div 
@@ -799,12 +808,12 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                       )}
 
                       <div 
-                        className={`mermaid-container transition-all ${parseError ? 'opacity-30' : ''}`}
+                        className={`mermaid-container ${parseError ? 'opacity-30' : ''}`}
                         dangerouslySetInnerHTML={{ __html: svgContent }} 
                       />
 
                       {/* Selection Bounding Box */}
-                      {selectionBox && (
+                      {selectionBox && !isLocked && (
                         <div 
                           className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
                           style={{

@@ -46,14 +46,14 @@ export function DiagramCard({
   }, [diagram.code, diagram.id]);
 
   return (
-    <Card className="flex flex-col h-full bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm transition-all group">
+    <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-sm transition-all group">
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between">
-          <CardTitle className="text-lg font-medium text-zinc-900 truncate pr-2">
+          <CardTitle className="text-lg font-medium text-foreground truncate pr-2">
             {diagram.name}
           </CardTitle>
           <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-zinc-900 hover:bg-slate-100" onClick={() => onRename(diagram.id, diagram.name)}>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
               <FileEdit className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
@@ -61,23 +61,23 @@ export function DiagramCard({
             </Button>
           </div>
         </div>
-        <div className="flex items-center text-xs text-slate-500 mt-1">
+        <div className="flex items-center text-xs text-muted-foreground mt-1">
            <GitCommitVertical className="h-3 w-3 mr-1" />
            <span className="capitalize">{diagram.type}</span>
         </div>
       </CardHeader>
       <CardContent className="flex-grow">
         <Link href={`/editor/${diagram.id}`}>
-          <div className="w-full h-32 bg-slate-50 rounded-md border border-slate-100 flex items-center justify-center cursor-pointer group-hover:border-slate-200 transition-colors overflow-hidden relative">
+          <div className="w-full h-32 bg-slate-50 rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
             {svgContent ? (
-               <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50" />
+               <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900" />
             ) : (
-               <span className="text-slate-400 text-xs font-medium">Preview Unavailable</span>
+               <span className="text-zinc-500 text-xs font-medium">Preview Unavailable</span>
             )}
           </div>
         </Link>
       </CardContent>
-      <CardFooter className="pt-3 border-t border-slate-100 text-xs text-slate-500 flex items-center mt-2">
+      <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
         <Clock className="h-3 w-3 mr-1" />
         Edited {formatDistanceToNow(new Date(diagram.updatedAt), { addSuffix: true })}
       </CardFooter>

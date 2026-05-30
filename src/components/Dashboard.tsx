@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useEffect } from 'react';
+import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import {
   Dialog,
@@ -29,6 +37,7 @@ import {
 import { Input } from "@/components/ui/input";
 
 export default function Dashboard() {
+  const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -129,15 +138,30 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-[#fafafa] text-zinc-900 flex flex-col">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Top Nav */}
-      <nav className="h-16 border-b border-slate-200 bg-white flex items-center px-8 shrink-0 sticky top-0 z-10">
+      <nav className="h-16 border-b border-border bg-background flex items-center px-4 shrink-0 sticky top-0 z-10">
         <div className="flex items-center">
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-zinc-700 hover:text-zinc-900 hover:bg-slate-100" />}>
+              <Menu className="w-5 h-5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem onClick={openCreateDialog}>New Diagram</DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="flex justify-between items-center w-full cursor-pointer">
+                <span>Dark Mode</span>
+                <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === 'dark' ? 'bg-indigo-500' : 'bg-slate-300'}`}>
+                  <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
+                </div>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
           <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3">
             <LayoutTemplate className="w-5 h-5 text-white" />
           </div>
           <span className="font-semibold text-xl tracking-tight mr-4">LiveMaid</span>
-          <span className="text-sm font-medium text-slate-400 border-l border-slate-200 pl-4">The WYSIWYG Mermaid Editor</span>
+          <span className="text-sm font-medium text-muted-foreground border-l border-border pl-4">The WYSIWYG Mermaid Editor</span>
         </div>
       </nav>
 
@@ -145,10 +169,10 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
         <div className="flex items-end justify-between mb-12">
           <div>
-            <h1 className="text-4xl font-semibold tracking-tight text-zinc-900 mb-2">
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
               Your Diagrams
             </h1>
-            <p className="text-slate-500 text-lg">Create, edit, and manage your visual workspaces.</p>
+            <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
           <Button onClick={openCreateDialog} className="bg-black hover:bg-zinc-800 text-white rounded-full px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
             <Plus className="w-5 h-5 mr-2" />
@@ -157,14 +181,14 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center h-64 text-slate-500">Loading diagrams...</div>
+          <div className="flex justify-center items-center h-64 text-muted-foreground">Loading diagrams...</div>
         ) : diagrams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-slate-200 rounded-lg bg-white hover:bg-slate-50 transition-colors">
-            <div className="bg-[#fff4c4] p-4 rounded-full mb-4">
-              <LayoutTemplate className="w-8 h-8 text-[#746019]" />
+          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">
+            <div className="bg-muted p-3 rounded-full mb-4">
+              <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-slate-900">No diagrams yet</h3>
-            <p className="text-slate-500 text-sm mb-4">Create your first diagram to get started.</p>
+            <h3 className="text-lg font-medium text-foreground">No diagrams yet</h3>
+            <p className="text-muted-foreground text-sm mb-4">Create your first diagram to get started.</p>
             <Button onClick={openCreateDialog} className="bg-black hover:bg-zinc-800 text-white rounded-full px-6 shadow-sm">
               Create Diagram
             </Button>
