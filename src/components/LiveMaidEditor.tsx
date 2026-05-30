@@ -234,9 +234,16 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       svgData = svgData.replace(/\bwidth="[^"]*"/g, '').replace(/\bheight="[^"]*"/g, '');
       svgData = svgData.replace('<svg ', `<svg width="${w}" height="${h}" `);
 
-      // Convert SVG string to base64 Data URI to avoid tainted canvas
-      const base64Data = btoa(unescape(encodeURIComponent(svgData)));
-      const url = `data:image/svg+xml;base64,${base64Data}`;
+      // Fix foreignObject namespace for Safari/Chrome strict SVG parser
+      // We wrap the contents in a valid XHTML div to ensure it parses successfully
+      svgData = svgData.replace(/<foreignObject([^>]*)>/g, '<foreignObject$1><div xmlns="http://www.w3.org/1999/xhtml" style="display:inline-block;width:100%;height:100%;">');
+      svgData = svgData.replace(/<\/foreignObject>/g, '</div></foreignObject>');
+      
+      // Fix any unclosed <br> tags
+      svgData = svgData.replace(/<br>/g, '<br/>');
+
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
       
       img.onload = () => {
         const scale = 3; // 3x resolution for high-quality PNG
@@ -256,7 +263,12 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           a.href = pngUrl;
           a.download = `${doc?.name || 'diagram'}.png`;
           a.click();
+          URL.revokeObjectURL(url);
         }
+      };
+      img.onerror = () => {
+        toast.error("Failed to process SVG for PNG export.");
+        URL.revokeObjectURL(url);
       };
       img.src = url;
     } else if (exportFormat === 'MMD') {
