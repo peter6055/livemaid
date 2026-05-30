@@ -1,3 +1,9 @@
+<!-- BEGIN:livemaid-architecture-rules -->
+# Architecture and Feature Truths
+
+Before implementing ANY features or modifying the editor logic, you MUST read `FEATURES_AND_TRUTHS.md` in the root directory. This document outlines critical implementations like the pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints.
+<!-- END:livemaid-architecture-rules -->
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 
