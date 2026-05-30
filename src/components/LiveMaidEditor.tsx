@@ -29,6 +29,16 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import { Skeleton } from "@/components/ui/skeleton";
+import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
 
 import mermaid from "mermaid";
 
@@ -143,8 +153,6 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
   const [isInlineEditing, setIsInlineEditing] = useState(false);
-  const [isHyperlinkOpen, setIsHyperlinkOpen] = useState(false);
-  const [hyperlinkUrl, setHyperlinkUrl] = useState("");
 
   // SVG State
   const [svgContent, setSvgContent] = useState<string>("");
@@ -271,6 +279,8 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         setDoc(data);
         setCode(data.code);
         renderMermaid(data.code);
+        // Simulate delay for smooth UI transition
+        await new Promise(resolve => setTimeout(resolve, 300));
       } catch (error) {
         toast.error("Failed to load diagram");
       } finally {
@@ -516,7 +526,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
     } else {
         // Regex to match node ID and its label, e.g., A[Start], B((End)), C{Choice}
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\[\\/|\\[\\\\|\\[\\(|\\[|\\[\\[|\\(\\[|\\(\\(\\(|\\(\\(|\\(|\\{\\{|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]))`, 'm');
         const match = code.match(nodeRegex);
         if (match && match[3]) {
             currentText = match[3];
@@ -613,18 +623,13 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             }
         }
     } else {
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         if (nodeRegex.test(newCode)) {
             newCode = newCode.replace(nodeRegex, `$1$2${editingText}$4`);
         } else {
-            // Node exists but has no label brackets yet (e.g. just `A` in `A --> B`)
-            // We should find the first standalone occurrence of the ID and append the label
-            const standaloneNodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId})([^a-zA-Z0-9_]|$)`, 'm');
-            if (standaloneNodeRegex.test(newCode)) {
-                newCode = newCode.replace(standaloneNodeRegex, `$1$2["${editingText}"]$3`);
-            } else {
-                newCode += `\n    ${selectedNodeId}["${editingText}"]`;
-            }
+            // Node exists but has no label brackets yet.
+            // Safely append definition to avoid breaking style/class directives
+            newCode += `\n    ${selectedNodeId}["${editingText}"]`;
         }
     }
     
@@ -654,10 +659,10 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         // Find if we are coloring specific text or the whole block
         if (!selectedText) {
             // Apply to all
-            setEditingText(`<span style="color:${colorValue}">${editingText}</span>`);
+            setEditingText(`<span style='color:${colorValue}'>${editingText}</span>`);
             return;
         }
-        before = `<span style="color:${colorValue}">`;
+        before = `<span style='color:${colorValue}'>`;
         after = '</span>';
     }
     
@@ -676,7 +681,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       if (!selectedNodeId) return;
       let newCode = code;
       
-      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[\\/|\\[\\\\|\\[\\(|\\[|\\[\\[|\\(\\[|\\(\\(\\(|\\(\\(|\\(|\\{\\{|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]))`, 'm');
       const match = newCode.match(nodeRegex);
       
       if (!match) return; // if node doesn't have an explicit label yet, do nothing or fallback
@@ -692,7 +697,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           before = '<i>';
           after = '</i>';
       } else if (format === 'color' && colorValue) {
-          before = `<span style="color:${colorValue}">`;
+          before = `<span style='color:${colorValue}'>`;
           after = '</span>';
       }
       
@@ -742,81 +747,68 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
-  const handleChangeShape = useCallback((shapeType: string) => {
+  const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
       if (!selectedNodeId) return;
       let newCode = code;
       
-      const brackets: Record<string, [string, string]> = {
-          'rectangle': ['[', ']'],
-          'rounded': ['(', ')'],
-          'stadium': ['([', '])'],
-          'subroutine': ['(((', ')))'],
-          'cylinder': ['[(', ')]'],
-          'circle': ['((', '))'],
-          'asymmetric': ['>', ']'],
-          'rhombus': ['{', '}'],
-          'hexagon': ['{{', '}}'],
-          'parallelogram': ['[/', '/]'],
-          'parallelogram_alt': ['[\\\\', '\\]'],
-          'trapezoid': ['[/', '\\]'],
-          'trapezoid_alt': ['[\\\\', '/]'],
-      };
-
-      const [open, close] = brackets[shapeType] || brackets['rectangle'];
-      
-      const shapeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*)(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\])`, 'gm');
+      // Clean up old standalone shape definitions to avoid duplicates
+      const standaloneShapeRegex = new RegExp(`\\n\\s*${selectedNodeId}\\@\\{\\s*shape:[^}]+\\}`, 'g');
+      newCode = newCode.replace(standaloneShapeRegex, '');
+      const shapeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*)(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`, 'gm');
       
       let replaced = false;
       newCode = newCode.replace(shapeRegex, (match, p1, p2, p3) => {
           replaced = true;
-          return `${p1}${p2}${open}"${p3}"${close}`;
+          if (shape.isText) {
+              return `${p1}${p2}["${p3}"]\n    ${selectedNodeId}@{ shape: text }`;
+          } else if (shape.expanded) {
+              return `${p1}${p2}@{ shape: ${shape.expanded}, label: "${p3}" }`;
+          } else if (shape.b) {
+              return `${p1}${p2}${shape.b[0]}"${p3}"${shape.b[1]}`;
+          }
+          return match;
       });
       
       if (!replaced) {
-          newCode += `\n    ${selectedNodeId}${open}"${selectedNodeId}"${close}`;
+          if (shape.isText) {
+              newCode += `\n    ${selectedNodeId}["${selectedNodeId}"]\n    ${selectedNodeId}@{ shape: text }`;
+          } else if (shape.expanded) {
+              newCode += `\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
+          } else if (shape.b) {
+              newCode += `\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
+          }
       }
       
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
-  const applyHyperlink = useCallback(() => {
-      if (!selectedNodeId || !hyperlinkUrl) return;
-      
-      let newCode = code;
-      const clickRegex = new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
-      if (clickRegex.test(newCode)) {
-          newCode = newCode.replace(clickRegex, `click ${selectedNodeId} "${hyperlinkUrl}"`);
-      } else {
-          newCode += `\n    click ${selectedNodeId} "${hyperlinkUrl}"`;
-      }
-      handleCodeChange(newCode);
-      setIsHyperlinkOpen(false);
-      setHyperlinkUrl("");
-  }, [code, handleCodeChange, selectedNodeId, hyperlinkUrl]);
 
-  const handleSetHyperlinkClick = useCallback(() => {
-      if (!selectedNodeId) return;
-      setHyperlinkUrl("");
-      setIsHyperlinkOpen(true);
-  }, [selectedNodeId]);
 
   const handleDuplicateNode = useCallback(() => {
       if (!selectedNodeId) return;
       let newCode = code;
       
-      let i = 1;
-      while (newCode.includes(`${selectedNodeId}_copy${i}`)) i++;
-      const newNodeId = `${selectedNodeId}_copy${i}`;
+      let prefix = 'n';
+      const prefixMatch = selectedNodeId.match(/^([a-zA-Z]+)/);
+      if (prefixMatch) {
+          prefix = prefixMatch[1];
+      }
       
-      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\[|\\(\\(?|\\{|\\{\\{|\\>|\\(\\(\\(|\\[\\[)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)\\)?|\\}|\\}\\}|\\]\\]))`, 'm');
+      let i = 1;
+      while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, 'm').test(newCode)) {
+          i++;
+      }
+      const newNodeId = `${prefix}${i}`;
+      
+      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
       const match = newCode.match(nodeRegex);
       if (match) {
           newCode += `\n    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
       } else {
-          newCode += `\n    ${newNodeId}["${selectedNodeId}"]`;
+          newCode += `\n    ${newNodeId}["Copy of Node"]`;
       }
       
-      // Duplicate styles and click events
+      // Duplicate styles, click events, and standalone shape definitions
       const lines = newCode.split('\n');
       const propertiesToDuplicate: string[] = [];
       lines.forEach(line => {
@@ -825,6 +817,9 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           }
           if (line.match(new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+`))) {
               propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${selectedNodeId}`), `click ${newNodeId}`));
+          }
+          if (line.match(new RegExp(`^\\s*${selectedNodeId}\\@\\{\\s*shape:`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${selectedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
           }
       });
       if (propertiesToDuplicate.length > 0) {
@@ -867,13 +862,17 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           children.push({ id: matchFrom[3], arrow: matchFrom[2] });
       }
       
-      let newEdges = [];
-      for (const parent of parents) {
-          for (const child of children) {
-              newEdges.push(`\n    ${parent.id} ${parent.arrow} ${child.id}`);
+      let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
+      let preservedDefinitions = [];
+      for (const nodeId of nodesToPreserve) {
+          const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+          const match = newCode.match(nodeRegex);
+          if (match) {
+              preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
+          } else {
+              preservedDefinitions.push(`\n    ${nodeId}`);
           }
       }
-      newCode += newEdges.join('');
       
       const lines = newCode.split('\n');
       const filteredLines = lines.filter(line => {
@@ -881,7 +880,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
           return !mentionRegex.test(line);
       });
       
-      newCode = filteredLines.join('\n');
+      newCode = filteredLines.join('\n') + preservedDefinitions.join('');
       
       handleCodeChange(newCode);
       setSelectionBox(null);
@@ -957,7 +956,15 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
   };
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center bg-white text-zinc-500">Loading editor...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-zinc-500 flex-col gap-4">
+        <Skeleton className="h-12 w-12 rounded-full" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-[250px]" />
+          <Skeleton className="h-4 w-[200px]" />
+        </div>
+      </div>
+    );
   }
 
   const currentType = determineDiagramType(code);
@@ -995,11 +1002,25 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
             <span className="text-[10px] text-muted-foreground leading-tight tracking-wider uppercase font-medium">Code Your Thoughts</span>
           </div>
 
-          <div className="flex items-center text-lg font-semibold text-muted-foreground tracking-tight">
-            <Link href="/" className="hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-accent text-sm">Projects</Link>
-            <span className="mx-2 text-border font-light">/</span>
-            <span className="text-indigo-500 px-2 py-1">{doc?.name}</span>
-          </div>
+          <Breadcrumb>
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink render={<Link href="/" />}>
+                  Projects
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage 
+                  className="cursor-pointer hover:underline text-indigo-500" 
+                  onDoubleClick={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }} 
+                  title="Double click to rename"
+                >
+                  {doc?.name || "Untitled"}
+                </BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
         </div>
         <div className="flex items-center gap-3 text-sm font-medium mr-4">
           <Button variant="ghost" size="sm" onClick={() => setIsExportOpen(true)} className="flex items-center gap-2 mr-2 text-foreground hover:bg-accent h-9 border border-border">
@@ -1094,7 +1115,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
               
               <DropdownMenu>
                 <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="shrink-0 rounded-lg p-1.5 h-10 w-10 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center" />}>
-                  <div className={`w-6 h-6 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
+                  <div className={`w-6 h-6 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : currentTheme === 'redux' ? 'bg-white border-slate-200' : 'bg-pink-300 border-pink-400'}`} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-sm font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
@@ -1105,7 +1126,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                            onClick={() => handleThemeChange(t)}
                            className={`flex items-center gap-3 cursor-pointer py-2 ${currentTheme === t ? 'bg-indigo-50 text-indigo-600 focus:bg-indigo-100 focus:text-indigo-700' : ''}`}
                          >
-                           <div className={`w-4 h-4 rounded border flex items-center justify-center ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-purple-200 border-purple-300' : 'bg-slate-50 border-slate-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`}>
+                           <div className={`w-4 h-4 rounded border flex items-center justify-center ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-white border-slate-200' : 'bg-pink-200 border-pink-300'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`}>
                              {currentTheme === t && <Check className={`w-3 h-3 ${t === 'dark' ? 'text-white' : 'text-indigo-600'}`} />}
                            </div>
                            <span className={`capitalize text-sm ${currentTheme === t ? 'font-bold' : ''}`}>{t}</span>
@@ -1338,27 +1359,46 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
                                   }>
                                       Shape <ChevronsDown className="w-3 h-3" />
                                   </DropdownMenuTrigger>
-                                  <DropdownMenuContent className="w-36 bg-white border-slate-200 rounded-xl" align="center" side="top" sideOffset={10}>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('rectangle')}>Rectangle</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('rounded')}>Rounded</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('circle')}>Circle</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('cylinder')}>Cylinder</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('rhombus')}>Rhombus</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('hexagon')}>Hexagon</DropdownMenuItem>
-                                    <DropdownMenuItem onClick={() => handleChangeShape('stadium')}>Stadium</DropdownMenuItem>
+                                  <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="center" side="top">
+                                      {/* Basic Shapes */}
+                                      <div className="flex flex-col gap-3">
+                                        <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Basic</p>
+                                        <div className="grid grid-cols-6 gap-2">
+                                          {BASIC_SHAPES.map((shape, i) => (
+                                              <DropdownMenuItem 
+                                                key={i}
+                                                onClick={() => handleChangeShape(shape as any)}
+                                                className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                                                title={shape.l}
+                                              >
+                                                <svg viewBox="0 0 24 24" className="w-5 h-5">
+                                                    {shape.i}
+                                                </svg>
+                                              </DropdownMenuItem>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Extended Shapes */}
+                                      <div className="flex flex-col gap-3 mt-4">
+                                        <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Extended (Mermaid v11+)</p>
+                                        <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                                          {EXTENDED_SHAPES.map((shape, i) => (
+                                              <DropdownMenuItem 
+                                                key={i}
+                                                onClick={() => handleChangeShape(shape as any)}
+                                                className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                                                title={shape.l}
+                                              >
+                                                <svg viewBox="0 0 24 24" className="w-5 h-5">
+                                                    {shape.i}
+                                                </svg>
+                                              </DropdownMenuItem>
+                                          ))}
+                                        </div>
+                                      </div>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
-
-                                <div className="w-px h-6 bg-slate-200 mx-1.5" />
-
-                                {/* Hyperlink */}
-                                <button 
-                                    onClick={(e) => { e.preventDefault(); handleSetHyperlinkClick(); }}
-                                    className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
-                                    title="Add/Edit Hyperlink"
-                                >
-                                    <LinkIcon className="w-5 h-5" />
-                                </button>
 
                                 {/* Duplicate */}
                                 <button 
@@ -1619,29 +1659,7 @@ export default function LiveMaidEditor({ documentId }: { documentId: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* Hyperlink Dialog */}
-      <Dialog open={isHyperlinkOpen} onOpenChange={setIsHyperlinkOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add / Edit Hyperlink</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Input 
-              value={hyperlinkUrl}
-              onChange={(e) => setHyperlinkUrl(e.target.value)}
-              placeholder="https://example.com"
-              className="w-full"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') applyHyperlink();
-              }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsHyperlinkOpen(false)}>Cancel</Button>
-            <Button onClick={applyHyperlink} className="bg-indigo-600 hover:bg-indigo-700 text-white">Apply</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
     </div>
   );
 }
