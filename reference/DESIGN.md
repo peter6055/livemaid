@@ -97,6 +97,12 @@ components:
     rounded: "{rounded.full}"
     border: "1px solid #e2e8f0"
     padding: "8px 16px"
+  inline-editor-toolbar:
+    backgroundColor: "#1c1c21"
+    textColor: "#ffffff"
+    rounded: "{rounded.lg}"
+    padding: "4px"
+    shadow: "xl"
   canvas-node:
     backgroundColor: "#ffffff"
     textColor: "{colors.surface}"
@@ -115,7 +121,7 @@ Because the core value proposition is "diagrams as code", the application defaul
 - **Dark Mode First:** The entire application lives in a dark slate environment. White is reserved exclusively for the visual canvas nodes to ensure maximum contrast and readability of the diagrams.
 - **Glassmorphism:** Headers and structural elements use translucent backgrounds with background-blur, creating a sense of depth without relying heavily on drop shadows.
 - **Split-Screen Dominance:** The editor view is dominated by the resizer. The left side is a pure, unstyled Monaco editor; the right side is an infinite canvas.
-- **Floating Context:** Toolbars inside the canvas float above the grid as pill-shaped, light-themed elements, providing a stark contrast to the dark IDE surroundings.
+- **Floating Context:** Toolbars inside the canvas float above the grid as pill-shaped, light-themed elements (like the zoom controls), providing a stark contrast to the dark IDE surroundings. The inline-editing text toolbar uses a dark `#1c1c21` theme to closely hug the active node without visually blending into the white canvas.
 
 ## Colors
 
@@ -146,7 +152,7 @@ Because the core value proposition is "diagrams as code", the application defaul
 ### The Split View
 The core of LiveMaid is the resizable split view (`react-resizable-panels`).
 - **Code Pane:** Minimal chrome. A single 40px header indicating "Code", followed by the Monaco editor. No margins, no padding.
-- **Visual Canvas:** Features an infinite dotted background grid. 
+- **Visual Canvas:** Features an infinite pannable area with a subtle dotted background grid pattern (`bg-[radial-gradient(#e5e7eb_1px,transparent_1px)]`). 
 - **Resizer:** A 1px hairline border that turns indigo on hover, indicating interactivity.
 
 ### Dashboard Grid
