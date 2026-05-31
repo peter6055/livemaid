@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2 } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -43,7 +43,12 @@ export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const router = useRouter();
 
   // Dialog states
@@ -57,28 +62,74 @@ export default function Dashboard() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState("");
 
-  useEffect(() => {
-    fetchDiagrams();
-  }, []);
-
-  const fetchDiagrams = async () => {
+  const fetchDiagrams = async (pageNum: number, isInitial = false, currentSearch = "") => {
     try {
+      if (isInitial) setLoading(true);
+      else setLoadingMore(true);
+
+      const limit = 6;
+      const offset = pageNum * limit;
+      
       const startTime = Date.now();
-      const res = await fetch('/api/diagrams');
+      const res = await fetch(`/api/diagrams?limit=${limit}&offset=${offset}&search=${encodeURIComponent(currentSearch)}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       
       const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < 600) {
-        await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
+      if (isInitial && elapsedTime < 1000) {
+        await new Promise(resolve => setTimeout(resolve, 1000 - elapsedTime));
       }
-      setDiagrams(data);
+
+      if (data.length < limit) {
+        setHasMore(false);
+      }
+
+      if (isInitial) {
+        setDiagrams(data);
+      } else {
+        setDiagrams(prev => {
+          // Prevent duplicates if double-fetched
+          const existingIds = new Set(prev.map(d => d.id));
+          const newDiagrams = data.filter((d: DiagramDocument) => !existingIds.has(d.id));
+          return [...prev, ...newDiagrams];
+        });
+      }
     } catch (error) {
       toast.error("Failed to load diagrams");
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
+      setLoadingMore(false);
     }
   };
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchTerm), 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setPage(0);
+    setHasMore(true);
+    fetchDiagrams(0, true, debouncedSearch);
+  }, [debouncedSearch]);
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (loading || loadingMore) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          fetchDiagrams(nextPage, false, debouncedSearch);
+          return nextPage;
+        });
+      }
+    });
+    
+    if (node) observerRef.current.observe(node);
+  }, [loading, loadingMore, hasMore]);
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
@@ -193,17 +244,39 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
-        <div className="flex items-end justify-between mb-12">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
               Your Diagrams
             </h1>
             <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
-          <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-            <Plus className="w-5 h-5 mr-2" />
-            New Diagram
-          </Button>
+          <div className="flex items-center gap-4">
+            <div className="relative relative w-full md:w-64">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <Input
+                type="text"
+                placeholder="Search diagrams..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-10 w-full"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md shrink-0">
+              <Plus className="w-5 h-5 mr-2" />
+              New Diagram
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -268,17 +341,25 @@ export default function Dashboard() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {diagrams.map(diagram => (
-              <DiagramCard 
-                key={diagram.id} 
-                diagram={diagram} 
-                onRename={openRenameDialog}
-                onDelete={openDeleteDialog}
-                onNavigate={handleNavigate}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {diagrams.map(diagram => (
+                <DiagramCard 
+                  key={diagram.id} 
+                  diagram={diagram} 
+                  onRename={openRenameDialog}
+                  onDelete={openDeleteDialog}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+            </div>
+            
+            {hasMore && (
+              <div ref={lastElementRef} className="h-20 w-full mt-6 flex items-center justify-center">
+                {loadingMore && <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />}
+              </div>
+            )}
+          </>
         )}
       </div>
 

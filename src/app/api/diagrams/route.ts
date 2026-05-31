@@ -3,9 +3,26 @@ import { getDiagrams, saveDiagram, DiagramDocument } from '@/lib/api/storage';
 import { nanoid } from 'nanoid';
 import { DiagramRegistry } from '@/lib/diagrams/registry';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const diagrams = await getDiagrams();
+    const { searchParams } = new URL(request.url);
+    const limitStr = searchParams.get('limit');
+    const offsetStr = searchParams.get('offset');
+    const search = searchParams.get('search');
+
+    let diagrams = await getDiagrams();
+
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      diagrams = diagrams.filter(d => d.name.toLowerCase().includes(lowerSearch));
+    }
+
+    if (limitStr !== null && offsetStr !== null) {
+      const limit = parseInt(limitStr, 10);
+      const offset = parseInt(offsetStr, 10);
+      diagrams = diagrams.slice(offset, offset + limit);
+    }
+
     return NextResponse.json(diagrams);
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch diagrams' }, { status: 500 });
