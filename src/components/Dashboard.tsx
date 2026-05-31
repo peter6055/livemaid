@@ -204,30 +204,6 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
-          <div>
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
-              Your Diagrams
-            </h1>
-            <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
-          </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search diagrams"
-                className="pl-9"
-              />
-            </div>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-              <Plus className="w-5 h-5 mr-2" />
-              New Diagram
-            </Button>
-          </div>
-        </div>
-
         {/* Supported Diagrams Intro */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-md p-4">
@@ -251,6 +227,30 @@ export default function Dashboard() {
                 <p className="text-xs text-muted-foreground">Participant interactions & messages</p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
+          <div>
+            <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
+              Your Diagrams
+            </h1>
+            <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search diagrams"
+                className="pl-9"
+              />
+            </div>
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+              <Plus className="w-5 h-5 mr-2" />
+              New Diagram
+            </Button>
           </div>
         </div>
 
