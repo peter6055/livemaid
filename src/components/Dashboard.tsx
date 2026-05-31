@@ -213,9 +213,9 @@ export default function Dashboard() {
             <div className="flex-1">
               <h3 className="font-semibold text-sm text-foreground mb-2">Two-way Sync</h3>
               <p className="text-sm text-muted-foreground mb-3">Edit visually on the canvas or modify the code—both stay in sync automatically.</p>
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2.5 py-1.5 rounded text-sm font-medium text-blue-700 dark:text-blue-300">Flowchart</span>
-                <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2.5 py-1.5 rounded text-sm font-medium text-blue-700 dark:text-blue-300">Sequence</span>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Flowchart</span>
+                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Sequence</span>
               </div>
               <p className="text-xs text-muted-foreground mt-3">Other diagram types are code-only.</p>
             </div>
