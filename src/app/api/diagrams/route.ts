@@ -8,8 +8,14 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const limitStr = searchParams.get('limit');
     const offsetStr = searchParams.get('offset');
+    const search = searchParams.get('search');
 
     let diagrams = await getDiagrams();
+
+    if (search) {
+      const lowerSearch = search.toLowerCase();
+      diagrams = diagrams.filter(d => d.name.toLowerCase().includes(lowerSearch));
+    }
 
     if (limitStr !== null && offsetStr !== null) {
       const limit = parseInt(limitStr, 10);
