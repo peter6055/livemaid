@@ -7,7 +7,7 @@ import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Loader2, Menu, LayoutTemplate, Download, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Loader2, Menu, LayoutTemplate, Download, History, PlusSquare, Copy, PencilLine, Moon, LayoutDashboard } from "lucide-react";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
@@ -17,6 +17,7 @@ interface EditorHeaderProps {
   onNewDiagram: () => void;
   onRename: () => void;
   onExport: () => void;
+  onVersionHistory: () => void;
 }
 
 export function EditorHeader({
@@ -26,7 +27,8 @@ export function EditorHeader({
   onDuplicate,
   onNewDiagram,
   onRename,
-  onExport
+  onExport,
+  onVersionHistory
 }: EditorHeaderProps) {
   const { theme, setTheme } = useTheme();
 
@@ -38,16 +40,37 @@ export function EditorHeader({
             <Menu className="w-5 h-5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48 bg-background border-border">
-            <DropdownMenuItem onClick={onNewDiagram} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">New Diagram</DropdownMenuItem>
-            <DropdownMenuItem onClick={onDuplicate} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Duplicate</DropdownMenuItem>
-            <DropdownMenuItem onClick={onRename} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Rename</DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="flex justify-between items-center w-full cursor-pointer focus:bg-accent focus:text-accent-foreground">
-              <span>Dark Mode</span>
+            <DropdownMenuItem onClick={onNewDiagram} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <PlusSquare className="w-4 h-4" />
+              <span>New Diagram</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onDuplicate} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <Copy className="w-4 h-4" />
+              <span>Duplicate</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onRename} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <PencilLine className="w-4 h-4" />
+              <span>Rename</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={onVersionHistory} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <History className="w-4 h-4" />
+              <span>Version History</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full">
+              <span className="flex items-center gap-2">
+                <Moon className="w-4 h-4" />
+                <span>Dark Mode</span>
+              </span>
               <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === 'dark' ? 'bg-indigo-500' : 'bg-slate-300'}`}>
                 <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
               </div>
             </DropdownMenuItem>
-            <a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}><DropdownMenuItem className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Dashboard</DropdownMenuItem></a>
+            <a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
+              <DropdownMenuItem className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                <LayoutDashboard className="w-4 h-4" />
+                <span>Dashboard</span>
+              </DropdownMenuItem>
+            </a>
           </DropdownMenuContent>
         </DropdownMenu>
         <a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
@@ -82,10 +105,19 @@ export function EditorHeader({
         </Breadcrumb>
       </div>
       <div className="flex items-center gap-3 text-sm font-medium mr-4">
-        <Button variant="ghost" size="sm" onClick={onExport} className="flex items-center gap-2 mr-2 text-foreground hover:bg-accent h-9 border border-border">
+        <Button variant="ghost" size="sm" onClick={onExport} className="flex items-center gap-2 text-foreground hover:bg-accent h-9 border border-border">
           <Download className="w-4 h-4" />
           <span>Export</span>
         </Button>
+        <button
+          type="button"
+          onClick={onVersionHistory}
+          className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-foreground transition-colors hover:bg-accent"
+          aria-label="Open version history"
+        >
+          <History className="w-4 h-4" />
+          <span>History</span>
+        </button>
         {saving ? (
           <span className="flex items-center text-muted-foreground">
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />

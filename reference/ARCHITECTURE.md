@@ -7,6 +7,8 @@ LiveMaid is designed to run entirely locally without a traditional database (e.g
 - **Storage Medium**: Files are saved as `.json` documents directly into the local `data/` directory.
 - **Why?**: To eliminate the need for complex backend infrastructure, authentication, and external dependencies. This makes it trivial to run via Docker or a simple `npm run dev`.
 - **Soft Deletion**: We implement soft deletion (`deletedAt` timestamp) rather than hard deletion to prevent accidental data loss.
+- **Version History**: Saved diagram documents retain an append-only `versionHistory` array so users can roll back to a previous save without leaving the local-file storage model.
+- **Version Metadata**: Version history entries can carry lightweight UI metadata such as a user-defined label and starred state without changing the storage model.
 
 ## 2. Editor Architecture: The Split-Screen WYSIWYG
 The editor interface uses a resizable split-screen layout (`react-resizable-panels`).

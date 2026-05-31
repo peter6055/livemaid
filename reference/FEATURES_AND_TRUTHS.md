@@ -10,9 +10,11 @@ This document serves as the source of truth for the implemented features and arc
 
 ## 2. Pan & Zoom Engine (`react-zoom-pan-pinch`)
 - **Infinite Canvas (Mouse Dragging)**: We use `react-zoom-pan-pinch`. We explicitly set `limitToBounds={false}`. This is **CRITICAL** because without it, the library locks panning when the diagram fits entirely within the view, breaking the ability to drag the canvas with the mouse.
-- **Wheel Config**: `wheel={{ wheelDisabled: true, step: 0.05 }}` is used. We rely on trackpad scrolling or manual buttons for zoom to avoid accidental scroll-zooming.
+- **Wheel Config**: `wheel={{ wheelDisabled: true, step: 0.05 }}` is used on the main editor canvas to prevent accidental wheel-zoom while editing.
+- **Trackpad Interaction**: Trackpad panning remains enabled (`trackPadPanning={{ disabled: false }}`), and zoom is performed through the zoom controls and pinch gestures.
+- **Trackpad Swipe Navigation Guard**: The app globally applies `overscroll-behavior-x: none` on `html` and `body` to block browser-level horizontal swipe navigation (back/forward page changes) while using trackpad gestures.
 - **Zoom Constraints**: We set `minScale={0.5}` and `maxScale={50}`. The `minScale` limit prevents diagrams from zooming out into tiny, unreadable, or lost shapes.
-- **Interaction Locks**: `panning={{ disabled: isInlineEditing }}` is set to prevent the canvas from moving while the user is typing in the inline editor.
+- **Interaction Locks**: `panning={{ disabled: isInlineEditing || dragState?.isDragging }}` is set to prevent the canvas from moving while the user is typing in the inline editor or dragging sequence elements.
 
 ## 3. Interactive Node Selection & Editing
 - **Node Resolution (`getClickedNode`)**: When a user clicks the canvas, we traverse up the DOM tree from the `e.target` to find a container with the `.node` or `.cluster` class. 
@@ -74,6 +76,16 @@ This document serves as the source of truth for the implemented features and arc
 - **Centralized Connector Matching Pattern**: Standardized and ordered all Mermaid link connectors from longest/most-specific to shortest/least-specific in `CONNECTOR_PATTERN` in `src/lib/diagrams/utils.ts`. This resolves regex prefix conflicts (where shorter subset connectors like `-->` falsely matched inside longer superset connectors like `<-->` or `x--x`). Furthermore, to handle word boundary (`\b`) transitions seamlessly on connectors ending in word characters (such as `--x` or `--o` directly connected to a destination node), we use an elegant lookbehind pattern `(?:\\b|(?<=[xoXO]))${dst}\\b`. This ensures robust arrow type editing, stroke styling, label updating, and styled edge deletion without corrupting the Mermaid syntax.
 - **Preset Color Selection Cleanups**: Removed the redundant `'White'` and `'Black'` presets from `PRESET_COLORS` in `src/lib/diagrams/constants.ts` to provide a premium, tailored preset palette for flowchart elements.
 
+## 12. Version History & Rollback
+- **Snapshot Source of Truth**: Each diagram document persists a `versionHistory` array in its local JSON file. The editor records the previously saved Mermaid code whenever a real code change is committed through the save path.
+- **User Metadata**: History entries can be renamed inline and starred as pinned favorites. These fields live on the same version record and are persisted back through the diagram update route.
+- **Rollback Behavior**: Restoring a version replaces the current code with the selected snapshot and then saves it through the same document update path, which preserves the rollback as a new history entry.
+- **Read-Only Preview Workspace**: Opening history now creates a split workspace where the right panel lists snapshots and the left side renders the selected snapshot diagram in a read-only preview canvas. The preview supports pan/zoom/reset controls and is visually marked as non-editable.
+- **Preview Interaction Parity**: The history preview canvas mirrors the main canvas interaction model for navigation (`wheelDisabled: true`, `trackPadPanning: enabled`, `limitToBounds: false`) so trackpad panning behaves consistently across both views.
+- **Canvas Background Policy**: Diagram render surfaces stay white in both light and dark themes (main editor canvas and history preview canvas) to preserve Mermaid readability and contrast.
+- **Pop-out Backdrop Policy**: Pop-out surfaces (dialogs and overlays) use a stronger dimming backdrop in dark mode to preserve depth separation and visual focus (`dark:bg-black/70`).
+- **Retention**: Version history is capped at the most recent 100 snapshots so local JSON documents remain predictable while still preserving long-running edit history.
+
 ## 11. Testing & Browser Interaction Best Practices
 - **Temporary Test Diagrams**: To prevent binding failures, corrupted workspace states, or broken diagrams during interactive browser testing, you MUST always create a new, temporary diagram/flowchart at the start of your test session.
 - **Cleanup**: Once your browser testing is completed and verified, you MUST delete or purge the temporary diagram/flowchart to restore the workspace to its clean, original state.
@@ -83,6 +95,11 @@ This document serves as the source of truth for the implemented features and arc
 - **Keyboard-Driven Canvas Deletion**: When a diagram node or flowchart edge/line is selected, users can press `Backspace` or `Delete` on their keyboard to instantly delete it from the diagram canvas and Mermaid code.
 - **Form/Input and Code Isolation**: The keydown event listener is completely disabled when any input, textarea, contenteditable container, or the Monaco Editor has focus. This prevents elements from being accidentally deleted while typing comments or updating diagram text code.
 - **Canvas Focus Blur**: To ensure that selecting canvas elements (which are SVG elements and not focusable by default) immediately enables deletion shortcuts without being blocked by active Monaco editor focus, clicking any canvas element or empty space (inside `handleSvgClick`) programmatically blurs the active text input or editor via `document.activeElement.blur()`. This shifts browser focus away from Monaco/inputs to the document body, activating the deletion listeners safely.
+
+## 13. Exit Confirmation
+- **Leave Editor Notice Dialog**: Internal navigation away from the current editor route uses a confirmation dialog before routing, requiring explicit user confirmation (`Leave Editor`) or cancellation (`Stay`).
+- **Browser Exit Prompt**: Refreshing or closing the tab while in the editor triggers the browser-native `beforeunload` confirmation prompt.
+- **Browser Back Button Guard**: Pressing the browser back button inside the editor is intercepted and routed through the same leave-editor confirmation dialog before navigation is allowed.
 
 
 

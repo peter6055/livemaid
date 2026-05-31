@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDiagram, saveDiagram, deleteDiagram } from '@/lib/api/storage';
+import { nanoid } from 'nanoid';
 
 export async function GET(
   request: Request,
@@ -29,6 +30,29 @@ export async function PUT(
     }
 
     const body = await request.json();
+    const requestedHistory = Array.isArray(body.versionHistory) ? body.versionHistory : null;
+    const baseHistory = requestedHistory ?? existing.versionHistory ?? [];
+
+    const nextVersionHistory =
+      typeof body.code === 'string' && body.code !== existing.code
+        ? [
+            {
+              id: nanoid(),
+              code: existing.code,
+              timestamp: existing.updatedAt,
+              label: (() => {
+              const n = ((existing.versionHistory ?? []).length || 0) + 1;
+              const d = new Date(existing.updatedAt);
+              const h = d.getHours() % 12 || 12;
+              const m = String(d.getMinutes()).padStart(2, '0');
+              const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+              return `Snapshot ${n} - ${h}:${m} ${ampm}`;
+            })(),
+              starred: false,
+            },
+            ...baseHistory,
+          ].slice(0, 100)
+        : baseHistory;
     
     // Merge updates
     const updated = {
@@ -36,6 +60,7 @@ export async function PUT(
       ...body,
       id, // Protect ID
       updatedAt: new Date().toISOString(),
+      versionHistory: nextVersionHistory,
     };
 
     await saveDiagram(updated);

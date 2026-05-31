@@ -4,6 +4,7 @@ import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
@@ -19,6 +20,10 @@ import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
+import { format } from "date-fns";
+import { Star } from "lucide-react";
+import mermaid from "mermaid";
+import type { VersionHistoryEntry } from "@/lib/api/storage";
 
 export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const router = useRouter();
@@ -45,20 +50,30 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [renameName, setRenameName] = useState("");
   const [isNewDiagramOpen, setIsNewDiagramOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{ url: string; message: string } | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyDrafts, setHistoryDrafts] = useState<Record<string, string>>({});
+  const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
+  const [previewSvgContent, setPreviewSvgContent] = useState("");
+  const [previewParseError, setPreviewParseError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
+  const allowBrowserBackRef = useRef(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
     selectedNodeId, setSelectedNodeId,
+    selectedNodeIds, setSelectedNodeIds,
     selectedSvgId, setSelectedSvgId,
     selectionBox, setSelectionBox,
     textBox, setTextBox,
     editingText, setEditingText,
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
+    dragState, setDragState,
     inlineInputRef,
     handleSvgClick,
     handleMouseMove,
@@ -174,6 +189,121 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     const updatedCode = updateMermaidConfigProperty(code, 'theme', theme);
     handleCodeChange(updatedCode);
   };
+
+  const defaultHistoryLabel = useCallback((version: VersionHistoryEntry, index: number) => {
+    if (version.label?.trim()) return version.label.trim();
+    const d = new Date(version.timestamp);
+    const h = d.getHours() % 12 || 12;
+    const m = String(d.getMinutes()).padStart(2, '0');
+    const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+    return `Snapshot ${index + 1} - ${h}:${m} ${ampm}`;
+  }, []);
+
+  const persistHistoryEntries = useCallback(async (updatedHistory: VersionHistoryEntry[]) => {
+    if (!doc) return;
+
+    try {
+      const response = await fetch(`/api/diagrams/${documentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionHistory: updatedHistory }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update version history");
+      }
+
+      const updatedDoc = await response.json();
+      setDoc(updatedDoc);
+      setHistoryDrafts(
+        Object.fromEntries(
+          (updatedDoc.versionHistory ?? []).map((version: VersionHistoryEntry, index: number) => [
+            version.id,
+            defaultHistoryLabel(version, index),
+          ])
+        )
+      );
+    } catch (error) {
+      toast.error("Failed to update version history");
+    }
+  }, [defaultHistoryLabel, doc, documentId, setDoc]);
+
+  const handleRollbackToVersion = useCallback((versionCode: string) => {
+    setIsHistoryOpen(false);
+    setPreviewVersionId(null);
+    handleCodeChange(versionCode);
+    toast.success('Rolled back successfully', {
+      description: 'The diagram has been restored to the selected version.',
+    });
+  }, [handleCodeChange]);
+
+  useEffect(() => {
+    const previewVersion = (doc?.versionHistory ?? []).find((version) => version.id === previewVersionId);
+    if (!isHistoryOpen || !previewVersion) {
+      setPreviewSvgContent("");
+      setPreviewParseError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderPreview = async () => {
+      try {
+        setPreviewParseError(null);
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'default',
+          securityLevel: 'loose',
+          flowchart: { htmlLabels: true },
+        });
+        await mermaid.parse(previewVersion.code, { suppressErrors: true });
+        const { svg } = await mermaid.render(`history-preview-${Date.now()}`, previewVersion.code);
+        if (!cancelled) {
+          setPreviewSvgContent(svg);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setPreviewSvgContent("");
+          setPreviewParseError(error?.message || "Failed to render preview diagram");
+        }
+      }
+    };
+
+    void renderPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [doc?.versionHistory, isHistoryOpen, previewVersionId]);
+
+  const handleRenameHistoryEntry = useCallback((versionId: string, label: string) => {
+    if (!doc) return;
+
+    const trimmedLabel = label.trim();
+    const updatedHistory = (doc.versionHistory ?? []).map((version) => (
+      version.id === versionId
+        ? { ...version, label: trimmedLabel || undefined }
+        : version
+    ));
+
+    setHistoryDrafts((current) => ({
+      ...current,
+      [versionId]: trimmedLabel || current[versionId] || '',
+    }));
+    void persistHistoryEntries(updatedHistory);
+  }, [doc, persistHistoryEntries]);
+
+  const handleToggleHistoryStar = useCallback((versionId: string) => {
+    if (!doc) return;
+
+    const updatedHistory = (doc.versionHistory ?? []).map((version) => (
+      version.id === versionId
+        ? { ...version, starred: !version.starred }
+        : version
+    ));
+
+    void persistHistoryEntries(updatedHistory);
+  }, [doc, persistHistoryEntries]);
 
   const handleFontChange = (font: typeof FONT_OPTIONS[0]) => {
     const updatedCode = updateMermaidFontFamily(code, font.value);
@@ -386,7 +516,104 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     
     let newCode = code;
     
-    if (selectedNodeId.startsWith('SEQ_')) {
+    const isMessageLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('%%')) return false;
+      const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+      if (keywords.some(kw => trimmed.startsWith(kw) || trimmed.startsWith(kw + ' '))) return false;
+      return trimmed.includes(':');
+    };
+
+    const isNoteLine = (line: string) => {
+      const trimmed = line.trim();
+      return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
+    };
+
+    const getCodeLineMappings = (lines: string[]) => {
+      let msgCount = 0;
+      let noteCount = 0;
+      return lines.map((line, lineIndex) => {
+        if (isMessageLine(line)) {
+          return { type: 'msg', index: msgCount++, lineIndex };
+        } else if (isNoteLine(line)) {
+          return { type: 'note', index: noteCount++, lineIndex };
+        }
+        return null;
+      }).filter(m => m !== null) as { type: string; index: number; lineIndex: number }[];
+    };
+
+    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+        const oldText = selectedNodeId.replace('SEQ_ACTOR_', '');
+        const newText = editingText.replace(/\n/g, '<br/>');
+        
+        let found = false;
+        const lines = code.split('\n');
+        newCode = lines.map(line => {
+            const trimmed = line.trim();
+            const declMatch = trimmed.match(/^(participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/);
+            if (declMatch) {
+                const type = declMatch[1];
+                const id = declMatch[2];
+                const alias = declMatch[3];
+                
+                if (alias && alias.trim() === oldText.trim()) {
+                    found = true;
+                    return line.replace(`as ${alias}`, `as ${newText}`);
+                }
+                if (!alias && id === oldText) {
+                    found = true;
+                    return line.replace(id, `${id} as ${newText}`);
+                }
+            }
+            return line;
+        }).join('\n');
+        
+        if (!found) {
+            const lines = code.split('\n');
+            const headerIdx = lines.findIndex(l => l.trim().startsWith('sequenceDiagram'));
+            const declLine = `    participant ${oldText} as ${newText}`;
+            if (headerIdx !== -1) {
+                lines.splice(headerIdx + 1, 0, declLine);
+            } else {
+                lines.unshift('sequenceDiagram', declLine);
+            }
+            newCode = lines.join('\n');
+        }
+    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
+        const parts = selectedNodeId.split('_');
+        const targetIndex = parseInt(parts[2], 10);
+        const newText = editingText.replace(/\n/g, '<br/>');
+        const lines = code.split('\n');
+        
+        const mappings = getCodeLineMappings(lines);
+        const targetMapping = mappings.find(m => m.type === 'msg' && m.index === targetIndex);
+        if (targetMapping) {
+            const lineIdx = targetMapping.lineIndex;
+            const line = lines[lineIdx];
+            const colonIdx = line.indexOf(':');
+            if (colonIdx !== -1) {
+                lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
+                newCode = lines.join('\n');
+            }
+        }
+    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+        const parts = selectedNodeId.split('_');
+        const targetIndex = parseInt(parts[2], 10);
+        const newText = editingText.replace(/\n/g, '<br/>');
+        const lines = code.split('\n');
+        
+        const mappings = getCodeLineMappings(lines);
+        const targetMapping = mappings.find(m => m.type === 'note' && m.index === targetIndex);
+        if (targetMapping) {
+            const lineIdx = targetMapping.lineIndex;
+            const line = lines[lineIdx];
+            const colonIdx = line.indexOf(':');
+            if (colonIdx !== -1) {
+                lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
+                newCode = lines.join('\n');
+            }
+        }
+    } else if (selectedNodeId.startsWith('SEQ_')) {
         const oldText = selectedNodeId.replace('SEQ_', '');
         const newText = editingText.replace(/\n/g, '<br/>');
         newCode = newCode.split('\n').map(line => {
@@ -406,12 +633,10 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
             const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
             newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
         } else {
-            // Check if there is a standalone node ID definition on its own line
             const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
             if (standaloneRegex.test(newCode)) {
                 newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
             } else {
-                // Find the best place to insert the new node definition (before any style/class definitions)
                 const lines = newCode.split('\n');
                 let insertIndex = -1;
                 for (let i = 0; i < lines.length; i++) {
@@ -578,12 +803,35 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       setSelectedNodeId(null);
   }, [code, handleCodeChange, selectedNodeId, setSelectionBox, setSelectedNodeId]);
 
-  const handleNavigate = (url: string, message: string) => {
+  const performNavigation = useCallback((url: string, message: string) => {
     setNavigatingState({ isNavigating: true, message });
     setTimeout(() => {
       router.push(url);
     }, 400);
-  };
+  }, [router]);
+
+  const handleNavigate = useCallback((url: string, message: string) => {
+    setPendingNavigation({ url, message });
+    setIsExitConfirmOpen(true);
+  }, []);
+
+  const handleConfirmExitNavigation = useCallback(() => {
+    if (!pendingNavigation) return;
+    const next = pendingNavigation;
+    setPendingNavigation(null);
+    setIsExitConfirmOpen(false);
+    if (next.url === '__browser_back__') {
+      allowBrowserBackRef.current = true;
+      window.history.back();
+      return;
+    }
+    performNavigation(next.url, next.message);
+  }, [pendingNavigation, performNavigation]);
+
+  const handleCancelExitNavigation = useCallback(() => {
+    setPendingNavigation(null);
+    setIsExitConfirmOpen(false);
+  }, []);
 
   const handleDuplicate = async () => {
     if (!doc) return;
@@ -752,6 +1000,42 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     };
   }, [isLocked, isInlineEditing, selectedNodeId, handleDeleteEdge, handleDeleteNode, handleGlobalBoldItalic]);
 
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
+
+  useEffect(() => {
+    const guardState = { __editorGuard: true };
+    window.history.pushState(guardState, '', window.location.href);
+
+    const handlePopState = () => {
+      if (allowBrowserBackRef.current) {
+        allowBrowserBackRef.current = false;
+        return;
+      }
+
+      setPendingNavigation({
+        url: '__browser_back__',
+        message: 'Leaving editor...'
+      });
+      setIsExitConfirmOpen(true);
+      window.history.pushState(guardState, '', window.location.href);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-zinc-500 flex-col gap-4 transition-all duration-300">
@@ -762,6 +1046,11 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   }
 
   const currentType = determineDiagramType(code);
+  const sortedHistory = [...(doc?.versionHistory ?? [])]
+    .sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const selectedPreviewVersion = previewVersionId
+    ? sortedHistory.find((version) => version.id === previewVersionId) ?? null
+    : null;
 
   return (
     <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
@@ -782,7 +1071,233 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         onNewDiagram={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}
         onRename={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }}
         onExport={() => setIsExportOpen(true)}
+        onVersionHistory={() => setIsHistoryOpen(true)}
       />
+
+      {/* Version History Sidebar */}
+      {isHistoryOpen && (
+        <div className="fixed inset-0 z-40" aria-modal="true">
+          <div
+            className="absolute inset-0 bg-black/35 dark:bg-black/70 backdrop-blur-[2px]"
+            onClick={() => {
+              setIsHistoryOpen(false);
+              setPreviewVersionId(null);
+            }}
+          />
+
+          <div className="relative z-10 flex h-full w-full">
+            <div className="min-w-0 flex-1 p-6 pr-6">
+              <div className="relative h-full rounded-xl border border-border bg-background/95 dark:bg-zinc-800/90 shadow-2xl">
+                <div className="flex h-full flex-col">
+                  <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:bg-zinc-800/95">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Snapshot Diagram Preview</p>
+                      <p className="text-xs text-muted-foreground">Pan, zoom, and inspect safely before applying rollback.</p>
+                    </div>
+                    <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
+                      {selectedPreviewVersion ? defaultHistoryLabel(selectedPreviewVersion, 0) : 'No snapshot selected'}
+                    </span>
+                  </div>
+
+                  <div className="relative min-h-0 flex-1 overflow-hidden bg-background/30 dark:bg-zinc-700/35">
+                    {selectedPreviewVersion ? (
+                      previewParseError ? (
+                        <div className="flex h-full items-center justify-center p-6">
+                          <div className="max-w-lg rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+                            Preview render failed: {previewParseError}
+                          </div>
+                        </div>
+                      ) : previewSvgContent ? (
+                        <TransformWrapper
+                          initialScale={1.35}
+                          minScale={0.5}
+                          maxScale={50}
+                          wheel={{ wheelDisabled: true, step: 0.05 }}
+                          panning={{ velocityDisabled: false }}
+                          trackPadPanning={{ disabled: false }}
+                          doubleClick={{ disabled: true }}
+                          limitToBounds={false}
+                        >
+                          {({ zoomIn, zoomOut, resetTransform }) => (
+                            <>
+                              <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 rounded-lg border border-border bg-background p-1 shadow-sm">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomIn()}>
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+                                </Button>
+                                <div className="h-px bg-border" />
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => resetTransform()}>
+                                  <span className="text-[10px] font-bold">1:1</span>
+                                </Button>
+                                <div className="h-px bg-border" />
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomOut()}>
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H5V11H19V13Z"/></svg>
+                                </Button>
+                              </div>
+
+                              <TransformComponent
+                                wrapperStyle={{ width: '100%', height: '100%' }}
+                                contentStyle={{ width: '100%', height: '100%' }}
+                              >
+                                <div className="flex h-full w-full cursor-grab items-center justify-center bg-white active:cursor-grabbing">
+                                  <div className="select-none" dangerouslySetInnerHTML={{ __html: previewSvgContent }} />
+                                </div>
+                              </TransformComponent>
+                            </>
+                          )}
+                        </TransformWrapper>
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                          Rendering selected snapshot...
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex h-full items-center justify-center p-8">
+                        <div className="max-w-md text-center">
+                          <p className="text-sm font-medium text-foreground">Select a snapshot to preview</p>
+                          <p className="mt-1 text-sm text-muted-foreground">Use the Preview button in the right panel to render that version on this read-only canvas.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative h-full w-[26rem] border-l border-border bg-background shadow-2xl">
+              <div className="flex h-full flex-col">
+                <div className="shrink-0 border-b border-border px-6 py-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <h2 className="text-base font-semibold text-foreground">Version History</h2>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Preview first, then apply rollback.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsHistoryOpen(false);
+                        setPreviewVersionId(null);
+                      }}
+                      className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      aria-label="Close version history"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
+                  <div className="rounded-lg border border-border bg-muted/40 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Current saved version</p>
+                        <p className="text-xs text-muted-foreground">
+                          {doc?.updatedAt ? format(new Date(doc.updatedAt), 'MMM d, yyyy h:mm a') : 'Unknown save time'}
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                        {doc?.versionHistory?.length ?? 0} snapshot{(doc?.versionHistory?.length ?? 0) === 1 ? '' : 's'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    {sortedHistory.length > 0 ? (
+                      sortedHistory.map((version, index) => (
+                        <div key={version.id} className={`rounded-lg border bg-background shadow-sm transition-colors ${previewVersionId === version.id ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-border'}`}>
+                          <div className="space-y-3 p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1 space-y-2">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleHistoryStar(version.id)}
+                                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                                    aria-label={version.starred ? 'Unstar history entry' : 'Star history entry'}
+                                    title={version.starred ? 'Unstar' : 'Star'}
+                                  >
+                                    <Star className={`h-3.5 w-3.5 ${version.starred ? 'fill-amber-400 text-amber-400' : ''}`} />
+                                  </button>
+                                  <Input
+                                    value={historyDrafts[version.id] ?? defaultHistoryLabel(version, index)}
+                                    onChange={(event) => setHistoryDrafts((current) => ({ ...current, [version.id]: event.target.value }))}
+                                    onBlur={(event) => handleRenameHistoryEntry(version.id, event.target.value)}
+                                    onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                                    className="h-7 flex-1 bg-background text-xs"
+                                    aria-label="Rename history entry"
+                                  />
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(version.timestamp), 'MMM d, yyyy h:mm a')}
+                                </p>
+                              </div>
+                            </div>
+
+                            <pre className="max-h-12 overflow-hidden whitespace-pre-wrap rounded-md bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">
+                              {version.code.split('\n').find((line) => line.trim())?.trim() || 'Empty version'}
+                            </pre>
+
+                            <div className="flex items-center justify-end gap-1.5">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setPreviewVersionId(previewVersionId === version.id ? null : version.id)}
+                                className="h-7 px-2 text-xs text-muted-foreground"
+                              >
+                                {previewVersionId === version.id ? 'Hide Preview' : 'Preview'}
+                              </Button>
+                              <Button
+                                variant={previewVersionId === version.id ? 'default' : 'outline'}
+                                size="sm"
+                                onClick={() => handleRollbackToVersion(version.code)}
+                                className="h-7 px-2 text-xs"
+                              >
+                                {previewVersionId === version.id ? 'Apply Rollback' : 'Rollback'}
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-border bg-muted/20 p-8 text-center">
+                        <p className="text-sm font-medium text-foreground">No saved versions yet</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          The first snapshot is created after you make and save a code change.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Dialog
+        open={isExitConfirmOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCancelExitNavigation();
+          } else {
+            setIsExitConfirmOpen(true);
+          }
+        }}
+      >
+        <DialogContent className="max-w-md bg-background border-border text-foreground">
+          <DialogHeader>
+            <DialogTitle>Leave this editor?</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              You are about to exit the current diagram editor. Continue?
+            </p>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelExitNavigation}>Stay</Button>
+            <Button onClick={handleConfirmExitNavigation}>Leave Editor</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
         {isCodePanelOpen && (
@@ -869,6 +1384,34 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                     </div>
                 </DropdownMenuContent>
               </DropdownMenu>
+              
+              {currentType === 'sequence' && (
+                <>
+                  <div className="h-5 w-px bg-border mx-1" />
+                  <div className="flex items-center gap-2 px-2 h-8 select-none">
+                    <span className="text-xs font-medium text-foreground">Autonumber</span>
+                    <button
+                      onClick={() => {
+                        if (code.match(/autonumber/i)) {
+                          handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ''));
+                        } else {
+                          handleCodeChange(code.replace(/(sequenceDiagram)/i, '$1\n    autonumber'));
+                        }
+                      }}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                        code.match(/autonumber/i) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                      }`}
+                      aria-label="Toggle Autonumber"
+                    >
+                      <span
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </>
+              )}
 
               <div className="h-5 w-px bg-border" />
               
@@ -903,6 +1446,10 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}
+          selectedNodeIds={selectedNodeIds}
+          dragState={dragState}
+          setDragState={setDragState}
+          handleCodeChange={handleCodeChange}
           currentType={currentType}
           handleUpdateStyle={handleUpdateStyle}
           handleFormatNodeLabel={handleFormatNodeLabel}

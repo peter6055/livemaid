@@ -127,9 +127,11 @@
   }
   body {
     @apply bg-background text-foreground;
+    overscroll-behavior-x: none;
   }
   html {
     @apply font-sans;
+    overscroll-behavior-x: none;
   }
 }
 

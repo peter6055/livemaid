@@ -111,6 +111,9 @@ export function useEditorState(documentId: string) {
         body: JSON.stringify({ code: newCode }),
       });
       if (!res.ok) throw new Error("Failed to save");
+
+      const updatedDoc = await res.json();
+      setDoc(updatedDoc);
     } catch (error) {
       toast.error("Failed to auto-save");
     } finally {
