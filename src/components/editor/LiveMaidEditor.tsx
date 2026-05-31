@@ -66,14 +66,12 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
 
   const {
     selectedNodeId, setSelectedNodeId,
-    selectedNodeIds, setSelectedNodeIds,
     selectedSvgId, setSelectedSvgId,
     selectionBox, setSelectionBox,
     textBox, setTextBox,
     editingText, setEditingText,
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
-    dragState, setDragState,
     inlineInputRef,
     handleSvgClick,
     handleMouseMove,
@@ -1500,10 +1498,6 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}
-          selectedNodeIds={selectedNodeIds}
-          dragState={dragState}
-          setDragState={setDragState}
-          handleCodeChange={handleCodeChange}
           currentType={currentType}
           handleUpdateStyle={handleUpdateStyle}
           handleFormatNodeLabel={handleFormatNodeLabel}
