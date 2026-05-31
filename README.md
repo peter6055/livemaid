@@ -61,6 +61,18 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 The application auto-updates as you edit the files in the `src/` directory.
 
+## 🤝 Contribution Guidelines
+
+We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
+
+1. **Create a Feature Branch**: When starting a new epic or feature, branch off from `main` (e.g., `git checkout -b feature/your-epic-name`).
+2. **Develop & Commit**: Make your changes and use Conventional Commits (e.g., `feat: ...`, `fix: ...`).
+3. **Raise a Pull Request**: Once complete, raise a Pull Request targeting `main`.
+4. **Squash and Merge**: Merge the PR using the **"Squash and merge"** option. This keeps the `main` history perfectly clean with one commit per epic.
+5. **Delete the Branch**: After merging, delete the feature branch. Do not reuse it. Future changes require branching off `main` again.
+
+*(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor).*
+
 ## 🐳 Deployment (Docker)
 
 LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
