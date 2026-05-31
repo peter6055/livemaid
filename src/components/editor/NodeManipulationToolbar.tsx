@@ -1,30 +1,116 @@
+import { useRef, useEffect } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Palette, Square, Type, ChevronsDown, Copy, Trash2 } from "lucide-react";
+import { Palette, Square, Type, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
 import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
-import { CSSProperties } from "react";
 
 interface NodeManipulationToolbarProps {
+  code: string;
+  selectedNodeId: string | null;
   currentType: string;
   selectedSvgId: string | null;
-  toolbarStyle: CSSProperties;
+  scale: number;
   onUpdateStyle: (property: string, value: string) => void;
   onFormatNodeLabel: (format: string, value?: string) => void;
   onChangeShape: (shape: any) => void;
   onDuplicateNode: () => void;
   onDeleteNode: () => void;
+  onResetStyle?: () => void;
 }
 
 export function NodeManipulationToolbar({
+  code,
+  selectedNodeId,
   currentType,
   selectedSvgId,
-  toolbarStyle,
+  scale,
   onUpdateStyle,
   onFormatNodeLabel,
   onChangeShape,
   onDuplicateNode,
-  onDeleteNode
+  onDeleteNode,
+  onResetStyle
 }: NodeManipulationToolbarProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const stopNativePropagation = (e: Event) => {
+      e.stopPropagation();
+    };
+
+    el.addEventListener("mousedown", stopNativePropagation);
+    el.addEventListener("pointerdown", stopNativePropagation);
+    el.addEventListener("touchstart", stopNativePropagation);
+
+    return () => {
+      el.removeEventListener("mousedown", stopNativePropagation);
+      el.removeEventListener("pointerdown", stopNativePropagation);
+      el.removeEventListener("touchstart", stopNativePropagation);
+    };
+  }, []);
+  const getStyleFromCode = (property: string): string | null => {
+    if (!selectedNodeId) return null;
+    const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm'));
+    if (match) {
+      const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
+      return propMatch ? propMatch[1] : null;
+    }
+    return null;
+  };
+
+  const getActiveBgColor = () => {
+    const fromCode = getStyleFromCode('fill');
+    if (fromCode) return fromCode;
+    if (!selectedSvgId) return 'transparent';
+    try {
+      const parent = document.getElementById(selectedSvgId);
+      if (!parent) return 'transparent';
+      const el = parent.querySelector('rect, circle, polygon, path.node, path, ellipse');
+      if (el) {
+        return window.getComputedStyle(el).fill || 'transparent';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return 'transparent';
+  };
+
+  const getActiveStrokeColor = () => {
+    const fromCode = getStyleFromCode('stroke');
+    if (fromCode) return fromCode;
+    if (!selectedSvgId) return 'transparent';
+    try {
+      const parent = document.getElementById(selectedSvgId);
+      if (!parent) return 'transparent';
+      const el = parent.querySelector('rect, circle, polygon, path.node, path, ellipse');
+      if (el) {
+        return window.getComputedStyle(el).stroke || 'transparent';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return 'transparent';
+  };
+
+  const getActiveTextColor = () => {
+    const fromCode = getStyleFromCode('color');
+    if (fromCode) return fromCode;
+    if (!selectedSvgId) return '#000000';
+    try {
+      const parent = document.getElementById(selectedSvgId);
+      if (!parent) return '#000000';
+      const el = parent.querySelector('.label, text, .nodeLabel');
+      if (el) {
+        return window.getComputedStyle(el).fill || '#000000';
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return '#000000';
+  };
 
   if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
     return null;
@@ -32,62 +118,117 @@ export function NodeManipulationToolbar({
 
   return (
     <div 
-        className="absolute flex items-center gap-1 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-full px-2 py-1.5 pointer-events-auto shadow-lg z-50 text-slate-700 dark:text-zinc-300"
-        style={toolbarStyle}
-        onMouseDown={(e) => e.preventDefault()}
+        ref={containerRef}
+        data-scale-lock
+        data-base-transform="translateX(-50%) translateY(-100%)"
+        className="absolute flex items-center gap-0.5 bg-background border border-border rounded-full px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
+        style={{
+          left: '50%',
+          top: `calc(-10px * var(--zoom-inverse-scale, ${1 / scale}))`,
+          transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
+          transformOrigin: 'bottom'
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
     >
         {/* Background Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Background Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Background Color" />
           }>
-                <Palette className="w-5 h-5" />
-                <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).fill : 'transparent' }} />
+                <Palette className="w-4 h-4" />
+                <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveBgColor() }} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
-            {PRESET_COLORS.map(c => (
-              <button key={c.name} onClick={() => onUpdateStyle('fill', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
-            ))}
+          <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+            {PRESET_COLORS.map(c => {
+              const activeFill = getStyleFromCode('fill');
+              const isSelected = activeFill === c.value;
+              return (
+                <button 
+                  key={c.name} 
+                  onClick={() => onUpdateStyle('fill', c.value)} 
+                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background' : ''}`} 
+                  style={{ backgroundColor: c.value }} 
+                  title={c.name} 
+                />
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
         
         {/* Border Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Border Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Border Color" />
           }>
-                <Square className="w-5 h-5" />
-                <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} rect, #${selectedSvgId} circle, #${selectedSvgId} polygon, #${selectedSvgId} path.node`)!).stroke : 'transparent' }} />
+                <Square className="w-4 h-4" />
+                <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveStrokeColor() }} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
-            {PRESET_COLORS.map(c => (
-              <button key={c.name} onClick={() => onUpdateStyle('stroke', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
-            ))}
+          <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+            {PRESET_COLORS.map(c => {
+              const activeStroke = getStyleFromCode('stroke');
+              const isSelected = activeStroke === c.value;
+              return (
+                <button 
+                  key={c.name} 
+                  onClick={() => onUpdateStyle('stroke', c.value)} 
+                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background' : ''}`} 
+                  style={{ backgroundColor: c.value }} 
+                  title={c.name} 
+                />
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
+        <div className="w-px h-4 bg-border mx-1" />
 
         {/* Text Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors relative" title="Text Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Text Color" />
           }>
-                <Type className="w-5 h-5" />
-                <div className="absolute bottom-2 right-2 w-2.5 h-2.5 rounded-full border border-slate-300" style={{ backgroundColor: selectedSvgId && document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`) ? window.getComputedStyle(document.querySelector(`#${selectedSvgId} .label, #${selectedSvgId} text`)!).fill : '#000000' }} />
+                <Type className="w-4 h-4" />
+                <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveTextColor() }} />
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48 p-2 bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
-            {PRESET_COLORS.map(c => (
-              <button key={c.name} onClick={() => onFormatNodeLabel('color', c.value)} className="w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none" style={{ backgroundColor: c.value }} title={c.name} />
-            ))}
+          <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2" align="center" side="top" sideOffset={10}>
+            {PRESET_COLORS.map(c => {
+              const activeColor = getStyleFromCode('color');
+              const isSelected = activeColor === c.value;
+              return (
+                <button 
+                  key={c.name} 
+                  onClick={() => onFormatNodeLabel('color', c.value)} 
+                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background' : ''}`} 
+                  style={{ backgroundColor: c.value }} 
+                  title={c.name} 
+                />
+              );
+            })}
           </DropdownMenuContent>
         </DropdownMenu>
         {/* Bold */}
         <button 
             onClick={(e) => { e.preventDefault(); onFormatNodeLabel('bold'); }}
-            className={`h-10 w-10 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-lg ${selectedSvgId && document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text') && ['bold', '700', '800', '900'].includes(window.getComputedStyle(document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text')!).fontWeight) ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+            className={`h-8 w-8 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-sm ${
+                getStyleFromCode('font-weight') === 'bold' || 
+                (() => {
+                  if (!selectedSvgId) return false;
+                  try {
+                    const parent = document.getElementById(selectedSvgId);
+                    const el = parent?.querySelector('.label, text, .nodeLabel');
+                    if (el) {
+                      return ['bold', '700', '800', '900'].includes(window.getComputedStyle(el).fontWeight);
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  return false;
+                })()
+                ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500/30 font-extrabold' 
+                : 'hover:bg-accent hover:text-accent-foreground'
+            }`}
             title="Bold Text"
         >
             B
@@ -95,23 +236,40 @@ export function NodeManipulationToolbar({
         {/* Italic */}
         <button 
             onClick={(e) => { e.preventDefault(); onFormatNodeLabel('italic'); }}
-            className={`h-10 w-10 flex items-center justify-center rounded-full italic font-serif transition-colors text-lg ${selectedSvgId && document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text') && window.getComputedStyle(document.querySelector('#' + selectedSvgId + ' .label, #' + selectedSvgId + ' text')!).fontStyle === 'italic' ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'hover:bg-slate-100 dark:hover:bg-zinc-800'}`}
+            className={`h-8 w-8 flex items-center justify-center rounded-full italic font-serif transition-colors text-sm ${
+                getStyleFromCode('font-style') === 'italic' ||
+                (() => {
+                  if (!selectedSvgId) return false;
+                  try {
+                    const parent = document.getElementById(selectedSvgId);
+                    const el = parent?.querySelector('.label, text, .nodeLabel');
+                    if (el) {
+                      return window.getComputedStyle(el).fontStyle === 'italic';
+                    }
+                  } catch (e) {
+                    console.error(e);
+                  }
+                  return false;
+                })()
+                ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500/30 font-extrabold' 
+                : 'hover:bg-accent hover:text-accent-foreground'
+            }`}
             title="Italic Text"
         >
             I
         </button>
 
-        <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
+        <div className="w-px h-4 bg-border mx-1" />
 
         {/* Shape Selector */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
             <button 
-              className="h-10 px-3 flex items-center justify-center rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors text-sm font-medium gap-1"
+              className="h-8 px-2 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-xs font-semibold gap-0.5"
               title="Change Shape"
             />
           }>
-              Shape <ChevronsDown className="w-3 h-3" />
+              Shape <ChevronsDown className="w-3 h-3 text-muted-foreground" />
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="center" side="top">
               {/* Basic Shapes */}
@@ -157,13 +315,24 @@ export function NodeManipulationToolbar({
         {/* Duplicate */}
         <button 
             onClick={(e) => { e.preventDefault(); onDuplicateNode(); }}
-            className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
             title="Duplicate Node"
         >
-            <Copy className="w-5 h-5" />
+            <Copy className="w-4 h-4" />
         </button>
 
-        <div className="w-px h-6 bg-slate-200 dark:bg-zinc-800 mx-1.5" />
+        <div className="w-px h-4 bg-border mx-1" />
+
+        {/* Reset Style */}
+        <button 
+            onClick={(e) => { e.preventDefault(); onResetStyle?.(); }}
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="Reset to Theme Defaults"
+        >
+            <RotateCcw className="w-4 h-4" />
+        </button>
+
+        <div className="w-px h-4 bg-border mx-1" />
         
         {/* Delete */}
         <button 
@@ -171,10 +340,10 @@ export function NodeManipulationToolbar({
                 e.preventDefault();
                 onDeleteNode();
             }}
-            className="h-10 w-10 flex items-center justify-center rounded-full hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500 transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-destructive/10 text-red-500 hover:text-destructive transition-colors"
             title="Delete Node (Backspace/Delete)"
         >
-            <Trash2 className="w-5 h-5" />
+            <Trash2 className="w-4 h-4" />
         </button>
     </div>
   );

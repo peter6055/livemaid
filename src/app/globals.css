@@ -157,3 +157,86 @@ svg[aria-roledescription="error"],
   align-items: center !important;
   justify-content: center !important;
 }
+
+@keyframes mermaid-flow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+/* Interactive Diagram Elements Cursor */
+.mermaid-container .node,
+.mermaid-container .node * {
+  cursor: pointer !important;
+}
+
+.mermaid-container .cluster,
+.mermaid-container .cluster * {
+  cursor: pointer !important;
+}
+
+.mermaid-container .edgeLabel,
+.mermaid-container .edgeLabel * {
+  cursor: pointer !important;
+}
+
+.mermaid-container path.flowchart-link,
+.mermaid-container .edgePath .path,
+.mermaid-container .edgePath .arrowheadPath {
+  cursor: pointer !important;
+  transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+/* Synchronized hover highlights for flowchart edges/lines and their labels */
+.mermaid-container path.flowchart-link.edge-hover-highlight,
+.mermaid-container .edgePath .path.edge-hover-highlight {
+  stroke: #6366f1 !important; /* Indigo-500 */
+  stroke-width: 3px !important;
+}
+
+.mermaid-container .edgeLabel.edge-hover-highlight text,
+.mermaid-container .edgeLabel.edge-hover-highlight span,
+.mermaid-container .edgeLabel.edge-hover-highlight p {
+  color: #6366f1 !important;
+  fill: #6366f1 !important;
+  font-weight: 600;
+  transition: color 0.2s, fill 0.2s, font-weight 0.2s;
+}
+
+/* Hover highlights for nodes / objects - only the hovered node */
+.mermaid-container .node:hover rect,
+.mermaid-container .node:hover circle,
+.mermaid-container .node:hover polygon,
+.mermaid-container .node:hover ellipse,
+.mermaid-container .node:hover path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
+  stroke: #6366f1 !important; /* Indigo-500 */
+  stroke-width: 2.5px !important;
+}
+
+/* Smooth transition for node shapes */
+.mermaid-container .node rect,
+.mermaid-container .node circle,
+.mermaid-container .node polygon,
+.mermaid-container .node ellipse,
+.mermaid-container .node path {
+  transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+.mermaid-container .actor,
+.mermaid-container .actor * {
+  cursor: pointer !important;
+}
+
+.mermaid-container .messageText,
+.mermaid-container .messageLine,
+.mermaid-container .note,
+.mermaid-container .note * {
+  cursor: pointer !important;
+}
+
+/* General button and interactive items cursor pointer */
+button,
+[role="button"],
+.cursor-pointer {
+  cursor: pointer !important;
+}

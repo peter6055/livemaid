@@ -5,6 +5,8 @@ Before implementing ANY features or modifying the editor logic, you MUST read th
 1. `reference/FEATURES_AND_TRUTHS.md`: Outlines critical implementations like pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints. Furthermore, you MUST constantly update this file whenever you implement a new feature or change core architecture logic so that it remains an accurate source of truth.
 2. `reference/ARCHITECTURE.md`: High-level system architecture overview.
 3. `reference/DESIGN.md`: UI/UX design specifications and aesthetic guidelines.
+
+> **RULE:** ALL future reference documentation intended for AI agents or developers MUST be placed inside the `reference/` folder. Do not place documentation at the root level to keep the repository clean.
 <!-- END:livemaid-architecture-rules -->
 
 <!-- BEGIN:nextjs-agent-rules -->

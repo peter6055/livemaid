@@ -1,9 +1,7 @@
 import Editor from "@monaco-editor/react";
 import { useTheme } from "next-themes";
-import { ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 
 interface EditorCodePanelProps {
-  isCodePanelOpen: boolean;
   code: string;
   handleCodeChange: (value: string | undefined) => void;
   handleEditorDidMount: (editor: any, monaco: any) => void;
@@ -11,7 +9,6 @@ interface EditorCodePanelProps {
 }
 
 export function EditorCodePanel({
-  isCodePanelOpen,
   code,
   handleCodeChange,
   handleEditorDidMount,
@@ -19,11 +16,8 @@ export function EditorCodePanel({
 }: EditorCodePanelProps) {
   const { theme } = useTheme();
 
-  if (!isCodePanelOpen) return null;
-
   return (
     <>
-      <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
         <div className="h-10 border-b border-border bg-muted/50 flex items-center px-4 shrink-0 justify-between">
           <span className="text-xs font-mono text-foreground font-bold tracking-wide uppercase">Mermaid Code</span>
         </div>
@@ -34,13 +28,13 @@ export function EditorCodePanel({
               defaultLanguage="markdown"
               theme={theme === "dark" ? "vs-dark" : "light"}
               value={code}
-              onChange={handleCodeChange}
+              onChange={(value) => handleCodeChange(value)}
               onMount={handleEditorDidMount}
               options={{
                 readOnly: false,
                 minimap: { enabled: false },
                 fontSize: 13,
-                wordWrap: "on",
+                wordWrap: "off",
                 lineNumbers: "on",
                 scrollBeyondLastLine: false,
                 padding: { top: 16, bottom: 40 }
@@ -54,8 +48,6 @@ export function EditorCodePanel({
             </div>
           )}
         </div>
-      </ResizablePanel>
-      <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
     </>
   );
 }

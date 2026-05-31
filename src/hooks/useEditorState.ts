@@ -36,7 +36,8 @@ export function useEditorState(documentId: string) {
       const id = `mermaid-svg-${Date.now()}`;
       renderIdRef.current = id;
       const { svg } = await mermaid.render(id, mermaidCode);
-      setSvgContent(svg);
+      const interactiveSvg = addInteractionHelpersToSvg(svg);
+      setSvgContent(interactiveSvg);
       
       // Try to extract theme
       const match = mermaidCode.match(/theme:\s*(?:'|")?([^'"\s\n]+)/);
@@ -136,4 +137,39 @@ export function useEditorState(documentId: string) {
     renderIdRef,
     handleCodeChange
   };
+}
+
+function addInteractionHelpersToSvg(svgString: string): string {
+  if (typeof window === "undefined") return svgString;
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(svgString, "image/svg+xml");
+    
+    const paths = doc.querySelectorAll("path.flowchart-link, .edgePath path.path");
+    paths.forEach((path) => {
+      const clone = path.cloneNode(true) as SVGElement;
+      
+      clone.classList.add("flowchart-link-hit-target");
+      if (path.id) {
+        clone.id = `${path.id}-hit-target`;
+      }
+      
+      clone.removeAttribute("stroke-dasharray");
+      clone.setAttribute("stroke-width", "16px");
+      clone.setAttribute("stroke", "transparent");
+      clone.setAttribute("fill", "none");
+      clone.setAttribute("opacity", "0.01");
+      clone.setAttribute("style", "stroke-width: 16px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important;");
+      
+      if (path.parentNode) {
+        path.parentNode.insertBefore(clone, path);
+      }
+    });
+    
+    const serializer = new XMLSerializer();
+    return serializer.serializeToString(doc);
+  } catch (error) {
+    console.error("Failed to add SVG interaction helpers:", error);
+    return svgString;
+  }
 }

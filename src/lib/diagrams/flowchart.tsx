@@ -1,7 +1,8 @@
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Type, LayoutTemplate } from "lucide-react";
+import { ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Type, LayoutTemplate, Spline } from "lucide-react";
+import { parseMermaidCurve, updateMermaidCurve } from "./utils";
 
 export const BASIC_SHAPES = [
   { b: null, isText: true, l: 'Text', i: <text x="12" y="16" fontSize="14" fontFamily="sans-serif" textAnchor="middle" fill="currentColor" fontWeight="bold">T</text> },
@@ -75,6 +76,22 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
   const currentDirection = (() => {
       const m = code.match(/(flowchart|graph)\s+(TD|TB|BT|RL|LR)/);
       return m ? m[2] : 'TD';
+  })();
+
+  const activeCurve = parseMermaidCurve(code);
+
+  const handleCurveChange = (curve: string) => {
+      setCode(updateMermaidCurve(code, curve));
+  };
+
+  const activeCurveLabel = (() => {
+    switch (activeCurve) {
+      case 'basis': return 'Curved';
+      case 'linear': return 'Straight';
+      case 'step':
+      default:
+        return 'Orthogonal';
+    }
   })();
 
   const handleDirectionChange = (newDir: string) => {
@@ -169,6 +186,37 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
             <div className="w-3 h-3 bg-white rounded-full translate-x-3 shadow-sm" />
           </div>
       </div>
+      <div className="h-5 w-px bg-border" />
+
+      {/* Curve Dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger render={
+          <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-1.5 px-2.5 rounded-lg" title="Global Edge Routing" />
+        }>
+          <Spline className="w-4 h-4 text-indigo-500" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Curve:</span>
+          <span className="text-xs font-semibold text-foreground">{activeCurveLabel}</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-48 p-2 bg-background border border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
+          <div className="flex flex-col">
+            {[
+              { id: 'step', label: 'Orthogonal (Default)' },
+              { id: 'basis', label: 'Natural / Curved' },
+              { id: 'linear', label: 'Linear / Straight' },
+            ].map((curveItem) => (
+              <DropdownMenuItem 
+                key={curveItem.id}
+                onClick={() => handleCurveChange(curveItem.id)}
+                className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent text-foreground"
+              >
+                <span className="flex-1 text-sm font-medium">{curveItem.label}</span>
+                {activeCurve === curveItem.id && <Check className="w-4 h-4 text-indigo-500" />}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <div className="h-5 w-px bg-border" />
 
       <div className="flex items-center gap-2 rounded-xl bg-background p-0 border-none">

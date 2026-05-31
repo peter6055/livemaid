@@ -9,6 +9,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 
 import {
   DropdownMenu,
@@ -206,9 +207,54 @@ export default function Dashboard() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center items-center h-64 text-zinc-500 flex-col gap-4 transition-all duration-300">
-            <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-            <p className="text-lg font-medium text-foreground animate-pulse">Loading Diagrams...</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Card key={i} className="flex flex-col h-full bg-background border-border shadow-sm">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between w-full">
+                    <Skeleton className="h-6 w-2/3 rounded-md bg-zinc-200/60 dark:bg-zinc-800/60" />
+                    <div className="flex gap-1">
+                      <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+                      <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+                    </div>
+                  </div>
+                  <div className="flex items-center mt-2 gap-2">
+                    <Skeleton className="h-3.5 w-4 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+                    <Skeleton className="h-4 w-1/4 rounded bg-zinc-200/60 dark:bg-zinc-800/60" />
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                  <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center overflow-hidden relative">
+                    {/* High fidelity animated flowchart node shapes inside skeleton */}
+                    <div className="flex items-center justify-center gap-3 w-full h-full px-4 opacity-50 dark:opacity-40 animate-pulse">
+                      {/* Node 1: Start (stadium) */}
+                      <div className="h-7 w-12 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                        <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                      </div>
+                      {/* Connector Arrow 1 */}
+                      <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+                        <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+                      </div>
+                      {/* Node 2: Decision (diamond) */}
+                      <div className="h-8 w-8 rotate-45 border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                        <div className="-rotate-45 h-2 w-2 bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
+                      </div>
+                      {/* Connector Arrow 2 */}
+                      <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+                        <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+                      </div>
+                      {/* Node 3: End (rectangle) */}
+                      <div className="h-7 w-12 rounded border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                        <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
+                  <Skeleton className="h-3.5 w-24 bg-zinc-200/60 dark:bg-zinc-800/60" />
+                </CardFooter>
+              </Card>
+            ))}
           </div>
         ) : diagrams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">

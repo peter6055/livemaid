@@ -1,4 +1,4 @@
-import { RefObject } from "react";
+import { RefObject, useEffect, useRef } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
 
@@ -14,6 +14,7 @@ interface InlineTextEditorProps {
   handleEditSubmit: () => void;
   handleFormatText: (format: string, value?: string) => void;
   inlineInputRef: RefObject<HTMLTextAreaElement | null>;
+  selectedSvgId: string | null;
 }
 
 export function InlineTextEditor({
@@ -27,8 +28,78 @@ export function InlineTextEditor({
   setEditingText,
   handleEditSubmit,
   handleFormatText,
-  inlineInputRef
+  inlineInputRef,
+  selectedSvgId
 }: InlineTextEditorProps) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isInlineEditing) return;
+
+    const stopNativePropagation = (e: Event) => {
+      e.stopPropagation();
+    };
+
+    const toolbar = toolbarRef.current;
+    if (toolbar) {
+      toolbar.addEventListener("mousedown", stopNativePropagation);
+      toolbar.addEventListener("pointerdown", stopNativePropagation);
+      toolbar.addEventListener("touchstart", stopNativePropagation);
+    }
+
+    const input = inlineInputRef.current;
+    if (input) {
+      input.addEventListener("mousedown", stopNativePropagation);
+      input.addEventListener("pointerdown", stopNativePropagation);
+      input.addEventListener("touchstart", stopNativePropagation);
+    }
+
+    return () => {
+      if (toolbar) {
+        toolbar.removeEventListener("mousedown", stopNativePropagation);
+        toolbar.removeEventListener("pointerdown", stopNativePropagation);
+        toolbar.removeEventListener("touchstart", stopNativePropagation);
+      }
+      if (input) {
+        input.removeEventListener("mousedown", stopNativePropagation);
+        input.removeEventListener("pointerdown", stopNativePropagation);
+        input.removeEventListener("touchstart", stopNativePropagation);
+      }
+    };
+  }, [isInlineEditing, inlineInputRef]);
+
+  useEffect(() => {
+    if (!isInlineEditing) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      // Check if click was outside textarea
+      if (
+        inlineInputRef.current && 
+        !inlineInputRef.current.contains(event.target as Node)
+      ) {
+        // Check if we clicked on the inline formatting toolbar
+        const toolbar = document.querySelector('[data-inline-toolbar]');
+        if (toolbar && toolbar.contains(event.target as Node)) {
+          return;
+        }
+
+        // Check if we clicked on the dropdown content (e.g. preset colors)
+        const dropdownContents = document.querySelectorAll('[role="menu"], [data-radix-menu-content]');
+        for (const dropdown of Array.from(dropdownContents)) {
+          if (dropdown.contains(event.target as Node)) {
+            return;
+          }
+        }
+        
+        handleEditSubmit();
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [isInlineEditing, handleEditSubmit, inlineInputRef]);
 
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
@@ -36,11 +107,16 @@ export function InlineTextEditor({
     <>
       {/* Formatting Toolbar */}
       <div 
-          className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1 bg-[#1c1c21] rounded-lg p-1 pointer-events-auto shadow-xl z-50 text-white"
+          ref={toolbarRef}
+          data-inline-toolbar
+          data-scale-lock
+          data-base-transform="translateX(-50%)"
+          className="absolute left-1/2 flex items-center gap-1 bg-[#1c1c21] rounded-lg p-1 pointer-events-auto shadow-xl z-50 text-white"
           style={{ 
-              top: `-${45 / scale}px`,
-              transform: `scale(${1 / scale}) translateX(-50%)`,
-              transformOrigin: 'bottom left'
+              top: `calc(-50px * var(--zoom-inverse-scale, ${1 / scale}))`,
+              transform: `translateX(-50%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
+              transformOrigin: 'bottom center',
+              left: '50%'
           }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => e.stopPropagation()}
@@ -82,8 +158,10 @@ export function InlineTextEditor({
       
       {/* Textarea Overlay */}
       <textarea
+          data-scale-lock
+          data-base-transform="translate(-50%, -50%)"
           ref={inlineInputRef}
-          className="absolute p-2 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center flex items-center justify-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl"
+          className="absolute p-2 bg-white/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center flex items-center justify-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl"
           value={editingText}
           onChange={(e) => setEditingText(e.target.value)}
           onKeyDown={(e) => {
@@ -105,12 +183,20 @@ export function InlineTextEditor({
           style={{
               left: (textBox.x - (selectionBox.x - 4)) + textBox.width / 2,
               top: (textBox.y - (selectionBox.y - 4)) + textBox.height / 2,
-              transform: `translate(-50%, -50%) scale(${1 / scale})`,
+              transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
               width: Math.max(textBox.width * scale + 40, 150),
               height: Math.max(textBox.height * scale + 20, 40),
               fontSize: '14px',
               lineHeight: 1.4,
-              color: theme === 'dark' ? '#f4f4f5' : '#1e1e24',
+              color: (() => {
+                if (!selectedSvgId) return '#1e1e24';
+                const el = document.querySelector(`#${selectedSvgId}`);
+                if (!el) return '#1e1e24';
+                const textEl = el.querySelector('.label, text, span, .messageText, .noteText') || el;
+                const computed = window.getComputedStyle(textEl);
+                const val = computed.fill || computed.color;
+                return val && val !== 'none' ? val : '#1e1e24';
+              })(),
           }}
       />
     </>
