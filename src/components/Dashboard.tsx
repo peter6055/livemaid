@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
@@ -155,9 +155,11 @@ export default function Dashboard() {
     }
   };
 
-  const filteredDiagrams = diagrams.filter((diagram) =>
-    diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-  );
+  const filteredDiagrams = useMemo(() => {
+    return diagrams.filter((diagram) =>
+      diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    );
+  }, [diagrams, searchQuery]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
