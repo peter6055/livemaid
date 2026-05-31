@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, FileEdit, Trash2, Clock, GitCommitVertical } from 'lucide-react';
+import { Plus, FileEdit, Trash2, Clock, GitCommitVertical, Repeat2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
@@ -74,12 +74,18 @@ export function DiagramCard({
             </Button>
           </div>
         </div>
-        <div className="flex items-center text-xs text-muted-foreground mt-1">
-           <GitCommitVertical className="h-3 w-3 mr-1" />
-           <span className="capitalize mr-2">{parsedType}</span>
+        <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2">
+           <GitCommitVertical className="h-3 w-3" />
+           <span className="capitalize">{parsedType}</span>
+           {isSupported && (
+             <div className="flex items-center gap-0.5 bg-blue-500/10 dark:bg-blue-400/10 px-1 py-0.5 rounded">
+               <Repeat2 className="h-2.5 w-2.5 text-blue-600 dark:text-blue-400" />
+               <span className="text-[10px] font-medium text-blue-700 dark:text-blue-300">2-way</span>
+             </div>
+           )}
            {!isSupported && (
              <Badge variant="outline" className="px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">
-               Code Edit Only
+               Code Only
              </Badge>
            )}
         </div>
