@@ -1,28 +1,142 @@
+"use client";
+
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Users, StickyNote, RefreshCw, GitBranch, ArrowRight, ArrowRightToLine, Undo2, SquareSquare } from "lucide-react";
+import { Users, StickyNote, RefreshCw, GitBranch, SquareSquare } from "lucide-react";
+import { useState } from "react";
+
+// SVG icons for each participant type
+const ParticipantIcon = ({ type }: { type: string }) => {
+  const iconProps = "w-12 h-12 stroke-current stroke-2 fill-none";
+  
+  switch (type) {
+    case 'participant':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          <rect x="4" y="4" width="24" height="20" rx="2" />
+        </svg>
+      );
+    case 'actor':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Head */}
+          <circle cx="16" cy="8" r="3" fill="currentColor" />
+          {/* Body */}
+          <line x1="16" y1="11" x2="16" y2="20" />
+          {/* Arms */}
+          <line x1="8" y1="15" x2="24" y2="15" />
+          {/* Legs */}
+          <line x1="16" y1="20" x2="10" y2="26" />
+          <line x1="16" y1="20" x2="22" y2="26" />
+        </svg>
+      );
+    case 'boundary':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Vertical line */}
+          <line x1="8" y1="4" x2="8" y2="28" />
+          {/* Top arc */}
+          <path d="M 8 8 Q 20 4 20 16 Q 20 28 8 28" />
+        </svg>
+      );
+    case 'control':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Circle */}
+          <circle cx="16" cy="16" r="10" />
+          {/* Diagonal line through center */}
+          <line x1="8" y1="8" x2="24" y2="24" />
+        </svg>
+      );
+    case 'entity':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Circle */}
+          <circle cx="16" cy="16" r="10" />
+        </svg>
+      );
+    case 'database':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Top ellipse */}
+          <ellipse cx="16" cy="8" rx="9" ry="4" />
+          {/* Vertical lines */}
+          <line x1="7" y1="8" x2="7" y2="20" />
+          <line x1="25" y1="8" x2="25" y2="20" />
+          {/* Bottom ellipse */}
+          <ellipse cx="16" cy="20" rx="9" ry="4" />
+        </svg>
+      );
+    case 'collections':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Top rectangle */}
+          <rect x="4" y="4" width="20" height="8" rx="1" />
+          {/* Bottom rectangle (offset) */}
+          <rect x="6" y="12" width="20" height="8" rx="1" />
+        </svg>
+      );
+    case 'queue':
+      return (
+        <svg viewBox="0 0 32 32" className={iconProps}>
+          {/* Cylinder on side */}
+          <ellipse cx="10" cy="16" rx="4" ry="8" />
+          <line x1="14" y1="8" x2="24" y2="8" />
+          <line x1="14" y1="24" x2="24" y2="24" />
+          <path d="M 24 8 Q 26 16 24 24" />
+        </svg>
+      );
+    default:
+      return null;
+  }
+};
 
 const SequenceToolbar = ({ code, setCode }: EditorContext) => {
+  const [showParticipantPicker, setShowParticipantPicker] = useState(false);
   
   const participantTypes = [
-    { key: 'participant', label: 'Participants', icon: '👥' },
-    { key: 'actor', label: 'Actors', icon: '🎭' },
-    { key: 'boundary', label: 'Boundary', icon: '🚧' },
-    { key: 'control', label: 'Control', icon: '🎚️' },
-    { key: 'entity', label: 'Entity', icon: '📦' },
-    { key: 'database', label: 'Database', icon: '🗄️' },
-    { key: 'collections', label: 'Collections', icon: '📚' },
-    { key: 'queue', label: 'Queue', icon: '📤' },
+    { key: 'participant', label: 'Participant' },
+    { key: 'actor', label: 'Actor' },
+    { key: 'boundary', label: 'Boundary' },
+    { key: 'control', label: 'Control' },
+    { key: 'entity', label: 'Entity' },
+    { key: 'database', label: 'Database' },
+    { key: 'collections', label: 'Collections' },
+    { key: 'queue', label: 'Queue' },
   ];
 
   const handleAddParticipant = (type: string) => {
-      const p = `New_${type.charAt(0).toUpperCase() + type.slice(1)}_${Date.now().toString().slice(-3)}`;
+      const timestamp = Date.now().toString().slice(-3);
+      const displayNames: Record<string, string> = {
+        'participant': 'Participant',
+        'actor': 'Actor',
+        'boundary': 'Boundary',
+        'control': 'Control',
+        'entity': 'Entity',
+        'database': 'Database',
+        'collections': 'Collections',
+        'queue': 'Queue',
+      };
+
       let newCode = code;
       const lines = newCode.split('\n');
-      const insertIdx = lines.findIndex(l => !l.startsWith('sequenceDiagram') && !l.trim().startsWith('participant') && !l.trim().startsWith('actor') && !l.trim().startsWith('boundary') && !l.trim().startsWith('control') && !l.trim().startsWith('entity') && !l.trim().startsWith('database') && !l.trim().startsWith('collections') && !l.trim().startsWith('queue') && l.trim() !== '');
+      const insertIdx = lines.findIndex(l => 
+        !l.trim().startsWith('sequenceDiagram') && 
+        !l.trim().startsWith('participant') && 
+        !l.trim().startsWith('actor') && 
+        l.trim() !== ''
+      );
       
-      const insertLine = `    ${type} ${p} as New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+      let insertLine = '';
+      if (type === 'participant') {
+        insertLine = `    participant P${timestamp} as New ${displayNames[type]}`;
+      } else if (type === 'actor') {
+        insertLine = `    actor A${timestamp} as New ${displayNames[type]}`;
+      } else {
+        insertLine = `    participant P${timestamp}@{ "type": "${type}" } as New ${displayNames[type]}`;
+      }
+
       if (insertIdx === -1 || insertIdx === 0) {
           newCode += `\n${insertLine}`;
       } else {
@@ -30,6 +144,7 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
           newCode = lines.join('\n');
       }
       setCode(newCode);
+      setShowParticipantPicker(false);
   };
 
   const handleAddNote = () => {
@@ -57,20 +172,37 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
   return (
     <>
       <div className="flex items-center gap-2 rounded-xl bg-background p-0 border-none">
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" />}>
-            <Users className="w-4 h-4" />
-            <span>Participants</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
-              {participantTypes.map(type => (
-                <DropdownMenuItem key={type.key} onClick={() => handleAddParticipant(type.key)} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-                  <span className="text-sm">{type.icon}</span>
-                  <span className="flex-1 text-sm font-medium">{type.label}</span>
-                </DropdownMenuItem>
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2 relative"
+          onClick={() => setShowParticipantPicker(!showParticipantPicker)}
+          title="Add Participant"
+        >
+          <Users className="w-4 h-4" />
+          <span>Participants</span>
+        </Button>
+
+        {showParticipantPicker && (
+          <div className="absolute top-full mt-2 left-0 z-50 bg-background border border-border rounded-lg shadow-lg p-4 w-80">
+            <p className="text-xs font-semibold text-muted-foreground mb-3">Participant Type</p>
+            <div className="grid grid-cols-3 gap-4">
+              {participantTypes.map((type) => (
+                <button
+                  key={type.key}
+                  onClick={() => handleAddParticipant(type.key)}
+                  className="flex flex-col items-center gap-2 p-3 rounded-lg border border-border hover:bg-accent hover:border-accent-foreground transition-all duration-200 cursor-pointer group"
+                  title={type.label}
+                >
+                  <div className="w-16 h-16 flex items-center justify-center text-foreground">
+                    <ParticipantIcon type={type.key} />
+                  </div>
+                  <span className="text-xs font-medium text-foreground text-center group-hover:text-accent-foreground">{type.label}</span>
+                </button>
               ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </div>
+          </div>
+        )}
 
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddNote} title="Add Note">
             <StickyNote className="w-4 h-4" />
