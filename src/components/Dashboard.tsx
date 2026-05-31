@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,9 @@ export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const router = useRouter();
 
@@ -57,28 +60,67 @@ export default function Dashboard() {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [deleteId, setDeleteId] = useState("");
 
-  useEffect(() => {
-    fetchDiagrams();
-  }, []);
-
-  const fetchDiagrams = async () => {
+  const fetchDiagrams = async (pageNum: number, isInitial = false) => {
     try {
+      if (isInitial) setLoading(true);
+      else setLoadingMore(true);
+
+      const limit = 6;
+      const offset = pageNum * limit;
+      
       const startTime = Date.now();
-      const res = await fetch('/api/diagrams');
+      const res = await fetch(`/api/diagrams?limit=${limit}&offset=${offset}`);
       if (!res.ok) throw new Error('Failed to fetch');
       const data = await res.json();
       
       const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < 600) {
+      if (isInitial && elapsedTime < 600) {
         await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
       }
-      setDiagrams(data);
+
+      if (data.length < limit) {
+        setHasMore(false);
+      }
+
+      if (isInitial) {
+        setDiagrams(data);
+      } else {
+        setDiagrams(prev => {
+          // Prevent duplicates if double-fetched
+          const existingIds = new Set(prev.map(d => d.id));
+          const newDiagrams = data.filter((d: DiagramDocument) => !existingIds.has(d.id));
+          return [...prev, ...newDiagrams];
+        });
+      }
     } catch (error) {
       toast.error("Failed to load diagrams");
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
+      setLoadingMore(false);
     }
   };
+
+  useEffect(() => {
+    fetchDiagrams(0, true);
+  }, []);
+
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  const lastElementRef = useCallback((node: HTMLDivElement | null) => {
+    if (loading || loadingMore) return;
+    if (observerRef.current) observerRef.current.disconnect();
+    
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore) {
+        setPage(prev => {
+          const nextPage = prev + 1;
+          fetchDiagrams(nextPage, false);
+          return nextPage;
+        });
+      }
+    });
+    
+    if (node) observerRef.current.observe(node);
+  }, [loading, loadingMore, hasMore]);
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
@@ -268,17 +310,25 @@ export default function Dashboard() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {diagrams.map(diagram => (
-              <DiagramCard 
-                key={diagram.id} 
-                diagram={diagram} 
-                onRename={openRenameDialog}
-                onDelete={openDeleteDialog}
-                onNavigate={handleNavigate}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {diagrams.map(diagram => (
+                <DiagramCard 
+                  key={diagram.id} 
+                  diagram={diagram} 
+                  onRename={openRenameDialog}
+                  onDelete={openDeleteDialog}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+            </div>
+            
+            {hasMore && (
+              <div ref={lastElementRef} className="h-20 w-full mt-6 flex items-center justify-center">
+                {loadingMore && <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />}
+              </div>
+            )}
+          </>
         )}
       </div>
 
