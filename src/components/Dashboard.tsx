@@ -205,17 +205,17 @@ export default function Dashboard() {
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
         {/* Diagram Capabilities Info */}
-        <div className="mb-8 p-5 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">
+        <div className="mb-8 p-5 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/30 dark:to-indigo-900/20 border border-indigo-200/50 dark:border-indigo-800/50 rounded-lg">
           <div className="flex items-start gap-3">
-            <div className="bg-blue-500/20 p-2.5 rounded-lg flex-shrink-0">
-              <Repeat2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="bg-indigo-500/20 p-2.5 rounded-lg flex-shrink-0">
+              <Repeat2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div className="flex-1">
               <h3 className="font-semibold text-sm text-foreground mb-2">Two-way Sync</h3>
               <p className="text-sm text-muted-foreground mb-3">Edit visually on the canvas or modify the code—both stay in sync automatically.</p>
               <div className="flex flex-wrap gap-1.5">
                 <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Flowchart</span>
-                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Sequence</span>
+                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Sequence (Preview)</span>
               </div>
               <p className="text-xs text-muted-foreground mt-3">Other diagram types are code-only.</p>
             </div>
