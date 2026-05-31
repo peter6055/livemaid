@@ -33,14 +33,17 @@ export async function PUT(
 
     const body = await request.json();
     const now = new Date().toISOString();
-    const shouldSnapshotCurrentCode = typeof body.code === 'string' && body.code !== existing.code;
+    const shouldSnapshotCurrentCode =
+      typeof body.code === 'string' &&
+      typeof existing.code === 'string' &&
+      body.code !== existing.code;
     const existingHistory = Array.isArray(existing.versionHistory) ? existing.versionHistory : [];
     const versionHistory = shouldSnapshotCurrentCode
       ? [
           {
             id: nanoid(),
             code: existing.code,
-            timestamp: now,
+            timestamp: existing.updatedAt || now,
           },
           ...existingHistory,
         ].slice(0, MAX_VERSION_HISTORY)

@@ -1067,13 +1067,13 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                 <div key={version.id} className="border border-border rounded-lg p-3 flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">
-                      Version {index + 1}
+                      Snapshot {index + 1}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Saved {new Date(version.timestamp).toLocaleString()}
                     </p>
                     <p className="text-xs text-muted-foreground truncate mt-1">
-                      {version.code.split('\n')[0] || 'Empty diagram'}
+                      {version.code.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Empty diagram'}
                     </p>
                   </div>
                   <Button
