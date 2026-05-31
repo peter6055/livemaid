@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,8 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [displayCount, setDisplayCount] = useState(6);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   // Dialog states
@@ -160,6 +162,28 @@ export default function Dashboard() {
       diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
     );
   }, [diagrams, searchQuery]);
+
+  const displayedDiagrams = useMemo(() => {
+    return filteredDiagrams.slice(0, displayCount);
+  }, [filteredDiagrams, displayCount]);
+
+  // Lazy loading intersection observer - defined AFTER computed values
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && displayCount < filteredDiagrams.length) {
+          setDisplayCount(prev => Math.min(prev + 6, filteredDiagrams.length));
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [displayCount, filteredDiagrams.length]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -330,17 +354,24 @@ export default function Dashboard() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDiagrams.map(diagram => (
-              <DiagramCard 
-                key={diagram.id} 
-                diagram={diagram} 
-                onRename={openRenameDialog}
-                onDelete={openDeleteDialog}
-                onNavigate={handleNavigate}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayedDiagrams.map(diagram => (
+                <DiagramCard 
+                  key={diagram.id} 
+                  diagram={diagram} 
+                  onRename={openRenameDialog}
+                  onDelete={openDeleteDialog}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+            </div>
+            {displayCount < filteredDiagrams.length && (
+              <div ref={sentinelRef} className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+              </div>
+            )}
+          </>
         )}
       </div>
 
