@@ -33,3 +33,10 @@ The editor interface uses a resizable split-screen layout (`react-resizable-pane
 - **Event Handling Caution**: `react-zoom-pan-pinch` actively intercepts and swallows certain standard DOM events (like `onDoubleClick` when double-click-to-zoom is disabled). When building new interactive features over the canvas, prefer calculating synthetic interactions inside standard `onClick`/`onMouseDown` handlers.
 - **Adding Diagram Support**: Supporting new diagram types involves examining the specific SVG DOM structure Mermaid generates for that diagram type (since IDs and class names vary wildly between flowcharts, sequence diagrams, etc.), and writing resilient Regex string-replacers for the code serializer.
 - Ensure the `data/` directory is excluded from version control if needed, or handled correctly in Docker volumes.
+
+## 6. Diagram Plugin Architecture & Parallel Development
+LiveMaid avoids using centralized object-oriented inheritance (e.g., `class DiagramBase`) for diagram behaviors. Instead, we use a **Composition / Plugin Architecture** built on functional React components.
+
+- **Centralized Shared Behavior**: Core canvas logic (infinite pan/zoom, coordinate mapping, and two-way sync synchronization) is centralized in `LiveMaidEditor` and shared custom hooks (`useEditorState`, `useCanvasInteraction`).
+- **Decoupled Diagram Logic**: Each diagram type is isolated into its own file (e.g., `src/lib/diagrams/flowchart.tsx`) and exports a `DiagramPlugin` interface. This plugin dictates diagram-specific behavior, default code, and renders its own interactive toolbars on top of the canvas.
+- **Parallel Agent Workflows**: Because diagram logic is perfectly decoupled, multiple AI agents or human developers can work on *different diagram types in parallel* without stepping on each other's toes or causing merge conflicts in a central file. For example, Agent A can build `mindmap.tsx` while Agent B builds `gantt.tsx`, and they only need to be exported in `src/lib/diagrams/registry.ts`.

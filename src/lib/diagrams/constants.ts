@@ -17,7 +17,5 @@ export const PRESET_COLORS = [
   { name: 'Purple', value: '#a855f7' },
   { name: 'Pink', value: '#ec4899' },
   { name: 'Slate', value: '#64748b' },
-  { name: 'Black', value: '#000000' },
-  { name: 'White', value: '#ffffff' },
   { name: 'Transparent', value: 'transparent' },
 ];

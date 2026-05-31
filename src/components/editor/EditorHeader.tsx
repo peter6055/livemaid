@@ -7,7 +7,7 @@ import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Loader2, Menu, LayoutTemplate, Download } from "lucide-react";
+import { Loader2, Menu, LayoutTemplate, Download, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;

@@ -2,14 +2,22 @@
 
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
-import { determineDiagramType } from "@/lib/diagrams/utils";
+import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles } from "@/lib/diagrams/utils";
 import { useCallback } from "react";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
-import { ResizablePanelGroup } from "@/components/ui/resizable";
-import { Loader2 } from "lucide-react";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
+import { Loader2, Undo2, Redo2, Type, Copy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import * as htmlToImage from "html-to-image";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DiagramRegistry } from "@/lib/diagrams/registry";
+import { FONT_OPTIONS } from "@/lib/diagrams/constants";
+import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
 import { useState, useRef } from "react";
 
@@ -39,6 +47,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [isNewDiagramOpen, setIsNewDiagramOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [isExportOpen, setIsExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('PNG');
+  const [exportBg, setExportBg] = useState('transparent');
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -58,6 +68,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     handleAddNodeFromSelected
   } = useCanvasInteraction({
     code,
+    svgContent,
     renderIdRef,
     containerRef,
     isLocked,
@@ -65,8 +76,107 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     determineDiagramType
   });
 
+  const handleDeselect = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedSvgId(null);
+    setSelectionBox(null);
+    setTextBox(null);
+    setIsInlineEditing(false);
+  }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  const handleResetStyle = useCallback(() => {
+    if (!selectedNodeId) return;
+    let newCode = code;
+    
+    // 1. Remove style lines
+    const lines = newCode.split('\n');
+    const filteredLines = lines.filter(line => {
+        const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
+        return !isStyleLine;
+    });
+    newCode = filteredLines.join('\n');
+
+    // 2. Remove inline HTML formatting tags from label
+    const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+    const match = newCode.match(nodeRegex);
+    if (match) {
+        const originalLabel = match[3];
+        const cleanLabel = originalLabel
+            .replace(/<b[^>]*>/gi, '')
+            .replace(/<\/b>/gi, '')
+            .replace(/<i[^>]*>/gi, '')
+            .replace(/<\/i>/gi, '')
+            .replace(/<span[^>]*>/gi, '')
+            .replace(/<\/span>/gi, '');
+        
+        newCode = newCode.replace(nodeRegex, `$1$2${cleanLabel}$4`);
+    }
+
+    handleCodeChange(newCode);
+
+    const nodeId = selectedNodeId;
+    setSelectedNodeId(null);
+    setTimeout(() => {
+        setSelectedNodeId(nodeId);
+    }, 50);
+  }, [code, handleCodeChange, selectedNodeId, setSelectedNodeId]);
+
+  const handleUpdateEdgeStyle = useCallback((updates: { stroke?: string; arrowType?: string; label?: string }) => {
+    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+    if (!src || !dst) return;
+    const updatedCode = updateLinkStyleAndLabel(code, src, dst, updates, occurrenceIndex);
+    const healedCode = rebuildLinkStyles(code, updatedCode);
+    handleCodeChange(healedCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleUpdateEdgeColor = useCallback((hexColor: string) => {
+    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+    if (!src || !dst) return;
+    const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
+    const updatedCode = updateLinkColor(code, linkIndex, hexColor);
+    handleCodeChange(updatedCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleUpdateEdgeCurve = useCallback((curve: string) => {
+    const updatedCode = updateMermaidCurve(code, curve);
+    handleCodeChange(updatedCode);
+  }, [code, handleCodeChange]);
+
+  const handleUpdateEdgeAnimation = useCallback((animate: boolean) => {
+    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+    if (!src || !dst) return;
+    const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
+    const updatedCode = updateLinkAnimation(code, linkIndex, animate);
+    handleCodeChange(updatedCode);
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleDeleteEdge = useCallback(() => {
+    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+    if (!src || !dst) return;
+    const updatedCode = deleteLink(code, src, dst, occurrenceIndex);
+    const healedCode = rebuildLinkStyles(code, updatedCode);
+    handleCodeChange(healedCode);
+    handleDeselect();
+  }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
+
+  const editorRef = useRef<any>(null);
+
   const handleEditorDidMount = (editor: any) => {
-      // editorRef logic can be placed here
+      editorRef.current = editor;
+  };
+
+  const handleThemeChange = (theme: string) => {
+    const updatedCode = updateMermaidConfigProperty(code, 'theme', theme);
+    handleCodeChange(updatedCode);
+  };
+
+  const handleFontChange = (font: typeof FONT_OPTIONS[0]) => {
+    const updatedCode = updateMermaidFontFamily(code, font.value);
+    handleCodeChange(updatedCode);
   };
 
   const handleUpdateStyle = useCallback((property: string, value: string) => {
@@ -90,14 +200,62 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   }, [code, handleCodeChange, selectedNodeId]);
 
   const handleFormatNodeLabel = useCallback((format: string, colorValue?: string) => {
+      if (!selectedNodeId) return;
+      const getStyleVal = (property: string): string | null => {
+        const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm'));
+        if (match) {
+          const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
+          return propMatch ? propMatch[1] : null;
+        }
+        return null;
+      };
+
       if (format === 'bold') {
-          handleUpdateStyle('font-weight', 'bold');
+          const codeVal = getStyleVal('font-weight');
+          let isBold = codeVal === 'bold';
+          if (!isBold && selectedSvgId) {
+             try {
+               const parent = document.getElementById(selectedSvgId);
+               const el = parent?.querySelector('.label, text, .nodeLabel');
+               if (el) {
+                 const fw = window.getComputedStyle(el).fontWeight;
+                 isBold = ['bold', '700', '800', '900'].includes(fw);
+               }
+             } catch (e) {
+               console.error(e);
+             }
+          }
+
+          if (isBold) {
+              handleUpdateStyle('font-weight', 'normal');
+          } else {
+              handleUpdateStyle('font-weight', 'bold');
+          }
       } else if (format === 'italic') {
-          handleUpdateStyle('font-style', 'italic');
+          const codeVal = getStyleVal('font-style');
+          let isItalic = codeVal === 'italic';
+          if (!isItalic && selectedSvgId) {
+             try {
+               const parent = document.getElementById(selectedSvgId);
+               const el = parent?.querySelector('.label, text, .nodeLabel');
+               if (el) {
+                 const fs = window.getComputedStyle(el).fontStyle;
+                 isItalic = fs === 'italic';
+               }
+             } catch (e) {
+               console.error(e);
+             }
+          }
+
+          if (isItalic) {
+              handleUpdateStyle('font-style', 'normal');
+          } else {
+              handleUpdateStyle('font-style', 'italic');
+          }
       } else if (format === 'color' && colorValue) {
           handleUpdateStyle('color', colorValue);
       }
-  }, [handleUpdateStyle]);
+  }, [code, selectedNodeId, selectedSvgId, handleUpdateStyle]);
 
   const handleFormatText = (format: string, colorValue?: string) => {
     if (!inlineInputRef.current) return;
@@ -154,22 +312,10 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
              }
              return line;
         }).join('\n');
-    } else if (selectedNodeId.startsWith('L_')) {
-        const parts = selectedNodeId.split('_');
-        if (parts.length >= 3) {
-            const src = parts[1];
-            const dst = parts[2];
-            const linkRegex = new RegExp(`(^|\\n)(\\s*${src}\\s*)(?:-->|==>|-\\.->|--.*?-->|==.*?==>|-\\..*?\\.->|--.*?-|==.*?=|-\\..*?\\.)(?:.*?\\|)?(\\s*${dst}\\b)`, 'm');
-            const match = newCode.match(linkRegex);
-            
-            if (match) {
-                const fullMatch = match[0];
-                let newArrow = editingText.trim() ? `-- "${editingText}" -->` : `-->`;
-                if (fullMatch.includes('==')) newArrow = editingText.trim() ? `== "${editingText}" ==>` : `==>`;
-                if (fullMatch.includes('-.')) newArrow = editingText.trim() ? `-. "${editingText}" .->` : `-.->`;
-                
-                newCode = newCode.replace(linkRegex, `$1$2${newArrow}$3`);
-            }
+    } else if (isEdgeId(selectedNodeId)) {
+        const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+        if (src && dst) {
+            newCode = updateLinkStyleAndLabel(newCode, src, dst, { label: editingText }, occurrenceIndex);
         }
     } else {
         const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
@@ -392,6 +538,69 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       toast.error("Failed to rename");
     }
   };
+  
+  const handleExport = async () => {
+    let finalSvgContent = svgContent;
+    
+    // Inject background if needed for SVG/PNG
+    if (exportBg !== 'transparent') {
+      const bgRect = `<rect width="100%" height="100%" fill="${exportBg}" />`;
+      finalSvgContent = finalSvgContent.replace(/(<svg[^>]*>)/, `$1${bgRect}`);
+    }
+
+    if (exportFormat === 'SVG') {
+      const blob = new Blob([finalSvgContent], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc?.name || 'diagram'}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else if (exportFormat === 'PNG') {
+      try {
+        const svgContainer = containerRef.current?.querySelector('svg');
+        if (!svgContainer) throw new Error("No SVG found");
+        
+        let w = 800; let h = 600;
+        const viewBoxMatch = svgContainer.outerHTML.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
+        if (viewBoxMatch) { w = parseFloat(viewBoxMatch[1]); h = parseFloat(viewBoxMatch[2]); }
+
+        // Use html-to-image to properly render foreignObjects and bypass canvas taint
+        const dataUrl = await htmlToImage.toPng(svgContainer as unknown as HTMLElement, {
+          backgroundColor: exportBg === 'transparent' ? undefined : exportBg,
+          pixelRatio: 5,
+          skipFonts: true,
+          fontEmbedCSS: '',
+          width: w,
+          height: h,
+          style: {
+             transform: 'none',
+             transformOrigin: 'top left',
+             width: `${w}px`,
+             height: `${h}px`
+          }
+        });
+        
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `${doc?.name || 'diagram'}.png`;
+        a.click();
+      } catch (err) {
+        console.error("PNG export error", err);
+        toast.error("Failed to export PNG");
+      }
+    } else if (exportFormat === 'MMD') {
+      const blob = new Blob([code], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc?.name || 'diagram'}.mmd`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      toast.info(`${exportFormat} export coming soon!`);
+    }
+  };
 
   if (loading) {
     return (
@@ -426,15 +635,109 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       />
 
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
-        <EditorCodePanel 
-          isCodePanelOpen={isCodePanelOpen}
-          code={code}
-          handleCodeChange={handleCodeChange}
-          handleEditorDidMount={handleEditorDidMount}
-          parseError={parseError}
-        />
+        {isCodePanelOpen && (
+          <>
+            <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
+              <EditorCodePanel 
+                code={code}
+                handleCodeChange={handleCodeChange}
+                handleEditorDidMount={handleEditorDidMount}
+                parseError={parseError}
+              />
+            </ResizablePanel>
+            <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
+          </>
+        )}
 
-        <EditorCanvas
+        <ResizablePanel defaultSize={isCodePanelOpen ? 70 : 100} className="bg-white relative overflow-hidden text-zinc-900">
+          <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
+            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
+                title={isCodePanelOpen ? "Collapse code section" : "Expand code section"}
+              >
+                {isCodePanelOpen ? (
+                  <PanelLeftClose className="w-4 h-4" />
+                ) : (
+                  <PanelLeftOpen className="w-4 h-4" />
+                )}
+              </Button>
+              <div className="h-5 w-px bg-border" />
+
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'undo', null)} title="Undo">
+                <Undo2 className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'redo', null)} title="Redo">
+                <Redo2 className="w-4 h-4" />
+              </Button>
+              <div className="h-5 w-px bg-border" />
+              
+              <DropdownMenu>
+                <DropdownMenuTrigger render={
+                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
+                    <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
+                  </Button>
+                } />
+                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
+                    <div className="flex flex-col">
+                      {['default', 'forest', 'dark', 'neutral', 'base', 'mc', 'redux'].map((t) => (
+                         <DropdownMenuItem 
+                           key={t}
+                           onClick={() => handleThemeChange(t)}
+                           className="flex items-center gap-3 cursor-pointer"
+                         >
+                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'mc' ? 'bg-cyan-200 border-cyan-300' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                           <span className="capitalize">{t}</span>
+                         </DropdownMenuItem>
+                      ))}
+                    </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger render={
+                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
+                    <Type className="w-4 h-4"/>
+                  </Button>
+                } />
+                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                    <div className="flex flex-col">
+                      {FONT_OPTIONS.map((f) => (
+                         <DropdownMenuItem 
+                           key={f.label}
+                           onClick={() => handleFontChange(f)}
+                           className="flex items-center gap-3 cursor-pointer"
+                         >
+                           <span className={currentFont === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
+                         </DropdownMenuItem>
+                      ))}
+                    </div>
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="h-5 w-px bg-border" />
+              
+              {DiagramRegistry[currentType] && DiagramRegistry[currentType].ToolbarComponent && (() => {
+                  const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
+                  return ToolbarComp ? (
+                    <ToolbarComp 
+                      code={code} 
+                      setCode={handleCodeChange} 
+                      editorRef={editorRef} 
+                      selectedNodeId={selectedNodeId} 
+                    />
+                  ) : null;
+              })()}
+            </div>
+          </div>
+
+          <EditorCanvas
+          code={code}
           parseError={parseError}
           svgContent={svgContent}
           isLocked={isLocked}
@@ -451,11 +754,6 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}
           currentType={currentType}
-          toolbarStyle={{
-            top: selectionBox ? selectionBox.y - 45 : 0,
-            left: selectionBox ? selectionBox.x + selectionBox.width / 2 : 0,
-            transform: 'translateX(-50%)'
-          }}
           handleUpdateStyle={handleUpdateStyle}
           handleFormatNodeLabel={handleFormatNodeLabel}
           handleChangeShape={handleChangeShape}
@@ -469,8 +767,139 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           handleEditSubmit={handleEditSubmit}
           handleFormatText={handleFormatText}
           inlineInputRef={inlineInputRef}
-        />
+          handleAddNodeFromSelected={handleAddNodeFromSelected}
+          onDeselect={handleDeselect}
+          onResetStyle={handleResetStyle}
+          onUpdateEdgeStyle={handleUpdateEdgeStyle}
+          onUpdateEdgeColor={handleUpdateEdgeColor}
+          onUpdateEdgeCurve={handleUpdateEdgeCurve}
+          onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
+          onDeleteEdge={handleDeleteEdge}
+          />
+        </ResizablePanel>
       </ResizablePanelGroup>
+      
+      {/* Create Dialog */}
+      <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Diagram</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input 
+              value={createName} 
+              onChange={(e) => setCreateName(e.target.value)} 
+              placeholder="Diagram name"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateSubmit()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewDiagramOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Diagram</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <Input 
+              value={renameName} 
+              onChange={(e) => setRenameName(e.target.value)} 
+              placeholder="Diagram name"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>Cancel</Button>
+            <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">Rename</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Dialog */}
+      <Dialog open={isExportOpen} onOpenChange={setIsExportOpen}>
+        <DialogContent className="sm:max-w-[1200px] w-[90vw] max-w-[1200px]">
+          <DialogHeader>
+            <DialogTitle>Export diagram</DialogTitle>
+          </DialogHeader>
+          <div className="flex gap-6 py-4">
+             {/* Left Column (Options) */}
+             <div className="w-1/3 flex flex-col gap-4">
+                <div>
+                   <p className="text-sm font-semibold mb-2">Export format</p>
+                   <div className="flex flex-col gap-2">
+                     {[
+                       { id: 'PNG', label: 'PNG', desc: 'High quality raster image' },
+                       { id: 'SVG', label: 'SVG', desc: 'Scalable vector graphics' },
+                       { id: 'MMD', label: 'MMD', desc: 'Mermaid syntax code' },
+                     ].map(fmt => (
+                        <div 
+                          key={fmt.id}
+                          onClick={() => {
+                            setExportFormat(fmt.id);
+                            if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
+                          }}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/30' : 'border-border hover:border-foreground/20'}`}
+                        >
+                           <div className="flex items-center gap-2 mb-1">
+                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-teal-500' : 'border-border'}`}>
+                               {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-teal-500" />}
+                             </div>
+                             <span className="font-semibold text-foreground">{fmt.label}</span>
+                           </div>
+                           <p className="text-xs text-muted-foreground ml-6">{fmt.desc}</p>
+                        </div>
+                     ))}
+                   </div>
+                </div>
+                <div>
+                   <p className="text-sm font-semibold mb-2">Background color</p>
+                   <div className="flex gap-2">
+                     {(exportFormat === 'PNG' ? ['transparent', 'white', 'black'] : ['white', 'black']).map(c => (
+                        <div 
+                          key={c}
+                          onClick={() => setExportBg(c)}
+                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-teal-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
+                          style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
+                        />
+                     ))}
+                   </div>
+                </div>
+             </div>
+             {/* Right Column (Preview) */}
+             <div className="w-2/3 flex flex-col">
+                <p className="text-sm font-semibold mb-2">Preview</p>
+                <div 
+                  className="flex-grow border border-border rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]" 
+                  style={{ 
+                    backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
+                    backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
+                    backgroundSize: '10px 10px'
+                  }}
+                >
+                    <div dangerouslySetInnerHTML={{ __html: svgContent }} className="max-w-full max-h-full object-contain p-4 relative z-10" />
+                    <Button variant="outline" size="icon" className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20" onClick={() => {
+                        navigator.clipboard.writeText(svgContent);
+                        toast.success("SVG code copied to clipboard!");
+                    }}>
+                       <Copy className="w-4 h-4" />
+                    </Button>
+                </div>
+             </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
+            <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

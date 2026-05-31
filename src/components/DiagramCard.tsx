@@ -31,10 +31,12 @@ export function DiagramCard({
   onNavigate: (url: string) => void
 }) {
   const [svgContent, setSvgContent] = useState<string>('');
+  const [isCompiling, setIsCompiling] = useState<boolean>(true);
 
   useEffect(() => {
     if (diagram.code) {
       const renderPreview = async () => {
+        setIsCompiling(true);
         try {
           mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: false } });
           await mermaid.parse(diagram.code!, { suppressErrors: true });
@@ -43,9 +45,13 @@ export function DiagramCard({
         } catch (e) {
           // invalid syntax, don't render bomb error
           setSvgContent('');
+        } finally {
+          setIsCompiling(false);
         }
       };
       renderPreview();
+    } else {
+      setIsCompiling(false);
     }
   }, [diagram.code, diagram.id]);
 
@@ -80,8 +86,31 @@ export function DiagramCard({
       </CardHeader>
       <CardContent className="flex-grow">
         <a href={`/editor/${diagram.id}`} onClick={(e) => { e.preventDefault(); onNavigate(`/editor/${diagram.id}`); }}>
-          <div className="w-full h-32 bg-slate-50 rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
-            {svgContent ? (
+          <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
+            {isCompiling ? (
+              <div className="w-full h-full flex items-center justify-center gap-3 px-4 animate-pulse opacity-50 dark:opacity-40">
+                {/* Node 1: Start (stadium) */}
+                <div className="h-7 w-12 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                  <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                </div>
+                {/* Connector Arrow 1 */}
+                <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+                  <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+                </div>
+                {/* Node 2: Decision (diamond) */}
+                <div className="h-8 w-8 rotate-45 border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                  <div className="-rotate-45 h-2 w-2 bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
+                </div>
+                {/* Connector Arrow 2 */}
+                <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+                  <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+                </div>
+                {/* Node 3: End (rectangle) */}
+                <div className="h-7 w-12 rounded border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+                  <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+                </div>
+              </div>
+            ) : svgContent ? (
                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900" />
             ) : (
                <span className="text-zinc-500 text-xs font-medium">Preview Unavailable</span>
