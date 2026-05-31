@@ -1,15 +1,15 @@
 import { useRef, useEffect } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Palette, Sliders, MoveRight, HelpCircle, Zap, Edit3, Trash2 } from "lucide-react";
+import { Palette, Sliders, MoveRight, Edit3, Trash2, Play } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
 import { 
   parseConnectorStyle, 
   getLinkIndex, 
   parseLinkColor, 
-  parseLinkAnimation,
   isEdgeId,
   parseEdgeId,
-  CONNECTOR_PATTERN
+  CONNECTOR_PATTERN,
+  parseLinkAnimation
 } from "@/lib/diagrams/utils";
 
 interface EdgeManipulationToolbarProps {
@@ -20,7 +20,7 @@ interface EdgeManipulationToolbarProps {
   scale: number;
   onUpdateStyle: (updates: { stroke?: string; arrowType?: string; label?: string }) => void;
   onUpdateColor: (hexColor: string) => void;
-  onUpdateAnimation: (animate: boolean) => void;
+  onUpdateAnimation?: (animate: boolean) => void;
   onEditLabel: (e: React.MouseEvent) => void;
   onDeleteEdge: () => void;
 }
@@ -79,7 +79,7 @@ export function EdgeManipulationToolbar({
       if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
         continue;
       }
-      const linkLineRegex = new RegExp(`(^|\\s*)${src}\\b[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)\\b${dst}\\b`, 'i');
+      const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
       const match = line.match(linkLineRegex);
       if (match) {
         if (currentOccurrence === occurrenceIndex) {
@@ -94,7 +94,7 @@ export function EdgeManipulationToolbar({
   const { stroke, arrowType } = getConnectorStyle();
   const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
   const activeColor = parseLinkColor(code, linkIndex) || '#cbd5e1';
-  const isAnimated = parseLinkAnimation(code, linkIndex);
+  const isAnimated = parseLinkAnimation(code, src, dst, occurrenceIndex);
 
   const ARROW_TYPES = [
     { value: 'plain', label: 'Plain (---)', icon: '---' },
@@ -193,19 +193,18 @@ export function EdgeManipulationToolbar({
             })}
           </DropdownMenuContent>
         </DropdownMenu>
-
-
-
-        {/* Animate Flow Toggle */}
-        <button
-          onClick={() => onUpdateAnimation(!isAnimated)}
-          className={`h-8 w-8 flex items-center justify-center rounded-full transition-colors relative ${isAnimated ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 ring-1 ring-indigo-500/30' : 'hover:bg-accent hover:text-accent-foreground'}`}
-          title="Toggle Flow Animation"
-        >
-          <Zap className={`w-4 h-4 ${isAnimated ? 'fill-current animate-pulse' : ''}`} />
-        </button>
-
         <div className="w-px h-4 bg-border mx-1" />
+
+        {/* Toggle Animation */}
+        {onUpdateAnimation && (
+          <button
+            onClick={(e) => { e.preventDefault(); onUpdateAnimation(!isAnimated); }}
+            className={`h-8 w-8 flex items-center justify-center rounded-full transition-colors ${isAnimated ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25' : 'hover:bg-accent hover:text-accent-foreground text-muted-foreground'}`}
+            title="Toggle Animation"
+          >
+            <Play className={`w-4 h-4 ${isAnimated ? 'animate-pulse fill-current' : ''}`} />
+          </button>
+        )}
 
         {/* Edit Label */}
         <button

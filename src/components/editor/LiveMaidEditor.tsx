@@ -2,7 +2,7 @@
 
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
-import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles } from "@/lib/diagrams/utils";
+import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
@@ -64,7 +64,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     handleMouseMove,
     handleMouseUp,
     handleEditClick,
-    handleAddNodeFromSelected
+    handleAddNodeFromSelected,
+    shapePicker,
+    setShapePicker
   } = useCanvasInteraction({
     code,
     svgContent,
@@ -108,7 +110,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
             .replace(/<span[^>]*>/gi, '')
             .replace(/<\/span>/gi, '');
         
-        newCode = newCode.replace(nodeRegex, `$1$2${cleanLabel}$4`);
+        const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+        newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);
     }
 
     handleCodeChange(newCode);
@@ -147,8 +150,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
     const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
     if (!src || !dst) return;
-    const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
-    const updatedCode = updateLinkAnimation(code, linkIndex, animate);
+    const updatedCode = updateLinkAnimation(code, src, dst, occurrenceIndex, animate);
     handleCodeChange(updatedCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
@@ -198,6 +200,103 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
+  const handleGlobalBoldItalic = useCallback((format: 'bold' | 'italic') => {
+    if (!selectedNodeId) return;
+
+    const toggleGlobalStyle = (text: string, style: 'bold' | 'italic') => {
+      let isBold = false;
+      let isItalic = false;
+
+      let temp = text.trim();
+      let peeled = true;
+      while (peeled) {
+        peeled = false;
+        if (temp.startsWith('<b>') && temp.endsWith('</b>')) {
+          isBold = true;
+          temp = temp.substring(3, temp.length - 4).trim();
+          peeled = true;
+        } else if (temp.startsWith('<i>') && temp.endsWith('</i>')) {
+          isItalic = true;
+          temp = temp.substring(3, temp.length - 4).trim();
+          peeled = true;
+        }
+      }
+
+      const cleanInner = temp
+        .replace(/<\/?b>/gi, '')
+        .replace(/<\/?i>/gi, '')
+        .replace(/<span[^>]*>/gi, '')
+        .replace(/<\/span>/gi, '');
+
+      if (style === 'bold') {
+        isBold = !isBold;
+      } else if (style === 'italic') {
+        isItalic = !isItalic;
+      }
+
+      let result = cleanInner;
+      if (isItalic) {
+        result = `<i>${result}</i>`;
+      }
+      if (isBold) {
+        result = `<b>${result}</b>`;
+      }
+      return result;
+    };
+
+    if (isEdgeId(selectedNodeId)) {
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      if (!src || !dst) return;
+      const lines = code.split('\n');
+      let currentOccurrence = 0;
+      let currentLabel = "";
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+          continue;
+        }
+        const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
+        const match = line.match(linkLineRegex);
+        if (match) {
+          if (currentOccurrence === occurrenceIndex) {
+            const middlePart = match[2];
+            const quoteMatch = middlePart.match(/"([^"]*)"/);
+            if (quoteMatch) {
+              currentLabel = quoteMatch[1];
+            } else {
+              const barMatch = middlePart.match(/\|([^|]*)\|/);
+              if (barMatch) {
+                currentLabel = barMatch[1];
+              }
+            }
+            break;
+          }
+          currentOccurrence++;
+        }
+      }
+      const newLabel = toggleGlobalStyle(currentLabel, format);
+      handleUpdateEdgeStyle({ label: newLabel });
+    } else {
+      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+      const match = code.match(nodeRegex);
+      let currentLabel = "";
+      if (match) {
+        currentLabel = match[3];
+      } else {
+        currentLabel = selectedNodeId;
+      }
+      const newLabel = toggleGlobalStyle(currentLabel, format);
+      let newCode = code;
+      if (match) {
+        const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+        newCode = newCode.replace(nodeRegexGlobal, `$1$2${newLabel}$4`);
+      } else {
+        newCode += `\n    ${selectedNodeId}["${newLabel}"]`;
+      }
+      handleCodeChange(newCode);
+    }
+  }, [code, selectedNodeId, handleCodeChange, handleUpdateEdgeStyle]);
+
   const handleFormatNodeLabel = useCallback((format: string, colorValue?: string) => {
       if (!selectedNodeId) return;
       const getStyleVal = (property: string): string | null => {
@@ -210,60 +309,48 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       };
 
       if (format === 'bold') {
-          const codeVal = getStyleVal('font-weight');
-          let isBold = codeVal === 'bold';
-          if (!isBold && selectedSvgId) {
-             try {
-               const parent = document.getElementById(selectedSvgId);
-               const el = parent?.querySelector('.label, text, .nodeLabel');
-               if (el) {
-                 const fw = window.getComputedStyle(el).fontWeight;
-                 isBold = ['bold', '700', '800', '900'].includes(fw);
-               }
-             } catch (e) {
-               console.error(e);
-             }
-          }
-
-          if (isBold) {
+          handleGlobalBoldItalic('bold');
+          if (getStyleVal('font-weight')) {
               handleUpdateStyle('font-weight', 'normal');
-          } else {
-              handleUpdateStyle('font-weight', 'bold');
           }
       } else if (format === 'italic') {
-          const codeVal = getStyleVal('font-style');
-          let isItalic = codeVal === 'italic';
-          if (!isItalic && selectedSvgId) {
-             try {
-               const parent = document.getElementById(selectedSvgId);
-               const el = parent?.querySelector('.label, text, .nodeLabel');
-               if (el) {
-                 const fs = window.getComputedStyle(el).fontStyle;
-                 isItalic = fs === 'italic';
-               }
-             } catch (e) {
-               console.error(e);
-             }
-          }
-
-          if (isItalic) {
+          handleGlobalBoldItalic('italic');
+          if (getStyleVal('font-style')) {
               handleUpdateStyle('font-style', 'normal');
-          } else {
-              handleUpdateStyle('font-style', 'italic');
           }
       } else if (format === 'color' && colorValue) {
           handleUpdateStyle('color', colorValue);
       }
-  }, [code, selectedNodeId, selectedSvgId, handleUpdateStyle]);
+  }, [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic]);
 
   const handleFormatText = (format: string, colorValue?: string) => {
-    if (!inlineInputRef.current) return;
+    console.log('[handleFormatText] format:', format, 'colorValue:', colorValue);
+    if (!inlineInputRef.current) {
+        console.log('[handleFormatText] inlineInputRef.current is null/undefined');
+        return;
+    }
     
-    const start = inlineInputRef.current.selectionStart;
-    const end = inlineInputRef.current.selectionEnd;
-    const selectedText = editingText.substring(start, end);
+    let start = inlineInputRef.current.selectionStart;
+    let end = inlineInputRef.current.selectionEnd;
     
-    if (!selectedText && format !== 'color') return;
+    if (start === end && typeof (inlineInputRef.current as any)._lastSelectionStart === 'number') {
+        const lastStart = (inlineInputRef.current as any)._lastSelectionStart;
+        const lastEnd = (inlineInputRef.current as any)._lastSelectionEnd;
+        if (lastStart !== lastEnd) {
+            start = lastStart;
+            end = lastEnd;
+        }
+    }
+    
+    let selectedText = editingText.substring(start, end);
+    console.log('[handleFormatText] start:', start, 'end:', end, 'selectedText:', selectedText, 'editingText:', editingText);
+    
+    const isSelectionEmpty = !selectedText;
+    if (isSelectionEmpty) {
+        start = 0;
+        end = editingText.length;
+        selectedText = editingText;
+    }
     
     let before = '';
     let after = '';
@@ -275,15 +362,12 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         before = '<i>';
         after = '</i>';
     } else if (format === 'color' && colorValue) {
-        if (!selectedText) {
-            setEditingText(`<span style='color:${colorValue}'>${editingText}</span>`);
-            return;
-        }
         before = `<span style='color:${colorValue}'>`;
         after = '</span>';
     }
     
     const newText = editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
+    console.log('[handleFormatText] setting editingText to:', newText);
     setEditingText(newText);
     
     setTimeout(() => {
@@ -319,9 +403,38 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     } else {
         const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         if (nodeRegex.test(newCode)) {
-            newCode = newCode.replace(nodeRegex, `$1$2${editingText}$4`);
+            const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+            newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
         } else {
-            newCode += `\n    ${selectedNodeId}["${editingText}"]`;
+            // Check if there is a standalone node ID definition on its own line
+            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
+            if (standaloneRegex.test(newCode)) {
+                newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
+            } else {
+                // Find the best place to insert the new node definition (before any style/class definitions)
+                const lines = newCode.split('\n');
+                let insertIndex = -1;
+                for (let i = 0; i < lines.length; i++) {
+                    const trimmed = lines[i].trim();
+                    if (
+                        trimmed.startsWith('style ') || 
+                        trimmed.startsWith('linkStyle ') || 
+                        trimmed.startsWith('classDef ') || 
+                        trimmed.startsWith('class ')
+                    ) {
+                        insertIndex = i;
+                        break;
+                    }
+                }
+                
+                const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
+                if (insertIndex !== -1) {
+                    lines.splice(insertIndex, 0, newDeclaration);
+                    newCode = lines.join('\n');
+                } else {
+                    newCode += `\n${newDeclaration}`;
+                }
+            }
         }
     }
     
@@ -624,6 +737,12 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         } else {
           handleDeleteNode();
         }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        handleGlobalBoldItalic('bold');
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        handleGlobalBoldItalic('italic');
       }
     };
 
@@ -631,7 +750,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isLocked, isInlineEditing, selectedNodeId, handleDeleteEdge, handleDeleteNode]);
+  }, [isLocked, isInlineEditing, selectedNodeId, handleDeleteEdge, handleDeleteNode, handleGlobalBoldItalic]);
 
   if (loading) {
     return (
@@ -796,7 +915,6 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           editingText={editingText}
           setEditingText={setEditingText}
           handleEditSubmit={handleEditSubmit}
-          handleFormatText={handleFormatText}
           inlineInputRef={inlineInputRef}
           handleAddNodeFromSelected={handleAddNodeFromSelected}
           onDeselect={handleDeselect}
@@ -806,6 +924,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           onUpdateEdgeCurve={handleUpdateEdgeCurve}
           onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
           onDeleteEdge={handleDeleteEdge}
+          shapePicker={shapePicker}
+          setShapePicker={setShapePicker}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -877,11 +997,11 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                             setExportFormat(fmt.id);
                             if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
                           }}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/30' : 'border-border hover:border-foreground/20'}`}
+                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-border hover:border-foreground/20'}`}
                         >
                            <div className="flex items-center gap-2 mb-1">
-                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-teal-500' : 'border-border'}`}>
-                               {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-teal-500" />}
+                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-indigo-500' : 'border-border'}`}>
+                               {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                              </div>
                              <span className="font-semibold text-foreground">{fmt.label}</span>
                            </div>
@@ -897,7 +1017,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                         <div 
                           key={c}
                           onClick={() => setExportBg(c)}
-                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-teal-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
+                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-indigo-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
                           style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
                         />
                      ))}

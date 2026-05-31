@@ -38,6 +38,28 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 7. **Iterate**: You are expected to extend your session and perform as many test/fix iterations as necessary. Your ultimate goal is to present a product to the user that is as bug-free as possible. Do not consider the task complete until this is achieved.
 <!-- END:testing-agent-rules -->
 
+<!-- BEGIN:verification-planning-rules -->
+# How to Write a Verification Plan (Testplan)
+
+When an agent is asked to write a verification plan, they MUST format it properly as described in `reference/HOW_TO_WRITE_VERIFICATION_PLAN.md`.
+The verification plan should focus on **what** is to be verified, not *how*, and must contain the following fields (usually presented as a table or structured list):
+- **Requirement Location**: A pointer to the source Requirements document (if applicable).
+- **Feature**: The high-level feature you are trying to verify.
+- **Sub-Feature**: Optional decomposition of the Feature.
+- **Feature Description**: A summary of what the feature does.
+- **Verification Goals**: A summary of what stimulus and/or configuration needs to be generated/checked/covered.
+- **Pass/Fail Criteria**: How will the testbench know the test passed? (e.g., Self Checking, Signature Check, Check against RM, Assertion Check, Any/All).
+- **Test Type**: RISC-V Compliance, Directed Self-Checking, Directed Non-Self-Checking, Constrained-Random, ENV capability, etc. (Or equivalent UI-testing types for this project: MCP Automated Check, Manual Interaction, etc.)
+- **Coverage Method**: Testcase, Functional Coverage, Assertion Coverage, Code Coverage.
+<!-- END:verification-planning-rules -->
+
+<!-- BEGIN:regression-planning-rules -->
+# How to Write a Regression Plan
+
+When an agent writes a verification plan for a new feature, they MUST also include a Regression Testplan section formatted as described in `reference/HOW_TO_WRITE_REGRESSION_PLAN.md`.
+The regression plan identifies which existing features are at risk of breaking due to the new code, and provides BDD scenarios to verify they remain intact.
+<!-- END:regression-planning-rules -->
+
 <!-- BEGIN:git-workflow-rules -->
 # Git Workflow & Commit Rules
 

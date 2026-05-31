@@ -1,5 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Recursive:wght@300..1000&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap");
 
+.test-compilation { color: red !important; }
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -187,11 +189,46 @@ svg[aria-roledescription="error"],
   transition: stroke 0.2s, stroke-width 0.2s;
 }
 
-/* Synchronized hover highlights for flowchart edges/lines and their labels */
+/* Direct and synchronized hover highlights for flowchart edges/lines and their labels */
 .mermaid-container path.flowchart-link.edge-hover-highlight,
-.mermaid-container .edgePath .path.edge-hover-highlight {
+.mermaid-container .edgePath .path.edge-hover-highlight,
+.mermaid-container path.flowchart-link:hover,
+.mermaid-container .flowchart-link-hit-target:hover + path.flowchart-link,
+.mermaid-container .edgePath:hover path.path,
+.mermaid-container .edgePath:hover .path,
+.mermaid-container .edgePaths .edgePath:hover .path {
   stroke: #6366f1 !important; /* Indigo-500 */
   stroke-width: 3px !important;
+}
+
+.mermaid-container .edgePath:hover .arrowheadPath {
+  stroke: #6366f1 !important;
+  fill: #6366f1 !important;
+}
+
+/* Hover highlights for sequence diagram message lines, text, and notes */
+.mermaid-container [class*="messageLine"]:hover line,
+.mermaid-container [class*="messageLine"]:hover path,
+.mermaid-container .messageLine:hover line,
+.mermaid-container .messageLine:hover path {
+  stroke: #6366f1 !important;
+  stroke-width: 3px !important;
+}
+
+.mermaid-container .messageText:hover {
+  fill: #6366f1 !important;
+  font-weight: 600;
+}
+
+.mermaid-container .note:hover rect {
+  stroke: #6366f1 !important;
+  stroke-width: 2px !important;
+}
+
+/* Hover highlights for subgraphs / clusters */
+.mermaid-container .cluster:hover rect {
+  stroke: #6366f1 !important;
+  stroke-width: 2px !important;
 }
 
 .mermaid-container .edgeLabel.edge-hover-highlight text,

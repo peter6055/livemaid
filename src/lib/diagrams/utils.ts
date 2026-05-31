@@ -1,19 +1,20 @@
-export const CONNECTOR_PATTERN = '<==>|<-->|<-\\\\.->|<-.->|x--x|o--o|x-\\\\.x|x-.x|o-\\\\.o|o-.o|-\\\\.->|-.->|-->|==>|--x|--o|-\\\\.x|-.x|-\\\\.o|-.o|---|===|-\\\\.-|-.-|~~~';
+export const CONNECTOR_PATTERN = '<==>|<-->|x==x|o==o|x-\\\\.-x|x-.-x|o-\\\\.-o|o-.-o|x--x|o--o|x-\\\\.x|x-.x|o-\\\\.o|o-.o|<-\\\\.->|<-.->|-\\\\.->|-.->|-->|==>|==x|==o|-.-x|-.-o|--x|--o|-\\\\.x|-.x|-\\\\.o|-.o|---|===|-\\\\.-|-.-|~~~';
 export const CONNECTOR_REGEX = new RegExp(CONNECTOR_PATTERN);
 
 export function updateMermaidTheme(code: string, newTheme: string): string {
-    const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+    const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
     const match = code.match(regex);
     if (match) {
         let configBlock = match[1];
         if (/theme:\s*(?:'|")[^'"]+(?:'|")/.test(configBlock)) {
             configBlock = configBlock.replace(/theme:\s*(?:'|")[^'"]+(?:'|")/, `theme: '${newTheme}'`);
-        } else if (/theme:\s*[^\s\n]+/.test(configBlock)) {
-            configBlock = configBlock.replace(/theme:\s*[^\s\n]+/, `theme: ${newTheme}`);
+        } else if (/theme:\s*[^\s\n\r]+/.test(configBlock)) {
+            configBlock = configBlock.replace(/theme:\s*[^\s\n\r]+/, `theme: ${newTheme}`);
         } else {
-            configBlock += `\n  theme: ${newTheme}`;
+            configBlock = configBlock.trimEnd();
+            configBlock += (configBlock ? '\n' : '') + `  theme: ${newTheme}`;
         }
-        return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+        return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
     } else {
         return `---\nconfig:\n  theme: ${newTheme}\n---\n` + code;
     }
@@ -40,34 +41,36 @@ export function determineDiagramType(sourceCode: string): string {
 }
 
 export function updateMermaidConfigProperty(code: string, property: string, value: string): string {
-    const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+    const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
     const match = code.match(regex);
     if (match) {
         let configBlock = match[1];
-        const propRegex = new RegExp(`${property}:\\s*(?:'|")?[^'"\\n]+(?:'|")?`);
+        const propRegex = new RegExp(`${property}:\\s*(?:'|")?[^'"\\n\\r]+(?:'|")?`);
         if (propRegex.test(configBlock)) {
             configBlock = configBlock.replace(propRegex, `${property}: ${value}`);
         } else {
-            configBlock += `\n  ${property}: ${value}`;
+            configBlock = configBlock.trimEnd();
+            configBlock += (configBlock ? '\n' : '') + `  ${property}: ${value}`;
         }
-        return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+        return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
     } else {
         return `---\nconfig:\n  ${property}: ${value}\n---\n` + code;
     }
 }
 
 export function updateMermaidFontFamily(code: string, fontString: string): string {
-    const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+    const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
     const match = code.match(regex);
     if (match) {
         let configBlock = match[1];
         
         // Update top-level fontFamily
-        const fontRegex = /(^|\n)  fontFamily:\s*[^\n]+/;
+        const fontRegex = /(^|\n)  fontFamily:\s*[^\n\r]+/;
         if (fontRegex.test(configBlock)) {
             configBlock = configBlock.replace(fontRegex, `$1  fontFamily: '${fontString}'`);
         } else {
-            configBlock += `\n  fontFamily: '${fontString}'`;
+            configBlock = configBlock.trimEnd();
+            configBlock += (configBlock ? '\n' : '') + `  fontFamily: '${fontString}'`;
         }
 
         // Update themeVariables: fontFamily
@@ -76,24 +79,25 @@ export function updateMermaidFontFamily(code: string, fontString: string): strin
         
         if (themeVarsMatch) {
             let varsBlock = themeVarsMatch[2];
-            if (/\n    fontFamily:\s*[^\n]+/.test(varsBlock)) {
-                varsBlock = varsBlock.replace(/\n    fontFamily:\s*[^\n]+/, `\n    fontFamily: '${fontString}'`);
+            if (/\n    fontFamily:\s*[^\n\r]+/.test(varsBlock)) {
+                varsBlock = varsBlock.replace(/\n    fontFamily:\s*[^\n\r]+/, `\n    fontFamily: '${fontString}'`);
             } else {
                 varsBlock = varsBlock.replace(/\n*$/, `\n    fontFamily: '${fontString}'\n`);
             }
             configBlock = configBlock.replace(themeVarsRegex, `$1  themeVariables:${varsBlock}`);
         } else {
-            configBlock += `\n  themeVariables:\n    fontFamily: '${fontString}'`;
+            configBlock = configBlock.trimEnd();
+            configBlock += (configBlock ? '\n' : '') + `  themeVariables:\n    fontFamily: '${fontString}'`;
         }
         
-        return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+        return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
     } else {
         return `---\nconfig:\n  fontFamily: '${fontString}'\n  themeVariables:\n    fontFamily: '${fontString}'\n---\n` + code;
     }
 }
 
 export function isEdgeId(id: string | null): boolean {
-  return !!id && (id.startsWith('L_') || id.startsWith('L-'));
+  return !!id && (id.startsWith('L_') || id.startsWith('L-') || id.startsWith('e_') || id.startsWith('e-'));
 }
 
 export function parseEdgeId(id: string) {
@@ -108,43 +112,35 @@ export function parseEdgeId(id: string) {
 }
 
 export function parseConnectorStyle(middlePart: string): { stroke: string; arrowType: string } {
-  // Strip label quotes or bars
   const cleanMiddle = middlePart.replace(/"[^"]*"/g, '').replace(/\|[^|]*\|/g, '').replace(/\s+/g, '');
-  
-  let stroke = 'solid';
-  let arrowType = 'arrow';
   
   if (cleanMiddle.includes('~~~')) {
     return { stroke: 'none', arrowType: 'plain' };
   }
   
+  let stroke = 'solid';
   if (cleanMiddle.includes('==')) {
     stroke = 'thick';
-  } else if (cleanMiddle.includes('.-') || cleanMiddle.includes('-.')) {
+  } else if (cleanMiddle.includes('.-') || cleanMiddle.includes('-.') || cleanMiddle.includes('\\.-') || cleanMiddle.includes('-\\.')) {
     stroke = 'dashed';
   }
   
-  // Determine arrowType
-  if (cleanMiddle.includes('<-->') || cleanMiddle.includes('<-.->') || cleanMiddle.includes('<==>')) {
+  let arrowType = 'plain';
+  const indicators = cleanMiddle.replace(/[-=\.\\~]/g, '');
+  if (indicators.includes('<') && indicators.includes('>')) {
     arrowType = 'double_arrow';
-  } else if (cleanMiddle.includes('x--x') || cleanMiddle.includes('x-.x')) {
+  } else if (indicators === 'xx' || (indicators.startsWith('x') && indicators.endsWith('x'))) {
     arrowType = 'double_cross';
-  } else if (cleanMiddle.includes('o--o') || cleanMiddle.includes('o-.o')) {
+  } else if (indicators === 'oo' || (indicators.startsWith('o') && indicators.endsWith('o'))) {
     arrowType = 'double_circle';
-  } else if (cleanMiddle.endsWith('-->') || cleanMiddle.endsWith('.->') || cleanMiddle.endsWith('==>')) {
+  } else if (indicators.endsWith('>')) {
     arrowType = 'arrow';
-  } else if (cleanMiddle.endsWith('--x') || cleanMiddle.endsWith('-.x')) {
+  } else if (indicators.endsWith('x')) {
     arrowType = 'cross';
-  } else if (cleanMiddle.endsWith('--o') || cleanMiddle.endsWith('-.o')) {
+  } else if (indicators.endsWith('o')) {
     arrowType = 'circle';
-  } else if (cleanMiddle.includes('---') || cleanMiddle.includes('-.-') || cleanMiddle.includes('===')) {
-    arrowType = 'plain';
   } else {
-    if (cleanMiddle.includes('>') || cleanMiddle.includes('->') || cleanMiddle.includes('=>')) {
-      arrowType = 'arrow';
-    } else {
-      arrowType = 'plain';
-    }
+    arrowType = 'plain';
   }
   
   return { stroke, arrowType };
@@ -158,10 +154,10 @@ export function getConnector(stroke: string, arrowType: string): string {
       case 'plain': return '-.-';
       case 'arrow': return '-.->';
       case 'double_arrow': return '<-.->';
-      case 'cross': return '-.x';
-      case 'double_cross': return 'x-.x';
-      case 'circle': return '-.o';
-      case 'double_circle': return 'o-.o';
+      case 'cross': return '-.-x';
+      case 'double_cross': return 'x-.-x';
+      case 'circle': return '-.-o';
+      case 'double_circle': return 'o-.-o';
       default: return '-.->';
     }
   }
@@ -171,10 +167,10 @@ export function getConnector(stroke: string, arrowType: string): string {
       case 'plain': return '===';
       case 'arrow': return '==>';
       case 'double_arrow': return '<==>';
-      case 'cross': return '==>';
-      case 'double_cross': return '==>';
-      case 'circle': return '==>';
-      case 'double_circle': return '==>';
+      case 'cross': return '==x';
+      case 'double_cross': return 'x==x';
+      case 'circle': return '==o';
+      case 'double_circle': return 'o==o';
       default: return '==>';
     }
   }
@@ -198,6 +194,12 @@ export function getReconstructedConnector(stroke: string, arrowType: string, lab
   return `${conn}|${label.trim()}|`;
 }
 
+export function generateEdgeId(src: string, dst: string, occurrenceIndex: number): string {
+  const cleanSrc = src.replace(/[^a-zA-Z0-9_-]/g, '');
+  const cleanDst = dst.replace(/[^a-zA-Z0-9_-]/g, '');
+  return `e_${cleanSrc}_${cleanDst}_${occurrenceIndex}`;
+}
+
 export function getLinkIndex(code: string, src: string, dst: string, occurrenceIndex: number = 0): number {
   const lines = code.split('\n');
   let linkCount = 0;
@@ -215,8 +217,12 @@ export function getLinkIndex(code: string, src: string, dst: string, occurrenceI
       const parts = trimmed.split(CONNECTOR_REGEX);
       if (parts.length >= 2) {
         for (let i = 0; i < parts.length - 1; i++) {
-          // Strip labels and quotes from each part before extracting IDs
-          const cleanSrcStr = parts[i].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
+          // Strip labels, quotes, and prepended edge IDs from each part before extracting IDs
+          const cleanSrcStr = parts[i]
+            .replace(/\|[^|]*\|/g, '')
+            .replace(/"[^"]*"/g, '')
+            .replace(/\b[a-zA-Z0-9_-]+@\s*$/, '')
+            .trim();
           const cleanDstStr = parts[i+1].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
           
           const srcLastWord = cleanSrcStr.split(/\s+/).pop() || '';
@@ -261,7 +267,7 @@ export function updateLinkStyleAndLabel(
       return line;
     }
     
-    const linkLineRegex = new RegExp(`(^|\\s*)${src}\\b[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)\\b${dst}\\b`, 'i');
+    const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
     const match = line.match(linkLineRegex);
     if (match) {
       if (currentOccurrence === occurrenceIndex) {
@@ -280,8 +286,8 @@ export function updateLinkStyleAndLabel(
           }
         }
         
-        const finalStroke = updates.stroke !== undefined ? updates.stroke : current.stroke;
-        const finalArrowType = updates.arrowType !== undefined ? updates.arrowType : current.arrowType;
+        let finalStroke = updates.stroke !== undefined ? updates.stroke : current.stroke;
+        let finalArrowType = updates.arrowType !== undefined ? updates.arrowType : current.arrowType;
         const finalLabel = updates.label !== undefined ? updates.label : currentLabel;
         
         const newMiddle = getReconstructedConnector(finalStroke, finalArrowType, finalLabel);
@@ -314,17 +320,18 @@ export function updateLinkColor(code: string, linkIndex: number, hexColor: strin
   const newLines = lines.map(line => {
     if (styleRegex.test(line)) {
       updated = true;
-      if (line.includes('stroke:')) {
-        return line.replace(/stroke:\s*[^,;\s]+/, `stroke:${hexColor}`);
+      const cleanLine = line.trim().replace(/;?\s*$/, '');
+      if (cleanLine.includes('stroke:')) {
+        return cleanLine.replace(/stroke:\s*[^,;\s]+/, `stroke:${hexColor}`);
       } else {
-        return line.trim().replace(/;?\s*$/, '') + `,stroke:${hexColor};`;
+        return cleanLine + `,stroke:${hexColor}`;
       }
     }
     return line;
   });
   
   if (!updated) {
-    newLines.push(`    linkStyle ${linkIndex} stroke:${hexColor},stroke-width:2px;`);
+    newLines.push(`    linkStyle ${linkIndex} stroke:${hexColor}`);
   }
   
   return newLines.join('\n');
@@ -344,7 +351,7 @@ export function parseLinkColor(code: string, linkIndex: number): string | null {
 }
 
 export function updateMermaidCurve(code: string, curve: string): string {
-  const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+  const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
   const match = code.match(regex);
   if (match) {
     let configBlock = match[1];
@@ -353,7 +360,7 @@ export function updateMermaidCurve(code: string, curve: string): string {
     
     if (flowchartMatch) {
       let flowchartBlock = flowchartMatch[2];
-      const curveRegex = /\n    curve:\s*[^\s\n]+/;
+      const curveRegex = /\n    curve:\s*[^\s\n\r]+/;
       if (curveRegex.test(flowchartBlock)) {
         flowchartBlock = flowchartBlock.replace(curveRegex, `\n    curve: ${curve}`);
       } else {
@@ -361,17 +368,18 @@ export function updateMermaidCurve(code: string, curve: string): string {
       }
       configBlock = configBlock.replace(flowchartRegex, `$1  flowchart:${flowchartBlock}`);
     } else {
-      configBlock += `\n  flowchart:\n    curve: ${curve}`;
+      configBlock = configBlock.trimEnd();
+      configBlock += (configBlock ? '\n' : '') + `  flowchart:\n    curve: ${curve}`;
     }
     
-    return code.replace(regex, `---\nconfig:\n${configBlock}\n---\n`);
+    return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
   } else {
     return `---\nconfig:\n  flowchart:\n    curve: ${curve}\n---\n` + code;
   }
 }
 
 export function parseMermaidCurve(code: string): string {
-  const regex = /^---\nconfig:\n([\s\S]*?)\n---\n/m;
+  const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
   const match = code.match(regex);
   if (match) {
     const configBlock = match[1];
@@ -379,7 +387,7 @@ export function parseMermaidCurve(code: string): string {
     const flowchartMatch = configBlock.match(flowchartRegex);
     if (flowchartMatch) {
       const flowchartBlock = flowchartMatch[2];
-      const curveMatch = flowchartBlock.match(/\n    curve:\s*([^\s\n]+)/);
+      const curveMatch = flowchartBlock.match(/\n    curve:\s*([^\s\n\r]+)/);
       if (curveMatch) {
         return curveMatch[1].trim();
       }
@@ -388,53 +396,123 @@ export function parseMermaidCurve(code: string): string {
   return 'step';
 }
 
-export function updateLinkAnimation(code: string, linkIndex: number, animate: boolean): string {
-  if (linkIndex === -1) return code;
-  
+export function updateLinkAnimation(
+  code: string,
+  src: string,
+  dst: string,
+  occurrenceIndex: number,
+  animate: boolean
+): string {
   const lines = code.split('\n');
-  const styleRegex = new RegExp(`^\\s*linkStyle\\s+${linkIndex}\\s+.*$`);
-  let updated = false;
+  let currentOccurrence = 0;
+  let edgeIdToUse = '';
+  let edgeIdFound = false;
   
+  // 1. Process the matched edge line to find/add/remove the edge ID
   const newLines = lines.map(line => {
-    if (styleRegex.test(line)) {
-      updated = true;
-      let lineContent = line.trim();
-      
-      // Remove stroke-dasharray and animation
-      lineContent = lineContent
-        .replace(/stroke-dasharray:[^,;\s]+,?/, '')
-        .replace(/stroke-dashoffset:[^,;\s]+,?/, '')
-        .replace(/animation:[^,;\s]+,?/, '')
-        .replace(/,+,/g, ',')
-        .replace(/,\s*;/, ';')
-        .replace(/:\s*,/, ':')
-        .replace(/,\s*$/, '')
-        .replace(/;?\s*$/, '');
-      
-      if (animate) {
-        lineContent = lineContent + `,stroke-dasharray:5,stroke-dashoffset:0,animation:mermaid-flow 0.5s linear infinite;`;
-      } else {
-        lineContent = lineContent + `;`;
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+      return line;
+    }
+    const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
+    const match = line.match(linkLineRegex);
+    if (match) {
+      if (currentOccurrence === occurrenceIndex) {
+        currentOccurrence++;
+        
+        // Look for an existing ID in the line
+        const idRegex = new RegExp(`\\b([a-zA-Z0-9_-]+)@(?:${CONNECTOR_PATTERN})`);
+        const idMatch = line.match(idRegex);
+        
+        if (idMatch) {
+          edgeIdToUse = idMatch[1];
+          edgeIdFound = true;
+          
+          if (!animate) {
+            // If turning off animation and it is our deterministic ID, remove the ID from the line to keep it clean
+            const defaultId = generateEdgeId(src, dst, occurrenceIndex);
+            if (edgeIdToUse === defaultId) {
+              const startOfMatch = line.indexOf(match[0]);
+              const beforeMatch = line.substring(0, startOfMatch);
+              const matchStr = match[0];
+              const afterMatch = line.substring(startOfMatch + matchStr.length);
+              
+              const cleanMatchStr = matchStr.replace(new RegExp(`\\b${defaultId}@`), '');
+              return beforeMatch + cleanMatchStr + afterMatch;
+            }
+          }
+          return line;
+        } else {
+          // No existing edge ID found. If turning on animation, generate one and prepend it to the connector.
+          if (animate) {
+            const defaultId = generateEdgeId(src, dst, occurrenceIndex);
+            edgeIdToUse = defaultId;
+            
+            const middlePart = match[2];
+            const newMiddle = `${defaultId}@${middlePart}`;
+            
+            const startOfMatch = line.indexOf(match[0]);
+            const beforeMatch = line.substring(0, startOfMatch);
+            const matchStr = match[0];
+            const afterMatch = line.substring(startOfMatch + matchStr.length);
+            
+            const middleIndex = matchStr.indexOf(middlePart, matchStr.indexOf(src) + src.length);
+            const newMatchStr = matchStr.substring(0, middleIndex) + newMiddle + matchStr.substring(middleIndex + middlePart.length);
+            
+            return beforeMatch + newMatchStr + afterMatch;
+          }
+          return line;
+        }
       }
-      return `    ` + lineContent;
+      currentOccurrence++;
     }
     return line;
   });
   
-  if (!updated && animate) {
-    newLines.push(`    linkStyle ${linkIndex} stroke-dasharray:5,stroke-dashoffset:0,animation:mermaid-flow 0.5s linear infinite;`);
+  // 2. Remove any existing property definition block for this edgeId if found or generated
+  const finalCode = newLines.join('\n');
+  if (!edgeIdToUse && !edgeIdFound) {
+    return finalCode;
   }
   
-  return newLines.join('\n');
+  const idToCheck = edgeIdToUse || generateEdgeId(src, dst, occurrenceIndex);
+  let cleanedCode = finalCode;
+  const propRegex = new RegExp(`^\\s*${idToCheck}\\s*@\\{\\s*[\\s\\S]*?\\s*\\}\\n?`, 'gm');
+  cleanedCode = cleanedCode.replace(propRegex, '');
+  
+  // 3. If animate is true, append the new property block
+  if (animate) {
+    cleanedCode = cleanedCode.trimEnd() + `\n    ${idToCheck}@{ animate: true }\n`;
+  }
+  
+  return cleanedCode;
 }
 
-export function parseLinkAnimation(code: string, linkIndex: number): boolean {
-  if (linkIndex === -1) return false;
-  const styleRegex = new RegExp(`^\\s*linkStyle\\s+${linkIndex}\\s+.*$`);
+export function parseLinkAnimation(code: string, src: string, dst: string, occurrenceIndex: number): boolean {
   const lines = code.split('\n');
+  let currentOccurrence = 0;
   for (const line of lines) {
-    if (styleRegex.test(line)) {
-      return line.includes('animation:');
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+      continue;
+    }
+    const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
+    if (linkLineRegex.test(line)) {
+      if (currentOccurrence === occurrenceIndex) {
+        const idRegex = new RegExp(`\\b([a-zA-Z0-9_-]+)@(?:${CONNECTOR_PATTERN})`);
+        const idMatch = line.match(idRegex);
+        if (idMatch) {
+          const edgeId = idMatch[1];
+          const propRegex = new RegExp(`^\\s*${edgeId}\\s*@\\{\\s*([\\s\\S]*?)\\s*\\}`, 'm');
+          const propMatch = code.match(propRegex);
+          if (propMatch) {
+            const props = propMatch[1];
+            return /animate\s*:\s*true/.test(props) || /animation\s*:\s*(?:fast|slow)/.test(props);
+          }
+        }
+        return false;
+      }
+      currentOccurrence++;
     }
   }
   return false;
@@ -494,7 +572,7 @@ export function deleteLink(code: string, src: string, dst: string, occurrenceInd
     if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
       continue;
     }
-    const linkLineRegex = new RegExp(`^\\s*${src}\\b[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?\\b${dst}\\b`, 'i');
+    const linkLineRegex = new RegExp(`^\\s*${src}(?:\\b|(?=[xoXO]))[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
     if (linkLineRegex.test(line)) {
       if (currentOccurrence === occurrenceIndex) {
         targetLine = line;
@@ -515,7 +593,7 @@ export function deleteLink(code: string, src: string, dst: string, occurrenceInd
     if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
       return true;
     }
-    const linkLineRegex = new RegExp(`^\\s*${src}\\b[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?\\b${dst}\\b`, 'i');
+    const linkLineRegex = new RegExp(`^\\s*${src}(?:\\b|(?=[xoXO]))[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
     if (linkLineRegex.test(line)) {
       if (currentOccurrence === occurrenceIndex) {
         currentOccurrence++;
@@ -566,7 +644,7 @@ export function deleteLink(code: string, src: string, dst: string, occurrenceInd
   for (const line of lines) {
     const trimmed = line.trim();
     const isSpecial = !trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end');
-    const linkLineRegex = new RegExp(`^\\s*${src}\\b[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?\\b${dst}\\b`, 'i');
+    const linkLineRegex = new RegExp(`^\\s*${src}(?:\\b|(?=[xoXO]))[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
     
     if (!isSpecial && linkLineRegex.test(line)) {
       if (currentOccurrence === occurrenceIndex) {
@@ -596,7 +674,11 @@ export function rebuildLinkStyles(oldCode: string, newCode: string): string {
       const parts = trimmed.split(CONNECTOR_REGEX);
       if (parts.length >= 2) {
         for (let i = 0; i < parts.length - 1; i++) {
-          const cleanSrcStr = parts[i].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
+          const cleanSrcStr = parts[i]
+            .replace(/\|[^|]*\|/g, '')
+            .replace(/"[^"]*"/g, '')
+            .replace(/\b[a-zA-Z0-9_-]+@\s*$/, '')
+            .trim();
           const cleanDstStr = parts[i+1].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
           const srcLastWord = cleanSrcStr.split(/\s+/).pop() || '';
           const dstFirstWord = cleanDstStr.split(/\s+/)[0] || '';
@@ -647,7 +729,11 @@ export function rebuildLinkStyles(oldCode: string, newCode: string): string {
       const parts = trimmed.split(CONNECTOR_REGEX);
       if (parts.length >= 2) {
         for (let i = 0; i < parts.length - 1; i++) {
-          const cleanSrcStr = parts[i].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
+          const cleanSrcStr = parts[i]
+            .replace(/\|[^|]*\|/g, '')
+            .replace(/"[^"]*"/g, '')
+            .replace(/\b[a-zA-Z0-9_-]+@\s*$/, '')
+            .trim();
           const cleanDstStr = parts[i+1].replace(/\|[^|]*\|/g, '').replace(/"[^"]*"/g, '').trim();
           const srcLastWord = cleanSrcStr.split(/\s+/).pop() || '';
           const dstFirstWord = cleanDstStr.split(/\s+/)[0] || '';

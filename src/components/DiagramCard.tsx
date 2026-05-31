@@ -38,7 +38,7 @@ export function DiagramCard({
       const renderPreview = async () => {
         setIsCompiling(true);
         try {
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: false } });
+          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: true } });
           await mermaid.parse(diagram.code!, { suppressErrors: true });
           const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
           setSvgContent(svg);
