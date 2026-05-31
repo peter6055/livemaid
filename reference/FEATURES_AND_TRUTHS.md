@@ -61,12 +61,18 @@ This document serves as the source of truth for the implemented features and arc
   - **Line Color**: Toggles the active outline on preset stroke colors.
   - **Zap/Flow Animation**: Configures real-time animated flow effects across the path.
   - **Edit Label Text**: Centers the glassmorphic `<textarea>` overlay directly over the edge label for inline editing.
-  - **Delete Edge**: Deletes the connection from the raw Mermaid source.
+  - **Delete Edge**: Deletes the connection from the raw Mermaid source. To prevent accidental node deletion, the source and target nodes are preserved as standalone parentless/orphan nodes in the flowchart if they are not defined or referenced elsewhere in the diagram code.
 - **Global Edge Curve Config**: Located in the main flowchart top bar toolbar, this allows toggling the global flowchart interpolation/routing curve style (orthogonal step, curve basis, linear straight) for all links in the flowchart, persisting directly inside the diagram config frontmatter block.
 - **Two-Way Label Sync**: Double-clicking an edge label, or clicking the pencil button, triggers the dynamic `<InlineTextEditor>` at the exact coordinates of the label. Submitting the text (by pressing Enter or blurring) serializes the edge label back to the Mermaid code in the standard format (e.g. `A -->|New Label| B`) and instantly re-renders the diagram on the canvas.
 - **Link Style Preservation & RebuildLinkStyles Bypass**: Styling updates like Line Color and Zap/Flow Animation append `linkStyle` rules to the end of the Mermaid code. Because style modifications do not alter the link structure (no lines added or removed), `rebuildLinkStyles` is bypassed for these operations, passing `updatedCode` directly to `handleCodeChange`. This prevents custom style rules from being lost during compilation rendering.
 - **Centralized Connector Matching Pattern**: Standardized and ordered all Mermaid link connectors from longest/most-specific to shortest/least-specific in `CONNECTOR_PATTERN` in `src/lib/diagrams/utils.ts`. This resolves regex prefix conflicts (where shorter subset connectors like `-->` falsely matched inside longer superset connectors like `<-->` or `x--x`), ensuring robust arrow type editing, stroke styling, label updating, and styled edge deletion without corrupting the Mermaid syntax.
 - **Preset Color Selection Cleanups**: Removed the redundant `'White'` and `'Black'` presets from `PRESET_COLORS` in `src/lib/diagrams/constants.ts` to provide a premium, tailored preset palette for flowchart elements.
+
+## 10. Global Keyboard Shortcuts
+- **Keyboard-Driven Canvas Deletion**: When a diagram node or flowchart edge/line is selected, users can press `Backspace` or `Delete` on their keyboard to instantly delete it from the diagram canvas and Mermaid code.
+- **Form/Input and Code Isolation**: The keydown event listener is completely disabled when any input, textarea, contenteditable container, or the Monaco Editor has focus. This prevents elements from being accidentally deleted while typing comments or updating diagram text code.
+- **Canvas Focus Blur**: To ensure that selecting canvas elements (which are SVG elements and not focusable by default) immediately enables deletion shortcuts without being blocked by active Monaco editor focus, clicking any canvas element or empty space (inside `handleSvgClick`) programmatically blurs the active text input or editor via `document.activeElement.blur()`. This shifts browser focus away from Monaco/inputs to the document body, activating the deletion listeners safely.
+
 
 
 

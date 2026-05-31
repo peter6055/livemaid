@@ -440,10 +440,76 @@ export function parseLinkAnimation(code: string, linkIndex: number): boolean {
   return false;
 }
 
+function extractNodeDefinition(line: string, nodeId: string): string | null {
+  const openingBrackets = `\\[\\/|\\[\\\\\\[\\(|\\(|\\{\\{|\\{|\\[\\[|\\[\\(|\\>|\\(\\(\\(|\\(\\(|\\[`;
+  const closingBrackets = `\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]`;
+  const defRegex = new RegExp(`\\b${nodeId}(?:${openingBrackets})[\\s\\S]*?(?:${closingBrackets})`, 'i');
+  const match = line.match(defRegex);
+  return match ? match[0] : null;
+}
+
+function hasNodeLabelDefinition(lines: string[], nodeId: string): boolean {
+  const openingBrackets = `\\[\\/|\\[\\\\\\[\\(|\\(|\\{\\{|\\{|\\[\\[|\\[\\(|\\>|\\(\\(\\(|\\(\\(|\\[`;
+  const defRegex = new RegExp(`\\b${nodeId}(?:${openingBrackets})`, 'i');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+      continue;
+    }
+    if (trimmed.startsWith('style ') || trimmed.startsWith('linkStyle ') || trimmed.startsWith('classDef ') || trimmed.startsWith('class ')) {
+      continue;
+    }
+    if (defRegex.test(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function isNodeIdReferenced(lines: string[], nodeId: string): boolean {
+  const nodeRefRegex = new RegExp(`\\b${nodeId}\\b`, 'i');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+      continue;
+    }
+    if (trimmed.startsWith('style ') || trimmed.startsWith('linkStyle ') || trimmed.startsWith('classDef ') || trimmed.startsWith('class ')) {
+      continue;
+    }
+    if (nodeRefRegex.test(line)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function deleteLink(code: string, src: string, dst: string, occurrenceIndex: number = 0): string {
   const lines = code.split('\n');
   let currentOccurrence = 0;
   
+  // Find the target line and extract definitions
+  let targetLine: string | null = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
+      continue;
+    }
+    const linkLineRegex = new RegExp(`^\\s*${src}\\b[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?\\b${dst}\\b`, 'i');
+    if (linkLineRegex.test(line)) {
+      if (currentOccurrence === occurrenceIndex) {
+        targetLine = line;
+        break;
+      }
+      currentOccurrence++;
+    }
+  }
+
+  if (!targetLine) {
+    return code;
+  }
+
+  // Filter out the deleted link line
+  currentOccurrence = 0;
   const filteredLines = lines.filter(line => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
@@ -459,8 +525,61 @@ export function deleteLink(code: string, src: string, dst: string, occurrenceInd
     }
     return true;
   });
-  
-  return filteredLines.join('\n');
+
+  // Extract src and dst definitions from targetLine
+  const srcDef = extractNodeDefinition(targetLine, src) || src;
+  const dstDef = extractNodeDefinition(targetLine, dst) || dst;
+
+  // Determine if we need to preserve them as standalone nodes
+  const srcHasLabel = srcDef !== src;
+  const dstHasLabel = dstDef !== dst;
+
+  let shouldPreserveSrc = false;
+  let shouldPreserveDst = false;
+
+  if (srcHasLabel) {
+    shouldPreserveSrc = !hasNodeLabelDefinition(filteredLines, src);
+  } else {
+    shouldPreserveSrc = !isNodeIdReferenced(filteredLines, src);
+  }
+
+  if (dstHasLabel) {
+    shouldPreserveDst = !hasNodeLabelDefinition(filteredLines, dst);
+  } else {
+    shouldPreserveDst = !isNodeIdReferenced(filteredLines, dst);
+  }
+
+  // Re-insert definitions with matching indentation at the original position of the deleted line
+  const matchIndent = targetLine.match(/^(\s*)/);
+  const indent = matchIndent ? matchIndent[1] : '    ';
+
+  const replacements: string[] = [];
+  if (shouldPreserveSrc) {
+    replacements.push(`${indent}${srcDef}`);
+  }
+  if (shouldPreserveDst) {
+    replacements.push(`${indent}${dstDef}`);
+  }
+
+  currentOccurrence = 0;
+  const resultLines: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isSpecial = !trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end');
+    const linkLineRegex = new RegExp(`^\\s*${src}\\b[^\\n]*?(?:${CONNECTOR_PATTERN})[^\\n]*?\\b${dst}\\b`, 'i');
+    
+    if (!isSpecial && linkLineRegex.test(line)) {
+      if (currentOccurrence === occurrenceIndex) {
+        resultLines.push(...replacements);
+        currentOccurrence++;
+        continue;
+      }
+      currentOccurrence++;
+    }
+    resultLines.push(line);
+  }
+
+  return resultLines.join('\n');
 }
 
 export function rebuildLinkStyles(oldCode: string, newCode: string): string {

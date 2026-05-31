@@ -30,9 +30,9 @@ Before planning or implementing any Mermaid diagram logic (parsers, rendering, f
 
 When implementing UI features, rendering logic, or complex client-side changes, you MUST follow this robust operational loop:
 1. **Implement**: Write the code and implement the changes.
-2. **Execute Interactive Testing (Browser)**: Trigger the `/browser` subagent to perform the exact sequence of actions that a user would do to utilize the newly implemented feature. For example, if you implemented a button click that adds an object, the subagent MUST click the button and verify the object appears.
-3. **Capture Comprehensive Visuals**: The subagent must capture a screenshot at every step of the process to provide a complete visual track of the interaction flow.
-4. **Return Results**: The subagent must return the results (including all screenshots and DOM observations) to the main agent.
+2. **Execute Interactive Testing (Browser)**: Utilize the `chrome-devtools-mcp` tools directly to perform the exact sequence of actions that a user would do to utilize the newly implemented feature. If you do not have these tools loaded or run into issues, trigger the `/browser` subagent to perform the task.
+3. **Capture Comprehensive Visuals**: Capture a screenshot (`take_screenshot`) at every step of the process to provide a complete visual track of the interaction flow.
+4. **Return Results**: Evaluate the results (including all screenshots and DOM observations).
 5. **Scale Testing (If Needed)**: You can spawn multiple subagents to test the implementation to different degrees or in parallel if the feature is complex.
 6. **Address All Errors**: Every error discovered during testing MUST be addressed. This applies equally to errors caused by the new implementation itself, as well as unrelated errors that were accidentally discovered during the test run.
 7. **Iterate**: You are expected to extend your session and perform as many test/fix iterations as necessary. Your ultimate goal is to present a product to the user that is as bug-free as possible. Do not consider the task complete until this is achieved.

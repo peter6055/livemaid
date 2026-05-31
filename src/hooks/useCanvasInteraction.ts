@@ -420,6 +420,11 @@ export function useCanvasInteraction({
     }
     lastClickTimeRef.current = currentTime;
 
+    // Shift browser focus away from any text editors/inputs so global delete shortcuts are active
+    if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+    }
+
     const result = getClickedNode(e.target as Element);
     
     if (result) {

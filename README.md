@@ -61,6 +61,52 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 The application auto-updates as you edit the files in the `src/` directory.
 
+## 🐳 Deployment (Docker)
+
+LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
+
+### Option 1: Quick Deployment Script (Ubuntu/Linux)
+
+We provide a single bash script that automatically pulls the image, sets up the data directory, and runs docker-compose:
+
+1. Make the script executable:
+   ```bash
+   chmod +x deploy.sh
+   ```
+2. Run the deployment script:
+   ```bash
+   ./deploy.sh
+   ```
+
+*(Note: If the image is private, you must run `docker login ghcr.io -u <your_username>` with a Personal Access Token first).*
+
+### Option 2: Manual Docker Compose
+
+1. Create a `docker-compose.yml` file on your server:
+   ```yaml
+   version: '3.8'
+
+   services:
+     livemaid:
+       image: ghcr.io/peter6055/livemaid:latest
+       container_name: livemaid
+       ports:
+         - "3000:3000"
+       volumes:
+         # Maps local ./data folder to container for persistent diagram storage
+         - ./data:/app/data
+       environment:
+         - NODE_ENV=production
+       restart: unless-stopped
+   ```
+
+2. Start the container:
+   ```bash
+   docker-compose up -d
+   ```
+
+Your diagrams will be saved permanently in the `./data` folder on your server!
+
 ## 🛠️ Tech Stack
 
 * [Next.js](https://nextjs.org/)
