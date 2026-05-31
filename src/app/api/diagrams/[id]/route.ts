@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDiagram, saveDiagram, deleteDiagram } from '@/lib/api/storage';
+import { nanoid } from 'nanoid';
+
+const MAX_VERSION_HISTORY = 50;
 
 export async function GET(
   request: Request,
@@ -29,13 +32,26 @@ export async function PUT(
     }
 
     const body = await request.json();
-    
-    // Merge updates
+    const now = new Date().toISOString();
+    const shouldSnapshotCurrentCode = typeof body.code === 'string' && body.code !== existing.code;
+    const existingHistory = Array.isArray(existing.versionHistory) ? existing.versionHistory : [];
+    const versionHistory = shouldSnapshotCurrentCode
+      ? [
+          {
+            id: nanoid(),
+            code: existing.code,
+            timestamp: now,
+          },
+          ...existingHistory,
+        ].slice(0, MAX_VERSION_HISTORY)
+      : existingHistory;
+
     const updated = {
       ...existing,
       ...body,
       id, // Protect ID
-      updatedAt: new Date().toISOString(),
+      updatedAt: now,
+      versionHistory,
     };
 
     await saveDiagram(updated);

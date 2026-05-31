@@ -14,6 +14,15 @@ export interface DiagramDocument {
   versionHistory: { id: string; code: string; timestamp: string }[];
 }
 
+function normalizeDiagramDocument(raw: DiagramDocument): DiagramDocument {
+  return {
+    ...raw,
+    subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
+    comments: Array.isArray(raw.comments) ? raw.comments : [],
+    versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
+  };
+}
+
 const DATA_DIR = path.join(process.cwd(), 'data');
 
 export async function ensureDataDir() {
@@ -34,7 +43,7 @@ export async function getDiagrams(): Promise<DiagramDocument[]> {
       const filePath = path.join(DATA_DIR, file);
       const content = await fs.readFile(filePath, 'utf-8');
       try {
-        const doc = JSON.parse(content) as DiagramDocument;
+        const doc = normalizeDiagramDocument(JSON.parse(content) as DiagramDocument);
         if (!doc.deletedAt) {
           diagrams.push(doc);
         }
@@ -54,7 +63,7 @@ export async function getDiagram(id: string): Promise<DiagramDocument | null> {
   
   try {
     const content = await fs.readFile(filePath, 'utf-8');
-    const doc = JSON.parse(content) as DiagramDocument;
+    const doc = normalizeDiagramDocument(JSON.parse(content) as DiagramDocument);
     if (doc.deletedAt) {
         return null; // Don't return soft-deleted files
     }
@@ -67,7 +76,7 @@ export async function getDiagram(id: string): Promise<DiagramDocument | null> {
 export async function saveDiagram(doc: DiagramDocument): Promise<void> {
   await ensureDataDir();
   const filePath = path.join(DATA_DIR, `${doc.id}.json`);
-  await fs.writeFile(filePath, JSON.stringify(doc, null, 2), 'utf-8');
+  await fs.writeFile(filePath, JSON.stringify(normalizeDiagramDocument(doc), null, 2), 'utf-8');
 }
 
 export async function deleteDiagram(id: string): Promise<boolean> {

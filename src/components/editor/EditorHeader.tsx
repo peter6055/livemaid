@@ -16,6 +16,7 @@ interface EditorHeaderProps {
   onDuplicate: () => void;
   onNewDiagram: () => void;
   onRename: () => void;
+  onVersionHistory: () => void;
   onExport: () => void;
 }
 
@@ -26,6 +27,7 @@ export function EditorHeader({
   onDuplicate,
   onNewDiagram,
   onRename,
+  onVersionHistory,
   onExport
 }: EditorHeaderProps) {
   const { theme, setTheme } = useTheme();
@@ -41,6 +43,7 @@ export function EditorHeader({
             <DropdownMenuItem onClick={onNewDiagram} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">New Diagram</DropdownMenuItem>
             <DropdownMenuItem onClick={onDuplicate} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Duplicate</DropdownMenuItem>
             <DropdownMenuItem onClick={onRename} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Rename</DropdownMenuItem>
+            <DropdownMenuItem onClick={onVersionHistory} className="focus:bg-accent focus:text-accent-foreground cursor-pointer">Version History</DropdownMenuItem>
             <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="flex justify-between items-center w-full cursor-pointer focus:bg-accent focus:text-accent-foreground">
               <span>Dark Mode</span>
               <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === 'dark' ? 'bg-indigo-500' : 'bg-slate-300'}`}>

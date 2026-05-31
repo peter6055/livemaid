@@ -48,6 +48,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
+  const [isVersionHistoryOpen, setIsVersionHistoryOpen] = useState(false);
   
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -640,7 +641,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         body: JSON.stringify({ name: renameName.trim() }),
       });
       if (res.ok) {
-        setDoc(prev => prev ? { ...prev, name: renameName.trim() } : prev);
+        const updatedDoc = await res.json();
+        setDoc(updatedDoc);
         setIsRenameOpen(false);
         toast.success("Diagram renamed");
       } else {
@@ -781,6 +783,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         onDuplicate={handleDuplicate}
         onNewDiagram={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}
         onRename={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }}
+        onVersionHistory={() => setIsVersionHistoryOpen(true)}
         onExport={() => setIsExportOpen(true)}
       />
 
@@ -1048,6 +1051,51 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
             <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Version History Dialog */}
+      <Dialog open={isVersionHistoryOpen} onOpenChange={setIsVersionHistoryOpen}>
+        <DialogContent className="sm:max-w-[700px]">
+          <DialogHeader>
+            <DialogTitle>Version History</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 max-h-[420px] overflow-y-auto space-y-3">
+            {doc?.versionHistory && doc.versionHistory.length > 0 ? (
+              doc.versionHistory.map((version, index) => (
+                <div key={version.id} className="border border-border rounded-lg p-3 flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-foreground">
+                      Version {doc.versionHistory.length - index}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Saved {new Date(version.timestamp).toLocaleString()}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate mt-1">
+                      {version.code.split('\n')[0] || 'Empty diagram'}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      handleCodeChange(version.code);
+                      setIsVersionHistoryOpen(false);
+                      toast.success("Version restored");
+                    }}
+                    className="shrink-0"
+                  >
+                    Restore
+                  </Button>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground">No saved versions yet.</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsVersionHistoryOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
