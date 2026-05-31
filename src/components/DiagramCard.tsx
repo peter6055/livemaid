@@ -59,13 +59,13 @@ export function DiagramCard({
   const isSupported = parsedType === 'graph' || parsedType === 'flowchart' || parsedType === 'sequence';
 
   return (
-    <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-sm transition-all group">
+    <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer">
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2 min-h-8">
-          <CardTitle className="text-lg font-medium text-foreground truncate flex-1 pr-2">
+        <div className="flex items-start justify-between gap-2 min-h-8 w-full overflow-hidden">
+          <CardTitle className="text-lg font-medium text-foreground truncate flex-1">
             {diagram.name}
           </CardTitle>
-          <div className="flex flex-shrink-0">
+          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
               <FileEdit className="h-4 w-4" />
             </Button>
