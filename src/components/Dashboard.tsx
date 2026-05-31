@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, GitBranch, MessageSquare, X, Repeat2 } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, Network, Zap, X, Repeat2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -214,7 +214,7 @@ export default function Dashboard() {
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
                   <div className="bg-blue-500/20 p-1.5 rounded flex-shrink-0">
-                    <GitBranch className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <Network className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <h3 className="font-semibold text-sm text-foreground">Flowchart</h3>
                 </div>
@@ -233,7 +233,7 @@ export default function Dashboard() {
             <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200/50 dark:border-purple-800/50 hover:border-purple-300/70 dark:hover:border-purple-700/70 rounded-md p-4 h-full transition-colors">
               <div className="flex items-start gap-2 mb-2">
                 <div className="bg-purple-500/20 p-1.5 rounded flex-shrink-0">
-                  <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-sm text-foreground">Sequence</h3>
