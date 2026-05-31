@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: "LiveMaid Editor",
-  description: "Live mermaid diagram editor",
+  title: "LiveMaid | The WYSIWYG Mermaid Editor",
+  description: "A fast, local, and visual WYSIWYG editor for Mermaid.js diagrams. Create, edit, and manage your flowcharts and sequence diagrams with a seamless split-screen experience.",
 };
 
 export default function RootLayout({
