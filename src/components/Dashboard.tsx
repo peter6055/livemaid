@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, GitBranch, MessageSquare } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -225,6 +225,32 @@ export default function Dashboard() {
               <Plus className="w-5 h-5 mr-2" />
               New Diagram
             </Button>
+          </div>
+        </div>
+
+        {/* Supported Diagrams Intro */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-12">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg p-6">
+            <div className="flex items-start gap-3">
+              <div className="bg-blue-500/20 p-2 rounded-lg flex-shrink-0">
+                <GitBranch className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground mb-1">Flowchart Diagrams</h3>
+                <p className="text-sm text-muted-foreground">Create flowcharts with nodes, connections, and decision paths. Perfect for processes, workflows, and system architecture.</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200/50 dark:border-purple-800/50 rounded-lg p-6">
+            <div className="flex items-start gap-3">
+              <div className="bg-purple-500/20 p-2 rounded-lg flex-shrink-0">
+                <MessageSquare className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-foreground mb-1">Sequence Diagrams</h3>
+                <p className="text-sm text-muted-foreground">Visualize interactions between participants and message flows. Ideal for documenting protocols, APIs, and system interactions.</p>
+              </div>
+            </div>
           </div>
         </div>
 
