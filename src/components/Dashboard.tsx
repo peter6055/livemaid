@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, GitBranch, MessageSquare } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, GitBranch, MessageSquare, X, Repeat2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -81,7 +81,7 @@ export default function Dashboard() {
     }
   };
 
-  const openCreateDialog = () => {
+  const openCreateDialog = (type: string = 'flowchart') => {
     setCreateName("Untitled Diagram");
     setIsCreateOpen(true);
   };
@@ -169,7 +169,7 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <DropdownMenuItem onClick={() => openCreateDialog('flowchart')} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                 <PlusSquare className="w-4 h-4" />
                 <span>New Diagram</span>
               </DropdownMenuItem>
@@ -206,28 +206,42 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
         {/* Supported Diagrams Intro */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-md p-4">
-            <div className="flex items-start gap-2">
-              <div className="bg-blue-500/20 p-1.5 rounded flex-shrink-0">
-                <GitBranch className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <button
+            onClick={() => openCreateDialog('flowchart')}
+            className="text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm rounded-md"
+          >
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 hover:border-blue-300/70 dark:hover:border-blue-700/70 rounded-md p-4 h-full transition-colors">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <div className="bg-blue-500/20 p-1.5 rounded flex-shrink-0">
+                    <GitBranch className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <h3 className="font-semibold text-sm text-foreground">Flowchart</h3>
+                </div>
+                <div className="flex items-center gap-1 bg-blue-500/10 dark:bg-blue-400/10 px-1.5 py-0.5 rounded">
+                  <Repeat2 className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
+                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">2-way</span>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm text-foreground mb-0.5">Flowchart</h3>
-                <p className="text-xs text-muted-foreground">Nodes, connections & decision paths</p>
-              </div>
+              <p className="text-xs text-muted-foreground">Nodes, connections & decision paths</p>
             </div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200/50 dark:border-purple-800/50 rounded-md p-4">
-            <div className="flex items-start gap-2">
-              <div className="bg-purple-500/20 p-1.5 rounded flex-shrink-0">
-                <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          </button>
+          <button
+            onClick={() => openCreateDialog('sequence')}
+            className="text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm rounded-md"
+          >
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200/50 dark:border-purple-800/50 hover:border-purple-300/70 dark:hover:border-purple-700/70 rounded-md p-4 h-full transition-colors">
+              <div className="flex items-start gap-2 mb-2">
+                <div className="bg-purple-500/20 p-1.5 rounded flex-shrink-0">
+                  <MessageSquare className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-sm text-foreground">Sequence</h3>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm text-foreground mb-0.5">Sequence</h3>
-                <p className="text-xs text-muted-foreground">Participant interactions & messages</p>
-              </div>
+              <p className="text-xs text-muted-foreground">Participant interactions & messages</p>
             </div>
-          </div>
+          </button>
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
@@ -237,17 +251,26 @@ export default function Dashboard() {
             </h1>
             <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-stretch sm:items-center">
+            <div className="relative flex-1 md:flex-none">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search diagrams"
-                className="pl-9"
+                className="pl-9 pr-9"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+            <Button onClick={() => openCreateDialog('flowchart')} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
               <Plus className="w-5 h-5 mr-2" />
               New Diagram
             </Button>
@@ -305,23 +328,26 @@ export default function Dashboard() {
             ))}
           </div>
         ) : filteredDiagrams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">
-            <div className="bg-muted p-3 rounded-full mb-4">
+          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background/50 backdrop-blur-sm">
+            <div className="bg-muted p-4 rounded-full mb-4">
               <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
-            <p className="text-muted-foreground text-sm mb-4">
-              {diagrams.length === 0 ? 'Create your first diagram to get started.' : 'Try a different search term.'}
+            <h3 className="text-lg font-semibold text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
+            <p className="text-muted-foreground text-sm mb-6 max-w-xs text-center">
+              {diagrams.length === 0 
+                ? 'Get started by creating your first diagram. Choose a template above or create from scratch.' 
+                : 'Try a different search term or create a new diagram.'}
             </p>
-            {diagrams.length === 0 ? (
-              <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
+            <div className="flex gap-3">
+              <Button onClick={() => openCreateDialog('flowchart')} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
                 Create Diagram
               </Button>
-            ) : (
-              <Button variant="outline" onClick={() => setSearchQuery("")}>
-                Clear Search
-              </Button>
-            )}
+              {diagrams.length > 0 && (
+                <Button variant="outline" onClick={() => setSearchQuery("")}>
+                  Clear Search
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
