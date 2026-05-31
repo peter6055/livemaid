@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, X, Repeat2, Code2 } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, X, Repeat2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -204,33 +204,20 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
-        {/* Diagram Capabilities Info Panel */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="p-5 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">
-            <div className="flex items-start gap-3">
-              <div className="bg-blue-500/20 p-2.5 rounded-lg flex-shrink-0">
-                <Repeat2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-sm text-foreground mb-1">Two-way Sync</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Edit visually on the canvas or modify the code—both stay in sync automatically.</p>
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2 py-1 rounded text-xs font-medium text-blue-700 dark:text-blue-300">Flowchart</span>
-                  <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2 py-1 rounded text-xs font-medium text-blue-700 dark:text-blue-300">Sequence</span>
-                </div>
-              </div>
+        {/* Diagram Capabilities Info */}
+        <div className="mb-8 p-5 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">
+          <div className="flex items-start gap-3">
+            <div className="bg-blue-500/20 p-2.5 rounded-lg flex-shrink-0">
+              <Repeat2 className="w-5 h-5 text-blue-600 dark:text-blue-400" />
             </div>
-          </div>
-
-          <div className="p-5 bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/30 dark:to-amber-900/20 border border-amber-200/50 dark:border-amber-800/50 rounded-lg">
-            <div className="flex items-start gap-3">
-              <div className="bg-amber-500/20 p-2.5 rounded-lg flex-shrink-0">
-                <Code2 className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1">
+              <h3 className="font-semibold text-sm text-foreground mb-2">Two-way Sync</h3>
+              <p className="text-sm text-muted-foreground mb-3">Edit visually on the canvas or modify the code—both stay in sync automatically.</p>
+              <div className="flex flex-wrap gap-2">
+                <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2.5 py-1.5 rounded text-sm font-medium text-blue-700 dark:text-blue-300">Flowchart</span>
+                <span className="inline-flex items-center gap-1 bg-blue-600/15 px-2.5 py-1.5 rounded text-sm font-medium text-blue-700 dark:text-blue-300">Sequence</span>
               </div>
-              <div>
-                <h3 className="font-semibold text-sm text-foreground mb-1">Code Only</h3>
-                <p className="text-sm text-muted-foreground leading-relaxed">Edit other diagram types through code only. Visual editing not yet available.</p>
-              </div>
+              <p className="text-xs text-muted-foreground mt-3">Other diagram types are code-only.</p>
             </div>
           </div>
         </div>
