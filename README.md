@@ -77,22 +77,7 @@ We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
 
 LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
 
-### Option 1: Quick Deployment Script (Ubuntu/Linux)
-
-We provide a single bash script that automatically pulls the image, sets up the data directory, and runs docker-compose:
-
-1. Make the script executable:
-   ```bash
-   chmod +x deploy.sh
-   ```
-2. Run the deployment script:
-   ```bash
-   ./deploy.sh
-   ```
-
-*(Note: If the image is private, you must run `docker login ghcr.io -u <your_username>` with a Personal Access Token first).*
-
-### Option 2: Manual Docker Compose
+### Option 1: Manual Docker Compose
 
 1. Create a `docker-compose.yml` file on your server:
    ```yaml
