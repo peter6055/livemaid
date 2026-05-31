@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, Network, Zap, X, Repeat2 } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -81,7 +81,7 @@ export default function Dashboard() {
     }
   };
 
-  const openCreateDialog = (type: string = 'flowchart') => {
+  const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
     setIsCreateOpen(true);
   };
@@ -169,7 +169,7 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={() => openCreateDialog('flowchart')} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                 <PlusSquare className="w-4 h-4" />
                 <span>New Diagram</span>
               </DropdownMenuItem>
@@ -204,44 +204,18 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
-        {/* Supported Diagrams Intro */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
-          <button
-            onClick={() => openCreateDialog('flowchart')}
-            className="text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm rounded-md"
-          >
-            <div className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 hover:border-blue-300/70 dark:hover:border-blue-700/70 rounded-md p-4 h-full transition-colors">
-              <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="flex items-center gap-2">
-                  <div className="bg-blue-500/20 p-1.5 rounded flex-shrink-0">
-                    <Network className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <h3 className="font-semibold text-sm text-foreground">Flowchart</h3>
-                </div>
-                <div className="flex items-center gap-1 bg-blue-500/10 dark:bg-blue-400/10 px-1.5 py-0.5 rounded">
-                  <Repeat2 className="w-2.5 h-2.5 text-blue-600 dark:text-blue-400" />
-                  <span className="text-xs font-medium text-blue-700 dark:text-blue-300">2-way</span>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">Nodes, connections & decision paths</p>
+        {/* Diagram Capabilities Info Panel */}
+        <div className="mb-8 p-4 bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20 border border-indigo-200/50 dark:border-indigo-800/50 rounded-lg">
+          <div className="flex flex-col sm:flex-row gap-6">
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-foreground mb-2">Two-way Sync</h3>
+              <p className="text-sm text-muted-foreground">Edit visually on the canvas or modify the code—both stay in sync automatically. Supported: <span className="font-medium text-foreground">Flowchart, Sequence</span></p>
             </div>
-          </button>
-          <button
-            onClick={() => openCreateDialog('sequence')}
-            className="text-left transition-all hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 active:shadow-sm rounded-md"
-          >
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/30 dark:to-purple-900/20 border border-purple-200/50 dark:border-purple-800/50 hover:border-purple-300/70 dark:hover:border-purple-700/70 rounded-md p-4 h-full transition-colors">
-              <div className="flex items-start gap-2 mb-2">
-                <div className="bg-purple-500/20 p-1.5 rounded flex-shrink-0">
-                  <Zap className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-sm text-foreground">Sequence</h3>
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">Participant interactions & messages</p>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-foreground mb-2">Code Only</h3>
+              <p className="text-sm text-muted-foreground">Edit these diagrams through code only. Visual editing not yet available for other diagram types.</p>
             </div>
-          </button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
@@ -270,7 +244,7 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
-            <Button onClick={() => openCreateDialog('flowchart')} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
               <Plus className="w-5 h-5 mr-2" />
               New Diagram
             </Button>
@@ -339,7 +313,7 @@ export default function Dashboard() {
                 : 'Try a different search term or create a new diagram.'}
             </p>
             <div className="flex gap-3">
-              <Button onClick={() => openCreateDialog('flowchart')} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
+              <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
                 Create Diagram
               </Button>
               {diagrams.length > 0 && (
