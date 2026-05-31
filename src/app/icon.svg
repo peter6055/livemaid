@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a855f7" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad1)" />
+  
+  <g stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- Top Node (Rounded Rectangle) -->
+    <rect x="186" y="110" width="140" height="80" rx="24" />
+    
+    <!-- Connector Lines -->
+    <path d="M256 190 v50" />
+    <path d="M156 240 H356" />
+    <path d="M156 240 v40" />
+    <path d="M356 240 v40" />
+    
+    <!-- Left Node (Decision Diamond) -->
+    <path d="M156 280 L206 330 L156 380 L106 330 Z" />
+    
+    <!-- Right Node (Start/End Stadium) -->
+    <rect x="296" y="290" width="120" height="80" rx="40" />
+  </g>
+</svg>
