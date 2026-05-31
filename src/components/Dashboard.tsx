@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -42,6 +42,7 @@ import { Input } from "@/components/ui/input";
 export default function Dashboard() {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const router = useRouter();
@@ -154,6 +155,10 @@ export default function Dashboard() {
     }
   };
 
+  const filteredDiagrams = diagrams.filter((diagram) =>
+    diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  );
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Top Nav */}
@@ -199,17 +204,28 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
-        <div className="flex items-end justify-between mb-12">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
               Your Diagrams
             </h1>
             <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
-          <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
-            <Plus className="w-5 h-5 mr-2" />
-            New Diagram
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+            <div className="relative w-full md:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search diagrams"
+                className="pl-9"
+              />
+            </div>
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+              <Plus className="w-5 h-5 mr-2" />
+              New Diagram
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -262,20 +278,28 @@ export default function Dashboard() {
               </Card>
             ))}
           </div>
-        ) : diagrams.length === 0 ? (
+        ) : filteredDiagrams.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">
             <div className="bg-muted p-3 rounded-full mb-4">
               <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground">No diagrams yet</h3>
-            <p className="text-muted-foreground text-sm mb-4">Create your first diagram to get started.</p>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
-              Create Diagram
-            </Button>
+            <h3 className="text-lg font-medium text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
+            <p className="text-muted-foreground text-sm mb-4">
+              {diagrams.length === 0 ? 'Create your first diagram to get started.' : 'Try a different search term.'}
+            </p>
+            {diagrams.length === 0 ? (
+              <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
+                Create Diagram
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
+                Clear Search
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {diagrams.map(diagram => (
+            {filteredDiagrams.map(diagram => (
               <DiagramCard 
                 key={diagram.id} 
                 diagram={diagram} 
