@@ -176,6 +176,8 @@ Because the base theme is so dark, traditional drop shadows are ineffective. We 
 - **Hover States:** All buttons and cards have subtle background color transitions (`transition-colors`).
 - **Micro-animations:** The quick-add node button (`+`) scales up on hover (`hover:scale-110 transition-transform`).
 - **Feedback:** We use `sonner` for toast notifications to provide instant feedback on destructive actions (deletes) or background errors. Auto-saving is communicated via a subtle, non-intrusive text label in the header rather than a popup.
+- **Version History Dialog:** Rollback is exposed through a scrollable modal list of saved snapshots, with each entry showing a timestamp, a compact code preview, and an explicit rollback action.
+- **History Metadata Controls:** Each snapshot row includes a small editable name field and a star affordance so users can pin or categorize important versions without leaving the dialog.
 
 ## Do's and Don'ts
 

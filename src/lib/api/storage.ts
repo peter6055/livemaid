@@ -11,7 +11,15 @@ export interface DiagramDocument {
   type: 'flowchart' | 'sequence' | 'class';
   subPages: { id: string; name: string; code: string }[];
   comments: { id: string; content: string; timestamp: string }[];
-  versionHistory: { id: string; code: string; timestamp: string }[];
+  versionHistory: VersionHistoryEntry[];
+}
+
+export interface VersionHistoryEntry {
+  id: string;
+  code: string;
+  timestamp: string;
+  label?: string;
+  starred?: boolean;
 }
 
 function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
