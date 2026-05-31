@@ -20,6 +20,8 @@ import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
 
+const MAX_VERSION_PREVIEW_LENGTH = 100;
+
 export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const router = useRouter();
 
@@ -1073,7 +1075,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                       Saved {new Date(version.timestamp).toLocaleString()}
                     </p>
                     <p className="text-xs text-muted-foreground truncate mt-1">
-                      {version.code.replace(/\s+/g, ' ').trim().slice(0, 100) || 'Empty diagram'}
+                      {version.code.replace(/\s+/g, ' ').trim().slice(0, MAX_VERSION_PREVIEW_LENGTH) || 'Empty diagram'}
                     </p>
                   </div>
                   <Button

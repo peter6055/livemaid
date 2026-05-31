@@ -14,9 +14,15 @@ export interface DiagramDocument {
   versionHistory: { id: string; code: string; timestamp: string }[];
 }
 
-function normalizeDiagramDocument(raw: DiagramDocument): DiagramDocument {
+function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
   return {
-    ...raw,
+    id: raw.id || '',
+    name: raw.name || 'Untitled Diagram',
+    createdAt: raw.createdAt || new Date().toISOString(),
+    updatedAt: raw.updatedAt || new Date().toISOString(),
+    deletedAt: typeof raw.deletedAt === 'string' ? raw.deletedAt : null,
+    code: raw.code || '',
+    type: raw.type || 'flowchart',
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
     comments: Array.isArray(raw.comments) ? raw.comments : [],
     versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
