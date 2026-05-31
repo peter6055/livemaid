@@ -200,7 +200,7 @@ export default function Dashboard() {
             </h1>
             <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
-          <Button onClick={openCreateDialog} className="bg-black hover:bg-zinc-800 text-white rounded-full px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+          <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
             <Plus className="w-5 h-5 mr-2" />
             New Diagram
           </Button>
@@ -263,7 +263,7 @@ export default function Dashboard() {
             </div>
             <h3 className="text-lg font-medium text-foreground">No diagrams yet</h3>
             <p className="text-muted-foreground text-sm mb-4">Create your first diagram to get started.</p>
-            <Button onClick={openCreateDialog} className="bg-black hover:bg-zinc-800 text-white rounded-full px-6 shadow-sm">
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
               Create Diagram
             </Button>
           </div>

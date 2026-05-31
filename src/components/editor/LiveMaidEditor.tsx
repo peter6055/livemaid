@@ -3,7 +3,7 @@
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles } from "@/lib/diagrams/utils";
-import { useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
@@ -19,7 +19,6 @@ import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
-import { useState, useRef } from "react";
 
 export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const router = useRouter();
@@ -601,6 +600,38 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       toast.info(`${exportFormat} export coming soon!`);
     }
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isLocked) return;
+      if (isInlineEditing) return;
+      if (!selectedNodeId) return;
+
+      // Ignore keydown if the user is typing in any text input, textarea, or Monaco editor
+      const activeEl = document.activeElement;
+      const isInputActive = activeEl && (
+        activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'TEXTAREA' ||
+        activeEl.getAttribute('contenteditable') === 'true' ||
+        activeEl.closest('.monaco-editor')
+      );
+      if (isInputActive) return;
+
+      if (e.key === 'Backspace' || e.key === 'Delete') {
+        e.preventDefault();
+        if (isEdgeId(selectedNodeId)) {
+          handleDeleteEdge();
+        } else {
+          handleDeleteNode();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isLocked, isInlineEditing, selectedNodeId, handleDeleteEdge, handleDeleteNode]);
 
   if (loading) {
     return (

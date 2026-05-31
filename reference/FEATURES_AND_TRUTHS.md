@@ -68,5 +68,11 @@ This document serves as the source of truth for the implemented features and arc
 - **Centralized Connector Matching Pattern**: Standardized and ordered all Mermaid link connectors from longest/most-specific to shortest/least-specific in `CONNECTOR_PATTERN` in `src/lib/diagrams/utils.ts`. This resolves regex prefix conflicts (where shorter subset connectors like `-->` falsely matched inside longer superset connectors like `<-->` or `x--x`), ensuring robust arrow type editing, stroke styling, label updating, and styled edge deletion without corrupting the Mermaid syntax.
 - **Preset Color Selection Cleanups**: Removed the redundant `'White'` and `'Black'` presets from `PRESET_COLORS` in `src/lib/diagrams/constants.ts` to provide a premium, tailored preset palette for flowchart elements.
 
+## 10. Global Keyboard Shortcuts
+- **Keyboard-Driven Canvas Deletion**: When a diagram node or flowchart edge/line is selected, users can press `Backspace` or `Delete` on their keyboard to instantly delete it from the diagram canvas and Mermaid code.
+- **Form/Input and Code Isolation**: The keydown event listener is completely disabled when any input, textarea, contenteditable container, or the Monaco Editor has focus. This prevents elements from being accidentally deleted while typing comments or updating diagram text code.
+- **Canvas Focus Blur**: To ensure that selecting canvas elements (which are SVG elements and not focusable by default) immediately enables deletion shortcuts without being blocked by active Monaco editor focus, clicking any canvas element or empty space (inside `handleSvgClick`) programmatically blurs the active text input or editor via `document.activeElement.blur()`. This shifts browser focus away from Monaco/inputs to the document body, activating the deletion listeners safely.
+
+
 
 
