@@ -1067,7 +1067,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                 <div key={version.id} className="border border-border rounded-lg p-3 flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-foreground">
-                      Version {doc.versionHistory.length - index}
+                      Version {index + 1}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Saved {new Date(version.timestamp).toLocaleString()}
