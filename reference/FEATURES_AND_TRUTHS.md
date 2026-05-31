@@ -101,6 +101,19 @@ This document serves as the source of truth for the implemented features and arc
 - **Browser Exit Prompt**: Refreshing or closing the tab while in the editor triggers the browser-native `beforeunload` confirmation prompt.
 - **Browser Back Button Guard**: Pressing the browser back button inside the editor is intercepted and routed through the same leave-editor confirmation dialog before navigation is allowed.
 
+## 14. Dashboard Lazy Loading
+- **Pagination Strategy**: The dashboard implements progressive loading of diagram cards using IntersectionObserver API. Initially, 6 diagrams are displayed, with additional batches of 6 loaded as the user scrolls down.
+- **State Management**: 
+  - `displayCount` state tracks the current number of diagrams to display (starts at 6, increments by 6).
+  - `sentinelRef` creates a sentinel div at the bottom of the grid that triggers loading when visible.
+- **Computed Values**: 
+  - `filteredDiagrams` uses `useMemo` to filter all diagrams by search query (only recalculates when diagrams or searchQuery changes).
+  - `displayedDiagrams` uses `useMemo` to slice filtered diagrams to show only `displayCount` items (optimizes rendering performance).
+- **Intersection Observer**: Watches the sentinel div with `threshold: 0.1`. When the sentinel becomes visible and more diagrams exist, `displayCount` is incremented by 6 (capped at total available).
+- **Visual Feedback**: A spinning `Loader2` icon displays at the sentinel position when more diagrams are available, providing clear indication that additional content exists below.
+- **Search Integration**: When search query changes, filtered results are recalculated and `displayCount` is effectively reset (since new filtered results use the existing displayCount slice). This ensures search works seamlessly with lazy loading.
+- **Performance Benefit**: Lazy loading reduces initial page render time and DOM complexity by only rendering visible cards in the viewport, significantly improving dashboard responsiveness with large diagram libraries.
+
 
 
 
