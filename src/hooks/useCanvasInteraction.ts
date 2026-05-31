@@ -395,6 +395,7 @@ export function useCanvasInteraction({
             }
         }
     }
+    
     setEditingText(currentText);
     setIsInlineEditing(true);
     setTimeout(() => {
@@ -518,7 +519,7 @@ export function useCanvasInteraction({
           setIsInlineEditing(false);
         }
     }
-  }, [getClickedNode, containerRef, normalizeId]);
+  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       const container = containerRef.current;
