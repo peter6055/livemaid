@@ -862,10 +862,14 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     }, 400);
   }, [router]);
 
-  const handleNavigate = useCallback((url: string, message: string) => {
-    setPendingNavigation({ url, message });
-    setIsExitConfirmOpen(true);
-  }, []);
+  const handleNavigate = useCallback((url: string, message: string, skipConfirm: boolean = false) => {
+    if (skipConfirm) {
+      performNavigation(url, message);
+    } else {
+      setPendingNavigation({ url, message });
+      setIsExitConfirmOpen(true);
+    }
+  }, [performNavigation]);
 
   const handleConfirmExitNavigation = useCallback(() => {
     if (!pendingNavigation) return;
@@ -894,12 +898,13 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         body: JSON.stringify({
           name: `${doc.name} (Copy)`,
           code: code,
+          type: doc.type,
         }),
       });
       if (res.ok) {
         const newDiagram = await res.json();
         toast.success("Diagram duplicated");
-        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...');
+        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...', true);
       } else {
         toast.error("Failed to duplicate");
       }

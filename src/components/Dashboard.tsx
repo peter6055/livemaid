@@ -236,7 +236,7 @@ export default function Dashboard() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search diagrams"
-                className="pl-9 pr-9"
+                className="pl-9 pr-9 h-10"
               />
               {searchQuery && (
                 <button
@@ -248,7 +248,7 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
               <Plus className="w-5 h-5 mr-2" />
               New Diagram
             </Button>
