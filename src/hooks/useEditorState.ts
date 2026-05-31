@@ -25,13 +25,19 @@ export function useEditorState(documentId: string) {
       startOnLoad: false,
       theme: 'default',
       securityLevel: 'loose', // allow clicks
-      flowchart: { htmlLabels: false },
+      flowchart: { htmlLabels: true },
     });
   }, []);
 
   const renderMermaid = useCallback(async (mermaidCode: string, onResetSelection?: () => void) => {
     try {
       setParseError(null);
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose', // allow clicks
+        flowchart: { htmlLabels: true },
+      });
       await mermaid.parse(mermaidCode, { suppressErrors: true });
       const id = `mermaid-svg-${Date.now()}`;
       renderIdRef.current = id;

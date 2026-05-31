@@ -25,6 +25,7 @@ export function useCanvasInteraction({
   const [textBox, setTextBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [editingText, setEditingText] = useState("");
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const [shapePicker, setShapePicker] = useState<{ x: number, y: number, startNodeId: string } | null>(null);
   
   const [connectionState, setConnectionState] = useState<{
       active: boolean;
@@ -362,7 +363,7 @@ export function useCanvasInteraction({
                 if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
                     continue;
                 }
-                const linkLineRegex = new RegExp(`(^|\\s*)${src}\\b[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)\\b${dst}\\b`, 'i');
+                const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
                 const match = line.match(linkLineRegex);
                 if (match) {
                     if (currentOccurrence === occurrenceIndex) {
@@ -383,7 +384,7 @@ export function useCanvasInteraction({
             }
         }
     } else {
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\[\\/|\\[\\\\\\[\\(|\\[|\\[\\[|\\(\\[|\\(\\(\\(|\\(\\(|\\(|\\{\\{|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]))`, 'm');
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         const match = code.match(nodeRegex);
         if (match && match[3]) {
             currentText = match[3];
@@ -394,6 +395,7 @@ export function useCanvasInteraction({
             }
         }
     }
+    
     setEditingText(currentText);
     setIsInlineEditing(true);
     setTimeout(() => {
@@ -410,6 +412,11 @@ export function useCanvasInteraction({
     if (isLocked) return;
     if (isInlineEditing) return;
 
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRectForScale = container.getBoundingClientRect();
+    const scale = containerRectForScale.width / container.offsetWidth;
+
     const currentTime = new Date().getTime();
     const timeSinceLastClick = currentTime - lastClickTimeRef.current;
     
@@ -424,42 +431,120 @@ export function useCanvasInteraction({
     if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
         document.activeElement.blur();
     }
+    // Prevent triggering click on selection components
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
+        return;
+    }
 
-    const result = getClickedNode(e.target as Element);
-    
-    if (result) {
-        setSelectionBox(result.newSelectionBox);
-        setTextBox(result.newTextBox);
-        setSelectedNodeId(result.cleanId);
-        setSelectedSvgId(result.rawSvgId);
+    const clicked = getClickedNode(target);
+    if (clicked) {
+        setSelectedNodeId(clicked.cleanId);
+        setSelectedSvgId(clicked.rawSvgId);
+        
+        const parent = document.getElementById(clicked.rawSvgId);
+        if (parent) {
+            const rect = parent.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            // Unscaled canvas coordinates
+            const x = (rect.left - containerRect.left + container.scrollLeft) / scale;
+            const y = (rect.top - containerRect.top + container.scrollTop) / scale;
+            const w = rect.width / scale;
+            const h = rect.height / scale;
+            
+            setSelectionBox({ x, y, width: w, height: h });
+            
+            // Node-level label extraction for inline editor
+            const labelEl = parent.querySelector('.label, text, .nodeLabel');
+            if (labelEl) {
+                const labelRect = labelEl.getBoundingClientRect();
+                const tx = (labelRect.left - containerRect.left + container.scrollLeft) / scale;
+                const ty = (labelRect.top - containerRect.top + container.scrollTop) / scale;
+                const tw = labelRect.width / scale;
+                const th = labelRect.height / scale;
+                setTextBox({ x: tx, y: ty, width: tw, height: th });
+            } else {
+                setTextBox({ x, y, width: w, height: h });
+            }
+        }
     } else {
-        if ((e.target as any).tagName === 'svg' || (e.target as any).classList?.contains('react-transform-component')) {
-            setSelectionBox(null);
-            setTextBox(null);
-            setSelectedNodeId(null);
-            setSelectedSvgId(null);
-            setIsInlineEditing(false);
+        // If clicking background/empty space, check if clicking a flowchart link (edge path) or edge label
+        let current: SVGElement | null = e.target as SVGElement;
+        let edgeFound = false;
+        
+        // Let's check if we clicked on an edge path or label
+        while (current && current.tagName !== 'svg') {
+          if (current.id) {
+            const cleanId = normalizeId(current.id);
+            if (isEdgeId(cleanId)) {
+              setSelectedNodeId(cleanId);
+              setSelectedSvgId(current.id);
+              
+              const rect = current.getBoundingClientRect();
+              const containerRect = container.getBoundingClientRect();
+              
+              const x = (rect.left - containerRect.left + container.scrollLeft) / scale;
+              const y = (rect.top - containerRect.top + container.scrollTop) / scale;
+              const w = rect.width / scale;
+              const h = rect.height / scale;
+              
+              setSelectionBox({ x, y, width: w, height: h });
+              
+              // Edge-level label selection
+              const labelEl = current.closest('.edgePath')?.querySelector('.edgeLabel') || current.querySelector('.edgeLabel');
+              if (labelEl) {
+                const labelRect = labelEl.getBoundingClientRect();
+                const tx = (labelRect.left - containerRect.left + container.scrollLeft) / scale;
+                const ty = (labelRect.top - containerRect.top + container.scrollTop) / scale;
+                const tw = labelRect.width / scale;
+                const th = labelRect.height / scale;
+                setTextBox({ x: tx, y: ty, width: tw, height: th });
+              } else {
+                setTextBox({ x, y, width: w, height: h });
+              }
+              
+              edgeFound = true;
+              break;
+            }
+          }
+          current = current.parentElement as SVGElement | null;
+        }
+
+        if (!edgeFound) {
+          setSelectedNodeId(null);
+          setSelectedSvgId(null);
+          setSelectionBox(null);
+          setTextBox(null);
+          setIsInlineEditing(false);
         }
     }
-  }, [isLocked, getClickedNode, handleEditClick, isInlineEditing]);
+  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-      if (connectionState.active && connectionState.startNodeId && containerRef.current) {
-          const containerRect = containerRef.current.getBoundingClientRect();
-          const scale = containerRect.width / containerRef.current.offsetWidth;
-          
+      const container = containerRef.current;
+      if (!container) return;
+      const containerRectForScale = container.getBoundingClientRect();
+      const scale = containerRectForScale.width / container.offsetWidth;
+
+      if (connectionState.active && connectionState.startNodeId) {
+          const containerRect = container.getBoundingClientRect();
           setConnectionState(prev => ({
               ...prev,
               isDragging: true,
               mousePos: {
-                  x: (e.clientX - containerRect.left + containerRef.current!.scrollLeft) / scale,
-                  y: (e.clientY - containerRect.top + containerRef.current!.scrollTop) / scale
+                  x: (e.clientX - containerRect.left + container.scrollLeft) / scale,
+                  y: (e.clientY - containerRect.top + container.scrollTop) / scale
               }
           }));
       }
   }, [connectionState.active, connectionState.startNodeId, containerRef]);
 
-  const handleAddNodeFromSelected = useCallback((startId: string | null, targetNodeId?: string) => {
+  const handleAddNodeFromSelected = useCallback((
+      startId: string | null, 
+      targetNodeId?: string,
+      shape?: { b?: [string, string] | null, isText?: boolean, expanded?: string, l?: string }
+  ) => {
       if (!startId) return;
       
       const diagramType = determineDiagramType(code);
@@ -477,7 +562,28 @@ export function useCanvasInteraction({
           } else {
               const prefix = startId.match(/^([a-zA-Z]+)/)?.[1] || 'n';
               const newNodeId = getNextNodeId(code, prefix);
-              newCode += `\n    ${startId} --> ${newNodeId}[New Node]`;
+              const label = "New Node";
+              let nodeDef = "";
+              if (shape) {
+                  if (shape.isText) {
+                      nodeDef = `${newNodeId}["Text Block"]\n    ${newNodeId}@{ shape: text }`;
+                  } else if (shape.expanded) {
+                      nodeDef = `${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
+                  } else if (shape.b) {
+                      const brackets = shape.b as [string, string];
+                      nodeDef = `${newNodeId}${brackets[0]}${label}${brackets[1]}`;
+                  } else {
+                      nodeDef = `${newNodeId}[${label}]`;
+                  }
+              } else {
+                  nodeDef = `${newNodeId}[${label}]`;
+              }
+              
+              if (shape && (shape.expanded || shape.isText)) {
+                  newCode += `\n    ${nodeDef}\n    ${startId} --> ${newNodeId}`;
+              } else {
+                  newCode += `\n    ${startId} --> ${nodeDef}`;
+              }
           }
       } else if (diagramType === 'sequence') {
           const actor = startId.replace('SEQ_', '');
@@ -499,18 +605,29 @@ export function useCanvasInteraction({
               if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
                   handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
               } else if (!result) {
-                  // Dropped on empty space
+                  // Dropped on empty space - trigger the shape selector
+                  const diagramType = determineDiagramType(code);
+                  if (diagramType === 'flowchart' || diagramType === 'graph') {
+                       if (containerRef.current) {
+                           const viewport = containerRef.current.closest('.relative.overflow-hidden');
+                           const rect = viewport ? viewport.getBoundingClientRect() : containerRef.current.getBoundingClientRect();
+                           setShapePicker({
+                               x: e.clientX - rect.left,
+                               y: e.clientY - rect.top,
+                               startNodeId: connectionState.startNodeId
+                           });
+                       }
+                  }
               }
           }
           setConnectionState({ active: false, startNodeId: null, mousePos: null, isDragging: false });
       }
-  }, [connectionState, getClickedNode, handleAddNodeFromSelected]);
+  }, [connectionState, getClickedNode, handleAddNodeFromSelected, code, determineDiagramType, containerRef]);
 
   // Synchronized hover highlighting for edge paths and their labels
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-
     const getCanonicalEdgeId = (el: HTMLElement | SVGElement | null): string | null => {
       if (!el) return null;
       
@@ -636,6 +753,8 @@ export function useCanvasInteraction({
     handleMouseMove,
     handleMouseUp,
     handleEditClick,
-    handleAddNodeFromSelected
+    handleAddNodeFromSelected,
+    shapePicker,
+    setShapePicker
   };
 }

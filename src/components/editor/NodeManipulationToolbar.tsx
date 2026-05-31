@@ -61,6 +61,21 @@ export function NodeManipulationToolbar({
     return null;
   };
 
+  const getBoldItalicStateFromCode = (format: 'bold' | 'italic'): boolean => {
+    if (!selectedNodeId) return false;
+    const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+    const match = code.match(nodeRegex);
+    if (match && match[3]) {
+      const label = match[3].trim();
+      if (format === 'bold') {
+        return label.startsWith('<b>') && label.endsWith('</b>') || label.includes('<b>');
+      } else {
+        return label.startsWith('<i>') && label.endsWith('</i>') || label.includes('<i>');
+      }
+    }
+    return false;
+  };
+
   const getActiveBgColor = () => {
     const fromCode = getStyleFromCode('fill');
     if (fromCode) return fromCode;
@@ -212,6 +227,7 @@ export function NodeManipulationToolbar({
         <button 
             onClick={(e) => { e.preventDefault(); onFormatNodeLabel('bold'); }}
             className={`h-8 w-8 flex items-center justify-center rounded-full font-bold font-serif transition-colors text-sm ${
+                getBoldItalicStateFromCode('bold') ||
                 getStyleFromCode('font-weight') === 'bold' || 
                 (() => {
                   if (!selectedSvgId) return false;
@@ -219,7 +235,8 @@ export function NodeManipulationToolbar({
                     const parent = document.getElementById(selectedSvgId);
                     const el = parent?.querySelector('.label, text, .nodeLabel');
                     if (el) {
-                      return ['bold', '700', '800', '900'].includes(window.getComputedStyle(el).fontWeight);
+                      return ['bold', '700', '800', '900'].includes(window.getComputedStyle(el).fontWeight) ||
+                             el.querySelector('b') !== null;
                     }
                   } catch (e) {
                     console.error(e);
@@ -237,6 +254,7 @@ export function NodeManipulationToolbar({
         <button 
             onClick={(e) => { e.preventDefault(); onFormatNodeLabel('italic'); }}
             className={`h-8 w-8 flex items-center justify-center rounded-full italic font-serif transition-colors text-sm ${
+                getBoldItalicStateFromCode('italic') ||
                 getStyleFromCode('font-style') === 'italic' ||
                 (() => {
                   if (!selectedSvgId) return false;
@@ -244,7 +262,8 @@ export function NodeManipulationToolbar({
                     const parent = document.getElementById(selectedSvgId);
                     const el = parent?.querySelector('.label, text, .nodeLabel');
                     if (el) {
-                      return window.getComputedStyle(el).fontStyle === 'italic';
+                      return window.getComputedStyle(el).fontStyle === 'italic' ||
+                             el.querySelector('i') !== null;
                     }
                   } catch (e) {
                     console.error(e);

@@ -6,6 +6,7 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import { CSSProperties, RefObject, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
 
 interface EditorCanvasProps {
   code: string;
@@ -25,7 +26,7 @@ interface EditorCanvasProps {
   selectedSvgId: string | null;
   selectedNodeId: string | null;
   currentType: string;
-  handleAddNodeFromSelected: (startId: string | null, targetNodeId?: string) => void;
+  handleAddNodeFromSelected: (startId: string | null, targetNodeId?: string, shape?: any) => void;
   handleUpdateStyle: (property: string, value: string) => void;
   handleFormatNodeLabel: (format: string, value?: string) => void;
   handleChangeShape: (shape: any) => void;
@@ -37,7 +38,6 @@ interface EditorCanvasProps {
   editingText: string;
   setEditingText: (text: string) => void;
   handleEditSubmit: () => void;
-  handleFormatText: (format: string, value?: string) => void;
   inlineInputRef: RefObject<HTMLTextAreaElement | null>;
   onDeselect?: () => void;
   onResetStyle?: () => void;
@@ -46,6 +46,8 @@ interface EditorCanvasProps {
   onUpdateEdgeCurve?: (curve: string) => void;
   onUpdateEdgeAnimation?: (animate: boolean) => void;
   onDeleteEdge?: () => void;
+  shapePicker: { x: number, y: number, startNodeId: string } | null;
+  setShapePicker: (state: any) => void;
 }
 
 export function EditorCanvas({
@@ -78,7 +80,6 @@ export function EditorCanvas({
   editingText,
   setEditingText,
   handleEditSubmit,
-  handleFormatText,
   inlineInputRef,
   onDeselect,
   onResetStyle,
@@ -86,8 +87,13 @@ export function EditorCanvas({
   onUpdateEdgeColor,
   onUpdateEdgeCurve,
   onUpdateEdgeAnimation,
-  onDeleteEdge
+  onDeleteEdge,
+  shapePicker,
+  setShapePicker
 }: EditorCanvasProps) {
+  const viewport = containerRef.current?.closest('.relative.overflow-hidden');
+  const viewportWidth = viewport?.clientWidth || 800;
+  const viewportHeight = viewport?.clientHeight || 600;
 
   const updateScaleLockedElements = (container: HTMLDivElement | null, scale: number) => {
     if (!container) return;
@@ -125,6 +131,17 @@ export function EditorCanvas({
       updateScaleLockedElements(containerRef.current, currentScale);
     }
   }, [selectionBox, selectedNodeId, containerRef]);
+
+  useEffect(() => {
+    if (!shapePicker) return;
+    const handleOutsideClick = () => {
+      setShapePicker(null);
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, [shapePicker, setShapePicker]);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
@@ -286,7 +303,7 @@ export function EditorCanvas({
                             scale={state.scale}
                             onUpdateStyle={onUpdateEdgeStyle || (() => {})}
                             onUpdateColor={onUpdateEdgeColor || (() => {})}
-                            onUpdateAnimation={onUpdateEdgeAnimation || (() => {})}
+                            onUpdateAnimation={onUpdateEdgeAnimation}
                             onEditLabel={(e) => handleEditClick(e)}
                             onDeleteEdge={onDeleteEdge || (() => {})}
                           />
@@ -317,7 +334,6 @@ export function EditorCanvas({
                         editingText={editingText}
                         setEditingText={setEditingText}
                         handleEditSubmit={handleEditSubmit}
-                        handleFormatText={handleFormatText}
                         inlineInputRef={inlineInputRef}
                         selectedSvgId={selectedSvgId}
                       />
@@ -370,6 +386,87 @@ export function EditorCanvas({
             </>
           )}
         </TransformWrapper>
+
+        {shapePicker && (
+          <div 
+            className="absolute z-50 bg-[#1c1c21]/95 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-150 text-white"
+            style={{
+              left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 250)),
+              top: Math.max(10, Math.min(shapePicker.y, viewportHeight - 350)),
+              width: '230px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-white/10 pb-2">
+              <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Choose Shape</span>
+              <button 
+                onClick={() => setShapePicker(null)} 
+                className="text-white/60 hover:text-white text-xs font-medium px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-4 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
+              {/* Basic Shapes */}
+              <div>
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">Basic</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {BASIC_SHAPES.map((shape, i) => (
+                    <button
+                      key={i}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape as any);
+                        setShapePicker(null);
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                      className="flex items-center justify-center w-8 h-8 bg-white/5 border border-white/10 rounded-md hover:border-indigo-500 hover:bg-indigo-500/20 hover:text-indigo-400 cursor-pointer text-white p-0 transition-all active:scale-95"
+                      title={shape.l}
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4">
+                        {shape.i}
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Extended Shapes */}
+              <div>
+                <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">Extended</p>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {EXTENDED_SHAPES.map((shape, i) => (
+                    <button
+                      key={i}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape as any);
+                        setShapePicker(null);
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                      }}
+                      className="flex items-center justify-center w-8 h-8 bg-white/5 border border-white/10 rounded-md hover:border-indigo-500 hover:bg-indigo-500/20 hover:text-indigo-400 cursor-pointer text-white p-0 transition-all active:scale-95"
+                      title={shape.l}
+                    >
+                      <svg viewBox="0 0 24 24" className="w-4 h-4">
+                        {shape.i}
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }
