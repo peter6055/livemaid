@@ -62,4 +62,5 @@ To ensure we can safely rollback changes if anything goes wrong, you MUST follow
    - The PR MUST be merged using **"Squash and merge"**. 
    - After merging, the feature branch MUST be deleted. Do not reuse old branches. Future changes require checking out a fresh branch from `main`.
    - *Note: PRs currently do not require reviewers, but this will change when more contributors join.*
+7. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
 <!-- END:git-workflow-rules -->
