@@ -762,41 +762,95 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const handleDeleteNode = useCallback(() => {
       if (!selectedNodeId) return;
       let newCode = code;
-      
-      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
-      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
-      
-      let parents = [];
-      let matchTo;
-      while ((matchTo = toRegex.exec(code)) !== null) {
-          parents.push({ id: matchTo[1], arrow: matchTo[2] });
-      }
-      
-      let children = [];
-      let matchFrom;
-      while ((matchFrom = fromRegex.exec(code)) !== null) {
-          children.push({ id: matchFrom[3], arrow: matchFrom[2] });
-      }
-      
-      let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
-      let preservedDefinitions = [];
-      for (const nodeId of nodesToPreserve) {
-          const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
-          const match = newCode.match(nodeRegex);
-          if (match) {
-              preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
-          } else {
-              preservedDefinitions.push(`\n    ${nodeId}`);
+
+      // Sequence diagram deletions
+      if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+          const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+          // Remove participant/actor declaration lines and all lines referencing this actor
+          const lines = code.split('\n');
+          const filtered = lines.filter(line => {
+              const trimmed = line.trim();
+              // Remove declaration
+              const declMatch = trimmed.match(/^(?:participant|actor)\s+(\S+)/);
+              if (declMatch && declMatch[1] === actorId) return false;
+              // Remove lines referencing this actor (as sender, receiver, or in notes)
+              const refRegex = new RegExp(`(^|[^a-zA-Z0-9_])${actorId}(?:[^a-zA-Z0-9_]|$)`);
+              if (refRegex.test(trimmed) && trimmed !== 'sequenceDiagram') return false;
+              return true;
+          });
+          newCode = filtered.join('\n');
+      } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
+          const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+          const isMessageLine = (line: string) => {
+              const trimmed = line.trim();
+              if (!trimmed || trimmed.startsWith('%%')) return false;
+              const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+              if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
+              return trimmed.includes(':');
+          };
+          const lines = code.split('\n');
+          let msgCount = 0;
+          const filtered = lines.filter(line => {
+              if (isMessageLine(line)) {
+                  if (msgCount === idx) { msgCount++; return false; }
+                  msgCount++;
+              }
+              return true;
+          });
+          newCode = filtered.join('\n');
+      } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+          const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+          const isNoteLine = (line: string) => {
+              const trimmed = line.trim();
+              return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
+          };
+          const lines = code.split('\n');
+          let noteCount = 0;
+          const filtered = lines.filter(line => {
+              if (isNoteLine(line)) {
+                  if (noteCount === idx) { noteCount++; return false; }
+                  noteCount++;
+              }
+              return true;
+          });
+          newCode = filtered.join('\n');
+      } else {
+          // Flowchart deletion logic
+          const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+          const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+          
+          let parents = [];
+          let matchTo;
+          while ((matchTo = toRegex.exec(code)) !== null) {
+              parents.push({ id: matchTo[1], arrow: matchTo[2] });
           }
+          
+          let children = [];
+          let matchFrom;
+          while ((matchFrom = fromRegex.exec(code)) !== null) {
+              children.push({ id: matchFrom[3], arrow: matchFrom[2] });
+          }
+          
+          let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
+          let preservedDefinitions = [];
+          for (const nodeId of nodesToPreserve) {
+              const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+              const match = newCode.match(nodeRegex);
+              if (match) {
+                  preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
+              } else {
+                  preservedDefinitions.push(`\n    ${nodeId}`);
+              }
+          }
+          
+          const lines = newCode.split('\n');
+          const filteredLines = lines.filter(line => {
+              const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
+              return !mentionRegex.test(line);
+          });
+          
+          newCode = filteredLines.join('\n') + preservedDefinitions.join('');
       }
-      
-      const lines = newCode.split('\n');
-      const filteredLines = lines.filter(line => {
-          const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
-          return !mentionRegex.test(line);
-      });
-      
-      newCode = filteredLines.join('\n') + preservedDefinitions.join('');
       
       handleCodeChange(newCode);
       setSelectionBox(null);

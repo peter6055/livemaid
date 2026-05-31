@@ -2,6 +2,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { Lock, Unlock, Plus } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
+import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import { CSSProperties, RefObject, useEffect } from "react";
@@ -48,6 +49,10 @@ interface EditorCanvasProps {
   onDeleteEdge?: () => void;
   shapePicker: { x: number, y: number, startNodeId: string } | null;
   setShapePicker: (state: any) => void;
+  handleCodeChange?: (code: string) => void;
+  selectedNodeIds?: string[];
+  dragState?: any;
+  setDragState?: (state: any) => void;
 }
 
 export function EditorCanvas({
@@ -89,7 +94,8 @@ export function EditorCanvas({
   onUpdateEdgeAnimation,
   onDeleteEdge,
   shapePicker,
-  setShapePicker
+  setShapePicker,
+  handleCodeChange,
 }: EditorCanvasProps) {
   const viewport = containerRef.current?.closest('.relative.overflow-hidden');
   const viewportWidth = viewport?.clientWidth || 800;
@@ -142,6 +148,44 @@ export function EditorCanvas({
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [shapePicker, setShapePicker]);
+
+  const handleSeqChangeArrow = (arrowType: string) => {
+    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_MSG_')) return;
+    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    const isMessageLine = (line: string) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('%%')) return false;
+      const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+      if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
+      return trimmed.includes(':');
+    };
+    const lines = code.split('\n');
+    let msgCount = 0;
+    const newLines = lines.map(line => {
+      if (isMessageLine(line)) {
+        if (msgCount === idx) {
+          msgCount++;
+          // Replace arrow: -->> --> -) ->> -> with new arrowType
+          return line.replace(/-->>|-->|->>|->|-[)]/g, arrowType);
+        }
+        msgCount++;
+      }
+      return line;
+    });
+    handleCodeChange(newLines.join('\n'));
+  };
+
+  const handleSeqAddSelfLoop = () => {
+    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
+    const actorName = selectedNodeId.replace('SEQ_ACTOR_', '');
+    handleCodeChange(code + `\n    ${actorName}->>${actorName}: self-loop`);
+  };
+
+  const handleSeqAddNote = () => {
+    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
+    const actorName = selectedNodeId.replace('SEQ_ACTOR_', '');
+    handleCodeChange(code + `\n    note right of ${actorName}: Note`);
+  };
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
@@ -307,6 +351,17 @@ export function EditorCanvas({
                             onEditLabel={(e) => handleEditClick(e)}
                             onDeleteEdge={onDeleteEdge || (() => {})}
                           />
+                        ) : selectedNodeId && (selectedNodeId.startsWith('SEQ_ACTOR_') || selectedNodeId.startsWith('SEQ_MSG_') || selectedNodeId.startsWith('SEQ_NOTE_')) ? (
+                          <SequenceManipulationToolbar
+                            code={code}
+                            selectedNodeId={selectedNodeId}
+                            scale={state.scale}
+                            onEditLabel={(e) => handleEditClick(e)}
+                            onDeleteNode={handleDeleteNode}
+                            onAddSelfLoop={handleSeqAddSelfLoop}
+                            onAddNote={handleSeqAddNote}
+                            onChangeArrow={handleSeqChangeArrow}
+                          />
                         ) : (
                           <NodeManipulationToolbar 
                             code={code}
@@ -338,7 +393,7 @@ export function EditorCanvas({
                         selectedSvgId={selectedSvgId}
                       />
 
-                      {!isInlineEditing && (!selectedNodeId || !isEdgeId(selectedNodeId)) && (
+                      {!isInlineEditing && (!selectedNodeId || (!isEdgeId(selectedNodeId) && !selectedNodeId.startsWith('SEQ_MSG_') && !selectedNodeId.startsWith('SEQ_NOTE_'))) && (
                         <div 
                           data-scale-lock
                           data-base-transform="translateX(-50%) translateY(100%)"

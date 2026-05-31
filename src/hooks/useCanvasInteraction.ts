@@ -71,15 +71,45 @@ export function useCanvasInteraction({
     let foundElement: SVGElement | null = null;
     let foundRawSvgId: string | null = null;
 
-    if (selectedNodeId.startsWith('SEQ_')) {
-      const actorName = selectedNodeId.replace('SEQ_', '');
+    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+      const actorName = selectedNodeId.replace('SEQ_ACTOR_', '');
+      // Find the rect or text inside the actor group matching this name
+      const allActorGroups = containerRef.current.querySelectorAll('g');
+      for (const g of Array.from(allActorGroups)) {
+        const textEl = g.querySelector('text');
+        if (textEl?.textContent?.trim() === actorName) {
+          const rectEl = g.querySelector('rect') || g;
+          foundElement = rectEl as SVGElement;
+          if (!rectEl.id) {
+            (rectEl as SVGElement).id = `seq-actor-${actorName.replace(/[^a-zA-Z0-9_]/g, '')}`;
+          }
+          foundRawSvgId = (rectEl as SVGElement).id || null;
+          break;
+        }
+      }
+    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      const allMsgs = Array.from(containerRef.current.querySelectorAll('.messageText'));
+      if (allMsgs[idx]) {
+        foundElement = allMsgs[idx] as SVGElement;
+        if (!foundElement.id) foundElement.id = `seq-msg-${idx}`;
+        foundRawSvgId = foundElement.id || null;
+      }
+    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+      const allNotes = Array.from(containerRef.current.querySelectorAll('.noteText'));
+      if (allNotes[idx]) {
+        foundElement = allNotes[idx] as SVGElement;
+        if (!foundElement.id) foundElement.id = `seq-note-${idx}`;
+        foundRawSvgId = foundElement.id || null;
+      }
+    } else if (selectedNodeId.startsWith('SEQ_')) {
+      // Legacy fallback
+      const name = selectedNodeId.replace('SEQ_', '');
       const candidates = containerRef.current.querySelectorAll('.actor, .messageText, .noteText');
       for (const candidate of Array.from(candidates)) {
-        if (candidate.textContent?.trim() === actorName) {
+        if (candidate.textContent?.trim() === name) {
           foundElement = candidate as SVGElement;
-          if (!candidate.id) {
-            candidate.id = `seq-element-${actorName.replace(/[^a-zA-Z0-9_]/g, '')}`;
-          }
           foundRawSvgId = candidate.id || null;
           break;
         }
@@ -239,10 +269,37 @@ export function useCanvasInteraction({
         }
         break;
       }
-      // Sequence diagram elements
-      if (currentNode.classList?.contains('actor') || currentNode.classList?.contains('messageText') || currentNode.classList?.contains('noteText')) {
+      // Sequence diagram elements: actors
+      if (currentNode.classList?.contains('actor')) {
         foundNodeClass = true;
-        nodeId = `SEQ_${currentNode.textContent?.trim()}`;
+        // Walk up to find the actor <g> group which has the actor name
+        let actorGroup: SVGElement | null = currentNode;
+        while (actorGroup && actorGroup.tagName !== 'svg') {
+          // The actor group is the <g> that contains both the rect and the text
+          if (actorGroup.tagName === 'g' && !actorGroup.classList.contains('actor')) break;
+          actorGroup = actorGroup.parentElement as SVGElement | null;
+        }
+        // Find the sibling/child text element for the actor name
+        const textEl = actorGroup?.querySelector('text') || actorGroup?.closest('g')?.querySelector('text');
+        const actorName = textEl?.textContent?.trim() || currentNode.textContent?.trim() || '';
+        nodeId = `SEQ_ACTOR_${actorName}`;
+        break;
+      }
+      // Sequence message text
+      if (currentNode.classList?.contains('messageText')) {
+        foundNodeClass = true;
+        // Find index among all messageText elements in the container
+        const allMsgs = Array.from(containerRef.current?.querySelectorAll('.messageText') || []);
+        const idx = allMsgs.indexOf(currentNode);
+        nodeId = `SEQ_MSG_${idx >= 0 ? idx : 0}`;
+        break;
+      }
+      // Sequence note text
+      if (currentNode.classList?.contains('noteText')) {
+        foundNodeClass = true;
+        const allNotes = Array.from(containerRef.current?.querySelectorAll('.noteText') || []);
+        const idx = allNotes.indexOf(currentNode);
+        nodeId = `SEQ_NOTE_${idx >= 0 ? idx : 0}`;
         break;
       }
       currentNode = currentNode.parentElement as SVGElement | null;
@@ -269,8 +326,12 @@ export function useCanvasInteraction({
             currentNode.id = `edge-label-${cleanId}`;
         }
 
-        if (cleanId && cleanId.startsWith('SEQ_') && !currentNode.id) {
-            currentNode.id = `seq-element-${cleanId.replace('SEQ_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+        if (cleanId && cleanId.startsWith('SEQ_ACTOR_') && !currentNode.id) {
+            currentNode.id = `seq-actor-${cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+        }
+        if (cleanId && (cleanId.startsWith('SEQ_MSG_') || cleanId.startsWith('SEQ_NOTE_')) && !currentNode.id) {
+            const seqIdx = cleanId.split('_').pop();
+            currentNode.id = `seq-${cleanId.startsWith('SEQ_MSG_') ? 'msg' : 'note'}-${seqIdx}`;
         }
 
         let pathElementToMeasure = currentNode;
@@ -350,7 +411,48 @@ export function useCanvasInteraction({
     
     let currentText = targetNodeId;
     
-    if (targetNodeId.startsWith('SEQ_')) {
+    if (targetNodeId.startsWith('SEQ_ACTOR_')) {
+        // Read the current display label from the actor declaration
+        const actorId = targetNodeId.replace('SEQ_ACTOR_', '');
+        const lines = code.split('\n');
+        let foundLabel = actorId;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            const match = trimmed.match(/^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/);
+            if (match) {
+                const id = match[1];
+                const alias = match[2];
+                if (id === actorId) {
+                    foundLabel = alias?.trim() || id;
+                    break;
+                }
+            }
+        }
+        currentText = foundLabel;
+    } else if (targetNodeId.startsWith('SEQ_MSG_')) {
+        const idx = parseInt(targetNodeId.replace('SEQ_MSG_', ''), 10);
+        const msgLines = code.split('\n').filter(l => {
+            const t = l.trim();
+            if (!t || t.startsWith('%%')) return false;
+            const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+            if (keywords.some(kw => t === kw || t.startsWith(kw + ' '))) return false;
+            return t.includes(':');
+        });
+        if (msgLines[idx]) {
+            const colonIdx = msgLines[idx].indexOf(':');
+            currentText = colonIdx !== -1 ? msgLines[idx].substring(colonIdx + 1).trim() : '';
+        }
+    } else if (targetNodeId.startsWith('SEQ_NOTE_')) {
+        const idx = parseInt(targetNodeId.replace('SEQ_NOTE_', ''), 10);
+        const noteLines = code.split('\n').filter(l => {
+            const t = l.trim();
+            return t.startsWith('Note ') || t.startsWith('note ');
+        });
+        if (noteLines[idx]) {
+            const colonIdx = noteLines[idx].indexOf(':');
+            currentText = colonIdx !== -1 ? noteLines[idx].substring(colonIdx + 1).trim() : '';
+        }
+    } else if (targetNodeId.startsWith('SEQ_')) {
         currentText = targetNodeId.replace('SEQ_', '');
         currentText = currentText.replace(/<br\/>/g, '\n');
     } else if (isEdgeId(targetNodeId)) {
@@ -741,12 +843,16 @@ export function useCanvasInteraction({
 
   return {
     selectedNodeId, setSelectedNodeId,
+    selectedNodeIds: [] as string[],
+    setSelectedNodeIds: (_: string[]) => {},
     selectedSvgId, setSelectedSvgId,
     selectionBox, setSelectionBox,
     textBox, setTextBox,
     editingText, setEditingText,
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
+    dragState: null as null,
+    setDragState: (_: any) => {},
     inlineInputRef,
     getClickedNode,
     handleSvgClick,
