@@ -1338,7 +1338,17 @@ export function useCanvasInteraction({
         return;
     }
 
-    const result = getClickedNode(e.target as Element);
+    // Use elementFromPoint to find the actual element at the double-click position,
+    // since e.target might be the container div or an overlay div
+    let targetElement = e.target as Element;
+    if ('clientX' in e && 'clientY' in e) {
+      const elementAtPoint = document.elementFromPoint(e.clientX, e.clientY);
+      if (elementAtPoint) {
+        targetElement = elementAtPoint;
+      }
+    }
+
+    const result = getClickedNode(targetElement);
     let targetNodeId = selectedNodeId;
 
     if (result) {
