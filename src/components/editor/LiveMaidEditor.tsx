@@ -74,6 +74,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
     sequenceLifelineOverlay,
+    hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
     sequenceMessageTriggerAreas,
     inlineInputRef,
@@ -86,7 +87,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     triggerSequenceMessageHoverByIndex,
     startSequenceConnection,
     shapePicker,
-    setShapePicker
+    setShapePicker,
+    getSequenceNoteEntries,
+    insertSequenceNoteAtIndex,
   } = useCanvasInteraction({
     code,
     svgContent,
@@ -104,6 +107,134 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     setTextBox(null);
     setIsInlineEditing(false);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  const resolveSequenceDisplayName = useCallback((actorId: string) => {
+    const lines = code.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const match = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
+      if (match && match[1] === actorId) {
+        return match[2]?.trim() || match[1].trim();
+      }
+    }
+    return actorId;
+  }, [code]);
+
+  const isSequenceMessageLine = useCallback((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%')) return false;
+    const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+    if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
+    return trimmed.includes(':');
+  }, []);
+
+  const getSequenceMessageEntries = useCallback((sourceCode: string) => {
+    const lines = sourceCode.split('\n');
+    const entries: Array<{ index: number; line: string }> = [];
+    let inFrontmatter = false;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+      if (isSequenceMessageLine(lines[i])) {
+        entries.push({ index: i, line: lines[i] });
+      }
+    }
+
+    return entries;
+  }, [isSequenceMessageLine]);
+
+  const getSelectedSequenceParticipantForNote = useCallback(() => {
+    if (!selectedNodeId) return null;
+
+    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+      return resolveSequenceDisplayName(actorId);
+    }
+
+    if (selectedNodeId.startsWith('SEQ_MSG_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      const msg = getSequenceMessageEntries(code)[idx]?.line?.trim();
+      const actorMatch = msg?.match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
+      if (actorMatch?.[1]) {
+        return resolveSequenceDisplayName(actorMatch[1]);
+      }
+      return null;
+    }
+
+    if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+      const noteEntry = getSequenceNoteEntries(code)[idx];
+      return noteEntry?.participant || null;
+    }
+
+    return null;
+  }, [code, getSequenceMessageEntries, getSequenceNoteEntries, resolveSequenceDisplayName, selectedNodeId]);
+
+  const handleAddSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
+    if (!selectedNodeId) return;
+
+    const participant = getSelectedSequenceParticipantForNote();
+    if (!participant) return;
+
+    let insertIndex = getSequenceMessageEntries(code).length;
+    if (selectedNodeId.startsWith('SEQ_MSG_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      if (Number.isFinite(idx) && idx >= 0) {
+        insertIndex = idx;
+      }
+    }
+
+    const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
+    handleCodeChange(updatedCode);
+  }, [code, getSelectedSequenceParticipantForNote, getSequenceMessageEntries, handleCodeChange, insertSequenceNoteAtIndex, selectedNodeId]);
+
+  const handleMoveSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
+    if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
+    const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+    if (!Number.isFinite(idx) || idx < 0) return;
+
+    const lines = code.split('\n');
+    let noteVisualIndex = 0;
+    let inFrontmatter = false;
+    let updated = false;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+      if (!(trimmed.startsWith('Note ') || trimmed.startsWith('note '))) continue;
+
+      if (noteVisualIndex === idx) {
+        const structuredMatch = lines[i].match(/^(\s*)Note\s+(left|right|over)\s+of\s+(.+?)(?:\s*:\s*(.*))?$/i);
+        if (!structuredMatch) {
+          toast.info('Only "Note [left|right|over] of [Participant]" lines can be repositioned.');
+          return;
+        }
+
+        const [, indent, , participant, text] = structuredMatch;
+        lines[i] = `${indent}Note ${position} of ${participant.trim()}: ${(text || 'new note').trim()}`;
+        updated = true;
+        break;
+      }
+
+      noteVisualIndex += 1;
+    }
+
+    if (!updated) return;
+    handleCodeChange(lines.join('\n'));
+  }, [code, handleCodeChange, selectedNodeId]);
+
+  const handleLinkSequenceNote = useCallback(() => {
+    toast.info('Link/Connect for sequence notes is not available yet.');
+  }, []);
 
   const handleResetStyle = useCallback(() => {
     if (!selectedNodeId) return;
@@ -836,23 +967,15 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           newCode = filtered.join('\n');
       } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
           const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-          const isMessageLine = (line: string) => {
-              const trimmed = line.trim();
-              if (!trimmed || trimmed.startsWith('%%')) return false;
-              const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-              if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
-              return trimmed.includes(':');
-          };
-          const lines = code.split('\n');
-          let msgCount = 0;
-          const filtered = lines.filter(line => {
-              if (isMessageLine(line)) {
-                  if (msgCount === idx) { msgCount++; return false; }
-                  msgCount++;
-              }
-              return true;
-          });
-          newCode = filtered.join('\n');
+          if (Number.isFinite(idx) && idx >= 0) {
+            const entries = getSequenceMessageEntries(code);
+            const targetLineIndex = entries[idx]?.index;
+            if (Number.isFinite(targetLineIndex)) {
+              const lines = code.split('\n');
+              const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
+              newCode = filtered.join('\n');
+            }
+          }
       } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
           const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
           const isNoteLine = (line: string) => {
@@ -910,7 +1033,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       handleCodeChange(newCode);
       setSelectionBox(null);
       setSelectedNodeId(null);
-  }, [code, handleCodeChange, selectedNodeId, setSelectionBox, setSelectedNodeId]);
+  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId, setSelectionBox, setSelectedNodeId]);
 
   const performNavigation = useCallback((url: string, message: string) => {
     setNavigatingState({ isNavigating: true, message });
@@ -1573,6 +1696,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           connectionState={connectionState}
           setConnectionState={setConnectionState}
           sequenceLifelineOverlay={sequenceLifelineOverlay}
+          hoveredSequenceActorBox={hoveredSequenceActorBox}
           hoveredSequenceMessageBox={hoveredSequenceMessageBox}
           sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
           startSequenceConnection={startSequenceConnection}
@@ -1585,6 +1709,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           handleChangeShape={handleChangeShape}
           handleDuplicateNode={handleDuplicateNode}
           handleDeleteNode={handleDeleteNode}
+          onAddSequenceNote={handleAddSequenceNote}
+          onMoveSequenceNote={handleMoveSequenceNote}
+          onLinkSequenceNote={handleLinkSequenceNote}
           setIsInlineEditing={setIsInlineEditing}
           textBox={textBox}
           theme={currentTheme}

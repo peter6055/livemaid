@@ -274,6 +274,10 @@ svg[aria-roledescription="error"],
   stroke-width: 2px !important;
 }
 
+.mermaid-container .note rect {
+  fill: #fff59d !important;
+}
+
 /* Improve note text clickability */
 .mermaid-container .noteText {
   pointer-events: all !important;

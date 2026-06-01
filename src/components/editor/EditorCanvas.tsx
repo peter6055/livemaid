@@ -33,6 +33,7 @@ interface EditorCanvasProps {
   };
   setConnectionState: (state: any) => void;
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
+  hoveredSequenceActorBox: { x: number, y: number, width: number, height: number } | null;
   hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
@@ -49,6 +50,9 @@ interface EditorCanvasProps {
   handleChangeShape: (shape: any) => void;
   handleDuplicateNode: () => void;
   handleDeleteNode: () => void;
+  onAddSequenceNote: (position: 'left' | 'right' | 'over') => void;
+  onMoveSequenceNote: (position: 'left' | 'right' | 'over') => void;
+  onLinkSequenceNote: () => void;
   setIsInlineEditing: (v: boolean) => void;
   textBox: { x: number, y: number, width: number, height: number } | null;
   theme: string | undefined;
@@ -86,6 +90,7 @@ export function EditorCanvas({
   connectionState,
   setConnectionState,
   sequenceLifelineOverlay,
+  hoveredSequenceActorBox,
   hoveredSequenceMessageBox,
   sequenceMessageTriggerAreas,
   startSequenceConnection,
@@ -101,6 +106,9 @@ export function EditorCanvas({
   handleChangeShape,
   handleDuplicateNode,
   handleDeleteNode,
+  onAddSequenceNote,
+  onMoveSequenceNote,
+  onLinkSequenceNote,
   setIsInlineEditing,
   handleAddNodeFromSelected,
   textBox,
@@ -268,43 +276,13 @@ export function EditorCanvas({
                     <div
                       key={`seq-msg-trigger-${area.index}`}
                       data-seq-msg-hover-trigger="true"
-                      className="absolute pointer-events-auto z-[19] cursor-pointer"
+                      className="absolute pointer-events-none z-[19]"
                       style={{
                         left: area.x,
                         top: area.y,
                         width: area.width,
                         height: area.height,
                         background: 'transparent',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.stopPropagation();
-                        onHoveredSequenceMessageHover(area.index);
-                      }}
-                      onMouseOver={(e) => {
-                        e.stopPropagation();
-                        onHoveredSequenceMessageHover(area.index);
-                      }}
-                      onMouseMove={(e) => {
-                        e.stopPropagation();
-                        onHoveredSequenceMessageHover(area.index);
-                      }}
-                      onPointerEnter={(e) => {
-                        e.stopPropagation();
-                        onHoveredSequenceMessageHover(area.index);
-                      }}
-                      onPointerMove={(e) => {
-                        e.stopPropagation();
-                        onHoveredSequenceMessageHover(area.index);
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onHoveredSequenceMessageClick(area.index);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onHoveredSequenceMessageDoubleClick(area.index);
                       }}
                     />
                   ))}
@@ -321,6 +299,37 @@ export function EditorCanvas({
                         border: `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale})) solid #7c3aed`,
                         boxShadow: `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`,
                         borderRadius: `calc(10px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                      }}
+                    />
+                  )}
+
+                  {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !isInlineEditing && !connectionState.active && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      style={{
+                        left: hoveredSequenceActorBox.x - 4,
+                        top: hoveredSequenceActorBox.y - 4,
+                        width: hoveredSequenceActorBox.width + 8,
+                        height: hoveredSequenceActorBox.height + 8,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: 'solid',
+                        opacity: 0.55,
+                      }}
+                    />
+                  )}
+
+                  {currentType === 'sequence' && selectedNodeId?.startsWith('SEQ_ACTOR_') && selectionBox && !isInlineEditing && (
+                    <div
+                      data-scale-lock-border
+                      data-scale-lock-shadow
+                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      style={{
+                        left: selectionBox.x - 4,
+                        top: selectionBox.y - 4,
+                        width: selectionBox.width + 8,
+                        height: selectionBox.height + 8,
+                        borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
                     />
                   )}
@@ -440,8 +449,12 @@ export function EditorCanvas({
                           />
                         ) : selectedNodeId && (selectedNodeId.startsWith('SEQ_ACTOR_') || selectedNodeId.startsWith('SEQ_MSG_') || selectedNodeId.startsWith('SEQ_NOTE_')) ? (
                           <SequenceManipulationToolbar
+                            selectedNodeId={selectedNodeId}
                             scale={state.scale}
                             onEditLabel={(e) => handleEditClick(e)}
+                            onAddNote={onAddSequenceNote}
+                            onMoveNote={onMoveSequenceNote}
+                            onLinkNote={onLinkSequenceNote}
                             onDeleteNode={handleDeleteNode}
                           />
                         ) : (
@@ -475,7 +488,7 @@ export function EditorCanvas({
                         selectedSvgId={selectedSvgId}
                       />
 
-                      {!isInlineEditing && (!selectedNodeId || (!isEdgeId(selectedNodeId) && !selectedNodeId.startsWith('SEQ_MSG_') && !selectedNodeId.startsWith('SEQ_NOTE_'))) && (
+                      {!isInlineEditing && currentType !== 'sequence' && (!selectedNodeId || (!isEdgeId(selectedNodeId) && !selectedNodeId.startsWith('SEQ_MSG_') && !selectedNodeId.startsWith('SEQ_NOTE_'))) && (
                         <div 
                           data-scale-lock
                           data-base-transform="translateX(-50%) translateY(100%)"

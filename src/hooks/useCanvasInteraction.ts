@@ -43,6 +43,7 @@ export function useCanvasInteraction({
     x: number;
     slots: number[];
   } | null>(null);
+  const [hoveredSequenceActorBox, setHoveredSequenceActorBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredSequenceMessageBox, setHoveredSequenceMessageBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
   const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
@@ -275,14 +276,37 @@ export function useCanvasInteraction({
       .filter((v): v is { id: string; alias: string | null } => Boolean(v));
   }, [code]);
 
+  const normalizeSequenceLabel = useCallback((value: string | null | undefined) => {
+    return (value || "")
+      .replace(/^['\"]|['\"]$/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }, []);
+
+  const getSvgTextDisplayName = useCallback((el: SVGElement | null) => {
+    if (!el) return '';
+    const tspans = Array.from(el.querySelectorAll('tspan'))
+      .map((t) => (t.textContent || '').trim())
+      .filter(Boolean);
+    if (tspans.length > 0) {
+      return tspans.join(' ').replace(/\s+/g, ' ').trim();
+    }
+    return (el.textContent || '').replace(/\s+/g, ' ').trim();
+  }, []);
+
   const resolveSequenceActorIdFromDisplayName = useCallback((displayName: string) => {
     const entries = getSequenceParticipantEntries();
-    const byAlias = entries.find(e => e.alias === displayName);
+    const normalizedDisplayName = normalizeSequenceLabel(displayName);
+
+    const byAlias = entries.find((e) => normalizeSequenceLabel(e.alias) === normalizedDisplayName);
     if (byAlias) return byAlias.id;
-    const byId = entries.find(e => e.id === displayName);
+
+    const byId = entries.find((e) => normalizeSequenceLabel(e.id) === normalizedDisplayName);
     if (byId) return byId.id;
+
     return displayName;
-  }, [getSequenceParticipantEntries]);
+  }, [getSequenceParticipantEntries, normalizeSequenceLabel]);
 
   const resolveSequenceDisplayNameFromActorId = useCallback((actorId: string) => {
     const entries = getSequenceParticipantEntries();
@@ -319,7 +343,7 @@ export function useCanvasInteraction({
             const tRect = t.getBoundingClientRect();
             const tx = (tRect.left - containerRect.left + containerRef.current!.scrollLeft + tRect.width / 2) / scale;
             return {
-              text: t.textContent?.trim() || '',
+              text: getSvgTextDisplayName(t as SVGElement),
               x: tx,
               distance: Math.abs(tx - x),
             };
@@ -340,7 +364,7 @@ export function useCanvasInteraction({
     }
 
     return lifelines;
-  }, [containerRef, resolveSequenceActorIdFromDisplayName]);
+  }, [containerRef, resolveSequenceActorIdFromDisplayName, getSvgTextDisplayName]);
 
   const findNearestSlot = useCallback((slots: number[], y: number) => {
     let nearest = slots[0] ?? y;
@@ -794,50 +818,77 @@ export function useCanvasInteraction({
     if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
       const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
       const actorDisplayName = resolveSequenceDisplayNameFromActorId(actorId);
-      // Prefer geometry-based matching from actorId -> lifeline x, then choose header (topmost) rect at that x.
+
+      // First, preserve the exact clicked actor element (top or bottom) when possible.
+      if (selectedSvgId) {
+        const exactEl = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
+        if (exactEl && exactEl.classList?.contains('actor')) {
+          foundElement = exactEl;
+          foundRawSvgId = exactEl.id || null;
+        }
+      }
+
+      // Prefer geometry-based matching from actorId -> lifeline x.
       let bestRect: Element | null = null;
       const lifeline = getSequenceLifelines().find(l => l.actorId === actorId);
-      if (lifeline) {
+      if (!foundElement && lifeline) {
+        const selectedCenterY = selectionBox ? (selectionBox.y + selectionBox.height / 2) : null;
         const actorElements = Array.from(containerRef.current.querySelectorAll('.actor')) as SVGElement[];
         const byX = actorElements
           .map(el => {
             const b = el.getBoundingClientRect();
+            const centerX = b.left + b.width / 2;
+            const centerY = b.top + b.height / 2;
+            const containerRect = containerRef.current!.getBoundingClientRect();
+            const scale = containerRect.width / containerRef.current!.offsetWidth;
+            const canvasX = (centerX - containerRect.left + containerRef.current!.scrollLeft) / scale;
+            const canvasY = (centerY - containerRect.top + containerRef.current!.scrollTop) / scale;
             return {
               el,
               top: b.top,
-              centerX: b.left + b.width / 2,
-              dx: Math.abs((b.left + b.width / 2) - lifeline.x),
+              centerX: canvasX,
+              centerY: canvasY,
+              dx: Math.abs(canvasX - lifeline.x),
+              dy: selectedCenterY === null ? 0 : Math.abs(canvasY - selectedCenterY),
             };
           })
           .filter(item => Number.isFinite(item.centerX) && Number.isFinite(item.dx) && item.dx < 120)
-          .sort((a, b) => (a.dx - b.dx) || (a.top - b.top));
+          .sort((a, b) => (a.dx - b.dx) || (a.dy - b.dy) || (a.top - b.top));
         if (byX[0]) {
           const minDx = byX[0].dx;
-          const sameTrack = byX.filter(item => Math.abs(item.dx - minDx) < 1.5).sort((a, b) => a.top - b.top);
+          const sameTrack = byX
+            .filter(item => Math.abs(item.dx - minDx) < 1.5)
+            .sort((a, b) => (a.dy - b.dy) || (a.top - b.top));
           bestRect = (sameTrack[0] || byX[0]).el;
         }
       }
 
       // Fallback to text-based matching when geometry resolution fails.
-      if (!bestRect) {
-        let bestY = Infinity;
+      if (!foundElement && !bestRect) {
+        const selectedCenterY = selectionBox ? (selectionBox.y + selectionBox.height / 2) : null;
+        let bestScore = Number.POSITIVE_INFINITY;
         for (const g of Array.from(containerRef.current.querySelectorAll('g'))) {
           const directTexts = Array.from(g.children).filter((c): c is Element => c.tagName === 'text');
           if (directTexts.some(t => t.textContent?.trim() === actorDisplayName)) {
             const rectEl = g.querySelector('rect') || g;
             const b = (rectEl as SVGElement).getBoundingClientRect();
-            if (b.top < bestY) {
-              bestY = b.top;
+            const containerRect = containerRef.current.getBoundingClientRect();
+            const scale = containerRect.width / containerRef.current.offsetWidth;
+            const centerY = (b.top - containerRect.top + containerRef.current.scrollTop + b.height / 2) / scale;
+            const score = selectedCenterY === null ? b.top : Math.abs(centerY - selectedCenterY);
+            if (score < bestScore) {
+              bestScore = score;
               bestRect = rectEl;
             }
           }
         }
       }
 
-      if (bestRect) {
+      if (!foundElement && bestRect) {
         foundElement = bestRect as SVGElement;
         if (!bestRect.id) {
-          (bestRect as SVGElement).id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, '')}`;
+          const b = (bestRect as SVGElement).getBoundingClientRect();
+          (bestRect as SVGElement).id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, '')}-${Math.round(b.left)}-${Math.round(b.top)}`;
         }
         foundRawSvgId = (bestRect as SVGElement).id || null;
       }
@@ -919,7 +970,7 @@ export function useCanvasInteraction({
     }
 
     if (foundElement && containerRef.current) {
-      const rect = foundElement.getBoundingClientRect();
+      let rect = foundElement.getBoundingClientRect();
       const containerRect = containerRef.current.getBoundingClientRect();
       const scale = containerRect.width / containerRef.current.offsetWidth;
       
@@ -930,7 +981,43 @@ export function useCanvasInteraction({
       } else if (foundElement.tagName === 'text' || foundElement.tagName === 'foreignObject' || foundElement.classList?.contains('label')) {
           elementToMeasure = foundElement;
       }
-      const textRect = elementToMeasure.getBoundingClientRect();
+      let textRect = elementToMeasure.getBoundingClientRect();
+
+      // For sequence messages, preserve the larger combined selection bounds (line + label)
+      // so the outer message selection frame remains stable after recalc.
+      if (selectedNodeId.startsWith('SEQ_MSG_')) {
+        const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+        if (Number.isFinite(idx) && idx >= 0) {
+          const allMsgTexts = Array.from(containerRef.current.querySelectorAll('.messageText')) as SVGElement[];
+          const allMsgLines = Array.from(
+            containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+          ) as SVGElement[];
+
+          const pairedText = allMsgTexts[idx] || foundElement;
+          const pairedLine = findNearestLineForText(pairedText as SVGElement, allMsgLines);
+
+          const lineRect = pairedLine?.getBoundingClientRect();
+          const labelRect = (pairedText as SVGElement | null)?.getBoundingClientRect();
+          if (lineRect || labelRect) {
+            const left = Math.min(lineRect?.left ?? Number.POSITIVE_INFINITY, labelRect?.left ?? Number.POSITIVE_INFINITY);
+            const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, labelRect?.top ?? Number.POSITIVE_INFINITY);
+            const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, labelRect?.right ?? Number.NEGATIVE_INFINITY);
+            const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, labelRect?.bottom ?? Number.NEGATIVE_INFINITY);
+            rect = {
+              left,
+              top,
+              right,
+              bottom,
+              width: Math.max(0, right - left),
+              height: Math.max(0, bottom - top),
+              x: left,
+              y: top,
+              toJSON: () => ({})
+            } as DOMRect;
+            textRect = (labelRect || lineRect)!;
+          }
+        }
+      }
       
       const newSelectionBox = {
           x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
@@ -956,7 +1043,7 @@ export function useCanvasInteraction({
       setSelectedNodeId(null);
       setSelectedSvgId(null);
     }
-  }, [selectedNodeId, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
+  }, [selectedNodeId, selectedSvgId, selectionBox, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
 
   // Effect to recalculate selection on code or svgContent (re-render) change
   useEffect(() => {
@@ -1035,7 +1122,7 @@ export function useCanvasInteraction({
         const containerEl = containerRef.current;
         if (!containerEl) break;
 
-        const actorDisplayName = currentNode.textContent?.trim() || '';
+        const actorDisplayName = getSvgTextDisplayName(currentNode);
         const clickedRect = currentNode.getBoundingClientRect();
         const containerRect = containerEl.getBoundingClientRect();
         const scale = containerRect.width / containerEl.offsetWidth;
@@ -1046,7 +1133,17 @@ export function useCanvasInteraction({
           .map(l => ({ actorId: l.actorId, d: Math.abs(l.x - clickedX) }))
           .sort((a, b) => a.d - b.d)[0];
 
-        const actorId = nearest?.actorId || resolveSequenceActorIdFromDisplayName(actorDisplayName);
+        // Resolve by actor label first; geometry is only a fallback when label resolution is ambiguous.
+        const resolvedByName = actorDisplayName
+          ? resolveSequenceActorIdFromDisplayName(actorDisplayName)
+          : null;
+        const hasResolvedLifeline = Boolean(
+          resolvedByName && lifelines.some((lifeline) => lifeline.actorId === resolvedByName)
+        );
+
+        const actorId = hasResolvedLifeline
+          ? (resolvedByName as string)
+          : (nearest?.actorId || resolvedByName || actorDisplayName);
         nodeId = `SEQ_ACTOR_${actorId}`;
         break;
       }
@@ -1112,7 +1209,9 @@ export function useCanvasInteraction({
         }
 
         if (cleanId && cleanId.startsWith('SEQ_ACTOR_') && !currentNode.id) {
-            currentNode.id = `seq-actor-${cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+          const b = currentNode.getBoundingClientRect();
+          const actorKey = cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '');
+          currentNode.id = `seq-actor-${actorKey}-${Math.round(b.left)}-${Math.round(b.top)}`;
         }
         if (cleanId && (cleanId.startsWith('SEQ_MSG_') || cleanId.startsWith('SEQ_NOTE_')) && !currentNode.id) {
             const seqIdx = cleanId.split('_').pop();
@@ -1145,21 +1244,13 @@ export function useCanvasInteraction({
         
         let elementToMeasure = pathElementToMeasure;
         
-        // For sequence actors (including special types like database), find the text more precisely
+        // For sequence actors (including special types like database), find the text element for bounds
         if (cleanId && cleanId.startsWith('SEQ_ACTOR_')) {
-            // For sequence actors, look for the actual text element (tspan or text) within the actor
+            // Look for the actual text element (tspan or text) within the actor
             const textEls = Array.from(currentNode.querySelectorAll('text, tspan'));
             if (textEls.length > 0) {
                 // Use the first text element found within the actor
                 elementToMeasure = textEls[0] as SVGElement;
-            } else {
-                // Fallback to looking for label containers
-                const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject');
-                if (innerText) {
-                    elementToMeasure = innerText as SVGElement;
-                } else if (currentNode.tagName === 'foreignObject') {
-                    elementToMeasure = currentNode;
-                }
             }
         } else {
             // For non-actor elements, use the existing logic
@@ -1226,7 +1317,7 @@ export function useCanvasInteraction({
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
     return null;
-  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines]);
+  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1449,8 +1540,28 @@ export function useCanvasInteraction({
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
 
       if (diagramType === 'sequence') {
+        const actorTarget = (e.target as Element | null)?.closest('.actor') as SVGElement | null;
+        if (actorTarget) {
+          // Prefer rect.actor for accurate full-width bounds; text.actor is just the label (narrow)
+          let boundsEl: SVGElement = actorTarget;
+          if (actorTarget.tagName.toLowerCase() === 'text') {
+            const parentGroup = actorTarget.parentElement;
+            const rectActor = parentGroup?.querySelector('rect.actor') as SVGElement | null;
+            if (rectActor) boundsEl = rectActor;
+          }
+          const actorRect = boundsEl.getBoundingClientRect();
+          setHoveredSequenceActorBox({
+            x: (actorRect.left - containerRectForScale.left + container.scrollLeft) / scale,
+            y: (actorRect.top - containerRectForScale.top + container.scrollTop) / scale,
+            width: actorRect.width / scale,
+            height: actorRect.height / scale,
+          });
+        } else {
+          setHoveredSequenceActorBox(null);
+        }
         updateSequenceMessageHoverHighlight(e.target);
       } else {
+        setHoveredSequenceActorBox(null);
         clearSequenceMessageHoverHighlight();
       }
 
@@ -1500,30 +1611,12 @@ export function useCanvasInteraction({
               x: nearestLifeline.x,
               slots: getSequenceAnchorSlots(nearestLifeline, mouseY),
             });
-          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_ACTOR_')) {
-            const selectedActorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-            const selectedLifeline = lifelines.find(l => l.actorId === selectedActorId);
-            if (selectedLifeline) {
-              setSequenceLifelineOverlay({
-                actorId: selectedLifeline.actorId,
-                x: selectedLifeline.x,
-                slots: getSequenceAnchorSlots(selectedLifeline),
-              });
-            } else {
-              setSequenceLifelineOverlay(null);
-            }
-          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_MSG_')) {
-            const msgOverlay = getSelectedMessageOverlay(selectedNodeId);
-            if (msgOverlay) {
-              setSequenceLifelineOverlay(msgOverlay);
-            } else {
-              setSequenceLifelineOverlay(null);
-            }
           } else if (!connectionState.active) {
             setSequenceLifelineOverlay(null);
           }
       } else {
         setSequenceLifelineOverlay(null);
+        setHoveredSequenceActorBox(null);
       }
 
       if (connectionState.active && connectionState.startNodeId) {
@@ -1551,28 +1644,6 @@ export function useCanvasInteraction({
     updateSequenceMessageHoverHighlight,
     clearSequenceMessageHoverHighlight
   ]);
-
-  useEffect(() => {
-    if (connectionState.active) return;
-    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
-    const lifelines = getSequenceLifelines();
-    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-    const lifeline = lifelines.find(l => l.actorId === actorId);
-    if (!lifeline) return;
-    setSequenceLifelineOverlay({
-      actorId: lifeline.actorId,
-      x: lifeline.x,
-      slots: getSequenceAnchorSlots(lifeline),
-    });
-  }, [selectedNodeId, connectionState.active, getSequenceLifelines, getSequenceAnchorSlots]);
-
-  useEffect(() => {
-    if (connectionState.active) return;
-    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
-    const overlay = getSelectedMessageOverlay(selectedNodeId);
-    if (!overlay) return;
-    setSequenceLifelineOverlay(overlay);
-  }, [selectedNodeId, connectionState.active, getSelectedMessageOverlay]);
 
   const handleAddNodeFromSelected = useCallback((
       startId: string | null, 
@@ -1718,6 +1789,7 @@ export function useCanvasInteraction({
   useEffect(() => {
     return () => {
       clearSequenceMessageHoverHighlight();
+      setHoveredSequenceActorBox(null);
     };
   }, [clearSequenceMessageHoverHighlight]);
 
@@ -1847,6 +1919,7 @@ export function useCanvasInteraction({
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
     sequenceLifelineOverlay,
+    hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
     sequenceMessageTriggerAreas,
     dragState: null as null,
