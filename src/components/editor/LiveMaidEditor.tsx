@@ -72,12 +72,14 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     editingText, setEditingText,
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
+    sequenceLifelineOverlay,
     inlineInputRef,
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
     handleEditClick,
     handleAddNodeFromSelected,
+    startSequenceConnection,
     shapePicker,
     setShapePicker
   } = useCanvasInteraction({
@@ -1500,6 +1502,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           selectionBox={selectionBox}
           connectionState={connectionState}
           setConnectionState={setConnectionState}
+          sequenceLifelineOverlay={sequenceLifelineOverlay}
+          startSequenceConnection={startSequenceConnection}
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}

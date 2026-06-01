@@ -21,8 +21,19 @@ interface EditorCanvasProps {
   handleMouseUp: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleEditClick: (e: React.MouseEvent | Event) => void;
   selectionBox: { x: number, y: number, width: number, height: number } | null;
-  connectionState: { isDragging: boolean; mousePos: { x: number, y: number } | null; active: boolean; startNodeId: string | null };
+  connectionState: {
+    isDragging: boolean;
+    mousePos: { x: number, y: number } | null;
+    active: boolean;
+    startNodeId: string | null;
+    startPos: { x: number, y: number } | null;
+    snapTargetId: string | null;
+    snapTargetPos: { x: number, y: number } | null;
+    anchorY: number | null;
+  };
   setConnectionState: (state: any) => void;
+  sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
+  startSequenceConnection: (actorId: string, anchorY: number) => void;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -69,6 +80,8 @@ export function EditorCanvas({
   selectionBox,
   connectionState,
   setConnectionState,
+  sequenceLifelineOverlay,
+  startSequenceConnection,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -149,44 +162,6 @@ export function EditorCanvas({
     };
   }, [shapePicker, setShapePicker]);
 
-  const handleSeqChangeArrow = (arrowType: string) => {
-    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_MSG_')) return;
-    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-    const isMessageLine = (line: string) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('%%')) return false;
-      const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-      if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
-      return trimmed.includes(':');
-    };
-    const lines = code.split('\n');
-    let msgCount = 0;
-    const newLines = lines.map(line => {
-      if (isMessageLine(line)) {
-        if (msgCount === idx) {
-          msgCount++;
-          // Replace arrow: -->> --> -) ->> -> with new arrowType
-          return line.replace(/-->>|-->|->>|->|-[)]/g, arrowType);
-        }
-        msgCount++;
-      }
-      return line;
-    });
-    handleCodeChange(newLines.join('\n'));
-  };
-
-  const handleSeqAddSelfLoop = () => {
-    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
-    const actorName = selectedNodeId.replace('SEQ_ACTOR_', '');
-    handleCodeChange(code + `\n    ${actorName}->>${actorName}: self-loop`);
-  };
-
-  const handleSeqAddNote = () => {
-    if (!handleCodeChange || !selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
-    const actorName = selectedNodeId.replace('SEQ_ACTOR_', '');
-    handleCodeChange(code + `\n    note right of ${actorName}: Note`);
-  };
-
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
         <div 
@@ -203,7 +178,7 @@ export function EditorCanvas({
           centerOnInit={true}
           smooth={true}
           wheel={{ wheelDisabled: true, step: 0.05 }}
-          panning={{ velocityDisabled: false, disabled: isInlineEditing }}
+          panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.isDragging }}
           trackPadPanning={{ disabled: false }}
           limitToBounds={false}
           doubleClick={{ disabled: true }}
@@ -279,6 +254,61 @@ export function EditorCanvas({
                     dangerouslySetInnerHTML={{ __html: svgContent }} 
                   />
 
+                  {currentType === 'sequence' && !isLocked && !isInlineEditing && !connectionState.active && sequenceLifelineOverlay && (
+                    <div className="absolute inset-0 pointer-events-none z-20">
+                      {sequenceLifelineOverlay.slots.map((slotY) => (
+                        <button
+                          key={`${sequenceLifelineOverlay.actorId}-${slotY}`}
+                          data-scale-lock
+                          data-base-transform="translate(-50%, -50%)"
+                          className="absolute pointer-events-auto w-5 h-5 rounded-full bg-indigo-500 text-white shadow-md hover:bg-indigo-600 transition-colors"
+                          style={{
+                            left: sequenceLifelineOverlay.x,
+                            top: slotY,
+                            transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`
+                          }}
+                          title="Drag to connect"
+                          onMouseDown={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            startSequenceConnection(sequenceLifelineOverlay.actorId, slotY);
+                          }}
+                        >
+                          <Plus className="w-3 h-3 mx-auto my-auto pointer-events-none" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {connectionState.isDragging && connectionState.startPos && connectionState.mousePos && (
+                    <svg className="absolute inset-0 pointer-events-none z-30 overflow-visible">
+                      <defs>
+                        <marker id="sequence-preview-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                          <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
+                        </marker>
+                      </defs>
+                      <line
+                        data-scale-lock-stroke
+                        x1={connectionState.startPos.x}
+                        y1={connectionState.anchorY ?? connectionState.startPos.y}
+                        x2={connectionState.mousePos.x}
+                        y2={connectionState.anchorY ?? connectionState.startPos.y}
+                        stroke="#2563eb"
+                        strokeDasharray="6,5"
+                        style={{ strokeWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))` }}
+                        markerEnd="url(#sequence-preview-arrow)"
+                      />
+
+                      {connectionState.snapTargetPos && (
+                        <g transform={`translate(${connectionState.snapTargetPos.x}, ${connectionState.snapTargetPos.y})`}>
+                          <circle r={8} fill="#10b981" />
+                          <line x1={-4} y1={0} x2={4} y2={0} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+                          <line x1={0} y1={-4} x2={0} y2={4} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+                        </g>
+                      )}
+                    </svg>
+                  )}
+
                   {isInlineEditing && selectedSvgId && (
                      <style>{`
                         #${selectedSvgId} .label,
@@ -307,36 +337,6 @@ export function EditorCanvas({
                         boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
                     >
-                      {connectionState.isDragging && connectionState.mousePos && (
-                        <svg 
-                            className="absolute pointer-events-none z-30" 
-                            style={{
-                                top: selectionBox.height + 4,
-                                left: selectionBox.width / 2,
-                                width: Math.abs(connectionState.mousePos.x - (selectionBox.x + selectionBox.width / 2)) + 100,
-                                height: Math.abs(connectionState.mousePos.y - (selectionBox.y + selectionBox.height)) + 100,
-                                overflow: 'visible'
-                            }}
-                        >
-                            <defs>
-                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-                                    <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
-                                </marker>
-                            </defs>
-                            <line 
-                                data-scale-lock-stroke
-                                x1={0} 
-                                y1={0} 
-                                x2={connectionState.mousePos.x - (selectionBox.x + selectionBox.width / 2)} 
-                                y2={connectionState.mousePos.y - (selectionBox.y + selectionBox.height + 4)} 
-                                stroke="#6366f1" 
-                                style={{ strokeWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))` }}
-                                strokeDasharray="5,5"
-                                markerEnd="url(#arrowhead)"
-                            />
-                        </svg>
-                      )}
-                      
                       {!isInlineEditing && (
                         selectedNodeId && isEdgeId(selectedNodeId) ? (
                           <EdgeManipulationToolbar
@@ -353,14 +353,9 @@ export function EditorCanvas({
                           />
                         ) : selectedNodeId && (selectedNodeId.startsWith('SEQ_ACTOR_') || selectedNodeId.startsWith('SEQ_MSG_') || selectedNodeId.startsWith('SEQ_NOTE_')) ? (
                           <SequenceManipulationToolbar
-                            code={code}
-                            selectedNodeId={selectedNodeId}
                             scale={state.scale}
                             onEditLabel={(e) => handleEditClick(e)}
                             onDeleteNode={handleDeleteNode}
-                            onAddSelfLoop={handleSeqAddSelfLoop}
-                            onAddNote={handleSeqAddNote}
-                            onChangeArrow={handleSeqChangeArrow}
                           />
                         ) : (
                           <NodeManipulationToolbar 
@@ -410,18 +405,33 @@ export function EditorCanvas({
                                  setConnectionState({
                                      active: true,
                                      startNodeId: selectedNodeId,
+                                     startPos: selectionBox
+                                       ? { x: selectionBox.x + selectionBox.width / 2, y: selectionBox.y + selectionBox.height + 4 }
+                                       : null,
                                      mousePos: null,
-                                     isDragging: false
+                                     isDragging: false,
+                                     snapTargetId: null,
+                                     snapTargetPos: null,
+                                     anchorY: null
                                   });
                              }}
                              onClick={(e) => {
                                  e.stopPropagation();
                                  if (!connectionState.isDragging) {
                                      handleAddNodeFromSelected(selectedNodeId);
-                                     setConnectionState({ active: false, startNodeId: null, mousePos: null, isDragging: false });
+                                     setConnectionState({
+                                       active: false,
+                                       startNodeId: null,
+                                       startPos: null,
+                                       mousePos: null,
+                                       isDragging: false,
+                                       snapTargetId: null,
+                                       snapTargetPos: null,
+                                       anchorY: null
+                                     });
                                  }
                              }}
-                             className="w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                              className="w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
                              title="Drag to Connect or Click to Add Node"
                           >
                              <Plus className="w-3 h-3 pointer-events-none" />

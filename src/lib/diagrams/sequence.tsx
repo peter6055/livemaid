@@ -172,37 +172,39 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
   return (
     <>
       <div className="flex items-center gap-2 rounded-xl bg-background p-0 border-none">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2 relative"
-          onClick={() => setShowParticipantPicker(!showParticipantPicker)}
-          title="Add Participant"
-        >
-          <Users className="w-4 h-4" />
-          <span>Participants</span>
-        </Button>
+        <div className="relative">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+            onClick={() => setShowParticipantPicker(!showParticipantPicker)}
+            title="Add Participant"
+          >
+            <Users className="w-4 h-4" />
+            <span>Participants</span>
+          </Button>
 
-        {showParticipantPicker && (
-          <div className="absolute top-full mt-2 left-0 z-50 bg-background border border-border rounded-lg shadow-lg p-4 w-80">
-            <p className="text-xs font-semibold text-muted-foreground mb-3">Participant Type</p>
-            <div className="grid grid-cols-3 gap-4">
-              {participantTypes.map((type) => (
-                <button
-                  key={type.key}
-                  onClick={() => handleAddParticipant(type.key)}
-                  className="flex flex-col items-center gap-2 p-3 rounded-lg border border-border hover:bg-accent hover:border-accent-foreground transition-all duration-200 cursor-pointer group"
-                  title={type.label}
-                >
-                  <div className="w-16 h-16 flex items-center justify-center text-foreground">
-                    <ParticipantIcon type={type.key} />
-                  </div>
-                  <span className="text-xs font-medium text-foreground text-center group-hover:text-accent-foreground">{type.label}</span>
-                </button>
-              ))}
+          {showParticipantPicker && (
+            <div className="absolute top-full mt-1 left-0 z-50 bg-background border border-border rounded-lg shadow-lg p-3 w-56">
+              <p className="text-xs font-semibold text-muted-foreground mb-2">Participant Type</p>
+              <div className="grid grid-cols-3 gap-2">
+                {participantTypes.map((type) => (
+                  <button
+                    key={type.key}
+                    onClick={() => handleAddParticipant(type.key)}
+                    className="flex flex-col items-center gap-1 p-2 rounded-lg border border-border hover:bg-accent hover:border-accent-foreground transition-all duration-200 cursor-pointer group"
+                    title={type.label}
+                  >
+                    <div className="w-8 h-8 flex items-center justify-center text-foreground">
+                      <ParticipantIcon type={type.key} />
+                    </div>
+                    <span className="text-[10px] font-medium text-foreground text-center group-hover:text-accent-foreground leading-tight">{type.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddNote} title="Add Note">
             <StickyNote className="w-4 h-4" />

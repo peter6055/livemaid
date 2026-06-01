@@ -1,26 +1,16 @@
 import { useRef, useEffect } from "react";
-import { Pencil, Trash2, RefreshCw, ArrowRight, ArrowRightLeft, StickyNote, ArrowLeftRight } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
 interface SequenceManipulationToolbarProps {
-  code: string;
-  selectedNodeId: string;
   scale: number;
   onEditLabel: (e: React.MouseEvent) => void;
   onDeleteNode: () => void;
-  onAddSelfLoop?: () => void;
-  onAddNote?: () => void;
-  onChangeArrow?: (arrowType: string) => void;
 }
 
 export function SequenceManipulationToolbar({
-  code,
-  selectedNodeId,
   scale,
   onEditLabel,
   onDeleteNode,
-  onAddSelfLoop,
-  onAddNote,
-  onChangeArrow,
 }: SequenceManipulationToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -37,32 +27,6 @@ export function SequenceManipulationToolbar({
       el.removeEventListener("touchstart", stopNativePropagation);
     };
   }, []);
-
-  const isActor = selectedNodeId.startsWith('SEQ_ACTOR_');
-  const isMessage = selectedNodeId.startsWith('SEQ_MSG_');
-  const isNote = selectedNodeId.startsWith('SEQ_NOTE_');
-
-  const getArrowType = (): string => {
-    if (!isMessage) return '->>';
-    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-    const isMessageLine = (line: string) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('%%')) return false;
-      const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-      if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
-      return trimmed.includes(':');
-    };
-    const msgLines = code.split('\n').filter(isMessageLine);
-    const line = msgLines[idx] || '';
-    if (line.includes('-->>')) return '-->>';
-    if (line.includes('->>')) return '->>';
-    if (line.includes('-)')) return '-)';
-    if (line.includes('-->')) return '-->';
-    if (line.includes('->')) return '->';
-    return '->>';
-  };
-
-  const currentArrow = getArrowType();
 
   const btnCls = "pointer-events-auto flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
 
@@ -82,46 +46,6 @@ export function SequenceManipulationToolbar({
         <button className={btnCls} onClick={onEditLabel} title="Rename">
           <Pencil className="w-3.5 h-3.5" />
         </button>
-
-        {/* Actor-specific actions */}
-        {isActor && onAddSelfLoop && (
-          <button className={btnCls} onClick={onAddSelfLoop} title="Add self-loop message">
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        )}
-        {isActor && onAddNote && (
-          <button className={btnCls} onClick={onAddNote} title="Add note">
-            <StickyNote className="w-3.5 h-3.5" />
-          </button>
-        )}
-
-        {/* Message-specific actions: arrow type switcher */}
-        {isMessage && onChangeArrow && (
-          <>
-            <div className="w-px h-4 bg-border mx-0.5" />
-            <button
-              className={`${btnCls} ${currentArrow === '->>' ? 'text-indigo-500' : ''}`}
-              onClick={() => onChangeArrow('->>')}
-              title="Solid arrow (sync request)"
-            >
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-            <button
-              className={`${btnCls} ${currentArrow === '-->>' ? 'text-indigo-500' : ''}`}
-              onClick={() => onChangeArrow('-->>')}
-              title="Dashed arrow (reply)"
-            >
-              <ArrowLeftRight className="w-3.5 h-3.5 opacity-70" />
-            </button>
-            <button
-              className={`${btnCls} ${currentArrow === '-)' ? 'text-indigo-500' : ''}`}
-              onClick={() => onChangeArrow('-)')}
-              title="Async arrow"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
 
         <div className="w-px h-4 bg-border mx-0.5" />
 
