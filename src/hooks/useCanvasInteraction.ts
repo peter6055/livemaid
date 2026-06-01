@@ -45,12 +45,13 @@ export function useCanvasInteraction({
   } | null>(null);
 
   const getSequenceParticipantEntries = useCallback(() => {
+    const participantDecl = /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+/i;
     return code
       .split('\n')
       .map(l => l.trim())
-      .filter(l => l.startsWith('participant ') || l.startsWith('actor '))
+      .filter(l => participantDecl.test(l))
       .map(l => {
-        const m = l.match(/^(?:participant|actor)\s+([^\s@]+)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
+        const m = l.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
         if (!m) return null;
         return {
           id: m[1].trim(),
@@ -148,29 +149,40 @@ export function useCanvasInteraction({
     return trimmed.includes(':');
   }, []);
 
-  const insertSequenceMessageAtIndex = useCallback((sourceCode: string, messageLine: string, messageIndex: number) => {
+  const getSequenceMessageEntries = useCallback((sourceCode: string) => {
     const lines = sourceCode.split('\n');
-    let seen = 0;
-    let insertAt = lines.length;
+    const entries: Array<{ index: number; line: string }> = [];
+    let inFrontmatter = false;
 
-    for (let i = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+
       if (isSequenceMessageLine(lines[i])) {
-        if (seen === messageIndex) {
-          insertAt = i;
-          break;
-        }
-        seen += 1;
+        entries.push({ index: i, line: lines[i] });
       }
     }
 
-    lines.splice(insertAt, 0, `    ${messageLine}`);
-    return lines.join('\n');
+    return entries;
   }, [isSequenceMessageLine]);
 
+  const insertSequenceMessageAtIndex = useCallback((sourceCode: string, messageLine: string, messageIndex: number) => {
+    const lines = sourceCode.split('\n');
+    const messageEntries = getSequenceMessageEntries(sourceCode);
+    const insertAt = messageEntries[messageIndex]?.index ?? lines.length;
+
+    lines.splice(insertAt, 0, `    ${messageLine}`);
+    return lines.join('\n');
+  }, [getSequenceMessageEntries]);
+
   const getSequenceMessageLineByIndex = useCallback((idx: number) => {
-    const msgLines = code.split('\n').filter(isSequenceMessageLine);
-    return msgLines[idx] || null;
-  }, [code, isSequenceMessageLine]);
+    const entries = getSequenceMessageEntries(code);
+    return entries[idx]?.line || null;
+  }, [code, getSequenceMessageEntries]);
 
   const parseSequenceMessageActors = useCallback((line: string) => {
     const match = line.trim().match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
@@ -181,8 +193,12 @@ export function useCanvasInteraction({
     };
   }, []);
 
-  const getSequenceAnchorSlots = useCallback((lifeline: { x: number; y1: number; y2: number }) => {
-    const start = lifeline.y1 + 14;
+  const getSequenceAnchorSlots = useCallback((lifeline: { actorId: string; x: number; y1: number; y2: number }, hoverY?: number) => {
+    const allLifelines = getSequenceLifelines();
+    const globalTop = allLifelines.length > 0
+      ? Math.min(...allLifelines.map((l) => l.y1))
+      : lifeline.y1;
+    const start = globalTop + 8;
 
     let boxTopLimit = lifeline.y2;
     if (containerRef.current) {
@@ -207,7 +223,6 @@ export function useCanvasInteraction({
     const end = Math.max(start, Math.min(lifeline.y2 - 2, boxTopLimit));
 
     const rowAnchors: number[] = [];
-    const rowBottoms: number[] = [];
 
     if (containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -219,53 +234,47 @@ export function useCanvasInteraction({
       for (const line of messageLines) {
         const rect = line.getBoundingClientRect();
         const centerY = (rect.top - containerRect.top + containerRef.current.scrollTop + rect.height / 2) / scale;
-        const bottomY = (rect.bottom - containerRect.top + containerRef.current.scrollTop) / scale;
         if (centerY >= start && centerY <= lifeline.y2 + 28) {
           rowAnchors.push(Math.round(centerY));
-          rowBottoms.push(Math.round(bottomY));
         }
       }
     }
 
     const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
-    const bottoms = [...new Set(rowBottoms)].sort((a, b) => a - b);
 
-    const slots: number[] = [];
+    // Empty lifeline: one dynamic handle that follows hover and snaps to safe bounds.
     if (rows.length === 0) {
-      slots.push(Math.round((start + end) / 2));
-    } else {
-      slots.push(Math.round((start + rows[0]) / 2));
-      for (let i = 0; i < rows.length - 1; i++) {
-        slots.push(Math.round((rows[i] + rows[i + 1]) / 2));
-      }
-      slots.push(Math.round(end));
+      const fallbackY = hoverY ?? ((start + end) / 2);
+      return [Math.round(Math.max(start, Math.min(end, fallbackY)))];
     }
 
-    const deduped = [...new Set(slots.map((y) => Math.max(start, Math.min(end, Math.round(y)))))]
+    // Existing messages: create insertion lanes around attached messages.
+    // This yields one slot above the first, one between each adjacent pair,
+    // and one below the last (rows + 1 total before clamping/dedup).
+    const VERTICAL_GRID_STEP = 56;
+    const firstGap = rows.length > 1 ? Math.max(38, Math.round((rows[1] - rows[0]) * 0.9)) : VERTICAL_GRID_STEP;
+    const lastGap = rows.length > 1
+      ? Math.max(28, Math.round((rows[rows.length - 1] - rows[rows.length - 2]) / 2))
+      : VERTICAL_GRID_STEP;
+    const targetYs: number[] = [];
+    targetYs.push(Math.round(rows[0] - firstGap));
+
+    for (let i = 0; i < rows.length - 1; i += 1) {
+      targetYs.push(Math.round((rows[i] + rows[i + 1]) / 2));
+    }
+
+    targetYs.push(Math.round(rows[rows.length - 1] + lastGap));
+
+    const contextual = targetYs
+      .map((y) => Math.max(start, Math.min(end, y)))
       .sort((a, b) => a - b);
-    if (deduped.length === 0) {
-      return [Math.round((lifeline.y1 + lifeline.y2) / 2)];
-    }
-    if (deduped.length <= 2) {
-      return deduped;
+
+    if (contextual.length === 0) {
+      return [Math.round(Math.max(start, Math.min(end, rows[0])))] ;
     }
 
-    const minGap = 24;
-    const compacted: number[] = [deduped[0]];
-    for (let i = 1; i < deduped.length - 1; i++) {
-      const y = deduped[i];
-      const prev = compacted[compacted.length - 1];
-      if (Math.abs(y - prev) >= minGap) {
-        compacted.push(y);
-      }
-    }
-
-    const last = deduped[deduped.length - 1];
-    if (last !== compacted[compacted.length - 1]) {
-      compacted.push(last);
-    }
-    return compacted;
-  }, [containerRef]);
+    return [...new Set(contextual)];
+  }, [containerRef, getSequenceLifelines]);
 
   const getSelectedMessageOverlay = useCallback((selectedId: string) => {
     if (!selectedId.startsWith('SEQ_MSG_') || !containerRef.current) return null as { actorId: string; x: number; slots: number[] } | null;
@@ -762,7 +771,7 @@ export function useCanvasInteraction({
         let foundLabel = actorId;
         for (const line of lines) {
             const trimmed = line.trim();
-            const match = trimmed.match(/^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/);
+          const match = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
             if (match) {
                 const id = match[1];
                 const alias = match[2];
@@ -775,16 +784,10 @@ export function useCanvasInteraction({
         currentText = foundLabel;
     } else if (targetNodeId.startsWith('SEQ_MSG_')) {
         const idx = parseInt(targetNodeId.replace('SEQ_MSG_', ''), 10);
-        const msgLines = code.split('\n').filter(l => {
-            const t = l.trim();
-            if (!t || t.startsWith('%%')) return false;
-            const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-            if (keywords.some(kw => t === kw || t.startsWith(kw + ' '))) return false;
-            return t.includes(':');
-        });
-        if (msgLines[idx]) {
-            const colonIdx = msgLines[idx].indexOf(':');
-            currentText = colonIdx !== -1 ? msgLines[idx].substring(colonIdx + 1).trim() : '';
+      const msgLines = getSequenceMessageEntries(code).map((entry) => entry.line);
+      if (msgLines[idx]) {
+        const colonIdx = msgLines[idx].indexOf(':');
+        currentText = colonIdx !== -1 ? msgLines[idx].substring(colonIdx + 1).trim() : '';
         }
     } else if (targetNodeId.startsWith('SEQ_NOTE_')) {
         const idx = parseInt(targetNodeId.replace('SEQ_NOTE_', ''), 10);
@@ -850,7 +853,7 @@ export function useCanvasInteraction({
             inlineInputRef.current.select();
         }
     }, 10);
-  }, [code, getClickedNode, selectedNodeId, determineDiagramType]);
+  }, [code, getClickedNode, selectedNodeId, determineDiagramType, getSequenceMessageEntries]);
 
   const lastClickTimeRef = useRef<number>(0);
 
@@ -1021,7 +1024,7 @@ export function useCanvasInteraction({
             setSequenceLifelineOverlay({
               actorId: nearestLifeline.actorId,
               x: nearestLifeline.x,
-              slots: getSequenceAnchorSlots(nearestLifeline),
+              slots: getSequenceAnchorSlots(nearestLifeline, mouseY),
             });
           } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_ACTOR_')) {
             const selectedActorId = selectedNodeId.replace('SEQ_ACTOR_', '');

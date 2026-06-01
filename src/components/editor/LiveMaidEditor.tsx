@@ -3,7 +3,7 @@
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
@@ -36,6 +36,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     svgContent,
     currentTheme,
     currentFont,
+    setCurrentFont,
     parseError,
     renderIdRef,
     handleCodeChange
@@ -186,7 +187,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   };
 
   const handleThemeChange = (theme: string) => {
-    const updatedCode = updateMermaidConfigProperty(code, 'theme', theme);
+    const validThemes = new Set(['default', 'forest', 'dark', 'neutral', 'base', 'redux']);
+    const safeTheme = validThemes.has(theme) ? theme : 'default';
+    const updatedCode = updateMermaidConfigProperty(code, 'theme', safeTheme);
     handleCodeChange(updatedCode);
   };
 
@@ -306,9 +309,31 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   }, [doc, persistHistoryEntries]);
 
   const handleFontChange = (font: typeof FONT_OPTIONS[0]) => {
+    // Optimistically update selection highlight in the dropdown before Mermaid re-render finishes.
+    setCurrentFont(font.label);
     const updatedCode = updateMermaidFontFamily(code, font.value);
     handleCodeChange(updatedCode);
   };
+
+  const activeFontLabel = useMemo(() => {
+    if (currentFont && currentFont !== 'Default') return currentFont;
+
+    const fontLineMatch = code.match(/fontFamily:\s*([^\n\r]+)/);
+    if (!fontLineMatch) return 'Default';
+
+    let fontVal = fontLineMatch[1].trim();
+    if ((fontVal.startsWith("'") && fontVal.endsWith("'")) || (fontVal.startsWith('"') && fontVal.endsWith('"'))) {
+      fontVal = fontVal.slice(1, -1);
+    }
+    const normalizedFont = fontVal.replace(/["']/g, '').toLowerCase();
+
+    const found = FONT_OPTIONS.find((f) => {
+      const optionPrimary = f.value.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+      return normalizedFont.includes(optionPrimary);
+    });
+
+    return found?.label || 'Default';
+  }, [code, currentFont]);
 
   const handleUpdateStyle = useCallback((property: string, value: string) => {
       if (!selectedNodeId) return;
@@ -1402,19 +1427,19 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
               <DropdownMenu>
                 <DropdownMenuTrigger render={
                   <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
-                    <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : 'bg-[#4f197b] border-[#4f197b]'}`} />
+                    <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : currentTheme === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'}`} />
                   </Button>
                 } />
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
                     <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                     <div className="flex flex-col">
-                      {['default', 'forest', 'dark', 'neutral', 'base', 'mc', 'redux'].map((t) => (
+                      {['default', 'forest', 'dark', 'neutral', 'base', 'redux'].map((t) => (
                          <DropdownMenuItem 
                            key={t}
                            onClick={() => handleThemeChange(t)}
                            className="flex items-center gap-3 cursor-pointer"
                          >
-                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'mc' ? 'bg-cyan-200 border-cyan-300' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
                            <span className="capitalize">{t}</span>
                          </DropdownMenuItem>
                       ))}
@@ -1435,9 +1460,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                          <DropdownMenuItem 
                            key={f.label}
                            onClick={() => handleFontChange(f)}
-                           className="flex items-center gap-3 cursor-pointer"
+                           className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? 'bg-accent/70' : ''}`}
                          >
-                           <span className={currentFont === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
+                           <span className={activeFontLabel === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
                          </DropdownMenuItem>
                       ))}
                     </div>

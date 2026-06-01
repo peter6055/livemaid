@@ -5,6 +5,7 @@ import mermaid from "mermaid";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 
 const DEBOUNCE_MS = 1000;
+const VALID_MERMAID_THEMES = new Set(['default', 'forest', 'dark', 'neutral', 'base', 'redux']);
 
 export function useEditorState(documentId: string) {
   const [doc, setDoc] = useState<DiagramDocument | null>(null);
@@ -48,25 +49,31 @@ export function useEditorState(documentId: string) {
       // Try to extract theme
       const match = mermaidCode.match(/theme:\s*(?:'|")?([^'"\s\n]+)/);
       if (match) {
-          setCurrentTheme(match[1]);
+          const parsedTheme = match[1].trim();
+          setCurrentTheme(VALID_MERMAID_THEMES.has(parsedTheme) ? parsedTheme : 'default');
       } else {
           setCurrentTheme('default');
       }
 
-      // Try to extract font
-      const fontMatch = mermaidCode.match(/fontFamily:\s*(?:'|")?([^'"\n]+)/);
-      if (fontMatch) {
-          const fontVal = fontMatch[1].trim();
-          // Find the label by checking if the value in config contains the first part of our option
-          const found = FONT_OPTIONS.find(f => f.value.includes(fontVal.split(',')[0].replace(/["']/g, '')));
-          if (found) {
-              setCurrentFont(found.label);
-          } else {
-              setCurrentFont('Default');
+        // Try to extract font. We parse the full value to support nested quotes like
+        // fontFamily: '"Inter Variable", sans-serif'.
+        const fontLineMatch = mermaidCode.match(/fontFamily:\s*([^\n\r]+)/);
+        if (fontLineMatch) {
+          let fontVal = fontLineMatch[1].trim();
+          if ((fontVal.startsWith("'") && fontVal.endsWith("'")) || (fontVal.startsWith('"') && fontVal.endsWith('"'))) {
+            fontVal = fontVal.slice(1, -1);
           }
-      } else {
+
+          const normalizedFont = fontVal.replace(/["']/g, '').toLowerCase();
+          const found = FONT_OPTIONS.find((f) => {
+            const optionPrimary = f.value.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+            return normalizedFont.includes(optionPrimary);
+          });
+
+          setCurrentFont(found?.label || 'Default');
+        } else {
           setCurrentFont('Default');
-      }
+        }
       
       if (onResetSelection) {
         onResetSelection();
