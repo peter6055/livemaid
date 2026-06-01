@@ -74,6 +74,39 @@ We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
 
 *(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor).*
 
+## 🔄 CI/CD Flow
+
+This repository follows the flow:
+
+**PR Raised → PR Check → PR Deployment → Merge → Release → Sandbox Deployment**
+
+### 1) PR Raised
+- Open a pull request targeting `main`.
+
+### 2) PR Check
+- Workflow: `ci/pr-checks` (`/tmp/workspace/peter6055/livemaid/.github/workflows/pr-checks.yml`)
+- Trigger: `pull_request` on `main`
+- Action: installs dependencies and runs `npm run build`.
+
+### 3) PR Deployment (Preview Environment)
+- Workflow: `cd/railway-pr-preview` (`/tmp/workspace/peter6055/livemaid/.github/workflows/railway-pr-envs.yml`)
+- Trigger: successful completion of `ci/pr-checks` for pull requests (`workflow_run`)
+- Action: creates/recreates Railway preview environment `pr-<PR_NUMBER>`.
+- Cleanup: on PR close/merge, the same workflow deletes `pr-<PR_NUMBER>`.
+
+### 4) Merge
+- Merge PR into `main` (recommended: squash and merge).
+
+### 5) Release
+- Workflow: `ci/release` (`/tmp/workspace/peter6055/livemaid/.github/workflows/docker-publish.yml`)
+- Trigger: `push` to `main`
+- Action: builds and publishes Docker image to GHCR, then creates a GitHub Release (`v1.0.<run_number>`).
+
+### 6) Sandbox Deployment
+- Workflow: `cd/railway` (`/tmp/workspace/peter6055/livemaid/.github/workflows/railway-deploy.yml`)
+- Trigger: successful completion of `ci/release` (`workflow_run`)
+- Action: deploys latest release to Railway sandbox service.
+
 ## 🐳 Deployment (Docker)
 
 LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
