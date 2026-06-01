@@ -12,6 +12,7 @@ import { Loader2, Menu, LayoutTemplate, Download, History, PlusSquare, Copy, Pen
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
   saving: boolean;
+  isDemo?: boolean;
   onNavigate: (url: string, message: string) => void;
   onDuplicate: () => void;
   onNewDiagram: () => void;
@@ -23,6 +24,7 @@ interface EditorHeaderProps {
 export function EditorHeader({
   doc,
   saving,
+  isDemo = false,
   onNavigate,
   onDuplicate,
   onNewDiagram,
@@ -40,18 +42,24 @@ export function EditorHeader({
             <Menu className="w-5 h-5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48 bg-background border-border">
-            <DropdownMenuItem onClick={onNewDiagram} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
-              <PlusSquare className="w-4 h-4" />
-              <span>New Diagram</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onDuplicate} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
-              <Copy className="w-4 h-4" />
-              <span>Duplicate</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onRename} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
-              <PencilLine className="w-4 h-4" />
-              <span>Rename</span>
-            </DropdownMenuItem>
+            {!isDemo && (
+              <DropdownMenuItem onClick={onNewDiagram} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                <PlusSquare className="w-4 h-4" />
+                <span>New Diagram</span>
+              </DropdownMenuItem>
+            )}
+            {!isDemo && (
+              <DropdownMenuItem onClick={onDuplicate} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                <Copy className="w-4 h-4" />
+                <span>Duplicate</span>
+              </DropdownMenuItem>
+            )}
+            {!isDemo && (
+              <DropdownMenuItem onClick={onRename} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                <PencilLine className="w-4 h-4" />
+                <span>Rename</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={onVersionHistory} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
               <History className="w-4 h-4" />
               <span>Version History</span>
@@ -94,9 +102,9 @@ export function EditorHeader({
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               <BreadcrumbPage 
-                className="cursor-pointer hover:underline text-indigo-500" 
-                onDoubleClick={onRename} 
-                title="Double click to rename"
+                className={isDemo ? "text-foreground" : "cursor-pointer hover:underline text-indigo-500"}
+                onDoubleClick={isDemo ? undefined : onRename}
+                title={isDemo ? undefined : "Double click to rename"}
               >
                 {doc?.name || "Untitled"}
               </BreadcrumbPage>
@@ -118,7 +126,12 @@ export function EditorHeader({
           <History className="w-4 h-4" />
           <span>History</span>
         </button>
-        {saving ? (
+        {isDemo ? (
+          <span className="flex items-center text-amber-600 dark:text-amber-400">
+            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 mr-1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/><path d="M9 17h6"/></svg>
+            Read Only
+          </span>
+        ) : saving ? (
           <span className="flex items-center text-muted-foreground">
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Saving...

@@ -23,12 +23,14 @@ export function DiagramCard({
   diagram, 
   onRename, 
   onDelete,
-  onNavigate
+  onNavigate,
+  isDemo = false,
 }: { 
   diagram: DiagramDocument, 
   onRename: (id: string, name: string) => void,
   onDelete: (id: string) => void,
-  onNavigate: (url: string) => void
+  onNavigate: (url: string) => void,
+  isDemo?: boolean,
 }) {
   const [svgContent, setSvgContent] = useState<string>('');
   const [isCompiling, setIsCompiling] = useState<boolean>(true);
@@ -66,12 +68,16 @@ export function DiagramCard({
             {diagram.name}
           </CardTitle>
           <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
-              <FileEdit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {!isDemo && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
+                <FileEdit className="h-4 w-4" />
+              </Button>
+            )}
+            {!isDemo && (
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">

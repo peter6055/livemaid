@@ -24,6 +24,9 @@ import { format } from "date-fns";
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry } from "@/lib/api/storage";
+import { DemoBanner } from "@/components/DemoBanner";
+
+const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 export function LiveMaidEditor({ documentId }: { documentId: string }) {
   const router = useRouter();
@@ -1150,6 +1153,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       <EditorHeader 
         doc={doc}
         saving={saving}
+        isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
         onDuplicate={handleDuplicate}
         onNewDiagram={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}
@@ -1157,6 +1161,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
       />
+
+      {IS_DEMO_MODE && <DemoBanner />}
 
       {/* Version History Sidebar */}
       {isHistoryOpen && (
