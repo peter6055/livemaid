@@ -18,7 +18,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
@@ -30,24 +30,46 @@ jobs:
     steps:
       - name: Link Railway project
         run: |
+          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
-            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            fi
           else
-            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID"
+            fi
           fi
 
       - name: Recreate preview environment
         run: |
+          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
           railway environment delete "pr-$PR_NUMBER" || true
+          COPY_ARG=()
+          if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+            COPY_ARG=(--copy "$RAILWAY_TEMPLATE_ENV_ID")
+          fi
           if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
-            railway environment new "pr-$PR_NUMBER" \
-              --copy "$RAILWAY_TEMPLATE_ENV_ID" \
-              --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
-              --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              railway environment new "pr-$PR_NUMBER" \
+                "${COPY_ARG[@]}" \
+                --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
+                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            else
+              railway environment new "pr-$PR_NUMBER" "${COPY_ARG[@]}"
+            fi
           else
-            railway environment new "pr-$PR_NUMBER" \
-              --copy "$RAILWAY_TEMPLATE_ENV_ID" \
-              --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              railway environment new "pr-$PR_NUMBER" \
+                "${COPY_ARG[@]}" \
+                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            else
+              railway environment new "pr-$PR_NUMBER" "${COPY_ARG[@]}"
+            fi
           fi
 
   destroy_preview:
@@ -57,7 +79,7 @@ jobs:
     permissions:
       contents: read
     env:
-      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
@@ -65,11 +87,22 @@ jobs:
     steps:
       - name: Link Railway project
         run: |
+          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
-            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            fi
           else
-            railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID"
+            fi
           fi
 
       - name: Delete preview environment
-        run: railway environment delete "pr-$PR_NUMBER" || true
+        run: |
+          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
+          railway environment delete "pr-$PR_NUMBER" || true
