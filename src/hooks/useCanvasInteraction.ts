@@ -127,81 +127,6 @@ export function useCanvasInteraction({
     return lifelines;
   }, [containerRef, resolveSequenceActorIdFromDisplayName]);
 
-  const getSequenceAnchorSlots = useCallback((lifeline: { y1: number; y2: number }) => {
-    const slots: number[] = [];
-    const start = lifeline.y1 + 14;
-
-    let boxTopLimit = lifeline.y2;
-    if (containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const scale = containerRect.width / containerRef.current.offsetWidth;
-      const bottomActors = Array.from(containerRef.current.querySelectorAll('rect.actor.actor-bottom')) as SVGElement[];
-      if (bottomActors.length > 0) {
-        const nearestBottom = bottomActors
-          .map((el) => {
-            const r = el.getBoundingClientRect();
-            const x = (r.left - containerRect.left + containerRef.current!.scrollLeft + r.width / 2) / scale;
-            const top = (r.top - containerRect.top + containerRef.current!.scrollTop) / scale;
-            return { x, top, dx: Math.abs(x - lifeline.x) };
-          })
-          .sort((a, b) => a.dx - b.dx)[0];
-        if (nearestBottom && nearestBottom.dx < 80) {
-          boxTopLimit = Math.min(boxTopLimit, nearestBottom.top - 16);
-        }
-      }
-    }
-
-    const end = Math.max(start, Math.min(lifeline.y2 - 14, boxTopLimit));
-    const step = 26;
-    for (let y = start; y <= end; y += step) {
-      slots.push(y);
-    }
-
-    if (containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const scale = containerRect.width / containerRef.current.offsetWidth;
-      const messageLines = Array.from(
-        containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
-      ) as SVGGraphicsElement[];
-      let maxMessageAnchor = -Infinity;
-
-      for (const line of messageLines) {
-        const rect = line.getBoundingClientRect();
-        const centerY = (rect.top - containerRect.top + containerRef.current.scrollTop + rect.height / 2) / scale;
-        const candidate = centerY + 10;
-        maxMessageAnchor = Math.max(maxMessageAnchor, candidate);
-        if (candidate >= lifeline.y1 + 8 && candidate <= lifeline.y2 + 28) {
-          slots.push(candidate);
-        }
-      }
-
-      // Keep one append slot below the last message but still on the lifeline (not inside actor boxes).
-      if (Number.isFinite(maxMessageAnchor)) {
-        const appendCandidate = Math.min(boxTopLimit, maxMessageAnchor + 18);
-        if (appendCandidate >= lifeline.y1 + 8 && appendCandidate <= boxTopLimit) {
-          slots.push(appendCandidate);
-        }
-      }
-    }
-
-    const deduped = [...new Set(slots.map((y) => Math.round(y)))].sort((a, b) => a - b);
-    if (deduped.length === 0) {
-      return [Math.round((lifeline.y1 + lifeline.y2) / 2)];
-    }
-
-    // Avoid overcrowding: keep a representative set of up to 4 handles.
-    if (deduped.length <= 4) {
-      return deduped;
-    }
-
-    const picked: number[] = [];
-    for (let i = 0; i < 4; i++) {
-      const idx = Math.round((i * (deduped.length - 1)) / 3);
-      picked.push(deduped[idx]);
-    }
-    return [...new Set(picked)].sort((a, b) => a - b);
-  }, [containerRef]);
-
   const findNearestSlot = useCallback((slots: number[], y: number) => {
     let nearest = slots[0] ?? y;
     let bestDistance = Math.abs(nearest - y);
@@ -255,6 +180,92 @@ export function useCanvasInteraction({
       to: match[2],
     };
   }, []);
+
+  const getSequenceAnchorSlots = useCallback((lifeline: { y1: number; y2: number }) => {
+    const start = lifeline.y1 + 14;
+
+    let boxTopLimit = lifeline.y2;
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      const bottomActors = Array.from(containerRef.current.querySelectorAll('rect.actor.actor-bottom')) as SVGElement[];
+      if (bottomActors.length > 0) {
+        const nearestBottom = bottomActors
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const x = (r.left - containerRect.left + containerRef.current!.scrollLeft + r.width / 2) / scale;
+            const top = (r.top - containerRect.top + containerRef.current!.scrollTop) / scale;
+            return { x, top, dx: Math.abs(x - lifeline.x) };
+          })
+          .sort((a, b) => a.dx - b.dx)[0];
+        if (nearestBottom && nearestBottom.dx < 80) {
+          boxTopLimit = Math.min(boxTopLimit, nearestBottom.top - 2);
+        }
+      }
+    }
+
+    const end = Math.max(start, Math.min(lifeline.y2 - 2, boxTopLimit));
+
+    const rowAnchors: number[] = [];
+    const rowBottoms: number[] = [];
+
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      const messageLines = Array.from(
+        containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+      ) as SVGGraphicsElement[];
+
+      for (const line of messageLines) {
+        const rect = line.getBoundingClientRect();
+        const centerY = (rect.top - containerRect.top + containerRef.current.scrollTop + rect.height / 2) / scale;
+        const bottomY = (rect.bottom - containerRect.top + containerRef.current.scrollTop) / scale;
+        if (centerY >= start && centerY <= lifeline.y2 + 28) {
+          rowAnchors.push(Math.round(centerY));
+          rowBottoms.push(Math.round(bottomY));
+        }
+      }
+    }
+
+    const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
+    const bottoms = [...new Set(rowBottoms)].sort((a, b) => a - b);
+
+    const slots: number[] = [];
+    if (rows.length === 0) {
+      slots.push(Math.round((start + end) / 2));
+    } else {
+      slots.push(Math.round((start + rows[0]) / 2));
+      for (let i = 0; i < rows.length - 1; i++) {
+        slots.push(Math.round((rows[i] + rows[i + 1]) / 2));
+      }
+      slots.push(Math.round(end));
+    }
+
+    const deduped = [...new Set(slots.map((y) => Math.max(start, Math.min(end, Math.round(y)))))]
+      .sort((a, b) => a - b);
+    if (deduped.length === 0) {
+      return [Math.round((lifeline.y1 + lifeline.y2) / 2)];
+    }
+    if (deduped.length <= 2) {
+      return deduped;
+    }
+
+    const minGap = 24;
+    const compacted: number[] = [deduped[0]];
+    for (let i = 1; i < deduped.length - 1; i++) {
+      const y = deduped[i];
+      const prev = compacted[compacted.length - 1];
+      if (Math.abs(y - prev) >= minGap) {
+        compacted.push(y);
+      }
+    }
+
+    const last = deduped[deduped.length - 1];
+    if (last !== compacted[compacted.length - 1]) {
+      compacted.push(last);
+    }
+    return compacted;
+  }, [containerRef]);
 
   const getSelectedMessageOverlay = useCallback((selectedId: string) => {
     if (!selectedId.startsWith('SEQ_MSG_') || !containerRef.current) return null as { actorId: string; x: number; slots: number[] } | null;
