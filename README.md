@@ -15,6 +15,7 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 * **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
 * **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
 * **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
+* **Demo Mode:** Run a read-only public-facing instance pre-loaded with sample diagrams — changes are never persisted.
 
 ## 🚀 Getting Started
 
@@ -103,6 +104,43 @@ LiveMaid is containerized and available on the GitHub Container Registry. Since 
    ```
 
 Your diagrams will be saved permanently in the `./data` folder on your server!
+
+### Option 2: Demo Mode
+
+Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded with sample diagrams. Visitors can freely explore and edit diagrams in-browser, but nothing is ever persisted to disk.
+
+**How it works:**
+- Diagrams are read from the `./demo/` folder instead of `./data/`.
+- All write operations (create, save, delete) are silently disabled on both the server and the client.
+- A persistent amber banner is displayed on every page informing users they are in demo mode.
+
+**Setup:**
+
+1. Populate the `./demo/` folder with sample diagram JSON files (same format as `./data/`).
+
+2. Run the demo service defined in the included `docker-compose.yml`:
+   ```bash
+   docker-compose up -d livemaid-demo
+   ```
+   This starts the demo instance on port `3001` with `DEMO_MODE=true` and mounts `./demo` as read-only.
+
+   Alternatively, pass the environment variables yourself:
+   ```yaml
+   services:
+     livemaid-demo:
+       image: ghcr.io/peter6055/livemaid:latest
+       ports:
+         - "3001:3000"
+       volumes:
+         - ./demo:/app/demo:ro
+       environment:
+         - NODE_ENV=production
+         - DEMO_MODE=true
+         - NEXT_PUBLIC_DEMO_MODE=true
+       restart: unless-stopped
+   ```
+
+> **Note:** Both `DEMO_MODE` (server-side) and `NEXT_PUBLIC_DEMO_MODE` (client-side) must be set to `"true"` for the full demo experience. `NEXT_PUBLIC_DEMO_MODE` controls the visible banner and disabled UI buttons; `DEMO_MODE` controls the server-side storage path and write guards.
 
 ## 🛠️ Tech Stack
 
