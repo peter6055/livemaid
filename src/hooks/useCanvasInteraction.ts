@@ -181,7 +181,7 @@ export function useCanvasInteraction({
     };
   }, []);
 
-  const getSequenceAnchorSlots = useCallback((lifeline: { y1: number; y2: number }) => {
+  const getSequenceAnchorSlots = useCallback((lifeline: { x: number; y1: number; y2: number }) => {
     const start = lifeline.y1 + 14;
 
     let boxTopLimit = lifeline.y2;
@@ -603,11 +603,14 @@ export function useCanvasInteraction({
       if (currentNode.classList?.contains('actor')) {
         foundNodeClass = true;
 
+        const containerEl = containerRef.current;
+        if (!containerEl) break;
+
         const actorDisplayName = currentNode.textContent?.trim() || '';
         const clickedRect = currentNode.getBoundingClientRect();
-        const containerRect = containerRef.current.getBoundingClientRect();
-        const scale = containerRect.width / containerRef.current.offsetWidth;
-        const clickedX = (clickedRect.left - containerRect.left + containerRef.current.scrollLeft + clickedRect.width / 2) / scale;
+        const containerRect = containerEl.getBoundingClientRect();
+        const scale = containerRect.width / containerEl.offsetWidth;
+        const clickedX = (clickedRect.left - containerRect.left + containerEl.scrollLeft + clickedRect.width / 2) / scale;
 
         const lifelines = getSequenceLifelines();
         const nearest = lifelines
