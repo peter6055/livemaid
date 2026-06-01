@@ -74,12 +74,16 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
     sequenceLifelineOverlay,
+    hoveredSequenceMessageBox,
+    sequenceMessageTriggerAreas,
     inlineInputRef,
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
     handleEditClick,
     handleAddNodeFromSelected,
+    triggerHoveredSequenceMessageSelection,
+    triggerSequenceMessageHoverByIndex,
     startSequenceConnection,
     shapePicker,
     setShapePicker
@@ -1569,6 +1573,8 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           connectionState={connectionState}
           setConnectionState={setConnectionState}
           sequenceLifelineOverlay={sequenceLifelineOverlay}
+          hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+          sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
           startSequenceConnection={startSequenceConnection}
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
@@ -1587,6 +1593,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           handleEditSubmit={handleEditSubmit}
           inlineInputRef={inlineInputRef}
           handleAddNodeFromSelected={handleAddNodeFromSelected}
+          onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
+          onHoveredSequenceMessageClick={(index) => triggerHoveredSequenceMessageSelection(false, index)}
+          onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
           onDeselect={handleDeselect}
           onResetStyle={handleResetStyle}
           onUpdateEdgeStyle={handleUpdateEdgeStyle}

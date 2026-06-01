@@ -33,7 +33,12 @@ interface EditorCanvasProps {
   };
   setConnectionState: (state: any) => void;
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
+  hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
+  sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
+  onHoveredSequenceMessageHover: (index: number) => void;
+  onHoveredSequenceMessageClick: (index: number) => void;
+  onHoveredSequenceMessageDoubleClick: (index: number) => void;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -81,7 +86,12 @@ export function EditorCanvas({
   connectionState,
   setConnectionState,
   sequenceLifelineOverlay,
+  hoveredSequenceMessageBox,
+  sequenceMessageTriggerAreas,
   startSequenceConnection,
+  onHoveredSequenceMessageHover,
+  onHoveredSequenceMessageClick,
+  onHoveredSequenceMessageDoubleClick,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -254,6 +264,67 @@ export function EditorCanvas({
                     dangerouslySetInnerHTML={{ __html: svgContent }} 
                   />
 
+                  {currentType === 'sequence' && !isInlineEditing && !connectionState.active && sequenceMessageTriggerAreas.map((area) => (
+                    <div
+                      key={`seq-msg-trigger-${area.index}`}
+                      data-seq-msg-hover-trigger="true"
+                      className="absolute pointer-events-auto z-[19] cursor-pointer"
+                      style={{
+                        left: area.x,
+                        top: area.y,
+                        width: area.width,
+                        height: area.height,
+                        background: 'transparent',
+                      }}
+                      onMouseEnter={(e) => {
+                        e.stopPropagation();
+                        onHoveredSequenceMessageHover(area.index);
+                      }}
+                      onMouseOver={(e) => {
+                        e.stopPropagation();
+                        onHoveredSequenceMessageHover(area.index);
+                      }}
+                      onMouseMove={(e) => {
+                        e.stopPropagation();
+                        onHoveredSequenceMessageHover(area.index);
+                      }}
+                      onPointerEnter={(e) => {
+                        e.stopPropagation();
+                        onHoveredSequenceMessageHover(area.index);
+                      }}
+                      onPointerMove={(e) => {
+                        e.stopPropagation();
+                        onHoveredSequenceMessageHover(area.index);
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onHoveredSequenceMessageClick(area.index);
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onHoveredSequenceMessageDoubleClick(area.index);
+                      }}
+                    />
+                  ))}
+
+                  {currentType === 'sequence' && hoveredSequenceMessageBox && !isInlineEditing && !connectionState.active && (
+                    <div
+                      data-seq-msg-hover-trigger="true"
+                      className="absolute pointer-events-none z-20 rounded-xl"
+                      style={{
+                        left: hoveredSequenceMessageBox.x,
+                        top: hoveredSequenceMessageBox.y,
+                        width: hoveredSequenceMessageBox.width,
+                        height: hoveredSequenceMessageBox.height,
+                        border: `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale})) solid #7c3aed`,
+                        boxShadow: `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`,
+                        borderRadius: `calc(10px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                      }}
+                    />
+                  )}
+
                   {currentType === 'sequence' && !isLocked && !isInlineEditing && !connectionState.active && sequenceLifelineOverlay && (
                     <div className="absolute inset-0 pointer-events-none z-20">
                       {sequenceLifelineOverlay.slots.map((slotY) => (
@@ -290,9 +361,17 @@ export function EditorCanvas({
                       <line
                         data-scale-lock-stroke
                         x1={connectionState.startPos.x}
-                        y1={connectionState.anchorY ?? connectionState.startPos.y}
+                        y1={
+                          currentType === 'sequence'
+                            ? (connectionState.anchorY ?? connectionState.startPos.y)
+                            : connectionState.startPos.y
+                        }
                         x2={connectionState.mousePos.x}
-                        y2={connectionState.anchorY ?? connectionState.startPos.y}
+                        y2={
+                          currentType === 'sequence'
+                            ? (connectionState.anchorY ?? connectionState.startPos.y)
+                            : connectionState.mousePos.y
+                        }
                         stroke="#2563eb"
                         strokeDasharray="10,8"
                         strokeLinecap="round"
@@ -327,69 +406,22 @@ export function EditorCanvas({
                   )}
 
                   {selectionBox && !isLocked && (
-                    selectedNodeId && isEdgeId(selectedNodeId) ? (
-                      // For edges: render a highlight SVG overlay that circles the connection line
-                      <svg className="absolute inset-0 pointer-events-none z-20 overflow-visible">
-                        <g>
-                          {/* Highlight the connection line with a glowing circle around the path */}
-                          <path 
-                            d={(() => {
-                              // Find the edge path in the SVG and extract its d attribute
-                              const edgePath = containerRef.current?.querySelector(`[id*="${selectedSvgId}"][class*="flowchart-link"]`);
-                              if (edgePath instanceof SVGPathElement) {
-                                return edgePath.getAttribute('d') || '';
-                              }
-                              return '';
-                            })()}
-                            stroke="rgba(99, 102, 241, 0.3)"
-                            strokeWidth={`calc(14px * var(--zoom-inverse-scale, ${1 / state.scale}))`}
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                          <path 
-                            d={(() => {
-                              const edgePath = containerRef.current?.querySelector(`[id*="${selectedSvgId}"][class*="flowchart-link"]`);
-                              if (edgePath instanceof SVGPathElement) {
-                                return edgePath.getAttribute('d') || '';
-                              }
-                              return '';
-                            })()}
-                            stroke="rgba(99, 102, 241, 0.8)"
-                            strokeWidth={`calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`}
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeDasharray="8,6"
-                          />
-                        </g>
-                      </svg>
-                    ) : (
-                      // For non-edges: render the traditional border selection box
-                      <div 
-                        data-scale-lock-border
-                        data-scale-lock-shadow
-                        className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
-                        style={{
-                          left: selectionBox.x - 4,
-                          top: selectionBox.y - 4,
-                          width: selectionBox.width + 8,
-                          height: selectionBox.height + 8,
-                          borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                          boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
-                        }}
-                      />
-                    )
-                  )}
-
-                  {selectionBox && !isLocked && (
                     <div 
-                      className="absolute pointer-events-none z-20"
+                      data-scale-lock-border
+                      data-scale-lock-shadow
+                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - 4,
-                        top: selectionBox.y - 4,
-                        width: selectionBox.width + 8,
-                        height: selectionBox.height + 8,
+                        left: selectionBox.x - (selectedNodeId?.startsWith('SEQ_MSG_') ? 10 : 4),
+                        top: selectionBox.y - (selectedNodeId?.startsWith('SEQ_MSG_') ? 2 : 4),
+                        width: selectionBox.width + (selectedNodeId?.startsWith('SEQ_MSG_') ? 20 : 8),
+                        height: selectionBox.height + (selectedNodeId?.startsWith('SEQ_MSG_') ? 4 : 8),
+                        borderColor: selectedNodeId?.startsWith('SEQ_MSG_') ? '#7c3aed' : undefined,
+                        borderWidth: selectedNodeId?.startsWith('SEQ_MSG_')
+                          ? `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale}))`
+                          : `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: selectedNodeId?.startsWith('SEQ_MSG_')
+                          ? `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`
+                          : `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
                     >
                       {!isInlineEditing && (

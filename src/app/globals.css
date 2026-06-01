@@ -208,13 +208,34 @@ svg[aria-roledescription="error"],
   fill: #6366f1 !important;
 }
 
-/* Hover highlights for sequence diagram message lines, text, and notes */
+/* Hover highlights for sequence diagram message connections */
 .mermaid-container [class*="messageLine"]:hover line,
 .mermaid-container [class*="messageLine"]:hover path,
 .mermaid-container .messageLine:hover line,
 .mermaid-container .messageLine:hover path {
-  stroke: #6366f1 !important;
+  stroke: #7c3aed !important;
+  stroke-width: 4px !important;
+}
+
+/* Synchronized sequence connection hover (line + label) */
+.mermaid-container .sequence-msg-hover-highlight-line,
+.mermaid-container line.sequence-msg-hover-highlight-line,
+.mermaid-container path.sequence-msg-hover-highlight-line {
+  stroke: #7c3aed !important;
   stroke-width: 3px !important;
+}
+
+.mermaid-container .sequence-msg-hover-highlight-line line,
+.mermaid-container .sequence-msg-hover-highlight-line path {
+  stroke: #7c3aed !important;
+  stroke-width: 3px !important;
+}
+
+.mermaid-container .sequence-msg-hover-highlight-text,
+.mermaid-container .sequence-msg-hover-highlight-text:hover {
+  fill: #7c3aed !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
 }
 
 /* Enable pointer events on sequence diagram interactive elements (Mermaid disables them by default) */
@@ -229,7 +250,7 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
-/* Widen clickable area on message text labels - make it much larger and more reliable */
+/* Widen clickable area on message text labels */
 .mermaid-container .messageText {
   pointer-events: all !important;
   cursor: pointer !important;
@@ -237,17 +258,15 @@ svg[aria-roledescription="error"],
   font-weight: 500;
   paint-order: stroke fill;
   stroke: transparent !important;
-  stroke-width: 16px !important;
+  stroke-width: 12px !important;
   stroke-linecap: round !important;
   stroke-linejoin: round !important;
 }
 
 .mermaid-container .messageText:hover {
-  fill: #6366f1 !important;
-  font-weight: 700 !important;
-  text-shadow: 0 0 6px rgba(99, 102, 241, 0.8) !important;
-  stroke-width: 20px !important;
-  stroke: rgba(99, 102, 241, 0.15) !important;
+  fill: #7c3aed !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
 }
 
 .mermaid-container .note:hover rect {
