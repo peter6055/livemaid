@@ -261,7 +261,7 @@ export function EditorCanvas({
                           key={`${sequenceLifelineOverlay.actorId}-${slotY}`}
                           data-scale-lock
                           data-base-transform="translate(-50%, -50%)"
-                          className="absolute pointer-events-auto w-5 h-5 rounded-full bg-indigo-500 text-white shadow-md hover:bg-indigo-600 transition-colors"
+                          className="absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                           style={{
                             left: sequenceLifelineOverlay.x,
                             top: slotY,
@@ -274,7 +274,7 @@ export function EditorCanvas({
                             startSequenceConnection(sequenceLifelineOverlay.actorId, slotY);
                           }}
                         >
-                          <Plus className="w-3 h-3 mx-auto my-auto pointer-events-none" />
+                          <Plus className="w-3.5 h-3.5 mx-auto my-auto pointer-events-none" strokeWidth={3} />
                         </button>
                       ))}
                     </div>
@@ -294,16 +294,19 @@ export function EditorCanvas({
                         x2={connectionState.mousePos.x}
                         y2={connectionState.anchorY ?? connectionState.startPos.y}
                         stroke="#2563eb"
-                        strokeDasharray="6,5"
+                        strokeDasharray="10,8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        shapeRendering="geometricPrecision"
                         style={{ strokeWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))` }}
                         markerEnd="url(#sequence-preview-arrow)"
                       />
 
                       {connectionState.snapTargetPos && (
                         <g transform={`translate(${connectionState.snapTargetPos.x}, ${connectionState.snapTargetPos.y})`}>
-                          <circle r={8} fill="#10b981" />
-                          <line x1={-4} y1={0} x2={4} y2={0} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
-                          <line x1={0} y1={-4} x2={0} y2={4} stroke="#ffffff" strokeWidth={2} strokeLinecap="round" />
+                          <circle r={4} fill="#10b981" />
+                          <line x1={-2} y1={0} x2={2} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+                          <line x1={0} y1={-2} x2={0} y2={2} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
                         </g>
                       )}
                     </svg>
