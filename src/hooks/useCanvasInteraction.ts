@@ -119,12 +119,7 @@ export function useCanvasInteraction({
       })
       .sort((a, b) => a.x - b.x);
 
-    // Primary mapping strategy: Mermaid places participants in declaration order from left to right.
-    // This avoids alias collisions (e.g. multiple "New Boundary" labels).
-    if (participantIds.length === lifelines.length) {
-      return lifelines.map((l, idx) => ({ ...l, actorId: participantIds[idx] }));
-    }
-
+    // Use the display name matching resolved above, which correctly identifies each lifeline by its visual position and text
     return lifelines;
   }, [containerRef, resolveSequenceActorIdFromDisplayName]);
 
@@ -279,7 +274,36 @@ export function useCanvasInteraction({
     const globalTop = allLifelines.length > 0
       ? Math.min(...allLifelines.map((l) => l.y1))
       : lifeline.y1;
-    const start = globalTop + 8;
+    
+    // Find the participant box bottom by looking for actor boxes and note boxes near this lifeline
+    let participantBoxBottom = globalTop + 100; // Conservative estimate for box height
+    
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      
+      // Check for actor-top and actor-bottom to determine box bounds
+      const actorBoxes = Array.from(containerRef.current.querySelectorAll('rect.actor, rect.actor-top, rect.actor-bottom')) as SVGElement[];
+      if (actorBoxes.length > 0) {
+        const nearestBox = actorBoxes
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const x = (r.left - containerRect.left + containerRef.current!.scrollLeft + r.width / 2) / scale;
+            const bottom = (r.bottom - containerRect.top + containerRef.current!.scrollTop) / scale;
+            return { bottom, dx: Math.abs(x - lifeline.x) };
+          })
+          .filter(b => b.dx < 60)  // Only consider boxes near this lifeline
+          .sort((a, b) => a.bottom - b.bottom)
+          .pop();  // Get the one with highest bottom
+        
+        if (nearestBox) {
+          participantBoxBottom = nearestBox.bottom + 8;
+        }
+      }
+    }
+
+    // Ensure slots start below the participant box
+    const start = Math.max(globalTop + 8, participantBoxBottom);
 
     let boxTopLimit = lifeline.y2;
     if (containerRef.current) {

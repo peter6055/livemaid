@@ -327,17 +327,69 @@ export function EditorCanvas({
                   )}
 
                   {selectionBox && !isLocked && (
+                    selectedNodeId && isEdgeId(selectedNodeId) ? (
+                      // For edges: render a highlight SVG overlay that circles the connection line
+                      <svg className="absolute inset-0 pointer-events-none z-20 overflow-visible">
+                        <g>
+                          {/* Highlight the connection line with a glowing circle around the path */}
+                          <path 
+                            d={(() => {
+                              // Find the edge path in the SVG and extract its d attribute
+                              const edgePath = containerRef.current?.querySelector(`[id*="${selectedSvgId}"][class*="flowchart-link"]`);
+                              if (edgePath instanceof SVGPathElement) {
+                                return edgePath.getAttribute('d') || '';
+                              }
+                              return '';
+                            })()}
+                            stroke="rgba(99, 102, 241, 0.3)"
+                            strokeWidth={`calc(14px * var(--zoom-inverse-scale, ${1 / state.scale}))`}
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          <path 
+                            d={(() => {
+                              const edgePath = containerRef.current?.querySelector(`[id*="${selectedSvgId}"][class*="flowchart-link"]`);
+                              if (edgePath instanceof SVGPathElement) {
+                                return edgePath.getAttribute('d') || '';
+                              }
+                              return '';
+                            })()}
+                            stroke="rgba(99, 102, 241, 0.8)"
+                            strokeWidth={`calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`}
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeDasharray="8,6"
+                          />
+                        </g>
+                      </svg>
+                    ) : (
+                      // For non-edges: render the traditional border selection box
+                      <div 
+                        data-scale-lock-border
+                        data-scale-lock-shadow
+                        className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                        style={{
+                          left: selectionBox.x - 4,
+                          top: selectionBox.y - 4,
+                          width: selectionBox.width + 8,
+                          height: selectionBox.height + 8,
+                          borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
+                        }}
+                      />
+                    )
+                  )}
+
+                  {selectionBox && !isLocked && (
                     <div 
-                      data-scale-lock-border
-                      data-scale-lock-shadow
-                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      className="absolute pointer-events-none z-20"
                       style={{
                         left: selectionBox.x - 4,
                         top: selectionBox.y - 4,
                         width: selectionBox.width + 8,
                         height: selectionBox.height + 8,
-                        borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                        boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
                     >
                       {!isInlineEditing && (
