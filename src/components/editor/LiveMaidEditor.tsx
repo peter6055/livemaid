@@ -699,6 +699,11 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     
     handleCodeChange(newCode);
     setIsInlineEditing(false);
+    // Clear selection after edit so sequence overlay doesn't auto-re-appear
+    setSelectedNodeId(null);
+    setSelectedSvgId(null);
+    setSelectionBox(null);
+    setTextBox(null);
   };
 
   const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
@@ -1060,7 +1065,6 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isLocked) return;
       if (isInlineEditing) return;
-      if (!selectedNodeId) return;
 
       // Ignore keydown if the user is typing in any text input, textarea, or Monaco editor
       const activeEl = document.activeElement;
@@ -1070,6 +1074,22 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         activeEl.getAttribute('contenteditable') === 'true' ||
         activeEl.closest('.monaco-editor')
       );
+
+      // Undo/redo: always handled globally (routes to Monaco even when canvas has focus)
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        if (isInputActive) return; // let Monaco handle it natively
+        e.preventDefault();
+        editorRef.current?.trigger('keyboard', 'undo', null);
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        if (isInputActive) return;
+        e.preventDefault();
+        editorRef.current?.trigger('keyboard', 'redo', null);
+        return;
+      }
+
+      if (!selectedNodeId) return;
       if (isInputActive) return;
 
       if (e.key === 'Backspace' || e.key === 'Delete') {

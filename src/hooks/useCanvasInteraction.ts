@@ -845,6 +845,8 @@ export function useCanvasInteraction({
 
   const handleEditClick = useCallback((e: React.MouseEvent | Event) => {
     if ('stopPropagation' in e) e.stopPropagation();
+    // Guard: if already editing, do nothing (prevents double-fire from native dblclick + timer)
+    if (isInlineEditing) return;
     
     const currentType = determineDiagramType(code);
     if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
@@ -955,7 +957,7 @@ export function useCanvasInteraction({
             inlineInputRef.current.select();
         }
     }, 10);
-  }, [code, getClickedNode, selectedNodeId, determineDiagramType, getSequenceMessageEntries]);
+  }, [code, getClickedNode, selectedNodeId, determineDiagramType, getSequenceMessageEntries, isInlineEditing]);
 
   const lastClickTimeRef = useRef<number>(0);
 
@@ -971,7 +973,7 @@ export function useCanvasInteraction({
     const currentTime = new Date().getTime();
     const timeSinceLastClick = currentTime - lastClickTimeRef.current;
     
-    if (timeSinceLastClick < 300) {
+    if (timeSinceLastClick < 400) {
         lastClickTimeRef.current = 0;
         handleEditClick(e);
         return;

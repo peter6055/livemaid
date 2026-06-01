@@ -217,6 +217,24 @@ svg[aria-roledescription="error"],
   stroke-width: 3px !important;
 }
 
+/* Enable pointer events on sequence diagram interactive elements (Mermaid disables them by default) */
+.mermaid-container [class*="messageLine"],
+.mermaid-container .messageText,
+.mermaid-container .actor,
+.mermaid-container .actor-box,
+.mermaid-container .actor-line,
+.mermaid-container .note,
+.mermaid-container .noteText {
+  pointer-events: all !important;
+  cursor: pointer !important;
+}
+
+/* Widen clickable area on message text labels */
+.mermaid-container .messageText {
+  stroke-width: 8 !important;
+  stroke: transparent !important;
+}
+
 .mermaid-container .messageText:hover {
   fill: #6366f1 !important;
   font-weight: 600;
