@@ -568,35 +568,44 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     };
 
     if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-        const oldText = selectedNodeId.replace('SEQ_ACTOR_', '');
+        const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
         const newText = editingText.replace(/\n/g, '<br/>');
         
         let found = false;
         const lines = code.split('\n');
         newCode = lines.map(line => {
             const trimmed = line.trim();
-            const declMatch = trimmed.match(/^(participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/);
+            // Match all participant declaration types including special @{} syntax
+            // e.g. "participant P843@{ "type": "database" } as New Database"
+            // e.g. "participant Alice as Alice"
+            // e.g. "actor Bob"
+            const declMatch = trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?\s+as\s+(.+)$/i) ||
+                              trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?$/i);
             if (declMatch) {
-                const type = declMatch[1];
                 const id = declMatch[2];
                 const alias = declMatch[3];
                 
-                if (alias && alias.trim() === oldText.trim()) {
+                if (id === actorId) {
                     found = true;
-                    return line.replace(`as ${alias}`, `as ${newText}`);
-                }
-                if (!alias && id === oldText) {
-                    found = true;
-                    return line.replace(id, `${id} as ${newText}`);
+                    if (alias !== undefined) {
+                        // Replace "as [old alias]" at end of line
+                        const asIdx = line.lastIndexOf(` as `);
+                        if (asIdx !== -1) {
+                            return line.substring(0, asIdx) + ` as ${newText}`;
+                        }
+                    } else {
+                        // No alias yet — append "as [newText]"
+                        return line.trimEnd() + ` as ${newText}`;
+                    }
                 }
             }
             return line;
         }).join('\n');
         
         if (!found) {
-            const lines = code.split('\n');
+            // Only insert a new declaration if we truly couldn't find this actor at all
             const headerIdx = lines.findIndex(l => l.trim().startsWith('sequenceDiagram'));
-            const declLine = `    participant ${oldText} as ${newText}`;
+            const declLine = `    participant ${actorId} as ${newText}`;
             if (headerIdx !== -1) {
                 lines.splice(headerIdx + 1, 0, declLine);
             } else {
@@ -795,8 +804,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           const lines = code.split('\n');
           const filtered = lines.filter(line => {
               const trimmed = line.trim();
-              // Remove declaration
-              const declMatch = trimmed.match(/^(?:participant|actor)\s+(\S+)/);
+              // Remove declaration — handles all types including @{} syntax
+              // e.g. "participant P843@{ "type": "database" } as New Database"
+              const declMatch = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+.+)?$/i);
               if (declMatch && declMatch[1] === actorId) return false;
               // Remove lines referencing this actor (as sender, receiver, or in notes)
               const refRegex = new RegExp(`(^|[^a-zA-Z0-9_])${actorId}(?:[^a-zA-Z0-9_]|$)`);
