@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTheme } from 'next-themes';
 import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
 import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search } from 'lucide-react';
+import { Plus, LayoutTemplate, Menu, Loader2, PlusSquare, Moon, Search, X, Repeat2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -45,6 +45,8 @@ export default function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [displayCount, setDisplayCount] = useState(6);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
   // Dialog states
@@ -155,9 +157,33 @@ export default function Dashboard() {
     }
   };
 
-  const filteredDiagrams = diagrams.filter((diagram) =>
-    diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
-  );
+  const filteredDiagrams = useMemo(() => {
+    return diagrams.filter((diagram) =>
+      diagram.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
+    );
+  }, [diagrams, searchQuery]);
+
+  const displayedDiagrams = useMemo(() => {
+    return filteredDiagrams.slice(0, displayCount);
+  }, [filteredDiagrams, displayCount]);
+
+  // Lazy loading intersection observer - defined AFTER computed values
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && displayCount < filteredDiagrams.length) {
+          setDisplayCount(prev => Math.min(prev + 6, filteredDiagrams.length));
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [displayCount, filteredDiagrams.length]);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -204,6 +230,24 @@ export default function Dashboard() {
 
       {/* Main Content */}
       <div className="max-w-6xl mx-auto w-full px-8 py-12 flex-grow">
+        {/* Diagram Capabilities Info */}
+        <div className="mb-8 p-5 bg-gradient-to-br from-indigo-50 to-indigo-100/50 dark:from-indigo-950/30 dark:to-indigo-900/20 border border-indigo-200/50 dark:border-indigo-800/50 rounded-lg">
+          <div className="flex items-start gap-3">
+            <div className="bg-indigo-500/20 p-2.5 rounded-lg flex-shrink-0">
+              <Repeat2 className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold text-sm text-foreground mb-2">Two-way Sync</h3>
+              <p className="text-sm text-muted-foreground mb-3">Edit visually on the canvas or modify the code—both stay in sync automatically.</p>
+              <div className="flex flex-wrap gap-1.5">
+                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Flowchart</span>
+                <span className="inline-flex items-center gap-1 bg-indigo-600/15 px-2 py-1 rounded text-xs font-medium text-indigo-700 dark:text-indigo-300">Sequence (Preview)</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-3">Other diagram types are code-only.</p>
+            </div>
+          </div>
+        </div>
+
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-12">
           <div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground mb-2">
@@ -211,17 +255,26 @@ export default function Dashboard() {
             </h1>
             <p className="text-muted-foreground text-lg">Create, edit, and manage your visual workspaces.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto items-stretch sm:items-center">
+            <div className="relative flex-1 md:flex-none">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search diagrams"
-                className="pl-9"
+                className="pl-9 pr-9 h-10"
               />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Clear search"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-6 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5">
+            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
               <Plus className="w-5 h-5 mr-2" />
               New Diagram
             </Button>
@@ -279,36 +332,46 @@ export default function Dashboard() {
             ))}
           </div>
         ) : filteredDiagrams.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background hover:bg-accent transition-colors">
-            <div className="bg-muted p-3 rounded-full mb-4">
+          <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background/50 backdrop-blur-sm">
+            <div className="bg-muted p-4 rounded-full mb-4">
               <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
-            <p className="text-muted-foreground text-sm mb-4">
-              {diagrams.length === 0 ? 'Create your first diagram to get started.' : 'Try a different search term.'}
+            <h3 className="text-lg font-semibold text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
+            <p className="text-muted-foreground text-sm mb-6 max-w-xs text-center">
+              {diagrams.length === 0 
+                ? 'Get started by creating your first diagram. Choose a template above or create from scratch.' 
+                : 'Try a different search term or create a new diagram.'}
             </p>
-            {diagrams.length === 0 ? (
+            <div className="flex gap-3">
               <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
                 Create Diagram
               </Button>
-            ) : (
-              <Button variant="outline" onClick={() => setSearchQuery("")}>
-                Clear Search
-              </Button>
-            )}
+              {diagrams.length > 0 && (
+                <Button variant="outline" onClick={() => setSearchQuery("")}>
+                  Clear Search
+                </Button>
+              )}
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDiagrams.map(diagram => (
-              <DiagramCard 
-                key={diagram.id} 
-                diagram={diagram} 
-                onRename={openRenameDialog}
-                onDelete={openDeleteDialog}
-                onNavigate={handleNavigate}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {displayedDiagrams.map(diagram => (
+                <DiagramCard 
+                  key={diagram.id} 
+                  diagram={diagram} 
+                  onRename={openRenameDialog}
+                  onDelete={openDeleteDialog}
+                  onNavigate={handleNavigate}
+                />
+              ))}
+            </div>
+            {displayCount < filteredDiagrams.length && (
+              <div ref={sentinelRef} className="flex justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+              </div>
+            )}
+          </>
         )}
       </div>
 

@@ -32,7 +32,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, type = 'flowchart' } = body;
+    const { name, type = 'flowchart', code } = body;
 
     if (!name) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -40,6 +40,7 @@ export async function POST(request: Request) {
 
     const plugin = DiagramRegistry[type] || DiagramRegistry['flowchart'];
     const defaultCode = plugin.defaultCode;
+    const finalCode = code || defaultCode;
 
     const newDiagram: DiagramDocument = {
       id: nanoid(),
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       deletedAt: null,
-      code: defaultCode,
+      code: finalCode,
       type,
       subPages: [],
       comments: [],

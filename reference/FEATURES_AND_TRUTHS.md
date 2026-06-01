@@ -41,7 +41,7 @@ This document serves as the source of truth for the implemented features and arc
 - **Visibility**: Appears below the selection box when a node is selected (and inline editing is not active).
 - **Code Generation (`handleAddNodeFromSelected`)**: 
   - For flowcharts: Appends `\n {selectedNodeId} --> NewNode{i}[New Node]`. It auto-increments the `i` to avoid ID collisions.
-  - For sequence diagrams: Appends `\n {selectedNodeId}->>NewActor: New Message`.
+  - For sequence diagrams: Appends `\n {selectedNodeId}->>NewActor: new msg`.
 
 ## 6. Theme Management
 - We manually inject or update the Mermaid configuration block (`--- \n config: \n theme: 'dark' \n ---`) at the top of the raw Mermaid code string to control themes. This ensures the theme is persisted directly in the diagram code itself.
@@ -101,6 +101,30 @@ This document serves as the source of truth for the implemented features and arc
 - **Browser Exit Prompt**: Refreshing or closing the tab while in the editor triggers the browser-native `beforeunload` confirmation prompt.
 - **Browser Back Button Guard**: Pressing the browser back button inside the editor is intercepted and routed through the same leave-editor confirmation dialog before navigation is allowed.
 
+## 14. Dashboard Lazy Loading
+- **Pagination Strategy**: The dashboard implements progressive loading of diagram cards using IntersectionObserver API. Initially, 6 diagrams are displayed, with additional batches of 6 loaded as the user scrolls down.
+- **State Management**: 
+  - `displayCount` state tracks the current number of diagrams to display (starts at 6, increments by 6).
+  - `sentinelRef` creates a sentinel div at the bottom of the grid that triggers loading when visible.
+- **Computed Values**: 
+  - `filteredDiagrams` uses `useMemo` to filter all diagrams by search query (only recalculates when diagrams or searchQuery changes).
+  - `displayedDiagrams` uses `useMemo` to slice filtered diagrams to show only `displayCount` items (optimizes rendering performance).
+- **Intersection Observer**: Watches the sentinel div with `threshold: 0.1`. When the sentinel becomes visible and more diagrams exist, `displayCount` is incremented by 6 (capped at total available).
+- **Visual Feedback**: A spinning `Loader2` icon displays at the sentinel position when more diagrams are available, providing clear indication that additional content exists below.
+- **Search Integration**: When search query changes, filtered results are recalculated and `displayCount` is effectively reset (since new filtered results use the existing displayCount slice). This ensures search works seamlessly with lazy loading.
+- **Performance Benefit**: Lazy loading reduces initial page render time and DOM complexity by only rendering visible cards in the viewport, significantly improving dashboard responsiveness with large diagram libraries.
 
 
 
+
+
+## 15. Sequence Diagram Visual Interactions
+- **Double-Click Rename**: Double-clicking a sequence participant (actor) box opens the `InlineTextEditor` overlay positioned at the actor's header box. On submit, `handleEditSubmit` updates the `as {alias}` portion of the participant declaration in the Mermaid code.
+- **Lifeline Handle Overlay**: In sequence diagrams, hovering near a vertical lifeline surfaces a stack of draggable `+` handles along valid anchor slots. Handles use theme color tokens (`bg-primary` / `text-primary-foreground`) and are scale-locked so they keep constant physical size while zooming.
+- **Insertion-Lane Handle Count**: The number of visible `+` handles is derived from rendered message rows, not a fixed stack. Handles appear in the insertion gaps: one above the first row, one between each adjacent pair of rows, and one below the last row, then compacted by minimum-gap filtering. This makes simple diagrams produce counts like 4 rows -> 5 `+` handles.
+- **Horizontal Snap Drag Preview**: Dragging from a lifeline handle starts `connectionState` with a fixed anchor slot and renders a blue dashed horizontal preview with arrowhead (`y1 = y2`). During drag, the preview snaps to nearby lifelines and shows a green target indicator on the snapped slot.
+- **Connection Commit Rules**: Releasing on a snapped lifeline inserts a message line with default label `new msg`; releasing on empty canvas aborts cleanly with no code mutation. If source and target are the same actor, a self message (`{actor}->>{actor}: new msg`) is generated.
+- **Anchor-Based Insertion Order**: New sequence messages are inserted by comparing the drag anchor Y against existing rendered `.messageText` positions. This updates message order by index instead of appending blindly.
+- **Canonical Participant ID Mapping (Duplicate Alias Safe)**: Sequence interaction logic resolves participants by declaration order + lifeline X geometry, not alias text. This prevents collisions when multiple participants share the same alias (for example, multiple boundaries named `New Boundary`) and ensures top/bottom actor clicks map to the same underlying participant ID.
+- **Actor Selection — Header Box Priority**: Sequence diagrams render each participant twice: a header box at the top and a footer box at the bottom. `recalculateSelection` resolves the correct element by iterating all `<g>` elements, finding groups with a **direct child `<text>`** matching the actor name, then picking the group with the **smallest screen Y** (topmost). This guarantees the selection box and toolbar always appear on the header box, not the footer.
+- **Participant Type Picker**: A compact grid dropdown (w-56, 3 columns, 8 types) appears directly below the Participants button in the toolbar. Available types: `participant`, `actor`, `boundary`, `control`, `entity`, `database`, `collections`, `queue`. Non-standard types use Mermaid's `@{ "type": "..." }` syntax.

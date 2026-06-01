@@ -30,9 +30,300 @@ export function useCanvasInteraction({
   const [connectionState, setConnectionState] = useState<{
       active: boolean;
       startNodeId: string | null;
+      startPos: { x: number, y: number } | null;
       mousePos: { x: number, y: number } | null;
       isDragging: boolean;
-  }>({ active: false, startNodeId: null, mousePos: null, isDragging: false });
+      snapTargetId: string | null;
+      snapTargetPos: { x: number, y: number } | null;
+      anchorY: number | null;
+    }>({ active: false, startNodeId: null, startPos: null, mousePos: null, isDragging: false, snapTargetId: null, snapTargetPos: null, anchorY: null });
+
+  const [sequenceLifelineOverlay, setSequenceLifelineOverlay] = useState<{
+    actorId: string;
+    x: number;
+    slots: number[];
+  } | null>(null);
+
+  const getSequenceParticipantEntries = useCallback(() => {
+    return code
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.startsWith('participant ') || l.startsWith('actor '))
+      .map(l => {
+        const m = l.match(/^(?:participant|actor)\s+([^\s@]+)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
+        if (!m) return null;
+        return {
+          id: m[1].trim(),
+          alias: m[2]?.trim() || null,
+        };
+      })
+      .filter((v): v is { id: string; alias: string | null } => Boolean(v));
+  }, [code]);
+
+  const resolveSequenceActorIdFromDisplayName = useCallback((displayName: string) => {
+    const entries = getSequenceParticipantEntries();
+    const byAlias = entries.find(e => e.alias === displayName);
+    if (byAlias) return byAlias.id;
+    const byId = entries.find(e => e.id === displayName);
+    if (byId) return byId.id;
+    return displayName;
+  }, [getSequenceParticipantEntries]);
+
+  const resolveSequenceDisplayNameFromActorId = useCallback((actorId: string) => {
+    const entries = getSequenceParticipantEntries();
+    const found = entries.find(e => e.id === actorId);
+    return found?.alias || found?.id || actorId;
+  }, [getSequenceParticipantEntries]);
+
+  const getSequenceLifelines = useCallback(() => {
+    if (!containerRef.current) return [] as Array<{ actorId: string; x: number; y1: number; y2: number }>;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const scale = containerRect.width / containerRef.current.offsetWidth;
+
+    const lineEls = Array.from(containerRef.current.querySelectorAll('line.actor-line')) as SVGLineElement[];
+    const topActorTextEls = Array.from(containerRef.current.querySelectorAll('text.actor'))
+      .sort((a, b) => {
+        const ay = Number(a.getAttribute('y') || '0');
+        const by = Number(b.getAttribute('y') || '0');
+        return ay - by;
+      })
+      .slice(0, lineEls.length);
+
+    const participantIds = getSequenceParticipantEntries().map(e => e.id);
+
+    const lifelines = lineEls
+      .map((lineEl, index) => {
+        const rect = lineEl.getBoundingClientRect();
+        const x = (rect.left - containerRect.left + containerRef.current!.scrollLeft + rect.width / 2) / scale;
+        const y1 = (rect.top - containerRect.top + containerRef.current!.scrollTop) / scale;
+        const y2 = (rect.bottom - containerRect.top + containerRef.current!.scrollTop) / scale;
+
+        const nearestText = topActorTextEls
+          .map(t => {
+            const tRect = t.getBoundingClientRect();
+            const tx = (tRect.left - containerRect.left + containerRef.current!.scrollLeft + tRect.width / 2) / scale;
+            return {
+              text: t.textContent?.trim() || '',
+              x: tx,
+              distance: Math.abs(tx - x),
+            };
+          })
+          .sort((a, b) => a.distance - b.distance)[0];
+
+        const displayName = nearestText?.text || topActorTextEls[index]?.textContent?.trim() || `Actor${index + 1}`;
+        const actorId = resolveSequenceActorIdFromDisplayName(displayName);
+
+        return { actorId, x, y1, y2 };
+      })
+      .sort((a, b) => a.x - b.x);
+
+    // Primary mapping strategy: Mermaid places participants in declaration order from left to right.
+    // This avoids alias collisions (e.g. multiple "New Boundary" labels).
+    if (participantIds.length === lifelines.length) {
+      return lifelines.map((l, idx) => ({ ...l, actorId: participantIds[idx] }));
+    }
+
+    return lifelines;
+  }, [containerRef, resolveSequenceActorIdFromDisplayName]);
+
+  const findNearestSlot = useCallback((slots: number[], y: number) => {
+    let nearest = slots[0] ?? y;
+    let bestDistance = Math.abs(nearest - y);
+    for (const slot of slots) {
+      const d = Math.abs(slot - y);
+      if (d < bestDistance) {
+        bestDistance = d;
+        nearest = slot;
+      }
+    }
+    return nearest;
+  }, []);
+
+  const isSequenceMessageLine = useCallback((line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('%%')) return false;
+    const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+    if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
+    return trimmed.includes(':');
+  }, []);
+
+  const insertSequenceMessageAtIndex = useCallback((sourceCode: string, messageLine: string, messageIndex: number) => {
+    const lines = sourceCode.split('\n');
+    let seen = 0;
+    let insertAt = lines.length;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (isSequenceMessageLine(lines[i])) {
+        if (seen === messageIndex) {
+          insertAt = i;
+          break;
+        }
+        seen += 1;
+      }
+    }
+
+    lines.splice(insertAt, 0, `    ${messageLine}`);
+    return lines.join('\n');
+  }, [isSequenceMessageLine]);
+
+  const getSequenceMessageLineByIndex = useCallback((idx: number) => {
+    const msgLines = code.split('\n').filter(isSequenceMessageLine);
+    return msgLines[idx] || null;
+  }, [code, isSequenceMessageLine]);
+
+  const parseSequenceMessageActors = useCallback((line: string) => {
+    const match = line.trim().match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
+    if (!match) return null;
+    return {
+      from: match[1],
+      to: match[2],
+    };
+  }, []);
+
+  const getSequenceAnchorSlots = useCallback((lifeline: { y1: number; y2: number }) => {
+    const start = lifeline.y1 + 14;
+
+    let boxTopLimit = lifeline.y2;
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      const bottomActors = Array.from(containerRef.current.querySelectorAll('rect.actor.actor-bottom')) as SVGElement[];
+      if (bottomActors.length > 0) {
+        const nearestBottom = bottomActors
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            const x = (r.left - containerRect.left + containerRef.current!.scrollLeft + r.width / 2) / scale;
+            const top = (r.top - containerRect.top + containerRef.current!.scrollTop) / scale;
+            return { x, top, dx: Math.abs(x - lifeline.x) };
+          })
+          .sort((a, b) => a.dx - b.dx)[0];
+        if (nearestBottom && nearestBottom.dx < 80) {
+          boxTopLimit = Math.min(boxTopLimit, nearestBottom.top - 2);
+        }
+      }
+    }
+
+    const end = Math.max(start, Math.min(lifeline.y2 - 2, boxTopLimit));
+
+    const rowAnchors: number[] = [];
+    const rowBottoms: number[] = [];
+
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      const messageLines = Array.from(
+        containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+      ) as SVGGraphicsElement[];
+
+      for (const line of messageLines) {
+        const rect = line.getBoundingClientRect();
+        const centerY = (rect.top - containerRect.top + containerRef.current.scrollTop + rect.height / 2) / scale;
+        const bottomY = (rect.bottom - containerRect.top + containerRef.current.scrollTop) / scale;
+        if (centerY >= start && centerY <= lifeline.y2 + 28) {
+          rowAnchors.push(Math.round(centerY));
+          rowBottoms.push(Math.round(bottomY));
+        }
+      }
+    }
+
+    const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
+    const bottoms = [...new Set(rowBottoms)].sort((a, b) => a - b);
+
+    const slots: number[] = [];
+    if (rows.length === 0) {
+      slots.push(Math.round((start + end) / 2));
+    } else {
+      slots.push(Math.round((start + rows[0]) / 2));
+      for (let i = 0; i < rows.length - 1; i++) {
+        slots.push(Math.round((rows[i] + rows[i + 1]) / 2));
+      }
+      slots.push(Math.round(end));
+    }
+
+    const deduped = [...new Set(slots.map((y) => Math.max(start, Math.min(end, Math.round(y)))))]
+      .sort((a, b) => a - b);
+    if (deduped.length === 0) {
+      return [Math.round((lifeline.y1 + lifeline.y2) / 2)];
+    }
+    if (deduped.length <= 2) {
+      return deduped;
+    }
+
+    const minGap = 24;
+    const compacted: number[] = [deduped[0]];
+    for (let i = 1; i < deduped.length - 1; i++) {
+      const y = deduped[i];
+      const prev = compacted[compacted.length - 1];
+      if (Math.abs(y - prev) >= minGap) {
+        compacted.push(y);
+      }
+    }
+
+    const last = deduped[deduped.length - 1];
+    if (last !== compacted[compacted.length - 1]) {
+      compacted.push(last);
+    }
+    return compacted;
+  }, [containerRef]);
+
+  const getSelectedMessageOverlay = useCallback((selectedId: string) => {
+    if (!selectedId.startsWith('SEQ_MSG_') || !containerRef.current) return null as { actorId: string; x: number; slots: number[] } | null;
+    const idx = parseInt(selectedId.replace('SEQ_MSG_', ''), 10);
+    if (!Number.isFinite(idx)) return null;
+
+    const msgLine = getSequenceMessageLineByIndex(idx);
+    if (!msgLine) return null;
+    const actors = parseSequenceMessageActors(msgLine);
+    if (!actors?.from) return null;
+
+    const lifelines = getSequenceLifelines();
+    const lifeline = lifelines.find(l => l.actorId === actors.from);
+    if (!lifeline) return null;
+
+    return {
+      actorId: lifeline.actorId,
+      x: lifeline.x,
+      slots: getSequenceAnchorSlots(lifeline),
+    };
+  }, [containerRef, getSequenceMessageLineByIndex, parseSequenceMessageActors, getSequenceLifelines, getSequenceAnchorSlots]);
+
+  const getSequenceInsertIndexForAnchor = useCallback((anchorY: number) => {
+    if (!containerRef.current) return Number.MAX_SAFE_INTEGER;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const scale = containerRect.width / containerRef.current.offsetWidth;
+
+    const messageLineEls = Array.from(
+      containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+    ) as SVGGraphicsElement[];
+
+    const messageYsFromLines = messageLineEls
+      .map(el => {
+        const rect = el.getBoundingClientRect();
+        return (rect.top - containerRect.top + containerRef.current!.scrollTop + rect.height / 2) / scale;
+      })
+      .filter(y => Number.isFinite(y));
+
+    const baseYs = messageYsFromLines.length > 0
+      ? messageYsFromLines
+      : (Array.from(containerRef.current.querySelectorAll('.messageText')) as SVGGraphicsElement[])
+          .map(m => {
+            const rect = m.getBoundingClientRect();
+            return (rect.top - containerRect.top + containerRef.current!.scrollTop + rect.height / 2) / scale;
+          })
+          .filter(y => Number.isFinite(y));
+
+    if (baseYs.length === 0) return 0;
+
+    const msgYs = [...baseYs].sort((a, b) => a - b);
+
+    let idx = 0;
+    while (idx < msgYs.length && msgYs[idx] < anchorY) {
+      idx += 1;
+    }
+    return idx;
+  }, [containerRef]);
 
   const normalizeId = useCallback((id: string) => {
     let cleanId = id.replace('-hit-target', '');
@@ -71,15 +362,79 @@ export function useCanvasInteraction({
     let foundElement: SVGElement | null = null;
     let foundRawSvgId: string | null = null;
 
-    if (selectedNodeId.startsWith('SEQ_')) {
-      const actorName = selectedNodeId.replace('SEQ_', '');
+    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+      const actorDisplayName = resolveSequenceDisplayNameFromActorId(actorId);
+      // Prefer geometry-based matching from actorId -> lifeline x, then choose header (topmost) rect at that x.
+      let bestRect: Element | null = null;
+      const lifeline = getSequenceLifelines().find(l => l.actorId === actorId);
+      if (lifeline) {
+        const actorElements = Array.from(containerRef.current.querySelectorAll('.actor')) as SVGElement[];
+        const byX = actorElements
+          .map(el => {
+            const b = el.getBoundingClientRect();
+            return {
+              el,
+              top: b.top,
+              centerX: b.left + b.width / 2,
+              dx: Math.abs((b.left + b.width / 2) - lifeline.x),
+            };
+          })
+          .filter(item => Number.isFinite(item.centerX) && Number.isFinite(item.dx) && item.dx < 120)
+          .sort((a, b) => (a.dx - b.dx) || (a.top - b.top));
+        if (byX[0]) {
+          const minDx = byX[0].dx;
+          const sameTrack = byX.filter(item => Math.abs(item.dx - minDx) < 1.5).sort((a, b) => a.top - b.top);
+          bestRect = (sameTrack[0] || byX[0]).el;
+        }
+      }
+
+      // Fallback to text-based matching when geometry resolution fails.
+      if (!bestRect) {
+        let bestY = Infinity;
+        for (const g of Array.from(containerRef.current.querySelectorAll('g'))) {
+          const directTexts = Array.from(g.children).filter((c): c is Element => c.tagName === 'text');
+          if (directTexts.some(t => t.textContent?.trim() === actorDisplayName)) {
+            const rectEl = g.querySelector('rect') || g;
+            const b = (rectEl as SVGElement).getBoundingClientRect();
+            if (b.top < bestY) {
+              bestY = b.top;
+              bestRect = rectEl;
+            }
+          }
+        }
+      }
+
+      if (bestRect) {
+        foundElement = bestRect as SVGElement;
+        if (!bestRect.id) {
+          (bestRect as SVGElement).id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, '')}`;
+        }
+        foundRawSvgId = (bestRect as SVGElement).id || null;
+      }
+    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      const allMsgs = Array.from(containerRef.current.querySelectorAll('.messageText'));
+      if (allMsgs[idx]) {
+        foundElement = allMsgs[idx] as SVGElement;
+        if (!foundElement.id) foundElement.id = `seq-msg-${idx}`;
+        foundRawSvgId = foundElement.id || null;
+      }
+    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+      const allNotes = Array.from(containerRef.current.querySelectorAll('.noteText'));
+      if (allNotes[idx]) {
+        foundElement = allNotes[idx] as SVGElement;
+        if (!foundElement.id) foundElement.id = `seq-note-${idx}`;
+        foundRawSvgId = foundElement.id || null;
+      }
+    } else if (selectedNodeId.startsWith('SEQ_')) {
+      // Legacy fallback
+      const name = selectedNodeId.replace('SEQ_', '');
       const candidates = containerRef.current.querySelectorAll('.actor, .messageText, .noteText');
       for (const candidate of Array.from(candidates)) {
-        if (candidate.textContent?.trim() === actorName) {
+        if (candidate.textContent?.trim() === name) {
           foundElement = candidate as SVGElement;
-          if (!candidate.id) {
-            candidate.id = `seq-element-${actorName.replace(/[^a-zA-Z0-9_]/g, '')}`;
-          }
           foundRawSvgId = candidate.id || null;
           break;
         }
@@ -172,7 +527,7 @@ export function useCanvasInteraction({
       setSelectedNodeId(null);
       setSelectedSvgId(null);
     }
-  }, [selectedNodeId, containerRef, renderIdRef, normalizeId]);
+  }, [selectedNodeId, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
 
   // Effect to recalculate selection on code or svgContent (re-render) change
   useEffect(() => {
@@ -207,6 +562,11 @@ export function useCanvasInteraction({
 
 
   const getClickedNode = useCallback((target: Element) => {
+    const isSequenceMessageLineElement = (el: SVGElement | null) => {
+      if (!el?.classList) return false;
+      return Array.from(el.classList).some((c) => c.startsWith('messageLine'));
+    };
+
     let currentNode: SVGElement | null = target as SVGElement;
     let foundNodeClass = false;
     let nodeId = null;
@@ -239,10 +599,48 @@ export function useCanvasInteraction({
         }
         break;
       }
-      // Sequence diagram elements
-      if (currentNode.classList?.contains('actor') || currentNode.classList?.contains('messageText') || currentNode.classList?.contains('noteText')) {
+      // Sequence diagram elements: actors
+      if (currentNode.classList?.contains('actor')) {
         foundNodeClass = true;
-        nodeId = `SEQ_${currentNode.textContent?.trim()}`;
+
+        const actorDisplayName = currentNode.textContent?.trim() || '';
+        const clickedRect = currentNode.getBoundingClientRect();
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const scale = containerRect.width / containerRef.current.offsetWidth;
+        const clickedX = (clickedRect.left - containerRect.left + containerRef.current.scrollLeft + clickedRect.width / 2) / scale;
+
+        const lifelines = getSequenceLifelines();
+        const nearest = lifelines
+          .map(l => ({ actorId: l.actorId, d: Math.abs(l.x - clickedX) }))
+          .sort((a, b) => a.d - b.d)[0];
+
+        const actorId = nearest?.actorId || resolveSequenceActorIdFromDisplayName(actorDisplayName);
+        nodeId = `SEQ_ACTOR_${actorId}`;
+        break;
+      }
+      // Sequence message text
+      if (currentNode.classList?.contains('messageText')) {
+        foundNodeClass = true;
+        // Find index among all messageText elements in the container
+        const allMsgs = Array.from(containerRef.current?.querySelectorAll('.messageText') || []);
+        const idx = allMsgs.indexOf(currentNode);
+        nodeId = `SEQ_MSG_${idx >= 0 ? idx : 0}`;
+        break;
+      }
+      // Sequence message line
+      if (isSequenceMessageLineElement(currentNode)) {
+        foundNodeClass = true;
+        const allMsgLines = Array.from(containerRef.current?.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]') || []);
+        const idx = allMsgLines.indexOf(currentNode);
+        nodeId = `SEQ_MSG_${idx >= 0 ? idx : 0}`;
+        break;
+      }
+      // Sequence note text
+      if (currentNode.classList?.contains('noteText')) {
+        foundNodeClass = true;
+        const allNotes = Array.from(containerRef.current?.querySelectorAll('.noteText') || []);
+        const idx = allNotes.indexOf(currentNode);
+        nodeId = `SEQ_NOTE_${idx >= 0 ? idx : 0}`;
         break;
       }
       currentNode = currentNode.parentElement as SVGElement | null;
@@ -269,8 +667,12 @@ export function useCanvasInteraction({
             currentNode.id = `edge-label-${cleanId}`;
         }
 
-        if (cleanId && cleanId.startsWith('SEQ_') && !currentNode.id) {
-            currentNode.id = `seq-element-${cleanId.replace('SEQ_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+        if (cleanId && cleanId.startsWith('SEQ_ACTOR_') && !currentNode.id) {
+            currentNode.id = `seq-actor-${cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+        }
+        if (cleanId && (cleanId.startsWith('SEQ_MSG_') || cleanId.startsWith('SEQ_NOTE_')) && !currentNode.id) {
+            const seqIdx = cleanId.split('_').pop();
+            currentNode.id = `seq-${cleanId.startsWith('SEQ_MSG_') ? 'msg' : 'note'}-${seqIdx}`;
         }
 
         let pathElementToMeasure = currentNode;
@@ -323,7 +725,7 @@ export function useCanvasInteraction({
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
     return null;
-  }, [containerRef, normalizeId]);
+  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -350,7 +752,48 @@ export function useCanvasInteraction({
     
     let currentText = targetNodeId;
     
-    if (targetNodeId.startsWith('SEQ_')) {
+    if (targetNodeId.startsWith('SEQ_ACTOR_')) {
+        // Read the current display label from the actor declaration
+        const actorId = targetNodeId.replace('SEQ_ACTOR_', '');
+        const lines = code.split('\n');
+        let foundLabel = actorId;
+        for (const line of lines) {
+            const trimmed = line.trim();
+            const match = trimmed.match(/^(?:participant|actor)\s+(\S+)(?:\s+as\s+(.+))?$/);
+            if (match) {
+                const id = match[1];
+                const alias = match[2];
+                if (id === actorId) {
+                    foundLabel = alias?.trim() || id;
+                    break;
+                }
+            }
+        }
+        currentText = foundLabel;
+    } else if (targetNodeId.startsWith('SEQ_MSG_')) {
+        const idx = parseInt(targetNodeId.replace('SEQ_MSG_', ''), 10);
+        const msgLines = code.split('\n').filter(l => {
+            const t = l.trim();
+            if (!t || t.startsWith('%%')) return false;
+            const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
+            if (keywords.some(kw => t === kw || t.startsWith(kw + ' '))) return false;
+            return t.includes(':');
+        });
+        if (msgLines[idx]) {
+            const colonIdx = msgLines[idx].indexOf(':');
+            currentText = colonIdx !== -1 ? msgLines[idx].substring(colonIdx + 1).trim() : '';
+        }
+    } else if (targetNodeId.startsWith('SEQ_NOTE_')) {
+        const idx = parseInt(targetNodeId.replace('SEQ_NOTE_', ''), 10);
+        const noteLines = code.split('\n').filter(l => {
+            const t = l.trim();
+            return t.startsWith('Note ') || t.startsWith('note ');
+        });
+        if (noteLines[idx]) {
+            const colonIdx = noteLines[idx].indexOf(':');
+            currentText = colonIdx !== -1 ? noteLines[idx].substring(colonIdx + 1).trim() : '';
+        }
+    } else if (targetNodeId.startsWith('SEQ_')) {
         currentText = targetNodeId.replace('SEQ_', '');
         currentText = currentText.replace(/<br\/>/g, '\n');
     } else if (isEdgeId(targetNodeId)) {
@@ -526,24 +969,134 @@ export function useCanvasInteraction({
       if (!container) return;
       const containerRectForScale = container.getBoundingClientRect();
       const scale = containerRectForScale.width / container.offsetWidth;
+      const diagramType = determineDiagramType(code);
+
+      const mouseX = (e.clientX - containerRectForScale.left + container.scrollLeft) / scale;
+      const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
+
+        if (diagramType === 'sequence') {
+          const lifelines = getSequenceLifelines();
+
+          if (connectionState.active && connectionState.startNodeId?.startsWith('SEQ_ACTOR_')) {
+              const sourceActorId = connectionState.startNodeId.replace('SEQ_ACTOR_', '');
+              const sourceLifeline = lifelines.find(l => l.actorId === sourceActorId);
+              if (!sourceLifeline) return;
+
+              const sourceSlots = getSequenceAnchorSlots(sourceLifeline);
+              const anchorY = connectionState.anchorY ?? findNearestSlot(sourceSlots, mouseY);
+              const snappedAnchorY = findNearestSlot(sourceSlots, anchorY);
+
+              const snapThreshold = 28;
+              let snapTargetId: string | null = null;
+              let snapTargetPos: { x: number, y: number } | null = null;
+              for (const lifeline of lifelines) {
+                if (Math.abs(lifeline.x - mouseX) <= snapThreshold) {
+                  snapTargetId = `SEQ_ACTOR_${lifeline.actorId}`;
+                  snapTargetPos = { x: lifeline.x, y: snappedAnchorY };
+                  break;
+                }
+              }
+
+              setConnectionState(prev => ({
+                  ...prev,
+                  isDragging: true,
+                  mousePos: {
+                      x: snapTargetPos?.x ?? mouseX,
+                      y: snappedAnchorY
+                  },
+                  anchorY: snappedAnchorY,
+                  snapTargetId,
+                  snapTargetPos
+              }));
+              setSequenceLifelineOverlay(null);
+              return;
+          }
+
+          const hoverThreshold = 44;
+          const nearestLifeline = lifelines.find(l => Math.abs(l.x - mouseX) <= hoverThreshold && mouseY >= l.y1 - 8 && mouseY <= l.y2 + 30);
+          if (nearestLifeline) {
+            setSequenceLifelineOverlay({
+              actorId: nearestLifeline.actorId,
+              x: nearestLifeline.x,
+              slots: getSequenceAnchorSlots(nearestLifeline),
+            });
+          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_ACTOR_')) {
+            const selectedActorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+            const selectedLifeline = lifelines.find(l => l.actorId === selectedActorId);
+            if (selectedLifeline) {
+              setSequenceLifelineOverlay({
+                actorId: selectedLifeline.actorId,
+                x: selectedLifeline.x,
+                slots: getSequenceAnchorSlots(selectedLifeline),
+              });
+            } else {
+              setSequenceLifelineOverlay(null);
+            }
+          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_MSG_')) {
+            const msgOverlay = getSelectedMessageOverlay(selectedNodeId);
+            if (msgOverlay) {
+              setSequenceLifelineOverlay(msgOverlay);
+            } else {
+              setSequenceLifelineOverlay(null);
+            }
+          } else if (!connectionState.active) {
+            setSequenceLifelineOverlay(null);
+          }
+      } else {
+        setSequenceLifelineOverlay(null);
+      }
 
       if (connectionState.active && connectionState.startNodeId) {
-          const containerRect = container.getBoundingClientRect();
           setConnectionState(prev => ({
               ...prev,
               isDragging: true,
               mousePos: {
-                  x: (e.clientX - containerRect.left + container.scrollLeft) / scale,
-                  y: (e.clientY - containerRect.top + container.scrollTop) / scale
+                  x: mouseX,
+                  y: mouseY
               }
           }));
       }
-  }, [connectionState.active, connectionState.startNodeId, containerRef]);
+  }, [
+    connectionState.active,
+    connectionState.startNodeId,
+    connectionState.anchorY,
+    containerRef,
+    code,
+    determineDiagramType,
+    findNearestSlot,
+    getSequenceAnchorSlots,
+    getSequenceLifelines,
+    selectedNodeId,
+    getSelectedMessageOverlay
+  ]);
+
+  useEffect(() => {
+    if (connectionState.active) return;
+    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
+    const lifelines = getSequenceLifelines();
+    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+    const lifeline = lifelines.find(l => l.actorId === actorId);
+    if (!lifeline) return;
+    setSequenceLifelineOverlay({
+      actorId: lifeline.actorId,
+      x: lifeline.x,
+      slots: getSequenceAnchorSlots(lifeline),
+    });
+  }, [selectedNodeId, connectionState.active, getSequenceLifelines, getSequenceAnchorSlots]);
+
+  useEffect(() => {
+    if (connectionState.active) return;
+    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
+    const overlay = getSelectedMessageOverlay(selectedNodeId);
+    if (!overlay) return;
+    setSequenceLifelineOverlay(overlay);
+  }, [selectedNodeId, connectionState.active, getSelectedMessageOverlay]);
 
   const handleAddNodeFromSelected = useCallback((
       startId: string | null, 
       targetNodeId?: string,
-      shape?: { b?: [string, string] | null, isText?: boolean, expanded?: string, l?: string }
+      shape?: { b?: [string, string] | null, isText?: boolean, expanded?: string, l?: string },
+      sequenceInsertIndex?: number
   ) => {
       if (!startId) return;
       
@@ -586,27 +1139,62 @@ export function useCanvasInteraction({
               }
           }
       } else if (diagramType === 'sequence') {
-          const actor = startId.replace('SEQ_', '');
-          if (targetNodeId && targetNodeId !== startId && targetNodeId.startsWith('SEQ_')) {
-              const targetActor = targetNodeId.replace('SEQ_', '');
-              newCode += `\n    ${actor}->>${targetActor}: New Message`;
+          const actor = startId.replace('SEQ_ACTOR_', '');
+          if (targetNodeId && targetNodeId !== startId && targetNodeId.startsWith('SEQ_ACTOR_')) {
+              const targetActor = targetNodeId.replace('SEQ_ACTOR_', '');
+              const messageLine = `${actor}->>${targetActor}: new msg`;
+              if (typeof sequenceInsertIndex === 'number' && Number.isFinite(sequenceInsertIndex) && sequenceInsertIndex >= 0) {
+                newCode = insertSequenceMessageAtIndex(newCode, messageLine, sequenceInsertIndex);
+              } else {
+                newCode += `\n    ${messageLine}`;
+              }
+          } else if (targetNodeId && targetNodeId === startId) {
+              const selfLoopLine = `${actor}->>${actor}: new msg`;
+              if (typeof sequenceInsertIndex === 'number' && Number.isFinite(sequenceInsertIndex) && sequenceInsertIndex >= 0) {
+                newCode = insertSequenceMessageAtIndex(newCode, selfLoopLine, sequenceInsertIndex);
+              } else {
+                newCode += `\n    ${selfLoopLine}`;
+              }
           } else {
-              newCode += `\n    ${actor}->>NewActor: New Message`;
+              newCode += `\n    ${actor}->>NewActor: new msg`;
           }
       }
       
       handleCodeChange(newCode);
-  }, [code, handleCodeChange, determineDiagramType]);
+  }, [code, handleCodeChange, determineDiagramType, insertSequenceMessageAtIndex]);
+
+  const startSequenceConnection = useCallback((actorId: string, anchorY: number) => {
+    const lifeline = getSequenceLifelines().find(l => l.actorId === actorId);
+    setConnectionState({
+      active: true,
+      startNodeId: `SEQ_ACTOR_${actorId}`,
+      startPos: lifeline ? { x: lifeline.x, y: anchorY } : null,
+      mousePos: { x: 0, y: anchorY },
+      isDragging: false,
+      snapTargetId: null,
+      snapTargetPos: null,
+      anchorY,
+    });
+  }, [getSequenceLifelines]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       if (connectionState.active && connectionState.startNodeId) {
+        const diagramType = determineDiagramType(code);
           if (connectionState.isDragging) {
-              const result = getClickedNode(e.target as Element);
-              if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
-                  handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
-              } else if (!result) {
+          if (diagramType === 'sequence' && connectionState.startNodeId.startsWith('SEQ_ACTOR_')) {
+            const targetId = connectionState.snapTargetId;
+            if (targetId) {
+            const insertIndex = connectionState.anchorY !== null
+              ? getSequenceInsertIndexForAnchor(connectionState.anchorY)
+              : undefined;
+            handleAddNodeFromSelected(connectionState.startNodeId, targetId, undefined, insertIndex);
+            }
+          } else {
+          const result = getClickedNode(e.target as Element);
+          if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
+            handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
+          } else if (!result) {
                   // Dropped on empty space - trigger the shape selector
-                  const diagramType = determineDiagramType(code);
                   if (diagramType === 'flowchart' || diagramType === 'graph') {
                        if (containerRef.current) {
                            const viewport = containerRef.current.closest('.relative.overflow-hidden');
@@ -618,11 +1206,30 @@ export function useCanvasInteraction({
                            });
                        }
                   }
+                }
               }
           }
-          setConnectionState({ active: false, startNodeId: null, mousePos: null, isDragging: false });
+          setConnectionState({
+            active: false,
+            startNodeId: null,
+            startPos: null,
+            mousePos: null,
+            isDragging: false,
+            snapTargetId: null,
+            snapTargetPos: null,
+            anchorY: null,
+          });
       }
-  }, [connectionState, getClickedNode, handleAddNodeFromSelected, code, determineDiagramType, containerRef]);
+      setSequenceLifelineOverlay(null);
+  }, [
+    connectionState,
+    getClickedNode,
+    handleAddNodeFromSelected,
+    code,
+    determineDiagramType,
+    containerRef,
+    getSequenceInsertIndexForAnchor
+  ]);
 
   // Synchronized hover highlighting for edge paths and their labels
   useEffect(() => {
@@ -741,12 +1348,18 @@ export function useCanvasInteraction({
 
   return {
     selectedNodeId, setSelectedNodeId,
+    selectedNodeIds: [] as string[],
+    setSelectedNodeIds: (_: string[]) => {},
     selectedSvgId, setSelectedSvgId,
     selectionBox, setSelectionBox,
     textBox, setTextBox,
     editingText, setEditingText,
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
+    sequenceLifelineOverlay,
+    dragState: null as null,
+    setDragState: (_: any) => {},
+    startSequenceConnection,
     inlineInputRef,
     getClickedNode,
     handleSvgClick,

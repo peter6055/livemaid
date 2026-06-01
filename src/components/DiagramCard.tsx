@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, FileEdit, Trash2, Clock, GitCommitVertical } from 'lucide-react';
+import { Plus, FileEdit, Trash2, Clock, GitCommitVertical, Repeat2, Code2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
@@ -59,13 +59,13 @@ export function DiagramCard({
   const isSupported = parsedType === 'graph' || parsedType === 'flowchart' || parsedType === 'sequence';
 
   return (
-    <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-sm transition-all group">
+    <Card className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer">
       <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <CardTitle className="text-lg font-medium text-foreground truncate pr-2">
+        <div className="flex items-start justify-between gap-2 min-h-8 w-full overflow-hidden">
+          <CardTitle className="text-lg font-medium text-foreground truncate flex-1">
             {diagram.name}
           </CardTitle>
-          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
               <FileEdit className="h-4 w-4" />
             </Button>
@@ -74,13 +74,20 @@ export function DiagramCard({
             </Button>
           </div>
         </div>
-        <div className="flex items-center text-xs text-muted-foreground mt-1">
-           <GitCommitVertical className="h-3 w-3 mr-1" />
-           <span className="capitalize mr-2">{parsedType}</span>
+        <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">
+           <GitCommitVertical className="h-3 w-3" />
+           <span className="capitalize">{parsedType}</span>
+           {isSupported && (
+             <div className="flex items-center gap-0.5 bg-indigo-500/10 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded">
+               <Repeat2 className="h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" />
+               <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300">2-way</span>
+             </div>
+           )}
            {!isSupported && (
-             <Badge variant="outline" className="px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">
-               Code Edit Only
-             </Badge>
+             <div className="flex items-center gap-0.5 bg-slate-500/10 dark:bg-slate-400/10 px-1.5 py-0.5 rounded">
+               <Code2 className="h-2.5 w-2.5 text-slate-600 dark:text-slate-400" />
+               <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300">Code Only</span>
+             </div>
            )}
         </div>
       </CardHeader>
