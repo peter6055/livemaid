@@ -37,7 +37,8 @@ function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocumen
   };
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+export const IS_DEMO_MODE = process.env.DEMO_MODE === 'true';
+const DATA_DIR = path.join(process.cwd(), IS_DEMO_MODE ? 'demo' : 'data');
 
 export async function ensureDataDir() {
   try {
@@ -88,16 +89,18 @@ export async function getDiagram(id: string): Promise<DiagramDocument | null> {
 }
 
 export async function saveDiagram(doc: DiagramDocument): Promise<void> {
+  if (IS_DEMO_MODE) return;
   await ensureDataDir();
   const filePath = path.join(DATA_DIR, `${doc.id}.json`);
   await fs.writeFile(filePath, JSON.stringify(normalizeDiagramDocument(doc), null, 2), 'utf-8');
 }
 
 export async function deleteDiagram(id: string): Promise<boolean> {
-    const doc = await getDiagram(id);
-    if (!doc) return false;
+  if (IS_DEMO_MODE) return false;
+  const doc = await getDiagram(id);
+  if (!doc) return false;
 
-    doc.deletedAt = new Date().toISOString();
-    await saveDiagram(doc);
-    return true;
+  doc.deletedAt = new Date().toISOString();
+  await saveDiagram(doc);
+  return true;
 }

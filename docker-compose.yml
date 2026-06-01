@@ -12,3 +12,17 @@ services:
     environment:
       - NODE_ENV=production
     restart: unless-stopped
+
+  livemaid-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./demo:/app/demo:ro
+    environment:
+      - NODE_ENV=production
+      - DEMO_MODE=true
+      - NEXT_PUBLIC_DEMO_MODE=true
+    restart: unless-stopped

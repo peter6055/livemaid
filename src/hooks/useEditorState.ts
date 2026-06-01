@@ -6,6 +6,7 @@ import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 
 const DEBOUNCE_MS = 1000;
 const VALID_MERMAID_THEMES = new Set(['default', 'forest', 'dark', 'neutral', 'base', 'redux']);
+const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
 
 export function useEditorState(documentId: string) {
   const [doc, setDoc] = useState<DiagramDocument | null>(null);
@@ -133,6 +134,8 @@ export function useEditorState(documentId: string) {
     setCode(newCode);
 
     renderMermaid(newCode, onResetSelection);
+
+    if (IS_DEMO_MODE) return;
 
     // Trigger auto-save
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDiagram, saveDiagram, deleteDiagram } from '@/lib/api/storage';
+import { getDiagram, saveDiagram, deleteDiagram, IS_DEMO_MODE } from '@/lib/api/storage';
 import { nanoid } from 'nanoid';
 
 export async function GET(
@@ -23,6 +23,20 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  if (IS_DEMO_MODE) {
+    // In demo mode, return the existing diagram as if saved (read-only illusion)
+    try {
+      const existing = await getDiagram(id);
+      if (!existing) {
+        return NextResponse.json({ error: 'Diagram not found' }, { status: 404 });
+      }
+      return NextResponse.json(existing);
+    } catch (error) {
+      return NextResponse.json({ error: 'Failed to fetch diagram' }, { status: 500 });
+    }
+  }
+
   try {
     const existing = await getDiagram(id);
     if (!existing) {
@@ -75,6 +89,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  if (IS_DEMO_MODE) {
+    return NextResponse.json({ error: 'Demo mode: deleting diagrams is disabled' }, { status: 403 });
+  }
+
   try {
     const success = await deleteDiagram(id);
     if (!success) {
