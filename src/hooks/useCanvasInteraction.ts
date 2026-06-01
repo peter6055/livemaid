@@ -193,6 +193,87 @@ export function useCanvasInteraction({
     };
   }, []);
 
+  // Parse sequence notes with structure: Note [left|right|over] of [Participant]: [Text]
+  const getSequenceNoteEntries = useCallback((sourceCode: string) => {
+    const lines = sourceCode.split('\n');
+    const entries: Array<{ 
+      index: number; 
+      line: string; 
+      position: 'left' | 'right' | 'over'; 
+      participant: string; 
+      text: string;
+    }> = [];
+    let inFrontmatter = false;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+
+      // Match: Note [left|right|over] of [Participant]: [Text]
+      const noteMatch = trimmed.match(/^Note\s+(left|right|over)\s+of\s+(.+?)(?:\s*:\s*(.*))?$/i);
+      if (noteMatch) {
+        const [, position, participant, text] = noteMatch;
+        entries.push({
+          index: i,
+          line: lines[i],
+          position: (position.toLowerCase() as 'left' | 'right' | 'over'),
+          participant: participant.trim(),
+          text: text?.trim() || 'new note',
+        });
+      }
+    }
+
+    return entries;
+  }, []);
+
+  // Insert a note at a specific message index
+  const insertSequenceNoteAtIndex = useCallback((
+    sourceCode: string, 
+    position: 'left' | 'right' | 'over', 
+    participant: string, 
+    messageIndex: number
+  ) => {
+    const lines = sourceCode.split('\n');
+    const messageEntries = getSequenceMessageEntries(sourceCode);
+    const insertAt = messageEntries[messageIndex]?.index ?? lines.length;
+
+    const noteLine = `    Note ${position} of ${participant}: new note`;
+    lines.splice(insertAt, 0, noteLine);
+    return lines.join('\n');
+  }, [getSequenceMessageEntries]);
+
+  // Update note position (e.g., from "left" to "right")
+  const updateNotePosition = useCallback((
+    sourceCode: string, 
+    noteIndex: number, 
+    newPosition: 'left' | 'right' | 'over'
+  ) => {
+    const noteEntries = getSequenceNoteEntries(sourceCode);
+    if (noteIndex >= noteEntries.length) return sourceCode;
+
+    const lines = sourceCode.split('\n');
+    const noteEntry = noteEntries[noteIndex];
+    const newLine = `    Note ${newPosition} of ${noteEntry.participant}: ${noteEntry.text}`;
+    lines[noteEntry.index] = newLine;
+
+    return lines.join('\n');
+  }, [getSequenceNoteEntries]);
+
+  // Delete a note
+  const deleteSequenceNote = useCallback((sourceCode: string, noteIndex: number) => {
+    const noteEntries = getSequenceNoteEntries(sourceCode);
+    if (noteIndex >= noteEntries.length) return sourceCode;
+
+    const lines = sourceCode.split('\n');
+    lines.splice(noteEntries[noteIndex].index, 1);
+
+    return lines.join('\n');
+  }, [getSequenceNoteEntries]);
+
   const getSequenceAnchorSlots = useCallback((lifeline: { actorId: string; x: number; y1: number; y2: number }, hoverY?: number) => {
     const allLifelines = getSequenceLifelines();
     const globalTop = allLifelines.length > 0
@@ -1395,6 +1476,11 @@ export function useCanvasInteraction({
     handleEditClick,
     handleAddNodeFromSelected,
     shapePicker,
-    setShapePicker
+    setShapePicker,
+    // Note handling functions
+    getSequenceNoteEntries,
+    insertSequenceNoteAtIndex,
+    updateNotePosition,
+    deleteSequenceNote,
   };
 }
