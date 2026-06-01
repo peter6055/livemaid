@@ -712,12 +712,33 @@ export function useCanvasInteraction({
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
         let elementToMeasure = pathElementToMeasure;
-        const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
-        if (innerText) {
-            elementToMeasure = innerText as SVGElement;
-        } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
-            elementToMeasure = currentNode;
+        
+        // For sequence actors (including special types like database), find the text more precisely
+        if (cleanId && cleanId.startsWith('SEQ_ACTOR_')) {
+            // For sequence actors, look for the actual text element (tspan or text) within the actor
+            const textEls = Array.from(currentNode.querySelectorAll('text, tspan'));
+            if (textEls.length > 0) {
+                // Use the first text element found within the actor
+                elementToMeasure = textEls[0] as SVGElement;
+            } else {
+                // Fallback to looking for label containers
+                const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject');
+                if (innerText) {
+                    elementToMeasure = innerText as SVGElement;
+                } else if (currentNode.tagName === 'foreignObject') {
+                    elementToMeasure = currentNode;
+                }
+            }
+        } else {
+            // For non-actor elements, use the existing logic
+            const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
+            if (innerText) {
+                elementToMeasure = innerText as SVGElement;
+            } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
+                elementToMeasure = currentNode;
+            }
         }
+        
         const textRect = elementToMeasure.getBoundingClientRect();
         
         const newSelectionBox = {
