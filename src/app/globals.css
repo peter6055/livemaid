@@ -231,18 +231,42 @@ svg[aria-roledescription="error"],
 
 /* Widen clickable area on message text labels */
 .mermaid-container .messageText {
-  stroke-width: 8 !important;
+  pointer-events: all !important;
+  cursor: pointer !important;
+  font-size: 15px !important;
+  font-weight: 500;
+  paint-order: stroke fill;
   stroke: transparent !important;
+  stroke-width: 12px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
 }
 
 .mermaid-container .messageText:hover {
   fill: #6366f1 !important;
-  font-weight: 600;
+  font-weight: 700 !important;
+  text-shadow: 0 0 4px rgba(99, 102, 241, 0.5);
 }
 
 .mermaid-container .note:hover rect {
   stroke: #6366f1 !important;
   stroke-width: 2px !important;
+}
+
+/* Improve note text clickability */
+.mermaid-container .noteText {
+  pointer-events: all !important;
+  cursor: pointer !important;
+  paint-order: stroke fill;
+  stroke: transparent !important;
+  stroke-width: 10px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
+.mermaid-container .noteText:hover {
+  fill: #1e293b !important;
+  font-weight: 600 !important;
 }
 
 /* Hover highlights for subgraphs / clusters */
