@@ -1,4 +1,4 @@
-name: cd/railway
+name: cd/railway-sandbox
 
 on:
   workflow_run:
