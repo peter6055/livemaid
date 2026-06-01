@@ -557,7 +557,18 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     const getCodeLineMappings = (lines: string[]) => {
       let msgCount = 0;
       let noteCount = 0;
+      let inFrontmatter = false;
+      
       return lines.map((line, lineIndex) => {
+        const trimmed = line.trim();
+        
+        // Skip frontmatter sections (--- ... ---)
+        if (trimmed === '---') {
+          inFrontmatter = !inFrontmatter;
+          return null;
+        }
+        if (inFrontmatter) return null;
+        
         if (isMessageLine(line)) {
           return { type: 'msg', index: msgCount++, lineIndex };
         } else if (isNoteLine(line)) {
