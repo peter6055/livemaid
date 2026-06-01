@@ -1244,13 +1244,20 @@ export function useCanvasInteraction({
         
         let elementToMeasure = pathElementToMeasure;
         
-        // For sequence actors (including special types like database), find the text element for bounds
+        // For sequence actors (including special types like database), find rect.actor for accurate bounds
         if (cleanId && cleanId.startsWith('SEQ_ACTOR_')) {
-            // Look for the actual text element (tspan or text) within the actor
-            const textEls = Array.from(currentNode.querySelectorAll('text, tspan'));
-            if (textEls.length > 0) {
-                // Use the first text element found within the actor
-                elementToMeasure = textEls[0] as SVGElement;
+            // Use rect.actor sibling for full-width selection bounds; text.actor is just the narrow label
+            const parentGroup = currentNode.parentElement;
+            const rectActor = parentGroup?.querySelector('rect.actor') as SVGElement | null;
+            if (rectActor) {
+                elementToMeasure = rectActor;
+                rect = rectActor.getBoundingClientRect();
+            } else {
+                // Fallback: look for the first text element within the actor
+                const textEls = Array.from(currentNode.querySelectorAll('text, tspan'));
+                if (textEls.length > 0) {
+                    elementToMeasure = textEls[0] as SVGElement;
+                }
             }
         } else {
             // For non-actor elements, use the existing logic
