@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Link Railway project
         run: |
-          export RAILWAY_TOKEN="$RAILWAY_API_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
             if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
               railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
@@ -47,7 +47,7 @@ jobs:
 
       - name: Recreate preview environment
         run: |
-          export RAILWAY_TOKEN="$RAILWAY_API_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           railway environment delete "pr-$PR_NUMBER" || true
           COPY_ARG=()
           if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
@@ -87,7 +87,7 @@ jobs:
     steps:
       - name: Link Railway project
         run: |
-          export RAILWAY_TOKEN="$RAILWAY_API_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
             if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
               railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
@@ -104,5 +104,5 @@ jobs:
 
       - name: Delete preview environment
         run: |
-          export RAILWAY_TOKEN="$RAILWAY_API_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           railway environment delete "pr-$PR_NUMBER" || true
