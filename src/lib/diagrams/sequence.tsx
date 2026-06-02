@@ -3,7 +3,7 @@
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Users, StickyNote, RefreshCw, GitBranch, SquareSquare } from "lucide-react";
+import { Users, RefreshCw, GitBranch, SquareSquare } from "lucide-react";
 import { useState } from "react";
 
 // SVG icons for each participant type
@@ -147,11 +147,6 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
       setShowParticipantPicker(false);
   };
 
-  const handleAddNote = () => {
-      const newCode = code + `\n    note over A,B: New Note`;
-      setCode(newCode);
-  };
-
   const handleAddBlock = (type: 'alt' | 'loop' | 'rect' | 'opt' | 'par') => {
       let block = '';
       if (type === 'alt') {
@@ -181,7 +176,7 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
             title="Add Participant"
           >
             <Users className="w-4 h-4" />
-            <span>Participants</span>
+            <span className="text-sm font-medium">Participants</span>
           </Button>
 
           {showParticipantPicker && (
@@ -206,15 +201,10 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
           )}
         </div>
 
-        <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddNote} title="Add Note">
-            <StickyNote className="w-4 h-4" />
-            <span>Note</span>
-        </Button>
-
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" />}>
             <GitBranch className="w-4 h-4" />
-            <span>Logic</span>
+            <span className="text-sm font-medium">Logic</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
               <DropdownMenuItem onClick={() => handleAddBlock('alt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
@@ -240,7 +230,7 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
 
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent flex items-center gap-2" onClick={() => handleAddBlock('rect')} title="Add Highlight Box">
             <SquareSquare className="w-4 h-4" />
-            <span>Highlight</span>
+          <span className="text-sm font-medium">Highlight</span>
         </Button>
       </div>
     </>
