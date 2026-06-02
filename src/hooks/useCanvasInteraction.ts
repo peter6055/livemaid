@@ -1493,14 +1493,24 @@ export function useCanvasInteraction({
 
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (isLocked) return;
+    console.log('[handleSvgClick] click event fired');
+    if (isLocked) {
+      console.log('[handleSvgClick] isLocked=true, returning');
+      return;
+    }
     
     // While editing inline, don't accept other clicks - this prevents accidentally switching
     // to another node while mid-edit. The commitEditRef + onBlur handles the transition.
-    if (isInlineEditing) return;
+    if (isInlineEditing) {
+      console.log('[handleSvgClick] isInlineEditing=true, returning');
+      return;
+    }
 
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {
+      console.log('[handleSvgClick] no container');
+      return;
+    }
     
     const containerRectForScale = container.getBoundingClientRect();
     const scale = containerRectForScale.width / container.offsetWidth;
@@ -1513,24 +1523,29 @@ export function useCanvasInteraction({
     // Don't trigger on toolbar/ui elements
     const target = e.target as HTMLElement;
     if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
+      console.log('[handleSvgClick] blocked by ui guard');
       return;
     }
 
     const clicked = getClickedNode(target);
+    console.log('[handleSvgClick] getClickedNode returned:', clicked?.cleanId || 'null');
     
     if (clicked) {
       // Double-click-to-edit: if clicking an already-selected node, enter edit mode
       // This is more reliable than relying on native dblclick since SVG re-renders can detach elements
       if (clicked.cleanId === selectedNodeIdRef.current) {
+        console.log('[handleSvgClick] same node, calling handleEditClick');
         handleEditClick(e);
         return;
       }
       
+      console.log('[handleSvgClick] selecting node:', clicked.cleanId);
       setSelectedNodeIdWithRef(clicked.cleanId);
       setSelectedSvgId(clicked.rawSvgId);
       setSelectionBox(clicked.newSelectionBox);
       setTextBox(clicked.newTextBox);
     } else {
+      console.log('[handleSvgClick] no clicked node, checking for edges');
       // If clicking background/empty space, check if clicking a flowchart edge
       let current: SVGElement | null = target as SVGElement;
       let edgeFound = false;
@@ -1539,6 +1554,7 @@ export function useCanvasInteraction({
         if (current.id) {
           const cleanId = normalizeId(current.id);
           if (isEdgeId(cleanId)) {
+            console.log('[handleSvgClick] found edge:', cleanId);
             setSelectedNodeIdWithRef(cleanId);
             setSelectedSvgId(current.id);
             
@@ -1573,6 +1589,7 @@ export function useCanvasInteraction({
       }
 
       if (!edgeFound) {
+        console.log('[handleSvgClick] clearing selection (background click)');
         setSelectedNodeIdWithRef(null);
         setSelectedSvgId(null);
         setSelectionBox(null);
