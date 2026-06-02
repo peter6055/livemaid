@@ -59,7 +59,7 @@ jobs:
             retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV"
           fi
 
-      - name: Recreate preview environment
+      - name: Ensure preview environment
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           retry_cmd() {
@@ -78,27 +78,32 @@ jobs:
               count="$((count + 1))"
             done
           }
-          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" --yes || true
-          set --
-          if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-            set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
-          fi
-          if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
-            if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
-                "$@" \
-                --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
-                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
-            else
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
-            fi
+          ENV_NAME="pr-$PR_NUMBER"
+          ENVIRONMENTS_JSON="$(retry_cmd 3 5 railway environment list --json)"
+          if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\":\"$ENV_NAME\""; then
+            echo "Preview environment $ENV_NAME already exists. Skipping creation."
           else
-            if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
-                "$@" \
-                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            set --
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
+            fi
+            if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
+              if [ -n "$RAILWAY_SERVICE_ID" ]; then
+                retry_cmd 4 5 railway environment new "$ENV_NAME" \
+                  "$@" \
+                  --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
+                  --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+              else
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
+              fi
             else
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
+              if [ -n "$RAILWAY_SERVICE_ID" ]; then
+                retry_cmd 4 5 railway environment new "$ENV_NAME" \
+                  "$@" \
+                  --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+              else
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
+              fi
             fi
           fi
 
