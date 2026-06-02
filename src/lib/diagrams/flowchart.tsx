@@ -181,7 +181,7 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
 
       <div className="h-5 w-px bg-border" />
       <div className="flex items-center gap-2 px-2 opacity-70" title="Auto Layout is locked">
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Auto Layout</span>
+          <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Auto Layout</span>
           <div className="w-7 h-4 bg-indigo-500 rounded-full flex items-center px-0.5 cursor-not-allowed">
             <div className="w-3 h-3 bg-white rounded-full translate-x-3 shadow-sm" />
           </div>
@@ -194,8 +194,8 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
           <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-1.5 px-2.5 rounded-lg" title="Global Edge Routing" />
         }>
           <Spline className="w-4 h-4 text-indigo-500" />
-          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Curve:</span>
-          <span className="text-xs font-semibold text-foreground">{activeCurveLabel}</span>
+          <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Curve:</span>
+          <span className="text-sm font-semibold text-foreground">{activeCurveLabel}</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent className="w-48 p-2 bg-background border border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
           <div className="flex flex-col">
@@ -223,7 +223,7 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" />}>
             <svg viewBox="0 0 24 24" className="w-4 h-4"><path fill="currentColor" d="M6.5 11L12 2l5.5 9zm11 11q-1.875 0-3.187-1.312T13 17.5t1.313-3.187T17.5 13t3.188 1.313T22 17.5t-1.312 3.188T17.5 22M3 21.5v-8h8v8zM17.5 20q1.05 0 1.775-.725T20 17.5t-.725-1.775T17.5 15t-1.775.725T15 17.5t.725 1.775T17.5 20M5 19.5h4v-4H5zM10.05 9h3.9L12 5.85zm7.45 8.5"></path></svg>
-            <span>Shape</span>
+            <span className="text-sm font-medium">Shape</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="start">
               {/* Basic Shapes */}
@@ -267,11 +267,11 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
         </DropdownMenu>
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddTextBlock}>
             <Type className="w-4 h-4" />
-            <span>Text</span>
+          <span className="text-sm font-medium">Text</span>
         </Button>
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" onClick={handleAddSubgraph}>
             <LayoutTemplate className="w-4 h-4" />
-            <span>Subgraph</span>
+          <span className="text-sm font-medium">Subgraph</span>
         </Button>
       </div>
     </>

@@ -88,11 +88,11 @@
 }
 
 .dark {
-  --background: rgb(27, 27, 31);
+  --background: #100f1b;
   --foreground: oklch(0.985 0 0);
-  --card: #1c1c1c;
+  --card: #100f1b;
   --card-foreground: oklch(0.985 0 0);
-  --popover: #1c1c1c;
+  --popover: #100f1b;
   --popover-foreground: oklch(0.985 0 0);
   --primary: oklch(0.922 0 0);
   --primary-foreground: oklch(0.205 0 0);
@@ -221,19 +221,19 @@ svg[aria-roledescription="error"],
 .mermaid-container .sequence-msg-hover-highlight-line,
 .mermaid-container line.sequence-msg-hover-highlight-line,
 .mermaid-container path.sequence-msg-hover-highlight-line {
-  stroke: #7c3aed !important;
+  stroke: #6366f1 !important;
   stroke-width: 3px !important;
 }
 
 .mermaid-container .sequence-msg-hover-highlight-line line,
 .mermaid-container .sequence-msg-hover-highlight-line path {
-  stroke: #7c3aed !important;
+  stroke: #6366f1 !important;
   stroke-width: 3px !important;
 }
 
 .mermaid-container .sequence-msg-hover-highlight-text,
 .mermaid-container .sequence-msg-hover-highlight-text:hover {
-  fill: #7c3aed !important;
+  fill: #6366f1 !important;
   font-weight: 700 !important;
   text-shadow: none !important;
 }
@@ -264,7 +264,7 @@ svg[aria-roledescription="error"],
 }
 
 .mermaid-container .messageText:hover {
-  fill: #7c3aed !important;
+  fill: #6366f1 !important;
   font-weight: 800 !important;
   text-shadow: none !important;
 }

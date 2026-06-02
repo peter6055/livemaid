@@ -35,7 +35,7 @@ export function EditorHeader({
   const { theme, setTheme } = useTheme();
 
   return (
-    <header className="h-14 border-b border-border bg-background dark:bg-[#121212] flex items-center px-4 justify-between shrink-0 z-20">
+    <header className="h-14 border-b border-border bg-background flex items-center px-4 justify-between shrink-0 z-20">
       <div className="flex items-center">
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-foreground hover:bg-accent" />}>

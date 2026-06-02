@@ -94,6 +94,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     setShapePicker,
     getSequenceNoteEntries,
     insertSequenceNoteAtIndex,
+    getSequenceInsertIndexForAnchor,
   } = useCanvasInteraction({
     code,
     svgContent,
@@ -160,7 +161,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       const trimmed = line.trim();
       const match = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
       if (match && match[1] === actorId) {
-        return match[2]?.trim() || match[1].trim();
+        // Always return the ID (alias key), not the display name
+        return match[1].trim();
       }
     }
     return actorId;
@@ -238,6 +240,21 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
     handleCodeChange(updatedCode);
   }, [code, getSelectedSequenceParticipantForNote, getSequenceMessageEntries, handleCodeChange, insertSequenceNoteAtIndex, selectedNodeId]);
+
+  const handleSequencePlusSelfLoop = useCallback((actorId: string, anchorY: number) => {
+    if (!actorId || !Number.isFinite(anchorY)) return;
+    const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
+    const actorNodeId = `SEQ_ACTOR_${actorId}`;
+    handleAddNodeFromSelected(actorNodeId, actorNodeId, undefined, insertIndex);
+  }, [getSequenceInsertIndexForAnchor, handleAddNodeFromSelected]);
+
+  const handleSequencePlusNote = useCallback((actorId: string, anchorY: number, position: 'left' | 'right' | 'over') => {
+    if (!actorId || !Number.isFinite(anchorY)) return;
+    const participant = resolveSequenceDisplayName(actorId);
+    const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
+    const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
+    handleCodeChange(updatedCode);
+  }, [code, getSequenceInsertIndexForAnchor, handleCodeChange, insertSequenceNoteAtIndex, resolveSequenceDisplayName]);
 
   const handleMoveSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
     if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
@@ -1877,7 +1894,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                 <>
                   <div className="h-5 w-px bg-border mx-1" />
                   <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="text-xs font-medium text-foreground">Autonumber</span>
+                    <span className="text-sm font-medium text-foreground">Autonumber</span>
                     <button
                       onClick={() => {
                         if (code.match(/autonumber/i)) {
@@ -1937,6 +1954,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
           sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
           startSequenceConnection={startSequenceConnection}
+          onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
+          onSequencePlusNote={handleSequencePlusNote}
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}

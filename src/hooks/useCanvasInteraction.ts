@@ -611,7 +611,9 @@ export function useCanvasInteraction({
     const messageEntries = getSequenceMessageEntries(sourceCode);
     const insertAt = messageEntries[messageIndex]?.index ?? lines.length;
 
-    const noteLine = `    Note ${position} of ${participant}: new note`;
+    const noteLine = position === 'over'
+      ? `    Note over ${participant}: new note`
+      : `    Note ${position} of ${participant}: new note`;
     lines.splice(insertAt, 0, noteLine);
     return lines.join('\n');
   }, [getSequenceMessageEntries]);
@@ -693,6 +695,22 @@ export function useCanvasInteraction({
 
     const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
 
+    // Collect note vertical ranges to avoid placing + buttons inside notes
+    const noteRanges: Array<{ top: number; bottom: number }> = [];
+    if (containerRef.current) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const scale = containerRect.width / containerRef.current.offsetWidth;
+      const noteRects = Array.from(containerRef.current.querySelectorAll('.note rect')) as SVGElement[];
+      for (const noteRect of noteRects) {
+        const r = noteRect.getBoundingClientRect();
+        const top = (r.top - containerRect.top + containerRef.current.scrollTop) / scale;
+        const bottom = (r.bottom - containerRect.top + containerRef.current.scrollTop) / scale;
+        noteRanges.push({ top: top - 4, bottom: bottom + 4 });
+      }
+    }
+
+    const isInNote = (y: number) => noteRanges.some(({ top, bottom }) => y >= top && y <= bottom);
+
     // Empty lifeline: one dynamic handle that follows hover and snaps to safe bounds.
     if (rows.length === 0) {
       const fallbackY = hoverY ?? ((start + end) / 2);
@@ -703,7 +721,9 @@ export function useCanvasInteraction({
     // This yields one slot above the first, one between each adjacent pair,
     // and one below the last (rows + 1 total before clamping/dedup).
     const VERTICAL_GRID_STEP = 56;
-    const firstGap = rows.length > 1 ? Math.max(38, Math.round((rows[1] - rows[0]) * 0.9)) : VERTICAL_GRID_STEP;
+    // Keep the "above first" slot close to the first message (16px above),
+    // not deep into the note area above.
+    const firstGap = 12;
     const lastGap = rows.length > 1
       ? Math.max(28, Math.round((rows[rows.length - 1] - rows[rows.length - 2]) / 2))
       : VERTICAL_GRID_STEP;
@@ -718,6 +738,7 @@ export function useCanvasInteraction({
 
     const contextual = targetYs
       .map((y) => Math.max(start, Math.min(end, y)))
+      .filter((y) => !isInNote(y))
       .sort((a, b) => a - b);
 
     if (contextual.length === 0) {
@@ -2092,5 +2113,6 @@ export function useCanvasInteraction({
     insertSequenceNoteAtIndex,
     updateNotePosition,
     deleteSequenceNote,
+    getSequenceInsertIndexForAnchor,
   };
 }
