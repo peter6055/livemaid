@@ -187,29 +187,39 @@ export function EditorCanvas({
     const container = containerRef.current;
     if (!container) return;
 
-    const captureClick = (e: Event) => {
+    // Find all SVG elements (nodes, actors, etc.) and add click handlers
+    const mermaidContainer = container.querySelector('.mermaid-container');
+    if (!mermaidContainer) return;
+
+    // Add click listeners to all SVG elements
+    const allElements = mermaidContainer.querySelectorAll('g, text, tspan, rect, path, circle, ellipse');
+    
+    const handleElementClick = (e: Event) => {
+      e.stopPropagation();
       const target = e.target as HTMLElement;
-      const mermaidContainer = container.querySelector('.mermaid-container');
+      console.log('[direct svg click] element:', target.tagName);
       
-      if (mermaidContainer && mermaidContainer.contains(target)) {
-        console.log('[captured click] svg element:', target.tagName, {id: target.id});
-        // Convert to React event-like object and call the handler
-        const reactEvent = {
-          target: target,
-          currentTarget: mermaidContainer,
-          stopPropagation: () => e.stopPropagation(),
-          preventDefault: () => e.preventDefault(),
-        } as any;
-        handleSvgClick(reactEvent);
-      }
+      const reactEvent = {
+        target: target,
+        currentTarget: mermaidContainer,
+        stopPropagation: () => {},
+        preventDefault: () => e.preventDefault(),
+      } as any;
+      
+      handleSvgClick(reactEvent);
     };
 
-    // Use capture phase to catch clicks before they might be stopped
-    container.addEventListener('click', captureClick, true);
+    // Add click listeners to all SVG elements
+    allElements.forEach(el => {
+      el.addEventListener('click', handleElementClick);
+    });
+
     return () => {
-      container.removeEventListener('click', captureClick, true);
+      allElements.forEach(el => {
+        el.removeEventListener('click', handleElementClick);
+      });
     };
-  }, [containerRef, handleSvgClick]);
+  }, [containerRef, handleSvgClick, svgContent]);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
