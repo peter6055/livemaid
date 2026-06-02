@@ -104,6 +104,7 @@ jobs:
 
       - name: Deploy preview environment
         run: |
+          set -euo pipefail
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           retry_cmd() {
             attempts="$1"
