@@ -20,6 +20,12 @@ export function useCanvasInteraction({
     determineDiagramType: (code: string) => string;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(null);
+  // Keep ref in sync with state
+  const setSelectedNodeIdWithRef = useCallback((id: string | null) => {
+    selectedNodeIdRef.current = id;
+    setSelectedNodeId(id);
+  }, []);
   const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [textBox, setTextBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
@@ -43,6 +49,222 @@ export function useCanvasInteraction({
     x: number;
     slots: number[];
   } | null>(null);
+  const [hoveredSequenceActorBox, setHoveredSequenceActorBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [hoveredSequenceMessageBox, setHoveredSequenceMessageBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [hoveredFlowchartNodeBox, setHoveredFlowchartNodeBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
+  const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
+
+  const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
+    if (lineEls.length === 0) return null;
+    const textRect = textEl.getBoundingClientRect();
+    const textX = textRect.left + textRect.width / 2;
+    const textY = textRect.top + textRect.height / 2;
+    let nearest = lineEls[0];
+    let best = Number.POSITIVE_INFINITY;
+    for (const lineEl of lineEls) {
+      const lineRect = lineEl.getBoundingClientRect();
+      const lineY = lineRect.top + lineRect.height / 2;
+      const dx = textX < lineRect.left
+        ? (lineRect.left - textX)
+        : textX > lineRect.right
+          ? (textX - lineRect.right)
+          : 0;
+      const dy = Math.abs(lineY - textY);
+
+      // Prefer lines at/under the text and with horizontal overlap.
+      const underPenalty = lineY < textY ? 60 : 0;
+      const score = (dy * 3) + dx + underPenalty;
+
+      if (score < best) {
+        best = score;
+        nearest = lineEl;
+      }
+    }
+    return nearest;
+  }, []);
+
+  const findNearestTextForLine = useCallback((lineEl: SVGElement, textEls: SVGElement[]) => {
+    if (textEls.length === 0) return null;
+    const lineRect = lineEl.getBoundingClientRect();
+    const lineX = lineRect.left + lineRect.width / 2;
+    const lineY = lineRect.top + lineRect.height / 2;
+    let nearest = textEls[0];
+    let best = Number.POSITIVE_INFINITY;
+    for (const textEl of textEls) {
+      const textRect = textEl.getBoundingClientRect();
+      const textX = textRect.left + textRect.width / 2;
+      const textY = textRect.top + textRect.height / 2;
+
+      const dx = Math.abs(textX - lineX);
+      const dy = Math.abs(textY - lineY);
+      // Prefer label positioned above the connection line.
+      const abovePenalty = textY > lineY ? 40 : 0;
+      const score = (dy * 3) + dx + abovePenalty;
+
+      if (score < best) {
+        best = score;
+        nearest = textEl;
+      }
+    }
+    return nearest;
+  }, []);
+
+  const clearSequenceMessageHoverHighlight = useCallback(() => {
+    hoveredSequenceTargetsRef.current.textEl?.classList.remove('sequence-msg-hover-highlight-text');
+    hoveredSequenceTargetsRef.current.lineEl?.classList.remove('sequence-msg-hover-highlight-line');
+    hoveredSequenceTargetsRef.current = { textEl: null, lineEl: null };
+    setHoveredSequenceMessageBox(null);
+  }, []);
+
+  const updateSequenceMessageHoverHighlight = useCallback((target: EventTarget | null) => {
+    const container = containerRef.current;
+    if (!container || !(target instanceof Element)) {
+      clearSequenceMessageHoverHighlight();
+      return;
+    }
+
+    // The hover trigger overlay sits above message primitives. When the cursor is on it,
+    // preserve the current paired highlight instead of clearing.
+    if (target.closest('[data-seq-msg-hover-trigger="true"]')) {
+      return;
+    }
+
+    const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+    const messageLineEls = Array.from(
+      container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+    ) as SVGElement[];
+
+    const messageTextEl = target.closest('.messageText') as SVGElement | null;
+    const messageLineEl = target.closest('[class^="messageLine"], [class*=" messageLine"]') as SVGElement | null;
+
+    const getCenterY = (el: SVGElement) => {
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2;
+    };
+
+    let nextTextEl: SVGElement | null = null;
+    let nextLineEl: SVGElement | null = null;
+
+    if (messageTextEl) {
+      nextTextEl = messageTextEl;
+      nextLineEl = findNearestLineForText(messageTextEl, messageLineEls);
+    } else if (messageLineEl) {
+      nextLineEl = messageLineEl;
+      nextTextEl = findNearestTextForLine(nextLineEl, messageTextEls);
+    }
+
+    if (
+      hoveredSequenceTargetsRef.current.textEl === nextTextEl &&
+      hoveredSequenceTargetsRef.current.lineEl === nextLineEl
+    ) {
+      return;
+    }
+
+    hoveredSequenceTargetsRef.current.textEl?.classList.remove('sequence-msg-hover-highlight-text');
+    hoveredSequenceTargetsRef.current.lineEl?.classList.remove('sequence-msg-hover-highlight-line');
+
+    if (nextTextEl || nextLineEl) {
+      nextTextEl?.classList.add('sequence-msg-hover-highlight-text');
+      nextLineEl?.classList.add('sequence-msg-hover-highlight-line');
+
+      hoveredSequenceTargetsRef.current = { textEl: nextTextEl, lineEl: nextLineEl };
+
+      const lineEl = nextLineEl;
+      const textEl = nextTextEl;
+      const lineRect = lineEl?.getBoundingClientRect();
+      const textRect = textEl?.getBoundingClientRect();
+      if (lineRect || textRect) {
+        const containerRect = container.getBoundingClientRect();
+        const scale = containerRect.width / container.offsetWidth;
+        const left = Math.min(lineRect?.left ?? Number.POSITIVE_INFINITY, textRect?.left ?? Number.POSITIVE_INFINITY);
+        const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, textRect?.top ?? Number.POSITIVE_INFINITY);
+        const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, textRect?.right ?? Number.NEGATIVE_INFINITY);
+        const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, textRect?.bottom ?? Number.NEGATIVE_INFINITY);
+        const paddingX = 12;
+        const paddingY = 3;
+
+        setHoveredSequenceMessageBox({
+          x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
+          y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
+          width: Math.max(0, (right - left) / scale + paddingX * 2),
+          height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+        });
+      } else {
+        setHoveredSequenceMessageBox(null);
+      }
+      return;
+    }
+
+    hoveredSequenceTargetsRef.current = { textEl: null, lineEl: null };
+    setHoveredSequenceMessageBox(null);
+  }, [containerRef, clearSequenceMessageHoverHighlight, findNearestLineForText, findNearestTextForLine]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onMouseOver = (e: MouseEvent) => {
+      if (determineDiagramType(code) !== 'sequence') return;
+      updateSequenceMessageHoverHighlight(e.target);
+    };
+
+    const onMouseOut = (e: MouseEvent) => {
+      if (determineDiagramType(code) !== 'sequence') {
+        clearSequenceMessageHoverHighlight();
+        return;
+      }
+      updateSequenceMessageHoverHighlight(e.relatedTarget);
+    };
+
+    container.addEventListener('mouseover', onMouseOver);
+    container.addEventListener('mouseout', onMouseOut);
+
+    return () => {
+      container.removeEventListener('mouseover', onMouseOver);
+      container.removeEventListener('mouseout', onMouseOut);
+    };
+  }, [containerRef, code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (determineDiagramType(code) !== 'sequence') {
+      setSequenceMessageTriggerAreas([]);
+      return;
+    }
+
+    const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+    const messageLineEls = Array.from(
+      container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+    ) as SVGElement[];
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const paddingX = 12;
+    const paddingY = 6;
+
+    const areas: Array<{ index: number; x: number; y: number; width: number; height: number }> = [];
+    for (let i = 0; i < messageTextEls.length; i += 1) {
+      const textEl = messageTextEls[i];
+      const lineEl = findNearestLineForText(textEl, messageLineEls);
+      const textRect = textEl.getBoundingClientRect();
+      const lineRect = lineEl?.getBoundingClientRect();
+      const left = Math.min(textRect.left, lineRect?.left ?? textRect.left);
+      const top = Math.min(textRect.top, lineRect?.top ?? textRect.top);
+      const right = Math.max(textRect.right, lineRect?.right ?? textRect.right);
+      const bottom = Math.max(textRect.bottom, lineRect?.bottom ?? textRect.bottom);
+
+      areas.push({
+        index: i,
+        x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
+        y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
+        width: Math.max(0, (right - left) / scale + paddingX * 2),
+        height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+      });
+    }
+
+    setSequenceMessageTriggerAreas(areas);
+  }, [containerRef, code, svgContent, determineDiagramType, findNearestLineForText]);
 
   const getSequenceParticipantEntries = useCallback(() => {
     const participantDecl = /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+/i;
@@ -61,14 +283,37 @@ export function useCanvasInteraction({
       .filter((v): v is { id: string; alias: string | null } => Boolean(v));
   }, [code]);
 
+  const normalizeSequenceLabel = useCallback((value: string | null | undefined) => {
+    return (value || "")
+      .replace(/^['\"]|['\"]$/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+  }, []);
+
+  const getSvgTextDisplayName = useCallback((el: SVGElement | null) => {
+    if (!el) return '';
+    const tspans = Array.from(el.querySelectorAll('tspan'))
+      .map((t) => (t.textContent || '').trim())
+      .filter(Boolean);
+    if (tspans.length > 0) {
+      return tspans.join(' ').replace(/\s+/g, ' ').trim();
+    }
+    return (el.textContent || '').replace(/\s+/g, ' ').trim();
+  }, []);
+
   const resolveSequenceActorIdFromDisplayName = useCallback((displayName: string) => {
     const entries = getSequenceParticipantEntries();
-    const byAlias = entries.find(e => e.alias === displayName);
+    const normalizedDisplayName = normalizeSequenceLabel(displayName);
+
+    const byAlias = entries.find((e) => normalizeSequenceLabel(e.alias) === normalizedDisplayName);
     if (byAlias) return byAlias.id;
-    const byId = entries.find(e => e.id === displayName);
+
+    const byId = entries.find((e) => normalizeSequenceLabel(e.id) === normalizedDisplayName);
     if (byId) return byId.id;
+
     return displayName;
-  }, [getSequenceParticipantEntries]);
+  }, [getSequenceParticipantEntries, normalizeSequenceLabel]);
 
   const resolveSequenceDisplayNameFromActorId = useCallback((actorId: string) => {
     const entries = getSequenceParticipantEntries();
@@ -105,7 +350,7 @@ export function useCanvasInteraction({
             const tRect = t.getBoundingClientRect();
             const tx = (tRect.left - containerRect.left + containerRef.current!.scrollLeft + tRect.width / 2) / scale;
             return {
-              text: t.textContent?.trim() || '',
+              text: getSvgTextDisplayName(t as SVGElement),
               x: tx,
               distance: Math.abs(tx - x),
             };
@@ -126,7 +371,7 @@ export function useCanvasInteraction({
     }
 
     return lifelines;
-  }, [containerRef, resolveSequenceActorIdFromDisplayName]);
+  }, [containerRef, resolveSequenceActorIdFromDisplayName, getSvgTextDisplayName]);
 
   const findNearestSlot = useCallback((slots: number[], y: number) => {
     let nearest = slots[0] ?? y;
@@ -184,6 +429,131 @@ export function useCanvasInteraction({
     return entries[idx]?.line || null;
   }, [code, getSequenceMessageEntries]);
 
+  const triggerHoveredSequenceMessageSelection = useCallback((startInlineEdit = false, explicitIndex?: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+    const messageLineEls = Array.from(
+      container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+    ) as SVGElement[];
+
+    const textEl = typeof explicitIndex === 'number'
+      ? (messageTextEls[explicitIndex] || null)
+      : hoveredSequenceTargetsRef.current.textEl;
+    const lineEl = textEl
+      ? findNearestLineForText(textEl, messageLineEls)
+      : hoveredSequenceTargetsRef.current.lineEl;
+    if (!textEl && !lineEl) return;
+
+    const centerY = (el: SVGElement | null) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return r.top + r.height / 2;
+    };
+
+    let messageIndex = typeof explicitIndex === 'number'
+      ? explicitIndex
+      : (textEl ? messageTextEls.indexOf(textEl) : -1);
+    if (messageIndex < 0 && lineEl && messageTextEls.length > 0) {
+      const lineCenterY = centerY(lineEl) ?? 0;
+      let nearest = 0;
+      let best = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < messageTextEls.length; i += 1) {
+        const d = Math.abs((centerY(messageTextEls[i]) ?? 0) - lineCenterY);
+        if (d < best) {
+          best = d;
+          nearest = i;
+        }
+      }
+      messageIndex = nearest;
+    }
+
+    if (messageIndex < 0) return;
+
+    const lineRect = lineEl?.getBoundingClientRect();
+    const textRect = textEl?.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+
+    const left = Math.min(lineRect?.left ?? Number.POSITIVE_INFINITY, textRect?.left ?? Number.POSITIVE_INFINITY);
+    const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, textRect?.top ?? Number.POSITIVE_INFINITY);
+    const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, textRect?.right ?? Number.NEGATIVE_INFINITY);
+    const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, textRect?.bottom ?? Number.NEGATIVE_INFINITY);
+    const paddingX = 12;
+    const paddingY = 3;
+
+    if (Number.isFinite(left) && Number.isFinite(top) && Number.isFinite(right) && Number.isFinite(bottom)) {
+      setSelectionBox({
+        x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
+        y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
+        width: Math.max(0, (right - left) / scale + paddingX * 2),
+        height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+      });
+    }
+
+    if (textRect) {
+      setTextBox({
+        x: (textRect.left - containerRect.left + container.scrollLeft) / scale,
+        y: (textRect.top - containerRect.top + container.scrollTop) / scale,
+        width: textRect.width / scale,
+        height: textRect.height / scale,
+      });
+    }
+
+    const nodeId = `SEQ_MSG_${messageIndex}`;
+    setSelectedNodeIdWithRef(nodeId);
+    setSelectedSvgId(lineEl?.id || textEl?.id || null);
+
+    if (startInlineEdit) {
+      const msgLine = getSequenceMessageLineByIndex(messageIndex);
+      const colonIdx = msgLine?.indexOf(':') ?? -1;
+      setEditingText(colonIdx !== -1 && msgLine ? msgLine.substring(colonIdx + 1).trim() : '');
+      setIsInlineEditing(true);
+    }
+  }, [containerRef, getSequenceMessageLineByIndex, findNearestLineForText]);
+
+  const triggerSequenceMessageHoverByIndex = useCallback((index: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+    const messageLineEls = Array.from(
+      container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+    ) as SVGElement[];
+    const textEl = messageTextEls[index] || null;
+    const lineEl = textEl ? findNearestLineForText(textEl, messageLineEls) : null;
+    if (!textEl && !lineEl) return;
+
+    hoveredSequenceTargetsRef.current.textEl?.classList.remove('sequence-msg-hover-highlight-text');
+    hoveredSequenceTargetsRef.current.lineEl?.classList.remove('sequence-msg-hover-highlight-line');
+
+    textEl?.classList.add('sequence-msg-hover-highlight-text');
+    lineEl?.classList.add('sequence-msg-hover-highlight-line');
+    hoveredSequenceTargetsRef.current = { textEl, lineEl };
+
+    const textRect = textEl?.getBoundingClientRect();
+    const lineRect = lineEl?.getBoundingClientRect();
+    if (!textRect && !lineRect) {
+      setHoveredSequenceMessageBox(null);
+      return;
+    }
+
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const left = Math.min(textRect?.left ?? Number.POSITIVE_INFINITY, lineRect?.left ?? Number.POSITIVE_INFINITY);
+    const top = Math.min(textRect?.top ?? Number.POSITIVE_INFINITY, lineRect?.top ?? Number.POSITIVE_INFINITY);
+    const right = Math.max(textRect?.right ?? Number.NEGATIVE_INFINITY, lineRect?.right ?? Number.NEGATIVE_INFINITY);
+    const bottom = Math.max(textRect?.bottom ?? Number.NEGATIVE_INFINITY, lineRect?.bottom ?? Number.NEGATIVE_INFINITY);
+    const paddingX = 12;
+    const paddingY = 3;
+    setHoveredSequenceMessageBox({
+      x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
+      y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
+      width: Math.max(0, (right - left) / scale + paddingX * 2),
+      height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+    });
+  }, [containerRef, findNearestLineForText]);
+
   const parseSequenceMessageActors = useCallback((line: string) => {
     const match = line.trim().match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
     if (!match) return null;
@@ -192,6 +562,87 @@ export function useCanvasInteraction({
       to: match[2],
     };
   }, []);
+
+  // Parse sequence notes with structure: Note [left|right|over] of [Participant]: [Text]
+  const getSequenceNoteEntries = useCallback((sourceCode: string) => {
+    const lines = sourceCode.split('\n');
+    const entries: Array<{ 
+      index: number; 
+      line: string; 
+      position: 'left' | 'right' | 'over'; 
+      participant: string; 
+      text: string;
+    }> = [];
+    let inFrontmatter = false;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') {
+        inFrontmatter = !inFrontmatter;
+        continue;
+      }
+      if (inFrontmatter) continue;
+
+      // Match: Note [left|right|over] of [Participant]: [Text]
+      const noteMatch = trimmed.match(/^Note\s+(left|right|over)\s+of\s+(.+?)(?:\s*:\s*(.*))?$/i);
+      if (noteMatch) {
+        const [, position, participant, text] = noteMatch;
+        entries.push({
+          index: i,
+          line: lines[i],
+          position: (position.toLowerCase() as 'left' | 'right' | 'over'),
+          participant: participant.trim(),
+          text: text?.trim() || 'new note',
+        });
+      }
+    }
+
+    return entries;
+  }, []);
+
+  // Insert a note at a specific message index
+  const insertSequenceNoteAtIndex = useCallback((
+    sourceCode: string, 
+    position: 'left' | 'right' | 'over', 
+    participant: string, 
+    messageIndex: number
+  ) => {
+    const lines = sourceCode.split('\n');
+    const messageEntries = getSequenceMessageEntries(sourceCode);
+    const insertAt = messageEntries[messageIndex]?.index ?? lines.length;
+
+    const noteLine = `    Note ${position} of ${participant}: new note`;
+    lines.splice(insertAt, 0, noteLine);
+    return lines.join('\n');
+  }, [getSequenceMessageEntries]);
+
+  // Update note position (e.g., from "left" to "right")
+  const updateNotePosition = useCallback((
+    sourceCode: string, 
+    noteIndex: number, 
+    newPosition: 'left' | 'right' | 'over'
+  ) => {
+    const noteEntries = getSequenceNoteEntries(sourceCode);
+    if (noteIndex >= noteEntries.length) return sourceCode;
+
+    const lines = sourceCode.split('\n');
+    const noteEntry = noteEntries[noteIndex];
+    const newLine = `    Note ${newPosition} of ${noteEntry.participant}: ${noteEntry.text}`;
+    lines[noteEntry.index] = newLine;
+
+    return lines.join('\n');
+  }, [getSequenceNoteEntries]);
+
+  // Delete a note
+  const deleteSequenceNote = useCallback((sourceCode: string, noteIndex: number) => {
+    const noteEntries = getSequenceNoteEntries(sourceCode);
+    if (noteIndex >= noteEntries.length) return sourceCode;
+
+    const lines = sourceCode.split('\n');
+    lines.splice(noteEntries[noteIndex].index, 1);
+
+    return lines.join('\n');
+  }, [getSequenceNoteEntries]);
 
   const getSequenceAnchorSlots = useCallback((lifeline: { actorId: string; x: number; y1: number; y2: number }, hoverY?: number) => {
     const allLifelines = getSequenceLifelines();
@@ -374,50 +825,77 @@ export function useCanvasInteraction({
     if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
       const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
       const actorDisplayName = resolveSequenceDisplayNameFromActorId(actorId);
-      // Prefer geometry-based matching from actorId -> lifeline x, then choose header (topmost) rect at that x.
+
+      // First, preserve the exact clicked actor element (top or bottom) when possible.
+      if (selectedSvgId) {
+        const exactEl = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
+        if (exactEl && exactEl.classList?.contains('actor')) {
+          foundElement = exactEl;
+          foundRawSvgId = exactEl.id || null;
+        }
+      }
+
+      // Prefer geometry-based matching from actorId -> lifeline x.
       let bestRect: Element | null = null;
       const lifeline = getSequenceLifelines().find(l => l.actorId === actorId);
-      if (lifeline) {
+      if (!foundElement && lifeline) {
+        const selectedCenterY = selectionBox ? (selectionBox.y + selectionBox.height / 2) : null;
         const actorElements = Array.from(containerRef.current.querySelectorAll('.actor')) as SVGElement[];
         const byX = actorElements
           .map(el => {
             const b = el.getBoundingClientRect();
+            const centerX = b.left + b.width / 2;
+            const centerY = b.top + b.height / 2;
+            const containerRect = containerRef.current!.getBoundingClientRect();
+            const scale = containerRect.width / containerRef.current!.offsetWidth;
+            const canvasX = (centerX - containerRect.left + containerRef.current!.scrollLeft) / scale;
+            const canvasY = (centerY - containerRect.top + containerRef.current!.scrollTop) / scale;
             return {
               el,
               top: b.top,
-              centerX: b.left + b.width / 2,
-              dx: Math.abs((b.left + b.width / 2) - lifeline.x),
+              centerX: canvasX,
+              centerY: canvasY,
+              dx: Math.abs(canvasX - lifeline.x),
+              dy: selectedCenterY === null ? 0 : Math.abs(canvasY - selectedCenterY),
             };
           })
           .filter(item => Number.isFinite(item.centerX) && Number.isFinite(item.dx) && item.dx < 120)
-          .sort((a, b) => (a.dx - b.dx) || (a.top - b.top));
+          .sort((a, b) => (a.dx - b.dx) || (a.dy - b.dy) || (a.top - b.top));
         if (byX[0]) {
           const minDx = byX[0].dx;
-          const sameTrack = byX.filter(item => Math.abs(item.dx - minDx) < 1.5).sort((a, b) => a.top - b.top);
+          const sameTrack = byX
+            .filter(item => Math.abs(item.dx - minDx) < 1.5)
+            .sort((a, b) => (a.dy - b.dy) || (a.top - b.top));
           bestRect = (sameTrack[0] || byX[0]).el;
         }
       }
 
       // Fallback to text-based matching when geometry resolution fails.
-      if (!bestRect) {
-        let bestY = Infinity;
+      if (!foundElement && !bestRect) {
+        const selectedCenterY = selectionBox ? (selectionBox.y + selectionBox.height / 2) : null;
+        let bestScore = Number.POSITIVE_INFINITY;
         for (const g of Array.from(containerRef.current.querySelectorAll('g'))) {
           const directTexts = Array.from(g.children).filter((c): c is Element => c.tagName === 'text');
           if (directTexts.some(t => t.textContent?.trim() === actorDisplayName)) {
             const rectEl = g.querySelector('rect') || g;
             const b = (rectEl as SVGElement).getBoundingClientRect();
-            if (b.top < bestY) {
-              bestY = b.top;
+            const containerRect = containerRef.current.getBoundingClientRect();
+            const scale = containerRect.width / containerRef.current.offsetWidth;
+            const centerY = (b.top - containerRect.top + containerRef.current.scrollTop + b.height / 2) / scale;
+            const score = selectedCenterY === null ? b.top : Math.abs(centerY - selectedCenterY);
+            if (score < bestScore) {
+              bestScore = score;
               bestRect = rectEl;
             }
           }
         }
       }
 
-      if (bestRect) {
+      if (!foundElement && bestRect) {
         foundElement = bestRect as SVGElement;
         if (!bestRect.id) {
-          (bestRect as SVGElement).id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, '')}`;
+          const b = (bestRect as SVGElement).getBoundingClientRect();
+          (bestRect as SVGElement).id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, '')}-${Math.round(b.left)}-${Math.round(b.top)}`;
         }
         foundRawSvgId = (bestRect as SVGElement).id || null;
       }
@@ -450,6 +928,18 @@ export function useCanvasInteraction({
       }
     } else {
       // It's a flowchart node, cluster, or link
+      if (selectedSvgId) {
+        const exact = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
+        if (exact) {
+          foundElement = exact;
+          foundRawSvgId = exact.id || null;
+        }
+      }
+
+      if (foundElement) {
+        // Exact raw SVG id match wins. This preserves selection identity when multiple
+        // elements normalize to the same clean id (e.g. duplicate subgraph titles).
+      } else {
       let candidatesList: SVGElement[] = [];
       if (isEdgeId(selectedNodeId)) {
         const edgeLabels = Array.from(containerRef.current.querySelectorAll('.edgeLabel'));
@@ -496,10 +986,11 @@ export function useCanvasInteraction({
           }
         }
       }
+      }
     }
 
     if (foundElement && containerRef.current) {
-      const rect = foundElement.getBoundingClientRect();
+      let rect = foundElement.getBoundingClientRect();
       const containerRect = containerRef.current.getBoundingClientRect();
       const scale = containerRect.width / containerRef.current.offsetWidth;
       
@@ -510,7 +1001,43 @@ export function useCanvasInteraction({
       } else if (foundElement.tagName === 'text' || foundElement.tagName === 'foreignObject' || foundElement.classList?.contains('label')) {
           elementToMeasure = foundElement;
       }
-      const textRect = elementToMeasure.getBoundingClientRect();
+      let textRect = elementToMeasure.getBoundingClientRect();
+
+      // For sequence messages, preserve the larger combined selection bounds (line + label)
+      // so the outer message selection frame remains stable after recalc.
+      if (selectedNodeId.startsWith('SEQ_MSG_')) {
+        const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+        if (Number.isFinite(idx) && idx >= 0) {
+          const allMsgTexts = Array.from(containerRef.current.querySelectorAll('.messageText')) as SVGElement[];
+          const allMsgLines = Array.from(
+            containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+          ) as SVGElement[];
+
+          const pairedText = allMsgTexts[idx] || foundElement;
+          const pairedLine = findNearestLineForText(pairedText as SVGElement, allMsgLines);
+
+          const lineRect = pairedLine?.getBoundingClientRect();
+          const labelRect = (pairedText as SVGElement | null)?.getBoundingClientRect();
+          if (lineRect || labelRect) {
+            const left = Math.min(lineRect?.left ?? Number.POSITIVE_INFINITY, labelRect?.left ?? Number.POSITIVE_INFINITY);
+            const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, labelRect?.top ?? Number.POSITIVE_INFINITY);
+            const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, labelRect?.right ?? Number.NEGATIVE_INFINITY);
+            const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, labelRect?.bottom ?? Number.NEGATIVE_INFINITY);
+            rect = {
+              left,
+              top,
+              right,
+              bottom,
+              width: Math.max(0, right - left),
+              height: Math.max(0, bottom - top),
+              x: left,
+              y: top,
+              toJSON: () => ({})
+            } as DOMRect;
+            textRect = (labelRect || lineRect)!;
+          }
+        }
+      }
       
       const newSelectionBox = {
           x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
@@ -533,10 +1060,10 @@ export function useCanvasInteraction({
       // If we couldn't find the selected element in the new SVG, clear the selection
       setSelectionBox(null);
       setTextBox(null);
-      setSelectedNodeId(null);
+      setSelectedNodeIdWithRef(null);
       setSelectedSvgId(null);
     }
-  }, [selectedNodeId, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
+  }, [selectedNodeId, selectedSvgId, selectionBox, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
 
   // Effect to recalculate selection on code or svgContent (re-render) change
   useEffect(() => {
@@ -615,7 +1142,7 @@ export function useCanvasInteraction({
         const containerEl = containerRef.current;
         if (!containerEl) break;
 
-        const actorDisplayName = currentNode.textContent?.trim() || '';
+        const actorDisplayName = getSvgTextDisplayName(currentNode);
         const clickedRect = currentNode.getBoundingClientRect();
         const containerRect = containerEl.getBoundingClientRect();
         const scale = containerRect.width / containerEl.offsetWidth;
@@ -626,7 +1153,17 @@ export function useCanvasInteraction({
           .map(l => ({ actorId: l.actorId, d: Math.abs(l.x - clickedX) }))
           .sort((a, b) => a.d - b.d)[0];
 
-        const actorId = nearest?.actorId || resolveSequenceActorIdFromDisplayName(actorDisplayName);
+        // Resolve by actor label first; geometry is only a fallback when label resolution is ambiguous.
+        const resolvedByName = actorDisplayName
+          ? resolveSequenceActorIdFromDisplayName(actorDisplayName)
+          : null;
+        const hasResolvedLifeline = Boolean(
+          resolvedByName && lifelines.some((lifeline) => lifeline.actorId === resolvedByName)
+        );
+
+        const actorId = hasResolvedLifeline
+          ? (resolvedByName as string)
+          : (nearest?.actorId || resolvedByName || actorDisplayName);
         nodeId = `SEQ_ACTOR_${actorId}`;
         break;
       }
@@ -642,9 +1179,21 @@ export function useCanvasInteraction({
       // Sequence message line
       if (isSequenceMessageLineElement(currentNode)) {
         foundNodeClass = true;
-        const allMsgLines = Array.from(containerRef.current?.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]') || []);
-        const idx = allMsgLines.indexOf(currentNode);
-        nodeId = `SEQ_MSG_${idx >= 0 ? idx : 0}`;
+        const allMsgTexts = Array.from(containerRef.current?.querySelectorAll('.messageText') || []) as SVGElement[];
+        const lineRect = currentNode.getBoundingClientRect();
+        const lineCenterY = lineRect.top + lineRect.height / 2;
+        let idx = 0;
+        let best = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < allMsgTexts.length; i += 1) {
+          const tRect = allMsgTexts[i].getBoundingClientRect();
+          const textCenterY = tRect.top + tRect.height / 2;
+          const d = Math.abs(textCenterY - lineCenterY);
+          if (d < best) {
+            best = d;
+            idx = i;
+          }
+        }
+        nodeId = `SEQ_MSG_${idx}`;
         break;
       }
       // Sequence note text
@@ -680,7 +1229,9 @@ export function useCanvasInteraction({
         }
 
         if (cleanId && cleanId.startsWith('SEQ_ACTOR_') && !currentNode.id) {
-            currentNode.id = `seq-actor-${cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '')}`;
+          const b = currentNode.getBoundingClientRect();
+          const actorKey = cleanId.replace('SEQ_ACTOR_', '').replace(/[^a-zA-Z0-9_]/g, '');
+          currentNode.id = `seq-actor-${actorKey}-${Math.round(b.left)}-${Math.round(b.top)}`;
         }
         if (cleanId && (cleanId.startsWith('SEQ_MSG_') || cleanId.startsWith('SEQ_NOTE_')) && !currentNode.id) {
             const seqIdx = cleanId.split('_').pop();
@@ -706,19 +1257,82 @@ export function useCanvasInteraction({
             }
         }
 
-        const rawSvgId = currentNode.id;
-        const rect = pathElementToMeasure.getBoundingClientRect();
+        if (cleanId && !currentNode.id && (currentNode.classList?.contains('node') || currentNode.classList?.contains('cluster'))) {
+          const b = currentNode.getBoundingClientRect();
+          const kind = currentNode.classList?.contains('cluster') ? 'cluster' : 'node';
+          const key = cleanId.replace(/[^a-zA-Z0-9_]/g, '_');
+          currentNode.id = `${kind}-${key}-${Math.round(b.left)}-${Math.round(b.top)}`;
+        }
+
+        let rawSvgId = currentNode.id;
+        let rect = pathElementToMeasure.getBoundingClientRect();
         const containerRect = containerRef.current.getBoundingClientRect();
         const scale = containerRect.width / containerRef.current.offsetWidth;
         
         let elementToMeasure = pathElementToMeasure;
-        const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
-        if (innerText) {
-            elementToMeasure = innerText as SVGElement;
-        } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
-            elementToMeasure = currentNode;
+        
+        // For sequence actors (including special types like database), find rect.actor for accurate bounds
+        if (cleanId && cleanId.startsWith('SEQ_ACTOR_')) {
+            // Use rect.actor sibling for full-width selection bounds; text.actor is just the narrow label
+            const parentGroup = currentNode.parentElement;
+            const rectActor = parentGroup?.querySelector('rect.actor') as SVGElement | null;
+            if (rectActor) {
+                elementToMeasure = rectActor;
+                rect = rectActor.getBoundingClientRect();
+            } else {
+                // Fallback: look for the first text element within the actor
+                const textEls = Array.from(currentNode.querySelectorAll('text, tspan'));
+                if (textEls.length > 0) {
+                    elementToMeasure = textEls[0] as SVGElement;
+                }
+            }
+        } else {
+            // For non-actor elements, use the existing logic
+            const innerText = currentNode.querySelector('.label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label');
+            if (innerText) {
+                elementToMeasure = innerText as SVGElement;
+            } else if (currentNode.tagName === 'text' || currentNode.tagName === 'foreignObject' || currentNode.classList?.contains('label')) {
+                elementToMeasure = currentNode;
+            }
         }
-        const textRect = elementToMeasure.getBoundingClientRect();
+        
+        let textRect = elementToMeasure.getBoundingClientRect();
+
+        // For sequence messages, always select text + underlying connection together.
+        if (cleanId && cleanId.startsWith('SEQ_MSG_')) {
+            const idx = parseInt(cleanId.replace('SEQ_MSG_', ''), 10);
+            const allMsgTexts = Array.from(containerRef.current.querySelectorAll('.messageText')) as SVGElement[];
+            const allMsgLines = Array.from(
+              containerRef.current.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+            ) as SVGElement[];
+
+            const pairedText = allMsgTexts[idx] || (currentNode.classList?.contains('messageText') ? currentNode : null);
+            const pairedLine = pairedText
+              ? findNearestLineForText(pairedText as SVGElement, allMsgLines)
+              : (isSequenceMessageLineElement(currentNode) ? currentNode : null);
+
+            const lineRect = pairedLine?.getBoundingClientRect();
+            const labelRect = pairedText?.getBoundingClientRect();
+            if (lineRect || labelRect) {
+              const left = Math.min(lineRect?.left ?? Number.POSITIVE_INFINITY, labelRect?.left ?? Number.POSITIVE_INFINITY);
+              const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, labelRect?.top ?? Number.POSITIVE_INFINITY);
+              const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, labelRect?.right ?? Number.NEGATIVE_INFINITY);
+              const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, labelRect?.bottom ?? Number.NEGATIVE_INFINITY);
+              rect = {
+                left,
+                top,
+                right,
+                bottom,
+                width: Math.max(0, right - left),
+                height: Math.max(0, bottom - top),
+                x: left,
+                y: top,
+                toJSON: () => ({})
+              } as DOMRect;
+              textRect = (labelRect || lineRect)!;
+              rawSvgId = (pairedLine as SVGElement | null)?.id || (pairedText as SVGElement | null)?.id || rawSvgId;
+            }
+        }
         
         const newSelectionBox = {
             x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
@@ -737,25 +1351,67 @@ export function useCanvasInteraction({
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
     return null;
-  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines]);
+  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+  // commitEditRef is a ref slot that LiveMaidEditor fills with handleEditSubmit.
+  // The hook calls it before any cross-element or background transition so that
+  // typed edits are committed to the diagram code before the selection changes.
+  const commitEditRef = useRef<(() => void) | null>(null);
+  const DOUBLE_CLICK_MS = 300;
+  const lastClickRef = useRef<{ id: string; time: number } | null>(null);
+  // Set to true when click(detail=2) already handled the dblclick gesture so the capture-phase
+  // native dblclick listener knows to skip — prevents double-invocation of handleEditClick.
+  const dblClickHandledRef = useRef(false);
+  // requestAnimationFrame handle for throttling mousemove
+  const mouseMoveRafRef = useRef<number | null>(null);
+  const mouseMoveInnerRef = useRef<((x: number, y: number, t: EventTarget | null) => void) | null>(null);
 
   const handleEditClick = useCallback((e: React.MouseEvent | Event) => {
     if ('stopPropagation' in e) e.stopPropagation();
-    
+
     const currentType = determineDiagramType(code);
     if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
         return;
     }
 
-    const result = getClickedNode(e.target as Element);
-    let targetNodeId = selectedNodeId;
+    // Resolve actual SVG element via elementsFromPoint to bypass overlay divs
+    let targetElement = e.target as Element;
+    if ('clientX' in e && 'clientY' in e) {
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      const svgElement = elementsAtPoint.find(el => el.tagName.toLowerCase() !== 'div' && el.namespaceURI === 'http://www.w3.org/2000/svg');
+      if (svgElement) {
+        targetElement = svgElement;
+      } else {
+        const firstEl = elementsAtPoint[0];
+        if (firstEl) targetElement = firstEl;
+      }
+    }
+
+    const result = getClickedNode(targetElement);
+    // Use ref for selectedNodeId to avoid stale closure
+    let targetNodeId = selectedNodeIdRef.current;
+
+    // STATE MACHINE: handle EDIT_MODE → EDIT_MODE transitions (cross-element or empty-space double-click)
+    if (isInlineEditing) {
+      if (!result) {
+        // Double-click on empty space while editing → commit and go to IDLE
+        commitEditRef.current?.();
+        setIsInlineEditing(false);
+        return;
+      }
+      if (result.cleanId === selectedNodeIdRef.current) {
+        return; // Same element — already in EDIT_MODE, no-op
+      }
+      // Cross-element double-click → commit current edit, then enter EDIT_MODE for new element
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    }
 
     if (result) {
         setSelectionBox(result.newSelectionBox);
         setTextBox(result.newTextBox);
-        setSelectedNodeId(result.cleanId);
+        setSelectedNodeIdWithRef(result.cleanId);
         setSelectedSvgId(result.rawSvgId);
         targetNodeId = result.cleanId;
     }
@@ -853,132 +1509,161 @@ export function useCanvasInteraction({
             inlineInputRef.current.select();
         }
     }, 10);
-  }, [code, getClickedNode, selectedNodeId, determineDiagramType, getSequenceMessageEntries]);
+  }, [code, getClickedNode, setSelectedNodeIdWithRef, determineDiagramType, getSequenceMessageEntries, isInlineEditing]);
 
-  const lastClickTimeRef = useRef<number>(0);
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const debugClicks = (() => {
+      if (typeof window === 'undefined') return false;
+      const w = window as Window & { __LM_DEBUG_CLICKS?: boolean };
+      return Boolean(w.__LM_DEBUG_CLICKS) || window.localStorage.getItem('livemaid:debug-clicks') === '1';
+    })();
+
+    const debugLog = (...args: unknown[]) => {
+      if (debugClicks) console.log('[canvas-click]', ...args);
+    };
+
     if (isLocked) return;
-    if (isInlineEditing) return;
 
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRectForScale = container.getBoundingClientRect();
-    const scale = containerRectForScale.width / container.offsetWidth;
-
-    const currentTime = new Date().getTime();
-    const timeSinceLastClick = currentTime - lastClickTimeRef.current;
-    
-    if (timeSinceLastClick < 300) {
-        lastClickTimeRef.current = 0;
-        handleEditClick(e);
-        return;
-    }
-    lastClickTimeRef.current = currentTime;
-
-    // Shift browser focus away from any text editors/inputs so global delete shortcuts are active
-    if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-    }
-    // Prevent triggering click on selection components
     const target = e.target as HTMLElement;
     if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
-        return;
+      debugLog('ignored-ui-target', target.tagName);
+      return;
     }
 
     const clicked = getClickedNode(target);
-    if (clicked) {
-        setSelectedNodeId(clicked.cleanId);
-        setSelectedSvgId(clicked.rawSvgId);
-        
-        const parent = document.getElementById(clicked.rawSvgId);
-        if (parent) {
-            const rect = parent.getBoundingClientRect();
-            const containerRect = container.getBoundingClientRect();
-            
-            // Unscaled canvas coordinates
-            const x = (rect.left - containerRect.left + container.scrollLeft) / scale;
-            const y = (rect.top - containerRect.top + container.scrollTop) / scale;
-            const w = rect.width / scale;
-            const h = rect.height / scale;
-            
-            setSelectionBox({ x, y, width: w, height: h });
-            
-            // Node-level label extraction for inline editor
-            const labelEl = parent.querySelector('.label, text, .nodeLabel');
-            if (labelEl) {
-                const labelRect = labelEl.getBoundingClientRect();
-                const tx = (labelRect.left - containerRect.left + container.scrollLeft) / scale;
-                const ty = (labelRect.top - containerRect.top + container.scrollTop) / scale;
-                const tw = labelRect.width / scale;
-                const th = labelRect.height / scale;
-                setTextBox({ x: tx, y: ty, width: tw, height: th });
-            } else {
-                setTextBox({ x, y, width: w, height: h });
-            }
-        }
-    } else {
-        // If clicking background/empty space, check if clicking a flowchart link (edge path) or edge label
-        let current: SVGElement | null = e.target as SVGElement;
-        let edgeFound = false;
-        
-        // Let's check if we clicked on an edge path or label
-        while (current && current.tagName !== 'svg') {
-          if (current.id) {
-            const cleanId = normalizeId(current.id);
-            if (isEdgeId(cleanId)) {
-              setSelectedNodeId(cleanId);
-              setSelectedSvgId(current.id);
-              
-              const rect = current.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-              
-              const x = (rect.left - containerRect.left + container.scrollLeft) / scale;
-              const y = (rect.top - containerRect.top + container.scrollTop) / scale;
-              const w = rect.width / scale;
-              const h = rect.height / scale;
-              
-              setSelectionBox({ x, y, width: w, height: h });
-              
-              // Edge-level label selection
-              const labelEl = current.closest('.edgePath')?.querySelector('.edgeLabel') || current.querySelector('.edgeLabel');
-              if (labelEl) {
-                const labelRect = labelEl.getBoundingClientRect();
-                const tx = (labelRect.left - containerRect.left + container.scrollLeft) / scale;
-                const ty = (labelRect.top - containerRect.top + container.scrollTop) / scale;
-                const tw = labelRect.width / scale;
-                const th = labelRect.height / scale;
-                setTextBox({ x: tx, y: ty, width: tw, height: th });
-              } else {
-                setTextBox({ x, y, width: w, height: h });
-              }
-              
-              edgeFound = true;
-              break;
-            }
-          }
-          current = current.parentElement as SVGElement | null;
-        }
+    debugLog('target', target.tagName, { id: target.id, clicked: clicked?.cleanId ?? null, inlineEditing: isInlineEditing });
 
-        if (!edgeFound) {
-          setSelectedNodeId(null);
-          setSelectedSvgId(null);
-          setSelectionBox(null);
-          setTextBox(null);
-          setIsInlineEditing(false);
-        }
+    // Robust double-click entry: some Mermaid SVG/foreignObject targets do not
+    // consistently dispatch React onDoubleClick. Use click count from the shared
+    // handler so double-click on the currently selected element always enters edit mode.
+    if (e.detail >= 2 && clicked && clicked.cleanId === selectedNodeIdRef.current && !isInlineEditing) {
+      debugLog('enter-edit-mode-double-click', clicked.cleanId);
+      handleEditClick(e);
+      return;
     }
-  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing]);
+
+    // State transition rule:
+    // - Same element while editing: keep editing.
+    // - Different element/background while editing: commit current edit, then continue selection flow.
+    if (isInlineEditing) {
+      if (clicked && clicked.cleanId === selectedNodeIdRef.current) {
+        debugLog('stay-in-edit-mode', clicked.cleanId);
+        return;
+      }
+      debugLog('commit-edit-before-transition', { from: selectedNodeIdRef.current, to: clicked?.cleanId ?? null });
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    }
+    
+    if (clicked) {
+      debugLog('select', clicked.cleanId);
+      setSelectedNodeIdWithRef(clicked.cleanId);
+      setSelectedSvgId(clicked.rawSvgId);
+      setSelectionBox(clicked.newSelectionBox);
+      setTextBox(clicked.newTextBox);
+    } else {
+      debugLog('clear-selection');
+      setSelectedNodeIdWithRef(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
+    }
+  }, [getClickedNode, isLocked, isInlineEditing, setSelectedNodeIdWithRef, setIsInlineEditing, handleEditClick]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      // Throttle to one execution per animation frame — prevents expensive DOM work
+      // (getBoundingClientRect, SVG traversal, lifeline calculations) from running on
+      // every pixel of mouse movement.
+      if (mouseMoveRafRef.current !== null) return;
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      const eventTarget = e.target;
+      mouseMoveRafRef.current = requestAnimationFrame(() => {
+        mouseMoveRafRef.current = null;
+        mouseMoveInnerRef.current?.(clientX, clientY, eventTarget);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const _handleMouseMoveInner = useCallback((clientX: number, clientY: number, eventTarget: EventTarget | null) => {
       const container = containerRef.current;
       if (!container) return;
       const containerRectForScale = container.getBoundingClientRect();
       const scale = containerRectForScale.width / container.offsetWidth;
       const diagramType = determineDiagramType(code);
+      const e = { clientX, clientY, target: eventTarget } as React.MouseEvent<HTMLDivElement>;
 
       const mouseX = (e.clientX - containerRectForScale.left + container.scrollLeft) / scale;
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
+
+      if (diagramType === 'sequence') {
+        const actorTarget = (e.target as Element | null)?.closest('.actor') as SVGElement | null;
+        if (actorTarget) {
+          // Prefer rect.actor for accurate full-width bounds; text.actor is just the label (narrow)
+          let boundsEl: SVGElement = actorTarget;
+          if (actorTarget.tagName.toLowerCase() === 'text') {
+            const parentGroup = actorTarget.parentElement;
+            const rectActor = parentGroup?.querySelector('rect.actor') as SVGElement | null;
+            if (rectActor) boundsEl = rectActor;
+          }
+          const actorRect = boundsEl.getBoundingClientRect();
+          setHoveredSequenceActorBox({
+            x: (actorRect.left - containerRectForScale.left + container.scrollLeft) / scale,
+            y: (actorRect.top - containerRectForScale.top + container.scrollTop) / scale,
+            width: actorRect.width / scale,
+            height: actorRect.height / scale,
+          });
+        } else {
+          setHoveredSequenceActorBox(null);
+        }
+        setHoveredFlowchartNodeBox(null);
+        updateSequenceMessageHoverHighlight(e.target);
+      } else if (diagramType === 'flowchart' || diagramType === 'graph') {
+        setHoveredSequenceActorBox(null);
+        clearSequenceMessageHoverHighlight();
+        // Show hover highlight on flowchart nodes.
+        // Fallback: tiny rendered nodes can miss direct target resolution and surface as svg/container.
+        let nodeTarget = (e.target as Element | null)?.closest('.node') as SVGElement | null;
+        if (!nodeTarget) {
+          const candidates = Array.from(
+            container.querySelectorAll('.node')
+          ) as SVGGraphicsElement[];
+          const pad = 8;
+          let best: { el: SVGGraphicsElement; area: number } | null = null;
+          for (const el of candidates) {
+            const r = el.getBoundingClientRect();
+            const inside =
+              clientX >= r.left - pad &&
+              clientX <= r.right + pad &&
+              clientY >= r.top - pad &&
+              clientY <= r.bottom + pad;
+            if (!inside) continue;
+            const area = Math.max(1, r.width * r.height);
+            if (!best || area < best.area) {
+              best = { el, area };
+            }
+          }
+          nodeTarget = best ? (best.el as SVGElement) : null;
+        }
+
+        if (nodeTarget && !isInlineEditing) {
+          const nodeRect = nodeTarget.getBoundingClientRect();
+          const hoverBox = {
+            x: (nodeRect.left - containerRectForScale.left + container.scrollLeft) / scale,
+            y: (nodeRect.top - containerRectForScale.top + container.scrollTop) / scale,
+            width: nodeRect.width / scale,
+            height: nodeRect.height / scale,
+          };
+          setHoveredFlowchartNodeBox(hoverBox);
+        } else {
+          setHoveredFlowchartNodeBox(null);
+        }
+      } else {
+        setHoveredSequenceActorBox(null);
+        setHoveredFlowchartNodeBox(null);
+        clearSequenceMessageHoverHighlight();
+      }
 
         if (diagramType === 'sequence') {
           const lifelines = getSequenceLifelines();
@@ -1018,38 +1703,36 @@ export function useCanvasInteraction({
               return;
           }
 
-          const hoverThreshold = 44;
-          const nearestLifeline = lifelines.find(l => Math.abs(l.x - mouseX) <= hoverThreshold && mouseY >= l.y1 - 8 && mouseY <= l.y2 + 30);
+          // Compute adaptive threshold based on lifeline spacing to prevent false triggers
+          // on dense diagrams (many participants). With 16+ participants zoomed out,
+          // a fixed 44px threshold matches almost everywhere — so we cap at 45% of spacing.
+          const sortedByX = [...lifelines].sort((a, b) => a.x - b.x);
+          const minSpacing = sortedByX.length > 1
+            ? Math.min(...sortedByX.slice(1).map((l, i) => l.x - sortedByX[i].x))
+            : Infinity;
+          const hoverThreshold = Number.isFinite(minSpacing) ? Math.min(44, minSpacing * 0.45) : 44;
+
+          // Find the nearest lifeline (not just the first within threshold)
+          const nearestLifeline = lifelines.reduce<{ l: (typeof lifelines)[0] | null; dist: number }>(
+            (best, l) => {
+              if (mouseY < l.y1 - 8 || mouseY > l.y2 + 30) return best;
+              const dist = Math.abs(l.x - mouseX);
+              return dist < best.dist ? { l, dist } : best;
+            },
+            { l: null, dist: hoverThreshold }
+          ).l;
           if (nearestLifeline) {
             setSequenceLifelineOverlay({
               actorId: nearestLifeline.actorId,
               x: nearestLifeline.x,
               slots: getSequenceAnchorSlots(nearestLifeline, mouseY),
             });
-          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_ACTOR_')) {
-            const selectedActorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-            const selectedLifeline = lifelines.find(l => l.actorId === selectedActorId);
-            if (selectedLifeline) {
-              setSequenceLifelineOverlay({
-                actorId: selectedLifeline.actorId,
-                x: selectedLifeline.x,
-                slots: getSequenceAnchorSlots(selectedLifeline),
-              });
-            } else {
-              setSequenceLifelineOverlay(null);
-            }
-          } else if (!connectionState.active && selectedNodeId?.startsWith('SEQ_MSG_')) {
-            const msgOverlay = getSelectedMessageOverlay(selectedNodeId);
-            if (msgOverlay) {
-              setSequenceLifelineOverlay(msgOverlay);
-            } else {
-              setSequenceLifelineOverlay(null);
-            }
           } else if (!connectionState.active) {
             setSequenceLifelineOverlay(null);
           }
       } else {
         setSequenceLifelineOverlay(null);
+        setHoveredSequenceActorBox(null);
       }
 
       if (connectionState.active && connectionState.startNodeId) {
@@ -1073,30 +1756,12 @@ export function useCanvasInteraction({
     getSequenceAnchorSlots,
     getSequenceLifelines,
     selectedNodeId,
-    getSelectedMessageOverlay
+    getSelectedMessageOverlay,
+    updateSequenceMessageHoverHighlight,
+    clearSequenceMessageHoverHighlight
   ]);
-
-  useEffect(() => {
-    if (connectionState.active) return;
-    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
-    const lifelines = getSequenceLifelines();
-    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-    const lifeline = lifelines.find(l => l.actorId === actorId);
-    if (!lifeline) return;
-    setSequenceLifelineOverlay({
-      actorId: lifeline.actorId,
-      x: lifeline.x,
-      slots: getSequenceAnchorSlots(lifeline),
-    });
-  }, [selectedNodeId, connectionState.active, getSequenceLifelines, getSequenceAnchorSlots]);
-
-  useEffect(() => {
-    if (connectionState.active) return;
-    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
-    const overlay = getSelectedMessageOverlay(selectedNodeId);
-    if (!overlay) return;
-    setSequenceLifelineOverlay(overlay);
-  }, [selectedNodeId, connectionState.active, getSelectedMessageOverlay]);
+  // Keep mouseMoveInnerRef always pointing at the latest version (avoids stale closure in RAF)
+  mouseMoveInnerRef.current = _handleMouseMoveInner;
 
   const handleAddNodeFromSelected = useCallback((
       startId: string | null, 
@@ -1184,47 +1849,49 @@ export function useCanvasInteraction({
   }, [getSequenceLifelines]);
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      clearSequenceMessageHoverHighlight();
+      setHoveredFlowchartNodeBox(null);
       if (connectionState.active && connectionState.startNodeId) {
         const diagramType = determineDiagramType(code);
-          if (connectionState.isDragging) {
+        if (connectionState.isDragging) {
           if (diagramType === 'sequence' && connectionState.startNodeId.startsWith('SEQ_ACTOR_')) {
             const targetId = connectionState.snapTargetId;
             if (targetId) {
-            const insertIndex = connectionState.anchorY !== null
-              ? getSequenceInsertIndexForAnchor(connectionState.anchorY)
-              : undefined;
-            handleAddNodeFromSelected(connectionState.startNodeId, targetId, undefined, insertIndex);
+              const insertIndex = connectionState.anchorY !== null
+                ? getSequenceInsertIndexForAnchor(connectionState.anchorY)
+                : undefined;
+              handleAddNodeFromSelected(connectionState.startNodeId, targetId, undefined, insertIndex);
             }
           } else {
-          const result = getClickedNode(e.target as Element);
-          if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
-            handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
-          } else if (!result) {
-                  // Dropped on empty space - trigger the shape selector
-                  if (diagramType === 'flowchart' || diagramType === 'graph') {
-                       if (containerRef.current) {
-                           const viewport = containerRef.current.closest('.relative.overflow-hidden');
-                           const rect = viewport ? viewport.getBoundingClientRect() : containerRef.current.getBoundingClientRect();
-                           setShapePicker({
-                               x: e.clientX - rect.left,
-                               y: e.clientY - rect.top,
-                               startNodeId: connectionState.startNodeId
-                           });
-                       }
-                  }
+            const result = getClickedNode(e.target as Element);
+            if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
+              handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
+            } else if (!result) {
+              // Dropped on empty space - trigger the shape selector
+              if (diagramType === 'flowchart' || diagramType === 'graph') {
+                if (containerRef.current) {
+                  const viewport = containerRef.current.closest('.relative.overflow-hidden');
+                  const rect = viewport ? viewport.getBoundingClientRect() : containerRef.current.getBoundingClientRect();
+                  setShapePicker({
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top,
+                    startNodeId: connectionState.startNodeId
+                  });
                 }
               }
+            }
           }
-          setConnectionState({
-            active: false,
-            startNodeId: null,
-            startPos: null,
-            mousePos: null,
-            isDragging: false,
-            snapTargetId: null,
-            snapTargetPos: null,
-            anchorY: null,
-          });
+        }
+        setConnectionState({
+          active: false,
+          startNodeId: null,
+          startPos: null,
+          mousePos: null,
+          isDragging: false,
+          snapTargetId: null,
+          snapTargetPos: null,
+          anchorY: null,
+        });
       }
       setSequenceLifelineOverlay(null);
   }, [
@@ -1234,8 +1901,16 @@ export function useCanvasInteraction({
     code,
     determineDiagramType,
     containerRef,
-    getSequenceInsertIndexForAnchor
+    getSequenceInsertIndexForAnchor,
+    clearSequenceMessageHoverHighlight
   ]);
+
+  useEffect(() => {
+    return () => {
+      clearSequenceMessageHoverHighlight();
+      setHoveredSequenceActorBox(null);
+    };
+  }, [clearSequenceMessageHoverHighlight]);
 
   // Synchronized hover highlighting for edge paths and their labels
   useEffect(() => {
@@ -1352,6 +2027,36 @@ export function useCanvasInteraction({
     };
   }, [containerRef, svgContent, normalizeId]);
 
+  // Capture-phase native dblclick listener: fires BEFORE any child element handlers,
+  // bypassing toolbar buttons that call e.stopPropagation() on 'click' (not 'dblclick').
+  // This ensures double-clicking when the toolbar overlaps the node still enters EDIT_MODE.
+  // handleEditClick is idempotent — if already in EDIT_MODE for the same node, it no-ops.
+  const handleEditClickRef = useRef(handleEditClick);
+  handleEditClickRef.current = handleEditClick; // always current; updated every render
+
+  useEffect(() => {
+    if (isLocked) return;
+
+    const handleNativeDblClick = (e: MouseEvent) => {
+      // Only handle dblclicks within the canvas container (not toolbar overlays outside it, etc.)
+      const container = containerRef.current;
+      if (!container || !container.contains(e.target as Node)) return;
+
+      // If click(detail=2) already handled this dblclick gesture, skip to avoid double-invocation.
+      // (The capture listener fires AFTER click(detail=2) has already entered EDIT_MODE.)
+      if (dblClickHandledRef.current) {
+        dblClickHandledRef.current = false;
+        return;
+      }
+      handleEditClickRef.current(e as unknown as React.MouseEvent);
+    };
+
+    // Register on document (capture phase) — above react-zoom-pan-pinch's TransformWrapper which
+    // intercepts dblclick at its own capture listener (even when doubleClick.disabled=true).
+    document.addEventListener('dblclick', handleNativeDblClick, true);
+    return () => document.removeEventListener('dblclick', handleNativeDblClick, true);
+  }, [isLocked]); // re-runs if locked state changes
+
   return {
     selectedNodeId, setSelectedNodeId,
     selectedNodeIds: [] as string[],
@@ -1363,17 +2068,29 @@ export function useCanvasInteraction({
     isInlineEditing, setIsInlineEditing,
     connectionState, setConnectionState,
     sequenceLifelineOverlay,
+    hoveredSequenceActorBox,
+    hoveredSequenceMessageBox,
+    hoveredFlowchartNodeBox,
+    sequenceMessageTriggerAreas,
     dragState: null as null,
     setDragState: (_: any) => {},
     startSequenceConnection,
     inlineInputRef,
+    commitEditRef,
     getClickedNode,
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
     handleEditClick,
     handleAddNodeFromSelected,
+    triggerHoveredSequenceMessageSelection,
+    triggerSequenceMessageHoverByIndex,
     shapePicker,
-    setShapePicker
+    setShapePicker,
+    // Note handling functions
+    getSequenceNoteEntries,
+    insertSequenceNoteAtIndex,
+    updateNotePosition,
+    deleteSequenceNote,
   };
 }

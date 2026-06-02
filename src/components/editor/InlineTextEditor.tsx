@@ -98,6 +98,10 @@ export function InlineTextEditor({
             e.stopPropagation();
         }}
         onBlur={(e) => {
+            // Don't submit on blur if focus is moving to another part of the same textarea
+            // Use a small timeout to allow relatedTarget to be set
+            const related = e.relatedTarget;
+            if (related && inlineInputRef.current?.contains(related as Node)) return;
             handleEditSubmit();
         }}
         onMouseDown={(e) => e.stopPropagation()}
