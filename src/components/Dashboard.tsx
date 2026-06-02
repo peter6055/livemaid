@@ -39,6 +39,7 @@ import {
 
 import { Input } from "@/components/ui/input";
 import { DemoBanner } from "@/components/DemoBanner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const { theme, setTheme } = useTheme();
@@ -196,7 +197,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {!isDemo && (
+              {isDemo ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="block" />}>
+                      <DropdownMenuItem disabled className="cursor-not-allowed opacity-50 rounded-md px-3 py-2.5 text-[15px] flex items-center gap-2">
+                        <PlusSquare className="w-4 h-4" />
+                        <span>New Diagram</span>
+                      </DropdownMenuItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Read-only in demo mode</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
                 <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                   <PlusSquare className="w-4 h-4" />
                   <span>New Diagram</span>
@@ -279,7 +292,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 </button>
               )}
             </div>
-            {!isDemo && (
+            {isDemo ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60">
+                      <Plus className="w-5 h-5 mr-2" />
+                      New Diagram
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Read-only in demo mode</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
               <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
                 <Plus className="w-5 h-5 mr-2" />
                 New Diagram
@@ -350,7 +375,18 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 : 'Try a different search term or create a new diagram.'}
             </p>
             <div className="flex gap-3">
-              {!isDemo && (
+              {isDemo ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex" />}>
+                      <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-6 shadow-sm pointer-events-none opacity-60">
+                        Create Diagram
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Read-only in demo mode</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
                 <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
                   Create Diagram
                 </Button>

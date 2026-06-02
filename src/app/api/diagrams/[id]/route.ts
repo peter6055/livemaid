@@ -25,8 +25,13 @@ export async function PUT(
   const { id } = await params;
 
   if (IS_DEMO_MODE) {
-    // In demo mode, return the existing diagram as if saved (read-only illusion)
     try {
+      const body = await request.json();
+      // Rename operations (name change without code) are rejected in demo mode
+      if (body.name !== undefined && body.code === undefined) {
+        return NextResponse.json({ error: 'Demo mode: renaming diagrams is disabled' }, { status: 403 });
+      }
+      // Code edits: return existing diagram as if saved (read-only illusion)
       const existing = await getDiagram(id);
       if (!existing) {
         return NextResponse.json({ error: 'Diagram not found' }, { status: 404 });

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
 import { Badge } from '@/components/ui/badge';
 import { determineDiagramType } from '@/lib/diagrams/utils';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export interface DiagramDocument {
   id: string;
@@ -68,15 +69,34 @@ export function DiagramCard({
             {diagram.name}
           </CardTitle>
           <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-            {!isDemo && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
-                <FileEdit className="h-4 w-4" />
-              </Button>
-            )}
-            {!isDemo && (
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+            {isDemo ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40 pointer-events-none" disabled>
+                      <FileEdit className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Read-only in demo mode</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-300/50 pointer-events-none" disabled>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Read-only in demo mode</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
+                  <FileEdit className="h-4 w-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </>
             )}
           </div>
         </div>
