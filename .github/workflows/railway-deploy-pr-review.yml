@@ -28,7 +28,7 @@ jobs:
       RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
-      RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || vars.RAILWAY_SERVICE_ID || github.event.repository.name }}
+      RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || vars.RAILWAY_SERVICE_ID }}
       RAILWAY_DEFAULT_ENV: ${{ vars.RAILWAY_DEFAULT_ENV || 'sandbox' }}
       PR_NUMBER: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number }}
       PR_HEAD_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref }}
@@ -122,6 +122,10 @@ jobs:
               count="$((count + 1))"
             done
           }
+          if [ -z "$RAILWAY_SERVICE" ]; then
+            echo "Either vars.RAILWAY_SERVICE or vars.RAILWAY_SERVICE_ID must be configured to deploy preview environments." >&2
+            exit 1
+          fi
           retry_cmd 4 5 railway redeploy \
             --service "$RAILWAY_SERVICE" \
             --environment "pr-$PR_NUMBER" \
