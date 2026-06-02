@@ -8,11 +8,14 @@ on:
       - completed
   pull_request:
     types:
+      - opened
+      - synchronize
+      - reopened
       - closed
 
 jobs:
   deploy_preview:
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0] != null }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0] != null) || (github.event_name == 'pull_request' && github.event.action != 'closed') }}
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     permissions:
@@ -25,8 +28,8 @@ jobs:
       RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
-      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-      PR_HEAD_REF: ${{ github.event.workflow_run.head_branch }}
+      PR_NUMBER: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number }}
+      PR_HEAD_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref }}
     steps:
       - name: Link Railway project
         run: |

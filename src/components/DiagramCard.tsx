@@ -1,13 +1,11 @@
 "use client";
 
-import Link from 'next/link';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus, FileEdit, Trash2, Clock, GitCommitVertical, Repeat2, Code2 } from 'lucide-react';
+import { FileEdit, Trash2, Clock, GitCommitVertical, Repeat2, Code2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useEffect, useState } from 'react';
 import mermaid from 'mermaid';
-import { Badge } from '@/components/ui/badge';
 import { determineDiagramType } from '@/lib/diagrams/utils';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -45,7 +43,7 @@ export function DiagramCard({
           await mermaid.parse(diagram.code!, { suppressErrors: true });
           const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
           setSvgContent(svg);
-        } catch (e) {
+        } catch {
           // invalid syntax, don't render bomb error
           setSvgContent('');
         } finally {
@@ -72,7 +70,7 @@ export function DiagramCard({
             {isDemo ? (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex" />}>
+                  <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40 pointer-events-none" disabled>
                       <FileEdit className="h-4 w-4" />
                     </Button>
@@ -80,7 +78,7 @@ export function DiagramCard({
                   <TooltipContent>Read-only in demo mode</TooltipContent>
                 </Tooltip>
                 <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex" />}>
+                  <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-red-300/50 pointer-events-none" disabled>
                       <Trash2 className="h-4 w-4" />
                     </Button>
