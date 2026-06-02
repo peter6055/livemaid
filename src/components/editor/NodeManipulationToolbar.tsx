@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Palette, Square, Type, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
+import { Palette, Pencil, Square, Type, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
 import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
 
@@ -10,6 +10,7 @@ interface NodeManipulationToolbarProps {
   currentType: string;
   selectedSvgId: string | null;
   scale: number;
+  onEditLabel?: (e: React.MouseEvent) => void;
   onUpdateStyle: (property: string, value: string) => void;
   onFormatNodeLabel: (format: string, value?: string) => void;
   onChangeShape: (shape: any) => void;
@@ -24,6 +25,7 @@ export function NodeManipulationToolbar({
   currentType,
   selectedSvgId,
   scale,
+  onEditLabel,
   onUpdateStyle,
   onFormatNodeLabel,
   onChangeShape,
@@ -147,6 +149,19 @@ export function NodeManipulationToolbar({
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
     >
+        {/* Rename / Edit Label */}
+        {onEditLabel && (
+          <button
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEditLabel(e); }}
+            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
+            title="Rename (double-click)"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
+
+        {onEditLabel && <div className="w-px h-4 bg-border mx-1" />}
+
         {/* Background Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={

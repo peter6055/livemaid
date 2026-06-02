@@ -33,7 +33,14 @@ interface EditorCanvasProps {
   };
   setConnectionState: (state: any) => void;
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
+  hoveredSequenceActorBox: { x: number, y: number, width: number, height: number } | null;
+  hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
+  hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
+  sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
+  onHoveredSequenceMessageHover: (index: number) => void;
+  onHoveredSequenceMessageClick: (index: number) => void;
+  onHoveredSequenceMessageDoubleClick: (index: number) => void;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -44,6 +51,9 @@ interface EditorCanvasProps {
   handleChangeShape: (shape: any) => void;
   handleDuplicateNode: () => void;
   handleDeleteNode: () => void;
+  onAddSequenceNote: (position: 'left' | 'right' | 'over') => void;
+  onMoveSequenceNote: (position: 'left' | 'right' | 'over') => void;
+  onLinkSequenceNote: () => void;
   setIsInlineEditing: (v: boolean) => void;
   textBox: { x: number, y: number, width: number, height: number } | null;
   theme: string | undefined;
@@ -81,7 +91,14 @@ export function EditorCanvas({
   connectionState,
   setConnectionState,
   sequenceLifelineOverlay,
+  hoveredSequenceActorBox,
+  hoveredSequenceMessageBox,
+  hoveredFlowchartNodeBox,
+  sequenceMessageTriggerAreas,
   startSequenceConnection,
+  onHoveredSequenceMessageHover,
+  onHoveredSequenceMessageClick,
+  onHoveredSequenceMessageDoubleClick,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -91,6 +108,9 @@ export function EditorCanvas({
   handleChangeShape,
   handleDuplicateNode,
   handleDeleteNode,
+  onAddSequenceNote,
+  onMoveSequenceNote,
+  onLinkSequenceNote,
   setIsInlineEditing,
   handleAddNodeFromSelected,
   textBox,
@@ -161,6 +181,99 @@ export function EditorCanvas({
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [shapePicker, setShapePicker]);
+
+  // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
+  // React bubbling/capture handlers. Use a document-level capture fallback so single
+  // clicks inside the canvas always resolve a target and route through handleSvgClick.
+  useEffect(() => {
+    if (isLocked) return;
+
+    const onDocumentMouseDownCapture = (event: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+      const insideContainer =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+
+      if (!insideContainer) return;
+
+      const elements = document.elementsFromPoint(event.clientX, event.clientY) as HTMLElement[];
+
+      // If this pointer event is on any floating UI/overlay controls, never route it
+      // into canvas hit-testing. This prevents accidental back-shape selection when
+      // clicking toolbar buttons near tight edges.
+      const hitFloatingUi = elements.some((el) =>
+        Boolean(
+          el.closest?.('[data-scale-lock]') ||
+          el.closest?.('[data-inline-toolbar]') ||
+          el.closest?.('[data-scale-lock-border]') ||
+          el.closest?.('[data-scale-lock-shadow]') ||
+          el.closest?.('[data-slot^="dropdown-menu"]')
+        )
+      );
+      if (hitFloatingUi) return;
+
+      let target =
+        elements.find((el) => container.contains(el)) ||
+        (event.target as HTMLElement | null) ||
+        container;
+
+      // Fallback for tiny Mermaid elements (e.g. compact text blocks) where
+      // elementsFromPoint may only return svg/container and miss the actual node.
+      const tag = target.tagName?.toLowerCase?.() || '';
+      const isGenericContainerTarget =
+        tag === 'svg' || tag === 'div' || tag === 'g' || target === container;
+
+      if (isGenericContainerTarget) {
+        const candidates = Array.from(
+          container.querySelectorAll('.node, .cluster, path.flowchart-link, .edgeLabel')
+        ) as SVGGraphicsElement[];
+
+        let best: { el: SVGGraphicsElement; area: number } | null = null;
+        const pad = 8;
+
+        for (const el of candidates) {
+          const r = el.getBoundingClientRect();
+          const inside =
+            event.clientX >= r.left - pad &&
+            event.clientX <= r.right + pad &&
+            event.clientY >= r.top - pad &&
+            event.clientY <= r.bottom + pad;
+          if (!inside) continue;
+
+          const area = Math.max(1, r.width * r.height);
+          if (!best || area < best.area) {
+            best = { el, area };
+          }
+        }
+
+        if (best) {
+          target = best.el as unknown as HTMLElement;
+        }
+      }
+
+      const syntheticEvent = {
+        target,
+        currentTarget: container,
+        detail: event.detail,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        stopPropagation: () => event.stopPropagation(),
+        preventDefault: () => event.preventDefault(),
+      } as unknown as React.MouseEvent<HTMLDivElement>;
+
+      handleSvgClick(syntheticEvent);
+    };
+
+    document.addEventListener('mousedown', onDocumentMouseDownCapture, true);
+    return () => {
+      document.removeEventListener('mousedown', onDocumentMouseDownCapture, true);
+    };
+  }, [containerRef, handleSvgClick, isLocked]);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
@@ -236,8 +349,7 @@ export function EditorCanvas({
                 <div 
                   ref={containerRef}
                   className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                  onClick={!isLocked ? handleSvgClick : undefined}
-                  onDoubleClick={(e) => { if (!isLocked) handleEditClick(e); }}
+                  onDoubleClick={!isLocked ? ((e) => { handleEditClick(e); }) : undefined}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
@@ -251,8 +363,85 @@ export function EditorCanvas({
 
                   <div 
                     className={`mermaid-container select-none ${parseError ? 'opacity-30' : ''}`}
-                    dangerouslySetInnerHTML={{ __html: svgContent }} 
+                    dangerouslySetInnerHTML={{ __html: svgContent }}
                   />
+
+                  {currentType === 'sequence' && !isInlineEditing && !connectionState.active && sequenceMessageTriggerAreas.map((area) => (
+                    <div
+                      key={`seq-msg-trigger-${area.index}`}
+                      data-seq-msg-hover-trigger="true"
+                      className="absolute pointer-events-none z-[19]"
+                      style={{
+                        left: area.x,
+                        top: area.y,
+                        width: area.width,
+                        height: area.height,
+                        background: 'transparent',
+                      }}
+                    />
+                  ))}
+
+                  {currentType === 'sequence' && hoveredSequenceMessageBox && !isInlineEditing && !connectionState.active && (
+                    <div
+                      data-seq-msg-hover-trigger="true"
+                      className="absolute pointer-events-none z-20 rounded-xl"
+                      style={{
+                        left: hoveredSequenceMessageBox.x,
+                        top: hoveredSequenceMessageBox.y,
+                        width: hoveredSequenceMessageBox.width,
+                        height: hoveredSequenceMessageBox.height,
+                        border: `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale})) solid #7c3aed`,
+                        boxShadow: `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`,
+                        borderRadius: `calc(10px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                      }}
+                    />
+                  )}
+
+                  {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !isInlineEditing && !connectionState.active && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      style={{
+                        left: hoveredSequenceActorBox.x - 4,
+                        top: hoveredSequenceActorBox.y - 4,
+                        width: hoveredSequenceActorBox.width + 8,
+                        height: hoveredSequenceActorBox.height + 8,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: 'solid',
+                        opacity: 0.55,
+                      }}
+                    />
+                  )}
+
+                  {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      style={{
+                        left: hoveredFlowchartNodeBox.x - 3,
+                        top: hoveredFlowchartNodeBox.y - 3,
+                        width: hoveredFlowchartNodeBox.width + 6,
+                        height: hoveredFlowchartNodeBox.height + 6,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: 'solid',
+                        opacity: 0.6,
+                      }}
+                    />
+                  )}
+
+                  {currentType === 'sequence' && selectedNodeId?.startsWith('SEQ_ACTOR_') && selectionBox && !isInlineEditing && (
+                    <div
+                      data-scale-lock-border
+                      data-scale-lock-shadow
+                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      style={{
+                        left: selectionBox.x - 4,
+                        top: selectionBox.y - 4,
+                        width: selectionBox.width + 8,
+                        height: selectionBox.height + 8,
+                        borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
+                      }}
+                    />
+                  )}
 
                   {currentType === 'sequence' && !isLocked && !isInlineEditing && !connectionState.active && sequenceLifelineOverlay && (
                     <div className="absolute inset-0 pointer-events-none z-20">
@@ -290,9 +479,17 @@ export function EditorCanvas({
                       <line
                         data-scale-lock-stroke
                         x1={connectionState.startPos.x}
-                        y1={connectionState.anchorY ?? connectionState.startPos.y}
+                        y1={
+                          currentType === 'sequence'
+                            ? (connectionState.anchorY ?? connectionState.startPos.y)
+                            : connectionState.startPos.y
+                        }
                         x2={connectionState.mousePos.x}
-                        y2={connectionState.anchorY ?? connectionState.startPos.y}
+                        y2={
+                          currentType === 'sequence'
+                            ? (connectionState.anchorY ?? connectionState.startPos.y)
+                            : connectionState.mousePos.y
+                        }
                         stroke="#2563eb"
                         strokeDasharray="10,8"
                         strokeLinecap="round"
@@ -332,12 +529,17 @@ export function EditorCanvas({
                       data-scale-lock-shadow
                       className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - 4,
-                        top: selectionBox.y - 4,
-                        width: selectionBox.width + 8,
-                        height: selectionBox.height + 8,
-                        borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                        boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
+                        left: selectionBox.x - (selectedNodeId?.startsWith('SEQ_MSG_') ? 10 : 4),
+                        top: selectionBox.y - (selectedNodeId?.startsWith('SEQ_MSG_') ? 2 : 4),
+                        width: selectionBox.width + (selectedNodeId?.startsWith('SEQ_MSG_') ? 20 : 8),
+                        height: selectionBox.height + (selectedNodeId?.startsWith('SEQ_MSG_') ? 4 : 8),
+                        borderColor: selectedNodeId?.startsWith('SEQ_MSG_') ? '#7c3aed' : undefined,
+                        borderWidth: selectedNodeId?.startsWith('SEQ_MSG_')
+                          ? `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale}))`
+                          : `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: selectedNodeId?.startsWith('SEQ_MSG_')
+                          ? `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`
+                          : `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
                     >
                       {!isInlineEditing && (
@@ -356,8 +558,12 @@ export function EditorCanvas({
                           />
                         ) : selectedNodeId && (selectedNodeId.startsWith('SEQ_ACTOR_') || selectedNodeId.startsWith('SEQ_MSG_') || selectedNodeId.startsWith('SEQ_NOTE_')) ? (
                           <SequenceManipulationToolbar
+                            selectedNodeId={selectedNodeId}
                             scale={state.scale}
                             onEditLabel={(e) => handleEditClick(e)}
+                            onAddNote={onAddSequenceNote}
+                            onMoveNote={onMoveSequenceNote}
+                            onLinkNote={onLinkSequenceNote}
                             onDeleteNode={handleDeleteNode}
                           />
                         ) : (
@@ -367,6 +573,7 @@ export function EditorCanvas({
                             currentType={currentType}
                             selectedSvgId={selectedSvgId}
                             scale={state.scale}
+                            onEditLabel={(e) => handleEditClick(e)}
                             onUpdateStyle={handleUpdateStyle}
                             onFormatNodeLabel={handleFormatNodeLabel}
                             onChangeShape={handleChangeShape}
@@ -391,7 +598,7 @@ export function EditorCanvas({
                         selectedSvgId={selectedSvgId}
                       />
 
-                      {!isInlineEditing && (!selectedNodeId || (!isEdgeId(selectedNodeId) && !selectedNodeId.startsWith('SEQ_MSG_') && !selectedNodeId.startsWith('SEQ_NOTE_'))) && (
+                      {!isInlineEditing && currentType !== 'sequence' && (!selectedNodeId || (!isEdgeId(selectedNodeId) && !selectedNodeId.startsWith('SEQ_MSG_') && !selectedNodeId.startsWith('SEQ_NOTE_'))) && (
                         <div 
                           data-scale-lock
                           data-base-transform="translateX(-50%) translateY(100%)"

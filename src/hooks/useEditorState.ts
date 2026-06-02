@@ -163,6 +163,22 @@ function addInteractionHelpersToSvg(svgString: string): string {
   try {
     const parser = new DOMParser();
     const doc = parser.parseFromString(svgString, "image/svg+xml");
+
+    // Mermaid flowchart labels are often rendered in foreignObject HTML blocks.
+    // In some browsers those inner HTML clicks do not bubble reliably to outer SVG
+    // containers, so single-click selection never fires. Make labels transparent
+    // to pointer events so clicks hit the underlying SVG node/edge geometry.
+    const foreignObjects = doc.querySelectorAll("foreignObject");
+    foreignObjects.forEach((fo) => {
+      const existingStyle = fo.getAttribute("style") || "";
+      fo.setAttribute("style", `${existingStyle};pointer-events:none !important;`);
+      fo.setAttribute("pointer-events", "none");
+      const descendants = fo.querySelectorAll("*");
+      descendants.forEach((el) => {
+        const childStyle = el.getAttribute("style") || "";
+        el.setAttribute("style", `${childStyle};pointer-events:none !important;`);
+      });
+    });
     
     const paths = doc.querySelectorAll("path.flowchart-link, .edgePath path.path");
     paths.forEach((path) => {

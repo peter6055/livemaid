@@ -208,23 +208,90 @@ svg[aria-roledescription="error"],
   fill: #6366f1 !important;
 }
 
-/* Hover highlights for sequence diagram message lines, text, and notes */
+/* Hover highlights for sequence diagram message connections */
 .mermaid-container [class*="messageLine"]:hover line,
 .mermaid-container [class*="messageLine"]:hover path,
 .mermaid-container .messageLine:hover line,
 .mermaid-container .messageLine:hover path {
-  stroke: #6366f1 !important;
+  stroke: #7c3aed !important;
+  stroke-width: 4px !important;
+}
+
+/* Synchronized sequence connection hover (line + label) */
+.mermaid-container .sequence-msg-hover-highlight-line,
+.mermaid-container line.sequence-msg-hover-highlight-line,
+.mermaid-container path.sequence-msg-hover-highlight-line {
+  stroke: #7c3aed !important;
   stroke-width: 3px !important;
 }
 
+.mermaid-container .sequence-msg-hover-highlight-line line,
+.mermaid-container .sequence-msg-hover-highlight-line path {
+  stroke: #7c3aed !important;
+  stroke-width: 3px !important;
+}
+
+.mermaid-container .sequence-msg-hover-highlight-text,
+.mermaid-container .sequence-msg-hover-highlight-text:hover {
+  fill: #7c3aed !important;
+  font-weight: 700 !important;
+  text-shadow: none !important;
+}
+
+/* Enable pointer events on sequence diagram interactive elements (Mermaid disables them by default) */
+.mermaid-container [class*="messageLine"],
+.mermaid-container .messageText,
+.mermaid-container .actor,
+.mermaid-container .actor-box,
+.mermaid-container .actor-line,
+.mermaid-container .note,
+.mermaid-container .noteText {
+  pointer-events: all !important;
+  cursor: pointer !important;
+}
+
+/* Widen clickable area on message text labels */
+.mermaid-container .messageText {
+  pointer-events: all !important;
+  cursor: pointer !important;
+  font-size: 15px !important;
+  font-weight: 500;
+  paint-order: stroke fill;
+  stroke: transparent !important;
+  stroke-width: 12px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
 .mermaid-container .messageText:hover {
-  fill: #6366f1 !important;
-  font-weight: 600;
+  fill: #7c3aed !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
 }
 
 .mermaid-container .note:hover rect {
   stroke: #6366f1 !important;
   stroke-width: 2px !important;
+}
+
+.mermaid-container .note rect {
+  fill: #fff59d !important;
+}
+
+/* Improve note text clickability */
+.mermaid-container .noteText {
+  pointer-events: all !important;
+  cursor: pointer !important;
+  paint-order: stroke fill;
+  stroke: transparent !important;
+  stroke-width: 10px !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+}
+
+.mermaid-container .noteText:hover {
+  fill: #1e293b !important;
+  font-weight: 600 !important;
 }
 
 /* Hover highlights for subgraphs / clusters */
