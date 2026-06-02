@@ -102,7 +102,7 @@ export function NodeManipulationToolbar({
         return window.getComputedStyle(el).fill || 'transparent';
       }
     } catch (e) {
-              className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
+      console.error(e);
     }
     return 'transparent';
   };
