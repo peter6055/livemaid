@@ -49,26 +49,26 @@ jobs:
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           railway environment delete "pr-$PR_NUMBER" || true
-          COPY_ARG=()
+          set --
           if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-            COPY_ARG=(--copy "$RAILWAY_TEMPLATE_ENV_ID")
+            set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
           fi
           if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
             if [ -n "$RAILWAY_SERVICE_ID" ]; then
               railway environment new "pr-$PR_NUMBER" \
-                "${COPY_ARG[@]}" \
+                "$@" \
                 --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
                 --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
             else
-              railway environment new "pr-$PR_NUMBER" "${COPY_ARG[@]}"
+              railway environment new "pr-$PR_NUMBER" "$@"
             fi
           else
             if [ -n "$RAILWAY_SERVICE_ID" ]; then
               railway environment new "pr-$PR_NUMBER" \
-                "${COPY_ARG[@]}" \
+                "$@" \
                 --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
             else
-              railway environment new "pr-$PR_NUMBER" "${COPY_ARG[@]}"
+              railway environment new "pr-$PR_NUMBER" "$@"
             fi
           fi
 
