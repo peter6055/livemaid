@@ -8,11 +8,14 @@ on:
       - completed
   pull_request:
     types:
+      - opened
+      - synchronize
+      - reopened
       - closed
 
 jobs:
   deploy_preview:
-    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0] != null }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0] != null) || (github.event_name == 'pull_request' && github.event.action != 'closed') }}
     runs-on: ubuntu-latest
     container: ghcr.io/railwayapp/cli:latest
     permissions:
@@ -25,50 +28,76 @@ jobs:
       RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
-      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
-      PR_HEAD_REF: ${{ github.event.workflow_run.head_branch }}
+      RAILWAY_DEFAULT_ENV: ${{ vars.RAILWAY_DEFAULT_ENV || 'sandbox' }}
+      PR_NUMBER: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number }}
+      PR_HEAD_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref }}
     steps:
       - name: Link Railway project
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          retry_cmd() {
+            attempts="$1"
+            base_delay="$2"
+            shift 2
+            count=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$count" -ge "$attempts" ]; then
+                return 1
+              fi
+              sleep "$((base_delay * count))"
+              count="$((count + 1))"
+            done
+          }
+          LINK_ENV="${RAILWAY_TEMPLATE_ENV_ID:-$RAILWAY_DEFAULT_ENV}"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
-            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
-            else
-              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
-            fi
+            retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV" --workspace "$RAILWAY_WORKSPACE_ID"
           else
-            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
-            else
-              railway link --project "$RAILWAY_PROJECT_ID"
-            fi
+            retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV"
           fi
 
       - name: Recreate preview environment
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
-          railway environment delete "pr-$PR_NUMBER" || true
+          retry_cmd() {
+            attempts="$1"
+            base_delay="$2"
+            shift 2
+            count=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$count" -ge "$attempts" ]; then
+                return 1
+              fi
+              sleep "$((base_delay * count))"
+              count="$((count + 1))"
+            done
+          }
+          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" --yes || true
           set --
           if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
             set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
           fi
           if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
             if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              railway environment new "pr-$PR_NUMBER" \
+              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
                 "$@" \
                 --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
                 --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
             else
-              railway environment new "pr-$PR_NUMBER" "$@"
+              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
             fi
           else
             if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              railway environment new "pr-$PR_NUMBER" \
+              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
                 "$@" \
                 --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
             else
-              railway environment new "pr-$PR_NUMBER" "$@"
+              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
             fi
           fi
 
@@ -83,26 +112,52 @@ jobs:
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
+      RAILWAY_DEFAULT_ENV: ${{ vars.RAILWAY_DEFAULT_ENV || 'sandbox' }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       - name: Link Railway project
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          retry_cmd() {
+            attempts="$1"
+            base_delay="$2"
+            shift 2
+            count=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$count" -ge "$attempts" ]; then
+                return 1
+              fi
+              sleep "$((base_delay * count))"
+              count="$((count + 1))"
+            done
+          }
+          LINK_ENV="${RAILWAY_TEMPLATE_ENV_ID:-$RAILWAY_DEFAULT_ENV}"
           if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
-            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
-            else
-              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
-            fi
+            retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV" --workspace "$RAILWAY_WORKSPACE_ID"
           else
-            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
-            else
-              railway link --project "$RAILWAY_PROJECT_ID"
-            fi
+            retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV"
           fi
 
       - name: Delete preview environment
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
-          railway environment delete "pr-$PR_NUMBER" || true
+          retry_cmd() {
+            attempts="$1"
+            base_delay="$2"
+            shift 2
+            count=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$count" -ge "$attempts" ]; then
+                return 1
+              fi
+              sleep "$((base_delay * count))"
+              count="$((count + 1))"
+            done
+          }
+          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" || true
