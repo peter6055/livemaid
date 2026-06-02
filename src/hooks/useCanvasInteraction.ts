@@ -1495,113 +1495,52 @@ export function useCanvasInteraction({
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (isLocked) return;
 
+    const target = e.target as HTMLElement;
+    
+    // Don't trigger on toolbar/ui elements
+    if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
+      return;
+    }
+
+    // If in edit mode, commit the edit before transitioning
+    if (isInlineEditing) {
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    }
+
+    // Try to find what was clicked
+    const clicked = getClickedNode(target);
+
     const container = containerRef.current;
     if (!container) return;
     const containerRectForScale = container.getBoundingClientRect();
     const scale = containerRectForScale.width / container.offsetWidth;
 
-    // For the second click of a physical double-click (detail=2), immediately enter edit mode
-    // using the already-selected node. Only applicable when NOT already in EDIT_MODE —
-    // cross-element edit transitions are handled by the capture-phase native dblclick listener.
-    if (e.detail >= 2 && !isInlineEditing) {
-        // Signal the native dblclick capture listener to skip: this gesture is already handled.
-        dblClickHandledRef.current = true;
-        setTimeout(() => { dblClickHandledRef.current = false; }, 100); // auto-clear as safety net
-        handleEditClick(e);
-        return;
-    }
-
-    // Prevent triggering click on selection components (toolbar buttons, etc)
-    const target = e.target as HTMLElement;
-    if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
-        return;
-    }
-
-    // Pass the target directly to getClickedNode - it will walk up the DOM tree to find the node/actor/edge
-    const clicked = getClickedNode(target);
-
-    // STATE MACHINE: if in EDIT_MODE, decide to stay or commit-and-transition.
-    // This is what makes cross-element clicks work instead of dying silently.
-    if (isInlineEditing) {
-      if (clicked && clicked.cleanId === selectedNodeIdRef.current) {
-        return; // Same element — preserve EDIT_MODE, don't interrupt the textarea
-      }
-      // Cross-element single-click or background click → commit edit, then transition.
-      // We do NOT call document.activeElement.blur() here to avoid a double-commit:
-      // commitEditRef handles the submit; blurring the textarea would call handleEditSubmit twice.
-      commitEditRef.current?.();
-      setIsInlineEditing(false);
-    } else {
-      // Shift browser focus away from Monaco/inputs so global delete shortcuts are active.
-      if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
-    }
-
+    // If clicked a node/actor/message, select it
     if (clicked) {
-        if (clicked.cleanId) {
-          lastClickRef.current = { id: clicked.cleanId, time: Date.now() };
-        }
-        setSelectedNodeIdWithRef(clicked.cleanId);
-        setSelectedSvgId(clicked.rawSvgId);
-        // Use canonical hit-test boxes from getClickedNode.
-        // For SEQ_MSG this is already the combined text+line selection bounds.
-        setSelectionBox(clicked.newSelectionBox);
-        setTextBox(clicked.newTextBox);
+      setSelectedNodeIdWithRef(clicked.cleanId);
+      setSelectedSvgId(clicked.rawSvgId);
+      setSelectionBox(clicked.newSelectionBox);
+      setTextBox(clicked.newTextBox);
+      
+      // Track for double-click detection
+      if (clicked.cleanId) {
+        lastClickRef.current = { id: clicked.cleanId, time: Date.now() };
+      }
     } else {
-        // If clicking background/empty space, check if clicking a flowchart link (edge path) or edge label
-        // Use svgTarget (resolved via elementsFromPoint) rather than e.target for the same staleness reason.
-        let current: SVGElement | null = svgTarget as SVGElement;
-        let edgeFound = false;
-        
-        // Let's check if we clicked on an edge path or label
-        while (current && current.tagName !== 'svg') {
-          if (current.id) {
-            const cleanId = normalizeId(current.id);
-            if (isEdgeId(cleanId)) {
-              setSelectedNodeIdWithRef(cleanId);
-              setSelectedSvgId(current.id);
-              
-              const rect = current.getBoundingClientRect();
-              const containerRect = container.getBoundingClientRect();
-              
-              const x = (rect.left - containerRect.left + container.scrollLeft) / scale;
-              const y = (rect.top - containerRect.top + container.scrollTop) / scale;
-              const w = rect.width / scale;
-              const h = rect.height / scale;
-              
-              setSelectionBox({ x, y, width: w, height: h });
-              
-              // Edge-level label selection
-              const labelEl = current.closest('.edgePath')?.querySelector('.edgeLabel') || current.querySelector('.edgeLabel');
-              if (labelEl) {
-                const labelRect = labelEl.getBoundingClientRect();
-                const tx = (labelRect.left - containerRect.left + container.scrollLeft) / scale;
-                const ty = (labelRect.top - containerRect.top + container.scrollTop) / scale;
-                const tw = labelRect.width / scale;
-                const th = labelRect.height / scale;
-                setTextBox({ x: tx, y: ty, width: tw, height: th });
-              } else {
-                setTextBox({ x, y, width: w, height: h });
-              }
-              
-              edgeFound = true;
-              break;
-            }
-          }
-          current = current.parentElement as SVGElement | null;
-        }
-
-        if (!edgeFound) {
-          lastClickRef.current = null;
-          setSelectedNodeIdWithRef(null);
-          setSelectedSvgId(null);
-          setSelectionBox(null);
-          setTextBox(null);
-          setIsInlineEditing(false);
-        }
+      // Clicked background - clear selection
+      setSelectedNodeIdWithRef(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
+      lastClickRef.current = null;
     }
-  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing, setSelectedNodeIdWithRef]);
+
+    // Blur Monaco/other inputs so global shortcuts work
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, [getClickedNode, containerRef, isLocked, isInlineEditing, setSelectedNodeIdWithRef, commitEditRef]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       // Throttle to one execution per animation frame — prevents expensive DOM work
