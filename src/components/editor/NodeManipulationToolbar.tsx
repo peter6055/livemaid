@@ -87,7 +87,7 @@ export function NodeManipulationToolbar({
         return label.startsWith('<i>') && label.endsWith('</i>') || label.includes('<i>');
       }
     }
-          className="absolute flex items-center gap-0.5 bg-background border border-border rounded-xl px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
+    return false;
   };
 
   const getActiveBgColor = () => {
