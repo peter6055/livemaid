@@ -76,8 +76,10 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
     inlineInputRef,
+    commitEditRef,
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
@@ -843,6 +845,14 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
         }
     }
     
+    // If nothing changed, skip recompile and keep selection — behaves like Escape.
+    // This prevents an unnecessary SVG recompile that shifts node positions,
+    // which would cause the next click to miss the node (the "clicks die" bug).
+    if (newCode === code) {
+      setIsInlineEditing(false);
+      return;
+    }
+
     handleCodeChange(newCode);
     setIsInlineEditing(false);
     // Clear selection after edit so sequence overlay doesn't auto-re-appear
@@ -851,6 +861,9 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     setSelectionBox(null);
     setTextBox(null);
   };
+  // Keep commitEditRef fresh every render so the interaction hook can commit
+  // the current edit before any cross-element or background transition.
+  commitEditRef.current = handleEditSubmit;
 
   const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
       if (!selectedNodeId) return;
@@ -1698,6 +1711,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
           sequenceLifelineOverlay={sequenceLifelineOverlay}
           hoveredSequenceActorBox={hoveredSequenceActorBox}
           hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+          hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
           sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
           startSequenceConnection={startSequenceConnection}
           isInlineEditing={isInlineEditing}

@@ -30,6 +30,7 @@ The editor interface uses a resizable split-screen layout (`react-resizable-pane
 - **Premium Feel**: The application enforces a dark mode by default (`bg-slate-950`), utilizing glassmorphism, subtle borders (`border-slate-800`), and smooth transitions (`transition-all`).
 - **Micro-interactions**: Components like cards and nodes have hover states, subtle scaling, and opacity changes to feel alive and responsive.
 - **No Placeholders**: We use functional, aesthetic components instead of generic placeholders.
+- **Full Design Specification**: Complete color tokens, typography scale, component styles, and interaction guidelines are in `reference/DESIGN.md`. Always consult it before adding new UI surfaces.
 
 ## 5. Development Workflow
 - **Event Handling Caution**: `react-zoom-pan-pinch` actively intercepts and swallows certain standard DOM events (like `onDoubleClick` when double-click-to-zoom is disabled). When building new interactive features over the canvas, prefer calculating synthetic interactions inside standard `onClick`/`onMouseDown` handlers.

@@ -35,6 +35,7 @@ interface EditorCanvasProps {
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
   hoveredSequenceActorBox: { x: number, y: number, width: number, height: number } | null;
   hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
+  hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
   onHoveredSequenceMessageHover: (index: number) => void;
@@ -92,6 +93,7 @@ export function EditorCanvas({
   sequenceLifelineOverlay,
   hoveredSequenceActorBox,
   hoveredSequenceMessageBox,
+  hoveredFlowchartNodeBox,
   sequenceMessageTriggerAreas,
   startSequenceConnection,
   onHoveredSequenceMessageHover,
@@ -254,8 +256,7 @@ export function EditorCanvas({
                 <div 
                   ref={containerRef}
                   className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                  onClick={!isLocked ? ((e) => { console.log('[container.onClick] fired'); handleSvgClick(e); }) : undefined}
-                  onDoubleClick={(e) => { console.log('[container.onDoubleClick] fired'); if (!isLocked) handleEditClick(e); }}
+                  onClick={!isLocked ? ((e) => { handleSvgClick(e); }) : undefined}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
@@ -314,6 +315,21 @@ export function EditorCanvas({
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.55,
+                      }}
+                    />
+                  )}
+
+                  {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      style={{
+                        left: hoveredFlowchartNodeBox.x - 3,
+                        top: hoveredFlowchartNodeBox.y - 3,
+                        width: hoveredFlowchartNodeBox.width + 6,
+                        height: hoveredFlowchartNodeBox.height + 6,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: 'solid',
+                        opacity: 0.6,
                       }}
                     />
                   )}
@@ -464,6 +480,7 @@ export function EditorCanvas({
                             currentType={currentType}
                             selectedSvgId={selectedSvgId}
                             scale={state.scale}
+                            onEditLabel={(e) => handleEditClick(e)}
                             onUpdateStyle={handleUpdateStyle}
                             onFormatNodeLabel={handleFormatNodeLabel}
                             onChangeShape={handleChangeShape}

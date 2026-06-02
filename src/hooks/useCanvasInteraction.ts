@@ -51,6 +51,7 @@ export function useCanvasInteraction({
   } | null>(null);
   const [hoveredSequenceActorBox, setHoveredSequenceActorBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredSequenceMessageBox, setHoveredSequenceMessageBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [hoveredFlowchartNodeBox, setHoveredFlowchartNodeBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
   const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
 
@@ -1084,7 +1085,6 @@ export function useCanvasInteraction({
 
 
   const getClickedNode = useCallback((target: Element) => {
-    console.log('[getClickedNode] Called with target:', target?.tagName, target?.id, target?.className);
     const isSequenceMessageLineElement = (el: SVGElement | null) => {
       if (!el?.classList) return false;
       return Array.from(el.classList).some((c) => c.startsWith('messageLine'));
@@ -1152,7 +1152,6 @@ export function useCanvasInteraction({
           ? (resolvedByName as string)
           : (nearest?.actorId || resolvedByName || actorDisplayName);
         nodeId = `SEQ_ACTOR_${actorId}`;
-        console.log('[getClickedNode] Actor detected, actorDisplayName:', actorDisplayName, 'resolved:', resolvedByName, 'final actorId:', actorId, 'nodeId:', nodeId);
         break;
       }
       // Sequence message text
@@ -1329,56 +1328,65 @@ export function useCanvasInteraction({
             height: textRect.height / scale
         };
         
-        console.log('[getClickedNode] Returning:', { cleanId, rawSvgId });
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
-    console.log('[getClickedNode] No match found, returning null');
     return null;
   }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+  // commitEditRef is a ref slot that LiveMaidEditor fills with handleEditSubmit.
+  // The hook calls it before any cross-element or background transition so that
+  // typed edits are committed to the diagram code before the selection changes.
+  const commitEditRef = useRef<(() => void) | null>(null);
+  const DOUBLE_CLICK_MS = 300;
+  const lastClickRef = useRef<{ id: string; time: number } | null>(null);
+  // Set to true when click(detail=2) already handled the dblclick gesture so the capture-phase
+  // native dblclick listener knows to skip — prevents double-invocation of handleEditClick.
+  const dblClickHandledRef = useRef(false);
+  // requestAnimationFrame handle for throttling mousemove
+  const mouseMoveRafRef = useRef<number | null>(null);
+  const mouseMoveInnerRef = useRef<((x: number, y: number, t: EventTarget | null) => void) | null>(null);
 
   const handleEditClick = useCallback((e: React.MouseEvent | Event) => {
-    console.log('[handleEditClick] Called with event type:', e.type);
     if ('stopPropagation' in e) e.stopPropagation();
-    // Guard: if already editing, do nothing (prevents double-fire from native dblclick + timer)
-    if (isInlineEditing) {
-      console.log('[handleEditClick] Already editing, returning');
-      return;
-    }
-    
+
     const currentType = determineDiagramType(code);
-    console.log('[handleEditClick] Diagram type:', currentType);
     if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
-        console.log('[handleEditClick] Invalid diagram type, returning');
         return;
     }
 
-    // Use elementsFromPoint (plural) to find the actual SVG element at the double-click position,
-    // since e.target might be the container div or an overlay div sitting on top of the SVG
+    // Resolve actual SVG element via elementsFromPoint to bypass overlay divs
     let targetElement = e.target as Element;
     if ('clientX' in e && 'clientY' in e) {
       const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-      console.log('[handleEditClick] elementsFromPoint found:', elementsAtPoint.map(el => el.tagName + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '')));
-      // Find the first SVG element (not a div/overlay) — these are the actual Mermaid diagram elements
       const svgElement = elementsAtPoint.find(el => el.tagName.toLowerCase() !== 'div' && el.namespaceURI === 'http://www.w3.org/2000/svg');
       if (svgElement) {
-        console.log('[handleEditClick] Using SVG element:', svgElement.tagName, svgElement.className);
         targetElement = svgElement;
       } else {
         const firstEl = elementsAtPoint[0];
-        console.log('[handleEditClick] No SVG element found, using first:', firstEl?.tagName);
         if (firstEl) targetElement = firstEl;
       }
-    } else {
-      console.log('[handleEditClick] No clientX/clientY, using e.target');
     }
 
     const result = getClickedNode(targetElement);
-    // Use ref for selectedNodeId to avoid stale closure — state updates from first click
-    // may not be visible in this callback if it was created before the state update
+    // Use ref for selectedNodeId to avoid stale closure
     let targetNodeId = selectedNodeIdRef.current;
-    console.log('[handleEditClick] targetNodeId from ref:', targetNodeId, 'result:', result?.cleanId);
+
+    // STATE MACHINE: handle EDIT_MODE → EDIT_MODE transitions (cross-element or empty-space double-click)
+    if (isInlineEditing) {
+      if (!result) {
+        // Double-click on empty space while editing → commit and go to IDLE
+        commitEditRef.current?.();
+        setIsInlineEditing(false);
+        return;
+      }
+      if (result.cleanId === selectedNodeIdRef.current) {
+        return; // Same element — already in EDIT_MODE, no-op
+      }
+      // Cross-element double-click → commit current edit, then enter EDIT_MODE for new element
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    }
 
     if (result) {
         setSelectionBox(result.newSelectionBox);
@@ -1395,10 +1403,7 @@ export function useCanvasInteraction({
     if (targetNodeId.startsWith('SEQ_ACTOR_')) {
         // Read the current display label from the actor declaration
         const actorId = targetNodeId.replace('SEQ_ACTOR_', '');
-        console.log('[handleEditClick] SEQ_ACTOR found, actorId:', actorId);
-        console.log('[handleEditClick] Full code:', code);
         const lines = code.split('\n');
-        console.log('[handleEditClick] Code lines count:', lines.length);
         let foundLabel = actorId;
         for (const line of lines) {
             const trimmed = line.trim();
@@ -1406,16 +1411,13 @@ export function useCanvasInteraction({
             if (match) {
                 const id = match[1];
                 const alias = match[2];
-                console.log('[handleEditClick] Matched line:', {trimmed, id, alias});
                 if (id === actorId) {
                     foundLabel = alias?.trim() || id;
-                    console.log('[handleEditClick] Found label:', foundLabel);
                     break;
                 }
             }
         }
         currentText = foundLabel;
-        console.log('[handleEditClick] Setting currentText to:', currentText);
     } else if (targetNodeId.startsWith('SEQ_MSG_')) {
         const idx = parseInt(targetNodeId.replace('SEQ_MSG_', ''), 10);
       const msgLines = getSequenceMessageEntries(code).map((entry) => entry.line);
@@ -1491,53 +1493,65 @@ export function useCanvasInteraction({
 
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    console.log('[handleSvgClick] Click event fired, type:', e.type);
-    if (isLocked) {
-      console.log('[handleSvgClick] Locked, returning');
-      return;
-    }
-    if (isInlineEditing) {
-      console.log('[handleSvgClick] Already editing, returning');
-      return;
-    }
+    if (isLocked) return;
 
     const container = containerRef.current;
-    if (!container) {
-      console.log('[handleSvgClick] No container');
-      return;
-    }
+    if (!container) return;
     const containerRectForScale = container.getBoundingClientRect();
     const scale = containerRectForScale.width / container.offsetWidth;
 
-    // Shift browser focus away from any text editors/inputs so global delete shortcuts are active
-    if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
+    // For the second click of a physical double-click (detail=2), immediately enter edit mode
+    // using the already-selected node. Only applicable when NOT already in EDIT_MODE —
+    // cross-element edit transitions are handled by the capture-phase native dblclick listener.
+    if (e.detail >= 2 && !isInlineEditing) {
+        // Signal the native dblclick capture listener to skip: this gesture is already handled.
+        dblClickHandledRef.current = true;
+        setTimeout(() => { dblClickHandledRef.current = false; }, 100); // auto-clear as safety net
+        handleEditClick(e);
+        return;
     }
-    // Prevent triggering click on selection components
+
+    // Prevent triggering click on selection components (toolbar buttons, etc)
     const target = e.target as HTMLElement;
     if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
         return;
     }
 
+    // Pass the target directly to getClickedNode - it will walk up the DOM tree to find the node/actor/edge
     const clicked = getClickedNode(target);
+
+    // STATE MACHINE: if in EDIT_MODE, decide to stay or commit-and-transition.
+    // This is what makes cross-element clicks work instead of dying silently.
+    if (isInlineEditing) {
+      if (clicked && clicked.cleanId === selectedNodeIdRef.current) {
+        return; // Same element — preserve EDIT_MODE, don't interrupt the textarea
+      }
+      // Cross-element single-click or background click → commit edit, then transition.
+      // We do NOT call document.activeElement.blur() here to avoid a double-commit:
+      // commitEditRef handles the submit; blurring the textarea would call handleEditSubmit twice.
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    } else {
+      // Shift browser focus away from Monaco/inputs so global delete shortcuts are active.
+      if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+    }
+
     if (clicked) {
-        // Double-click-to-edit: if the user clicks an already-selected node, open edit mode immediately.
-        // This is more reliable than a fixed timer window (e.g. 400ms, 4000ms) because SVG re-renders
-        // between clicks can detach elements, causing native dblclick and timer-based detection to fail.
-        // The ref (selectedNodeIdRef) is updated synchronously on the first click so this is always accurate.
-        if (clicked.cleanId === selectedNodeIdRef.current) {
-            handleEditClick(e);
-            return;
+        if (clicked.cleanId) {
+          lastClickRef.current = { id: clicked.cleanId, time: Date.now() };
         }
         setSelectedNodeIdWithRef(clicked.cleanId);
         setSelectedSvgId(clicked.rawSvgId);
-      // Use canonical hit-test boxes from getClickedNode.
-      // For SEQ_MSG this is already the combined text+line selection bounds.
-      setSelectionBox(clicked.newSelectionBox);
-      setTextBox(clicked.newTextBox);
+        // Use canonical hit-test boxes from getClickedNode.
+        // For SEQ_MSG this is already the combined text+line selection bounds.
+        setSelectionBox(clicked.newSelectionBox);
+        setTextBox(clicked.newTextBox);
     } else {
         // If clicking background/empty space, check if clicking a flowchart link (edge path) or edge label
-        let current: SVGElement | null = e.target as SVGElement;
+        // Use svgTarget (resolved via elementsFromPoint) rather than e.target for the same staleness reason.
+        let current: SVGElement | null = svgTarget as SVGElement;
         let edgeFound = false;
         
         // Let's check if we clicked on an edge path or label
@@ -1579,6 +1593,7 @@ export function useCanvasInteraction({
         }
 
         if (!edgeFound) {
+          lastClickRef.current = null;
           setSelectedNodeIdWithRef(null);
           setSelectedSvgId(null);
           setSelectionBox(null);
@@ -1589,11 +1604,27 @@ export function useCanvasInteraction({
   }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing, setSelectedNodeIdWithRef]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+      // Throttle to one execution per animation frame — prevents expensive DOM work
+      // (getBoundingClientRect, SVG traversal, lifeline calculations) from running on
+      // every pixel of mouse movement.
+      if (mouseMoveRafRef.current !== null) return;
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+      const eventTarget = e.target;
+      mouseMoveRafRef.current = requestAnimationFrame(() => {
+        mouseMoveRafRef.current = null;
+        mouseMoveInnerRef.current?.(clientX, clientY, eventTarget);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const _handleMouseMoveInner = useCallback((clientX: number, clientY: number, eventTarget: EventTarget | null) => {
       const container = containerRef.current;
       if (!container) return;
       const containerRectForScale = container.getBoundingClientRect();
       const scale = containerRectForScale.width / container.offsetWidth;
       const diagramType = determineDiagramType(code);
+      const e = { clientX, clientY, target: eventTarget } as React.MouseEvent<HTMLDivElement>;
 
       const mouseX = (e.clientX - containerRectForScale.left + container.scrollLeft) / scale;
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
@@ -1618,9 +1649,28 @@ export function useCanvasInteraction({
         } else {
           setHoveredSequenceActorBox(null);
         }
+        setHoveredFlowchartNodeBox(null);
         updateSequenceMessageHoverHighlight(e.target);
+      } else if (diagramType === 'flowchart' || diagramType === 'graph') {
+        setHoveredSequenceActorBox(null);
+        clearSequenceMessageHoverHighlight();
+        // Show hover highlight on flowchart nodes (skip already-selected node)
+        const nodeTarget = (e.target as Element | null)?.closest('.node') as SVGElement | null;
+        if (nodeTarget && !isInlineEditing) {
+          const nodeRect = nodeTarget.getBoundingClientRect();
+          const hoverBox = {
+            x: (nodeRect.left - containerRectForScale.left + container.scrollLeft) / scale,
+            y: (nodeRect.top - containerRectForScale.top + container.scrollTop) / scale,
+            width: nodeRect.width / scale,
+            height: nodeRect.height / scale,
+          };
+          setHoveredFlowchartNodeBox(hoverBox);
+        } else {
+          setHoveredFlowchartNodeBox(null);
+        }
       } else {
         setHoveredSequenceActorBox(null);
+        setHoveredFlowchartNodeBox(null);
         clearSequenceMessageHoverHighlight();
       }
 
@@ -1662,8 +1712,24 @@ export function useCanvasInteraction({
               return;
           }
 
-          const hoverThreshold = 44;
-          const nearestLifeline = lifelines.find(l => Math.abs(l.x - mouseX) <= hoverThreshold && mouseY >= l.y1 - 8 && mouseY <= l.y2 + 30);
+          // Compute adaptive threshold based on lifeline spacing to prevent false triggers
+          // on dense diagrams (many participants). With 16+ participants zoomed out,
+          // a fixed 44px threshold matches almost everywhere — so we cap at 45% of spacing.
+          const sortedByX = [...lifelines].sort((a, b) => a.x - b.x);
+          const minSpacing = sortedByX.length > 1
+            ? Math.min(...sortedByX.slice(1).map((l, i) => l.x - sortedByX[i].x))
+            : Infinity;
+          const hoverThreshold = Number.isFinite(minSpacing) ? Math.min(44, minSpacing * 0.45) : 44;
+
+          // Find the nearest lifeline (not just the first within threshold)
+          const nearestLifeline = lifelines.reduce<{ l: (typeof lifelines)[0] | null; dist: number }>(
+            (best, l) => {
+              if (mouseY < l.y1 - 8 || mouseY > l.y2 + 30) return best;
+              const dist = Math.abs(l.x - mouseX);
+              return dist < best.dist ? { l, dist } : best;
+            },
+            { l: null, dist: hoverThreshold }
+          ).l;
           if (nearestLifeline) {
             setSequenceLifelineOverlay({
               actorId: nearestLifeline.actorId,
@@ -1703,6 +1769,8 @@ export function useCanvasInteraction({
     updateSequenceMessageHoverHighlight,
     clearSequenceMessageHoverHighlight
   ]);
+  // Keep mouseMoveInnerRef always pointing at the latest version (avoids stale closure in RAF)
+  mouseMoveInnerRef.current = _handleMouseMoveInner;
 
   const handleAddNodeFromSelected = useCallback((
       startId: string | null, 
@@ -1791,6 +1859,7 @@ export function useCanvasInteraction({
 
   const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       clearSequenceMessageHoverHighlight();
+      setHoveredFlowchartNodeBox(null);
       if (connectionState.active && connectionState.startNodeId) {
         const diagramType = determineDiagramType(code);
         if (connectionState.isDragging) {
@@ -1967,6 +2036,36 @@ export function useCanvasInteraction({
     };
   }, [containerRef, svgContent, normalizeId]);
 
+  // Capture-phase native dblclick listener: fires BEFORE any child element handlers,
+  // bypassing toolbar buttons that call e.stopPropagation() on 'click' (not 'dblclick').
+  // This ensures double-clicking when the toolbar overlaps the node still enters EDIT_MODE.
+  // handleEditClick is idempotent — if already in EDIT_MODE for the same node, it no-ops.
+  const handleEditClickRef = useRef(handleEditClick);
+  handleEditClickRef.current = handleEditClick; // always current; updated every render
+
+  useEffect(() => {
+    if (isLocked) return;
+
+    const handleNativeDblClick = (e: MouseEvent) => {
+      // Only handle dblclicks within the canvas container (not toolbar overlays outside it, etc.)
+      const container = containerRef.current;
+      if (!container || !container.contains(e.target as Node)) return;
+
+      // If click(detail=2) already handled this dblclick gesture, skip to avoid double-invocation.
+      // (The capture listener fires AFTER click(detail=2) has already entered EDIT_MODE.)
+      if (dblClickHandledRef.current) {
+        dblClickHandledRef.current = false;
+        return;
+      }
+      handleEditClickRef.current(e as unknown as React.MouseEvent);
+    };
+
+    // Register on document (capture phase) — above react-zoom-pan-pinch's TransformWrapper which
+    // intercepts dblclick at its own capture listener (even when doubleClick.disabled=true).
+    document.addEventListener('dblclick', handleNativeDblClick, true);
+    return () => document.removeEventListener('dblclick', handleNativeDblClick, true);
+  }, [isLocked]); // re-runs if locked state changes
+
   return {
     selectedNodeId, setSelectedNodeId,
     selectedNodeIds: [] as string[],
@@ -1980,11 +2079,13 @@ export function useCanvasInteraction({
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
     dragState: null as null,
     setDragState: (_: any) => {},
     startSequenceConnection,
     inlineInputRef,
+    commitEditRef,
     getClickedNode,
     handleSvgClick,
     handleMouseMove,

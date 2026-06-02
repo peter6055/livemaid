@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { ArrowLeftRight, Link2, Pencil, SquarePen, Trash2 } from "lucide-react";
+import { ArrowLeftRight, Link2, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,14 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
 interface SequenceManipulationToolbarProps {
@@ -38,15 +30,6 @@ export function SequenceManipulationToolbar({
 }: SequenceManipulationToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isNoteSelected = Boolean(selectedNodeId?.startsWith("SEQ_NOTE_"));
-  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
-  const [notePosition, setNotePosition] = useState<"left" | "right" | "over">("right");
-
-  const handleConfirmAddNote = () => {
-    onAddNote(notePosition);
-    setNoteDialogOpen(false);
-    setNotePosition("right");
-  };
-
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -79,10 +62,6 @@ export function SequenceManipulationToolbar({
           <>
             <button className={btnCls} onClick={onEditLabel} title="Rename">
               <Pencil className="w-3.5 h-3.5" />
-            </button>
-
-            <button className={btnCls} onClick={() => setNoteDialogOpen(true)} title="Note">
-              <SquarePen className="w-3.5 h-3.5" />
             </button>
 
             <div className="w-px h-4 bg-border mx-0.5" />
@@ -119,50 +98,6 @@ export function SequenceManipulationToolbar({
         </button>
       </div>
 
-      <Dialog open={noteDialogOpen} onOpenChange={setNoteDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Note</DialogTitle>
-            <DialogDescription>
-              Choose where to place the note in relation to the sequence.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4 space-y-2">
-            <p className="text-sm text-muted-foreground mb-3">Position</p>
-            <Button
-              variant={notePosition === "left" ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => setNotePosition("left")}
-            >
-              Note to the left
-            </Button>
-            <Button
-              variant={notePosition === "right" ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => setNotePosition("right")}
-            >
-              Note to the right
-            </Button>
-            <Button
-              variant={notePosition === "over" ? "default" : "outline"}
-              className="w-full justify-start"
-              onClick={() => setNotePosition("over")}
-            >
-              Note over
-            </Button>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmAddNote}>
-              Add Note
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
