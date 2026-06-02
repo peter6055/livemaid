@@ -1493,32 +1493,63 @@ export function useCanvasInteraction({
 
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    console.log('[click] event');
+    const debugClicks = (() => {
+      if (typeof window === 'undefined') return false;
+      const w = window as Window & { __LM_DEBUG_CLICKS?: boolean };
+      return Boolean(w.__LM_DEBUG_CLICKS) || window.localStorage.getItem('livemaid:debug-clicks') === '1';
+    })();
+
+    const debugLog = (...args: unknown[]) => {
+      if (debugClicks) console.log('[canvas-click]', ...args);
+    };
+
     if (isLocked) return;
-    if (isInlineEditing) return;
 
     const target = e.target as HTMLElement;
     if (target.closest('[data-scale-lock]') || target.closest('[data-scale-lock-border]') || target.closest('[data-inline-toolbar]')) {
+      debugLog('ignored-ui-target', target.tagName);
       return;
     }
 
     const clicked = getClickedNode(target);
-    console.log('[click] clicked =', clicked?.cleanId);
+    debugLog('target', target.tagName, { id: target.id, clicked: clicked?.cleanId ?? null, inlineEditing: isInlineEditing });
+
+    // Robust double-click entry: some Mermaid SVG/foreignObject targets do not
+    // consistently dispatch React onDoubleClick. Use click count from the shared
+    // handler so double-click on the currently selected element always enters edit mode.
+    if (e.detail >= 2 && clicked && clicked.cleanId === selectedNodeIdRef.current && !isInlineEditing) {
+      debugLog('enter-edit-mode-double-click', clicked.cleanId);
+      handleEditClick(e);
+      return;
+    }
+
+    // State transition rule:
+    // - Same element while editing: keep editing.
+    // - Different element/background while editing: commit current edit, then continue selection flow.
+    if (isInlineEditing) {
+      if (clicked && clicked.cleanId === selectedNodeIdRef.current) {
+        debugLog('stay-in-edit-mode', clicked.cleanId);
+        return;
+      }
+      debugLog('commit-edit-before-transition', { from: selectedNodeIdRef.current, to: clicked?.cleanId ?? null });
+      commitEditRef.current?.();
+      setIsInlineEditing(false);
+    }
     
     if (clicked) {
-      console.log('[click] setting selection to', clicked.cleanId);
+      debugLog('select', clicked.cleanId);
       setSelectedNodeIdWithRef(clicked.cleanId);
       setSelectedSvgId(clicked.rawSvgId);
       setSelectionBox(clicked.newSelectionBox);
       setTextBox(clicked.newTextBox);
     } else {
-      console.log('[click] clearing selection');
+      debugLog('clear-selection');
       setSelectedNodeIdWithRef(null);
       setSelectedSvgId(null);
       setSelectionBox(null);
       setTextBox(null);
     }
-  }, [getClickedNode, isLocked, isInlineEditing, setSelectedNodeIdWithRef]);
+  }, [getClickedNode, isLocked, isInlineEditing, setSelectedNodeIdWithRef, setIsInlineEditing, handleEditClick]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       // Throttle to one execution per animation frame — prevents expensive DOM work

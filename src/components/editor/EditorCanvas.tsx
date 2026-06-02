@@ -182,44 +182,49 @@ export function EditorCanvas({
     };
   }, [shapePicker, setShapePicker]);
 
-  // Capture clicks on SVG elements that don't bubble up through React handlers
+  // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
+  // React bubbling/capture handlers. Use a document-level capture fallback so single
+  // clicks inside the canvas always resolve a target and route through handleSvgClick.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+    if (isLocked) return;
 
-    // Find all SVG elements (nodes, actors, etc.) and add click handlers
-    const mermaidContainer = container.querySelector('.mermaid-container');
-    if (!mermaidContainer) return;
+    const onDocumentMouseDownCapture = (event: MouseEvent) => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    // Add click listeners to all SVG elements
-    const allElements = mermaidContainer.querySelectorAll('g, text, tspan, rect, path, circle, ellipse');
-    
-    const handleElementClick = (e: Event) => {
-      e.stopPropagation();
-      const target = e.target as HTMLElement;
-      console.log('[direct svg click] element:', target.tagName);
-      
-      const reactEvent = {
-        target: target,
-        currentTarget: mermaidContainer,
-        stopPropagation: () => {},
-        preventDefault: () => e.preventDefault(),
-      } as any;
-      
-      handleSvgClick(reactEvent);
+      const rect = container.getBoundingClientRect();
+      const insideContainer =
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+
+      if (!insideContainer) return;
+
+      const elements = document.elementsFromPoint(event.clientX, event.clientY) as HTMLElement[];
+      const target =
+        elements.find((el) => container.contains(el)) ||
+        (event.target as HTMLElement | null) ||
+        container;
+
+      const syntheticEvent = {
+        target,
+        currentTarget: container,
+        detail: event.detail,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        stopPropagation: () => event.stopPropagation(),
+        preventDefault: () => event.preventDefault(),
+      } as unknown as React.MouseEvent<HTMLDivElement>;
+
+      handleSvgClick(syntheticEvent);
     };
 
-    // Add click listeners to all SVG elements
-    allElements.forEach(el => {
-      el.addEventListener('click', handleElementClick);
-    });
-
+    document.addEventListener('mousedown', onDocumentMouseDownCapture, true);
     return () => {
-      allElements.forEach(el => {
-        el.removeEventListener('click', handleElementClick);
-      });
+      document.removeEventListener('mousedown', onDocumentMouseDownCapture, true);
     };
-  }, [containerRef, handleSvgClick, svgContent]);
+  }, [containerRef, handleSvgClick, isLocked]);
 
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
@@ -295,7 +300,6 @@ export function EditorCanvas({
                 <div 
                   ref={containerRef}
                   className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                  onClick={!isLocked ? ((e) => { handleSvgClick(e); }) : undefined}
                   onDoubleClick={!isLocked ? ((e) => { handleEditClick(e); }) : undefined}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
