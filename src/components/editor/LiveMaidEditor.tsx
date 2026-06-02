@@ -26,9 +26,8 @@ import mermaid from "mermaid";
 import type { VersionHistoryEntry } from "@/lib/api/storage";
 import { DemoBanner } from "@/components/DemoBanner";
 
-const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-
-export function LiveMaidEditor({ documentId }: { documentId: string }) {
+export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: string; isDemo?: boolean }) {
+  const IS_DEMO_MODE = isDemo;
   const router = useRouter();
 
   const {

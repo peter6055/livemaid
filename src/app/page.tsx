@@ -1,5 +1,6 @@
 import Dashboard from '@/components/Dashboard';
 
 export default function Home() {
-  return <Dashboard />;
+  const isDemo = process.env.DEMO_MODE === 'true';
+  return <Dashboard isDemo={isDemo} />;
 }

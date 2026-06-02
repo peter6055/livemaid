@@ -31,9 +31,9 @@ RUN adduser --system --uid 1001 nextjs
 RUN mkdir .next
 RUN chown nextjs:nodejs .next
 
-# Ensure data directory exists and is writable
-RUN mkdir -p /app/data
-RUN chown -R nextjs:nodejs /app/data
+# Ensure data directories exist and are writable
+RUN mkdir -p /app/data /app/demo
+RUN chown -R nextjs:nodejs /app/data /app/demo
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing

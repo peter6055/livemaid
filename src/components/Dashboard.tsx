@@ -40,9 +40,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { DemoBanner } from "@/components/DemoBanner";
 
-const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === 'true';
-
-export default function Dashboard() {
+export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -198,7 +196,7 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {!IS_DEMO_MODE && (
+              {!isDemo && (
                 <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                   <PlusSquare className="w-4 h-4" />
                   <span>New Diagram</span>
@@ -224,7 +222,7 @@ export default function Dashboard() {
         </div>
       </nav>
 
-      {IS_DEMO_MODE && <DemoBanner />}
+      {isDemo && <DemoBanner />}
 
       {isNavigating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
@@ -281,7 +279,7 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
-            {!IS_DEMO_MODE && (
+            {!isDemo && (
               <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
                 <Plus className="w-5 h-5 mr-2" />
                 New Diagram
@@ -352,7 +350,7 @@ export default function Dashboard() {
                 : 'Try a different search term or create a new diagram.'}
             </p>
             <div className="flex gap-3">
-              {!IS_DEMO_MODE && (
+              {!isDemo && (
                 <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
                   Create Diagram
                 </Button>
@@ -374,7 +372,7 @@ export default function Dashboard() {
                   onRename={openRenameDialog}
                   onDelete={openDeleteDialog}
                   onNavigate={handleNavigate}
-                  isDemo={IS_DEMO_MODE}
+                  isDemo={isDemo}
                 />
               ))}
             </div>
