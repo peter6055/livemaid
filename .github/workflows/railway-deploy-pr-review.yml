@@ -83,6 +83,7 @@ jobs:
           if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$ENV_NAME\""; then
             echo "Preview environment $ENV_NAME already exists. Skipping creation."
           else
+            CREATE_FAILED=0
             set --
             if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
               set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
@@ -92,17 +93,26 @@ jobs:
                 retry_cmd 4 5 railway environment new "$ENV_NAME" \
                   "$@" \
                   --service-variable "$RAILWAY_SERVICE_TARGET" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
-                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF"
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF" || CREATE_FAILED=1
               else
-                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@" || CREATE_FAILED=1
               fi
             else
               if [ -n "$RAILWAY_SERVICE_TARGET" ]; then
                 retry_cmd 4 5 railway environment new "$ENV_NAME" \
                   "$@" \
-                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF"
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF" || CREATE_FAILED=1
               else
-                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@" || CREATE_FAILED=1
+              fi
+            fi
+            if [ "$CREATE_FAILED" -ne 0 ]; then
+              ENVIRONMENTS_JSON="$(retry_cmd 3 5 railway environment list --json || true)"
+              if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$ENV_NAME\""; then
+                echo "Preview environment $ENV_NAME exists after create retries. Continuing."
+              else
+                echo "Failed to create preview environment $ENV_NAME."
+                exit 1
               fi
             fi
           fi
