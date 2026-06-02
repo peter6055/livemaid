@@ -928,6 +928,18 @@ export function useCanvasInteraction({
       }
     } else {
       // It's a flowchart node, cluster, or link
+      if (selectedSvgId) {
+        const exact = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
+        if (exact) {
+          foundElement = exact;
+          foundRawSvgId = exact.id || null;
+        }
+      }
+
+      if (foundElement) {
+        // Exact raw SVG id match wins. This preserves selection identity when multiple
+        // elements normalize to the same clean id (e.g. duplicate subgraph titles).
+      } else {
       let candidatesList: SVGElement[] = [];
       if (isEdgeId(selectedNodeId)) {
         const edgeLabels = Array.from(containerRef.current.querySelectorAll('.edgeLabel'));
@@ -973,6 +985,7 @@ export function useCanvasInteraction({
             break;
           }
         }
+      }
       }
     }
 
@@ -1242,6 +1255,13 @@ export function useCanvasInteraction({
                     }
                 }
             }
+        }
+
+        if (cleanId && !currentNode.id && (currentNode.classList?.contains('node') || currentNode.classList?.contains('cluster'))) {
+          const b = currentNode.getBoundingClientRect();
+          const kind = currentNode.classList?.contains('cluster') ? 'cluster' : 'node';
+          const key = cleanId.replace(/[^a-zA-Z0-9_]/g, '_');
+          currentNode.id = `${kind}-${key}-${Math.round(b.left)}-${Math.round(b.top)}`;
         }
 
         let rawSvgId = currentNode.id;
@@ -1602,8 +1622,31 @@ export function useCanvasInteraction({
       } else if (diagramType === 'flowchart' || diagramType === 'graph') {
         setHoveredSequenceActorBox(null);
         clearSequenceMessageHoverHighlight();
-        // Show hover highlight on flowchart nodes (skip already-selected node)
-        const nodeTarget = (e.target as Element | null)?.closest('.node') as SVGElement | null;
+        // Show hover highlight on flowchart nodes.
+        // Fallback: tiny rendered nodes can miss direct target resolution and surface as svg/container.
+        let nodeTarget = (e.target as Element | null)?.closest('.node') as SVGElement | null;
+        if (!nodeTarget) {
+          const candidates = Array.from(
+            container.querySelectorAll('.node')
+          ) as SVGGraphicsElement[];
+          const pad = 8;
+          let best: { el: SVGGraphicsElement; area: number } | null = null;
+          for (const el of candidates) {
+            const r = el.getBoundingClientRect();
+            const inside =
+              clientX >= r.left - pad &&
+              clientX <= r.right + pad &&
+              clientY >= r.top - pad &&
+              clientY <= r.bottom + pad;
+            if (!inside) continue;
+            const area = Math.max(1, r.width * r.height);
+            if (!best || area < best.area) {
+              best = { el, area };
+            }
+          }
+          nodeTarget = best ? (best.el as SVGElement) : null;
+        }
+
         if (nodeTarget && !isInlineEditing) {
           const nodeRect = nodeTarget.getBoundingClientRect();
           const hoverBox = {

@@ -110,6 +110,48 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
     setIsInlineEditing(false);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
 
+  const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const v = value.trim();
+    if (!v || v === 'none' || v === 'transparent' || v === 'rgba(0, 0, 0, 0)') return null;
+    if (v.startsWith('#')) return v;
+
+    const rgb = v.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9.]+))?\)$/i);
+    if (!rgb) return v;
+
+    const r = Math.max(0, Math.min(255, Number(rgb[1])));
+    const g = Math.max(0, Math.min(255, Number(rgb[2])));
+    const b = Math.max(0, Math.min(255, Number(rgb[3])));
+    const alpha = rgb[4] !== undefined ? Number(rgb[4]) : 1;
+    if (!Number.isFinite(alpha) || alpha <= 0) return null;
+
+    const toHex = (n: number) => n.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }, []);
+
+  const sanitizeMermaidStyleColors = useCallback((input: string): string => {
+    return input
+      .split('\n')
+      .map((line) => {
+        if (!/^\s*style\s+\S+\s+/i.test(line) || !/rgba?\(/i.test(line)) {
+          return line;
+        }
+
+        return line.replace(/rgba?\([^)]*\)/gi, (match) => {
+          const token = toMermaidColorToken(match);
+          return token ?? 'transparent';
+        });
+      })
+      .join('\n');
+  }, [toMermaidColorToken]);
+
+  useEffect(() => {
+    const sanitized = sanitizeMermaidStyleColors(code);
+    if (sanitized !== code) {
+      handleCodeChange(sanitized);
+    }
+  }, [code, handleCodeChange, sanitizeMermaidStyleColors]);
+
   const resolveSequenceDisplayName = useCallback((actorId: string) => {
     const lines = code.split('\n');
     for (const line of lines) {
@@ -810,6 +852,74 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
             newCode = updateLinkStyleAndLabel(newCode, src, dst, { label: editingText }, occurrenceIndex);
         }
     } else {
+      // Flowchart cluster/subgraph title rename path.
+      // When a cluster is selected, selectedNodeId can be a normalized label-like id,
+      // so generic node regex replacement may fail and incorrectly append a new node.
+      let handledClusterRename = false;
+      if (selectedSvgId && containerRef.current) {
+        const selectedEl = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
+        if (selectedEl?.classList?.contains('cluster')) {
+          const oldLabel = (
+            selectedEl.querySelector('.cluster-label, .nodeLabel, text, tspan, p')?.textContent || ''
+          ).trim();
+          const lines = newCode.split('\n');
+
+          const extractSubgraphLabel = (line: string): string | null => {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('subgraph ')) return null;
+            // subgraph id["Label"] or subgraph id[Label]
+            const bracketMatch = trimmed.match(/^subgraph\s+\S+\s*\[(.*)\]\s*$/);
+            if (bracketMatch) {
+              return bracketMatch[1].replace(/^"|"$/g, '').trim();
+            }
+            // subgraph "Label" or subgraph Label
+            const plainMatch = trimmed.match(/^subgraph\s+(.+)$/);
+            if (plainMatch) {
+              const raw = plainMatch[1].trim();
+              if (raw.startsWith('"') && raw.endsWith('"')) {
+                return raw.slice(1, -1).trim();
+              }
+            }
+            return null;
+          };
+
+          let renameIndex = -1;
+          if (oldLabel) {
+            renameIndex = lines.findIndex((line) => {
+              const lbl = extractSubgraphLabel(line);
+              return lbl !== null && lbl === oldLabel;
+            });
+          }
+
+          if (renameIndex === -1) {
+            // Fallback: try matching subgraph id against selectedNodeId if possible.
+            renameIndex = lines.findIndex((line) => {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('subgraph ')) return false;
+              return new RegExp(`^subgraph\\s+${selectedNodeId}\\b`).test(trimmed);
+            });
+          }
+
+          if (renameIndex !== -1) {
+            const original = lines[renameIndex];
+            const lead = original.match(/^\s*/)?.[0] || '';
+            const trimmed = original.trim();
+
+            // Preserve subgraph id; update visible title.
+            const idAndMaybeLabel = trimmed.match(/^subgraph\s+(\S+)(?:\s*\[.*\])?\s*$/);
+            if (idAndMaybeLabel) {
+              const subId = idAndMaybeLabel[1];
+              lines[renameIndex] = `${lead}subgraph ${subId}["${editingText}"]`;
+              newCode = lines.join('\n');
+              handledClusterRename = true;
+            }
+          }
+        }
+      }
+
+      if (handledClusterRename) {
+        // no-op, newCode already updated
+      } else {
         const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         if (nodeRegex.test(newCode)) {
             const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
@@ -843,6 +953,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
                 }
             }
         }
+            }
     }
     
     // If nothing changed, skip recompile and keep selection — behaves like Escape.
@@ -865,43 +976,69 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
   // the current edit before any cross-element or background transition.
   commitEditRef.current = handleEditSubmit;
 
-  const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
+    const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
       if (!selectedNodeId) return;
       let newCode = code;
-      
-      const standaloneShapeRegex = new RegExp(`\\n\\s*${selectedNodeId}\\@\\{\\s*shape:[^}]+\\}`, 'g');
-      newCode = newCode.replace(standaloneShapeRegex, '');
-      const shapeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*)(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`, 'gm');
-      
+      const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+      // Remove standalone text-shape helper lines only; do not strip inline declarations
+      // that may be part of an edge statement on the same line.
+      const standaloneTextShapeRegex = new RegExp(`(^|\\n)\\s*${escapedNodeId}\\s*@\\{\\s*shape:\\s*text\\s*\\}\\s*(?=\\n|$)`, 'g');
+      newCode = newCode.replace(standaloneTextShapeRegex, '$1');
+
       let replaced = false;
-      newCode = newCode.replace(shapeRegex, (match, p1, p2, p3) => {
-          replaced = true;
-          if (shape.isText) {
-              return `${p1}${p2}["${p3}"]\n    ${selectedNodeId}@{ shape: text }`;
-          } else if (shape.expanded) {
-              return `${p1}${p2}@{ shape: ${shape.expanded}, label: "${p3}" }`;
-          } else if (shape.b) {
-              return `${p1}${p2}${shape.b[0]}"${p3}"${shape.b[1]}`;
-          }
-          return match;
+
+      const formatReplacement = (label: string): string => {
+        if (shape.isText) {
+          return `${selectedNodeId}["${label}"]\\n    ${selectedNodeId}@{ shape: text }`;
+        }
+        if (shape.expanded) {
+          return `${selectedNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
+        }
+        if (shape.b) {
+          return `${selectedNodeId}${shape.b[0]}"${label}"${shape.b[1]}`;
+        }
+        return `${selectedNodeId}["${label}"]`;
+      };
+
+      // Token-only replacement for @{} declarations. This preserves any trailing
+      // edge content on the same line, e.g. A@{...} --> B.
+      const atDeclarationRegex = new RegExp(
+        `${escapedNodeId}\\s*@\\{\\s*shape:[^,]+,\\s*label:\\s*["']?([\\s\\S]*?)["']?\\s*\\}`,
+        'g'
+      );
+      newCode = newCode.replace(atDeclarationRegex, (_m, label) => {
+        replaced = true;
+        return formatReplacement(label ?? selectedNodeId);
       });
-      
+
+      // Token-only replacement for bracket/delimiter based node shapes.
+      const bracketTokenRegex = new RegExp(
+        `${escapedNodeId}\\s*(?:\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`,
+        'gm'
+      );
+      newCode = newCode.replace(bracketTokenRegex, (_m, label) => {
+        replaced = true;
+        return formatReplacement(label ?? selectedNodeId);
+      });
+
       if (!replaced) {
-          if (shape.isText) {
-              newCode += `\n    ${selectedNodeId}["${selectedNodeId}"]\n    ${selectedNodeId}@{ shape: text }`;
-          } else if (shape.expanded) {
-              newCode += `\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
-          } else if (shape.b) {
-              newCode += `\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
-          }
+        if (shape.isText) {
+          newCode += `\\n    ${selectedNodeId}["${selectedNodeId}"]\\n    ${selectedNodeId}@{ shape: text }`;
+        } else if (shape.expanded) {
+          newCode += `\\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
+        } else if (shape.b) {
+          newCode += `\\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
+        }
       }
-      
+
       handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+    }, [code, handleCodeChange, selectedNodeId]);
 
   const handleDuplicateNode = useCallback(() => {
       if (!selectedNodeId) return;
       let newCode = code;
+      const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       
       let prefix = 'n';
       const prefixMatch = selectedNodeId.match(/^([a-zA-Z]+)/);
@@ -915,39 +1052,120 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       }
       const newNodeId = `${prefix}${i}`;
       
-      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
       const match = newCode.match(nodeRegex);
+        let duplicatedDeclaration = '';
       if (match) {
-          newCode += `\n    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
+          duplicatedDeclaration = `    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
       } else {
-          newCode += `\n    ${newNodeId}["Copy of Node"]`;
+          duplicatedDeclaration = `    ${newNodeId}["Copy of Node"]`;
       }
+
+        // Keep duplicate inside the same subgraph block as the source node when possible.
+        const linesForPlacement = code.split('\n');
+        const declLineIdx = linesForPlacement.findIndex((line) => {
+          const trimmed = line.trim();
+           return new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}([^a-zA-Z0-9_]|$)`).test(trimmed) &&
+             !trimmed.startsWith('style ') &&
+             !trimmed.startsWith('class ') &&
+             !trimmed.startsWith('classDef ') &&
+             !trimmed.startsWith('linkStyle ');
+        });
+
+        let inserted = false;
+        if (declLineIdx !== -1) {
+          const stack: number[] = [];
+          let targetEnd = -1;
+          for (let i = 0; i < linesForPlacement.length; i++) {
+            const t = linesForPlacement[i].trim();
+            if (t.startsWith('subgraph ')) stack.push(i);
+            else if (t === 'end' && stack.length > 0) {
+              const start = stack.pop()!;
+              if (start <= declLineIdx && declLineIdx <= i) {
+                targetEnd = i;
+              }
+            }
+          }
+
+          if (targetEnd !== -1) {
+            linesForPlacement.splice(targetEnd, 0, `    ${duplicatedDeclaration.trim()}`);
+            newCode = linesForPlacement.join('\n');
+            inserted = true;
+          }
+        }
+
+        if (!inserted) {
+          newCode += `\n${duplicatedDeclaration}`;
+        }
       
       const lines = newCode.split('\n');
       const propertiesToDuplicate: string[] = [];
+        let copiedExplicitStyle = false;
       lines.forEach(line => {
-          if (line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${selectedNodeId}`), `style ${newNodeId}`));
+          if (line.match(new RegExp(`^\\s*style\\s+${escapedNodeId}\\s+`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${escapedNodeId}`), `style ${newNodeId}`));
+            copiedExplicitStyle = true;
           }
-          if (line.match(new RegExp(`^\\s*click\\s+${selectedNodeId}\\s+`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${selectedNodeId}`), `click ${newNodeId}`));
+          if (line.match(new RegExp(`^\\s*click\\s+${escapedNodeId}\\s+`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${escapedNodeId}`), `click ${newNodeId}`));
           }
-          if (line.match(new RegExp(`^\\s*${selectedNodeId}\\@\\{\\s*shape:`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${selectedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
+          if (line.match(new RegExp(`^\\s*class\\s+.*\\b${escapedNodeId}\\b.*\\s+\\S+\\s*$`))) {
+            const m = line.match(/^\s*class\s+(.+?)\s+(\S+)\s*$/);
+            if (m) {
+              const nodeList = m[1].split(',').map(s => s.trim());
+              const className = m[2];
+              if (nodeList.includes(selectedNodeId)) {
+                propertiesToDuplicate.push(`    class ${newNodeId} ${className}`);
+              }
+            }
+          }
+          if (line.match(new RegExp(`^\\s*${escapedNodeId}\\@\\{\\s*shape:`))) {
+              propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${escapedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
           }
       });
       if (propertiesToDuplicate.length > 0) {
           newCode += '\n' + propertiesToDuplicate.join('\n');
       }
+
+        // Fallback style clone: if there was no explicit style line to copy, clone
+        // currently rendered fill/stroke/text colors from the selected SVG element.
+        if (!copiedExplicitStyle && selectedSvgId) {
+          try {
+            const selectedEl = document.getElementById(selectedSvgId);
+            if (selectedEl) {
+              const shapeEl = selectedEl.querySelector('rect, circle, polygon, path.node, path, ellipse') as Element | null;
+              const textEl = selectedEl.querySelector('.label, text, .nodeLabel') as Element | null;
+
+              const shapeStyle = shapeEl ? window.getComputedStyle(shapeEl) : null;
+              const textStyle = textEl ? window.getComputedStyle(textEl) : null;
+
+              const styleParts: string[] = [];
+              const fill = toMermaidColorToken(shapeStyle?.fill);
+              const stroke = toMermaidColorToken(shapeStyle?.stroke);
+              const textColor = toMermaidColorToken(textStyle?.fill);
+
+              if (fill) styleParts.push(`fill:${fill}`);
+              if (stroke) styleParts.push(`stroke:${stroke}`);
+              if (textColor) styleParts.push(`color:${textColor}`);
+
+              if (styleParts.length > 0) {
+                newCode += `\n    style ${newNodeId} ${styleParts.join(',')}`;
+              }
+            }
+          } catch (err) {
+            // Non-fatal: duplication should still succeed even if style fallback fails.
+            console.warn('Duplicate style fallback failed:', err);
+          }
+        }
       
-      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
       let edgesToAppend = [];
       let matchTo;
       while ((matchTo = toRegex.exec(code)) !== null) {
           edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
       }
       
-      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
       let matchFrom;
       while ((matchFrom = fromRegex.exec(code)) !== null) {
           edgesToAppend.push(`\n    ${newNodeId} ${matchFrom[2]} ${matchFrom[3]}`);
@@ -955,7 +1173,7 @@ export function LiveMaidEditor({ documentId }: { documentId: string }) {
       
       newCode += edgesToAppend.join('');
       handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+  }, [code, handleCodeChange, selectedNodeId, selectedSvgId, toMermaidColorToken]);
 
   const handleDeleteNode = useCallback(() => {
       if (!selectedNodeId) return;

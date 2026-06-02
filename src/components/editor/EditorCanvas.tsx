@@ -202,10 +202,59 @@ export function EditorCanvas({
       if (!insideContainer) return;
 
       const elements = document.elementsFromPoint(event.clientX, event.clientY) as HTMLElement[];
-      const target =
+
+      // If this pointer event is on any floating UI/overlay controls, never route it
+      // into canvas hit-testing. This prevents accidental back-shape selection when
+      // clicking toolbar buttons near tight edges.
+      const hitFloatingUi = elements.some((el) =>
+        Boolean(
+          el.closest?.('[data-scale-lock]') ||
+          el.closest?.('[data-inline-toolbar]') ||
+          el.closest?.('[data-scale-lock-border]') ||
+          el.closest?.('[data-scale-lock-shadow]') ||
+          el.closest?.('[data-slot^="dropdown-menu"]')
+        )
+      );
+      if (hitFloatingUi) return;
+
+      let target =
         elements.find((el) => container.contains(el)) ||
         (event.target as HTMLElement | null) ||
         container;
+
+      // Fallback for tiny Mermaid elements (e.g. compact text blocks) where
+      // elementsFromPoint may only return svg/container and miss the actual node.
+      const tag = target.tagName?.toLowerCase?.() || '';
+      const isGenericContainerTarget =
+        tag === 'svg' || tag === 'div' || tag === 'g' || target === container;
+
+      if (isGenericContainerTarget) {
+        const candidates = Array.from(
+          container.querySelectorAll('.node, .cluster, path.flowchart-link, .edgeLabel')
+        ) as SVGGraphicsElement[];
+
+        let best: { el: SVGGraphicsElement; area: number } | null = null;
+        const pad = 8;
+
+        for (const el of candidates) {
+          const r = el.getBoundingClientRect();
+          const inside =
+            event.clientX >= r.left - pad &&
+            event.clientX <= r.right + pad &&
+            event.clientY >= r.top - pad &&
+            event.clientY <= r.bottom + pad;
+          if (!inside) continue;
+
+          const area = Math.max(1, r.width * r.height);
+          if (!best || area < best.area) {
+            best = { el, area };
+          }
+        }
+
+        if (best) {
+          target = best.el as unknown as HTMLElement;
+        }
+      }
 
       const syntheticEvent = {
         target,

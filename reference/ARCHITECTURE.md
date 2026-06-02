@@ -33,7 +33,8 @@ The editor interface uses a resizable split-screen layout (`react-resizable-pane
 - **Full Design Specification**: Complete color tokens, typography scale, component styles, and interaction guidelines are in `reference/DESIGN.md`. Always consult it before adding new UI surfaces.
 
 ## 5. Development Workflow
-- **Event Handling Caution**: `react-zoom-pan-pinch` actively intercepts and swallows certain standard DOM events (like `onDoubleClick` when double-click-to-zoom is disabled). When building new interactive features over the canvas, prefer calculating synthetic interactions inside standard `onClick`/`onMouseDown` handlers.
+- **Event Handling Caution**: `react-zoom-pan-pinch` + Mermaid SVG/`foreignObject` can swallow or bypass expected React bubbling paths (especially for single-click on labels). Critical selection/edit transitions must be routed through one centralized handler (`handleSvgClick`) and may require a document-level capture fallback (`mousedown`, capture phase) that forwards a synthetic event including `detail`.
+- **Double-Click Truth**: Do not rely on native `onDoubleClick` alone for canvas edit entry. Keep a click-detail (`e.detail >= 2`) path in the centralized handler so double-click-to-edit remains reliable even when native dblclick propagation is inconsistent.
 - **Adding Diagram Support**: Supporting new diagram types involves examining the specific SVG DOM structure Mermaid generates for that diagram type (since IDs and class names vary wildly between flowcharts, sequence diagrams, etc.), and writing resilient Regex string-replacers for the code serializer.
 - Ensure the `data/` directory is excluded from version control if needed, or handled correctly in Docker volumes.
 
