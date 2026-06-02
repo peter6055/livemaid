@@ -80,7 +80,7 @@ jobs:
           }
           ENV_NAME="pr-$PR_NUMBER"
           ENVIRONMENTS_JSON="$(retry_cmd 3 5 railway environment list --json)"
-          if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\":\"$ENV_NAME\""; then
+          if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$ENV_NAME\""; then
             echo "Preview environment $ENV_NAME already exists. Skipping creation."
           else
             set --
