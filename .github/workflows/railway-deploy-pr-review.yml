@@ -29,6 +29,7 @@ jobs:
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
       RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_SERVICE_TARGET: ${{ vars.RAILWAY_SERVICE_ID || vars.RAILWAY_SERVICE }}
       RAILWAY_DEFAULT_ENV: ${{ vars.RAILWAY_DEFAULT_ENV || 'sandbox' }}
       PR_NUMBER: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number }}
       PR_HEAD_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref }}
@@ -88,19 +89,19 @@ jobs:
               set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
             fi
             if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
-              if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              if [ -n "$RAILWAY_SERVICE_TARGET" ]; then
                 retry_cmd 4 5 railway environment new "$ENV_NAME" \
                   "$@" \
-                  --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
-                  --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+                  --service-variable "$RAILWAY_SERVICE_TARGET" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF"
               else
                 retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
               fi
             else
-              if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              if [ -n "$RAILWAY_SERVICE_TARGET" ]; then
                 retry_cmd 4 5 railway environment new "$ENV_NAME" \
                   "$@" \
-                  --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF"
               else
                 retry_cmd 4 5 railway environment new "$ENV_NAME" "$@"
               fi
