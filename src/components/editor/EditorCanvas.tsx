@@ -182,6 +182,35 @@ export function EditorCanvas({
     };
   }, [shapePicker, setShapePicker]);
 
+  // Capture clicks on SVG elements that don't bubble up through React handlers
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const captureClick = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const mermaidContainer = container.querySelector('.mermaid-container');
+      
+      if (mermaidContainer && mermaidContainer.contains(target)) {
+        console.log('[captured click] svg element:', target.tagName, {id: target.id});
+        // Convert to React event-like object and call the handler
+        const reactEvent = {
+          target: target,
+          currentTarget: mermaidContainer,
+          stopPropagation: () => e.stopPropagation(),
+          preventDefault: () => e.preventDefault(),
+        } as any;
+        handleSvgClick(reactEvent);
+      }
+    };
+
+    // Use capture phase to catch clicks before they might be stopped
+    container.addEventListener('click', captureClick, true);
+    return () => {
+      container.removeEventListener('click', captureClick, true);
+    };
+  }, [containerRef, handleSvgClick]);
+
   return (
     <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
         <div 
@@ -271,7 +300,7 @@ export function EditorCanvas({
 
                   <div 
                     className={`mermaid-container select-none ${parseError ? 'opacity-30' : ''}`}
-                    dangerouslySetInnerHTML={{ __html: svgContent }} 
+                    dangerouslySetInnerHTML={{ __html: svgContent }}
                   />
 
                   {currentType === 'sequence' && !isInlineEditing && !connectionState.active && sequenceMessageTriggerAreas.map((area) => (
