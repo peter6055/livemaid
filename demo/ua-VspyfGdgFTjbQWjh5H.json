@@ -1,0 +1,27 @@
+{
+  "id": "ua-VspyfGdgFTjbQWjh5H",
+  "name": "Order Solution Design - SEQ1",
+  "createdAt": "2026-06-02T03:47:06.389Z",
+  "updatedAt": "2026-06-02T03:47:44.680Z",
+  "deletedAt": null,
+  "code": "sequenceDiagram\n    autonumber\n    participant C as Customer\n    participant UI as Web / Mobile App\n    participant Cart as Cart Service\n    participant Price as Pricing Engine\n    participant Promo as Promotion Service\n    participant Tax as Tax Service\n    participant Order as Order 1\n    participant Fraud as Fraud Service\n    participant Pay as Payment Gateway\n    participant Inv as Inventory Service\n    participant Ship as Shipping Service\n    participant Notif as Notification Service\n    participant Bus as Event Bus\n\n    %% Cart Building\n    C->>UI: Browse & Add Items\n    UI->>Cart: AddItem(productId, qty)\n    Cart->>Price: Calculate Price\n    Price->>Promo: Apply Discounts\n    Promo->>Tax: Calculate Tax\n    Tax-->>Cart: Final Amount\n    Cart-->>UI: Cart Summary\n\n    %% Checkout\n    C->>UI: Checkout\n    UI->>Order: Create Order (PENDING_PAYMENT)\n    Order-->>UI: Order ID\n\n    %% Fraud & Payment\n    Order->>Fraud: Risk Assessment\n    alt High Risk\n        Fraud-->>Order: Flagged\n        Order->>Notif: Notify Manual Review\n        Order-->>UI: Order On Hold\n    else Low Risk\n        Fraud-->>Order: Approved\n        Order->>Pay: Authorize Payment\n        alt Payment Failed\n            Pay-->>Order: Failed\n            Order->>Notif: Payment Failure\n            Order-->>UI: Order Cancelled\n        else Payment Authorized\n            Pay-->>Order: Authorized\n        end\n    end\n\n    %% Inventory\n    Order->>Inv: Reserve Stock\n    alt Out of Stock\n        Inv-->>Order: Reservation Failed\n        Order->>Pay: Release Authorization\n        Order->>Notif: Out of Stock\n    else Partial Stock\n        Inv-->>Order: Partial Reserved\n        Order->>Ship: Create Split Shipments\n    else Fully Reserved\n        Inv-->>Order: Reserved\n        Order->>Ship: Create Shipment\n    end\n\n    %% Shipping\n    Ship->>Ship: Allocate Warehouse\n    Ship->>Ship: Generate Label\n    Ship-->>Order: Tracking Number\n\n    %% Notification & Events\n    Order->>Notif: Order Confirmed\n    Notif-->>C: Email / SMS\n\n    Order->>Bus: Publish OrderCreated\n    Bus-->>Analytics: Update Metrics\n    Bus-->>CRM: Update Customer Profile\n    Bus-->>Recommender: Train Model\n\n    %% Delivery\n    Ship-->>Order: Delivered\n    Order->>Notif: Delivery Confirmation",
+  "type": "flowchart",
+  "subPages": [],
+  "comments": [],
+  "versionHistory": [
+    {
+      "id": "N9708WUHmUbCYUxMVd3KN",
+      "code": "sequenceDiagram\n    autonumber\n    participant C as Customer\n    participant UI as Web / Mobile App\n    participant Cart as Cart Service\n    participant Price as Pricing Engine\n    participant Promo as Promotion Service\n    participant Tax as Tax Service\n    participant Order as Order Service\n    participant Fraud as Fraud Service\n    participant Pay as Payment Gateway\n    participant Inv as Inventory Service\n    participant Ship as Shipping Service\n    participant Notif as Notification Service\n    participant Bus as Event Bus\n\n    %% Cart Building\n    C->>UI: Browse & Add Items\n    UI->>Cart: AddItem(productId, qty)\n    Cart->>Price: Calculate Price\n    Price->>Promo: Apply Discounts\n    Promo->>Tax: Calculate Tax\n    Tax-->>Cart: Final Amount\n    Cart-->>UI: Cart Summary\n\n    %% Checkout\n    C->>UI: Checkout\n    UI->>Order: Create Order (PENDING_PAYMENT)\n    Order-->>UI: Order ID\n\n    %% Fraud & Payment\n    Order->>Fraud: Risk Assessment\n    alt High Risk\n        Fraud-->>Order: Flagged\n        Order->>Notif: Notify Manual Review\n        Order-->>UI: Order On Hold\n    else Low Risk\n        Fraud-->>Order: Approved\n        Order->>Pay: Authorize Payment\n        alt Payment Failed\n            Pay-->>Order: Failed\n            Order->>Notif: Payment Failure\n            Order-->>UI: Order Cancelled\n        else Payment Authorized\n            Pay-->>Order: Authorized\n        end\n    end\n\n    %% Inventory\n    Order->>Inv: Reserve Stock\n    alt Out of Stock\n        Inv-->>Order: Reservation Failed\n        Order->>Pay: Release Authorization\n        Order->>Notif: Out of Stock\n    else Partial Stock\n        Inv-->>Order: Partial Reserved\n        Order->>Ship: Create Split Shipments\n    else Fully Reserved\n        Inv-->>Order: Reserved\n        Order->>Ship: Create Shipment\n    end\n\n    %% Shipping\n    Ship->>Ship: Allocate Warehouse\n    Ship->>Ship: Generate Label\n    Ship-->>Order: Tracking Number\n\n    %% Notification & Events\n    Order->>Notif: Order Confirmed\n    Notif-->>C: Email / SMS\n\n    Order->>Bus: Publish OrderCreated\n    Bus-->>Analytics: Update Metrics\n    Bus-->>CRM: Update Customer Profile\n    Bus-->>Recommender: Train Model\n\n    %% Delivery\n    Ship-->>Order: Delivered\n    Order->>Notif: Delivery Confirmation",
+      "timestamp": "2026-06-02T03:47:27.044Z",
+      "label": "Snapshot 2 - 1:47 PM",
+      "starred": false
+    },
+    {
+      "id": "Cxb2_h628ZFFXnAlTW95F",
+      "code": "flowchart TD\n    A[Start] --> B[End]",
+      "timestamp": "2026-06-02T03:47:06.389Z",
+      "label": "Snapshot 1 - 1:47 PM",
+      "starred": false
+    }
+  ]
+}

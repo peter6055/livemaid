@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getDiagrams, saveDiagram, DiagramDocument } from '@/lib/api/storage';
+import { getDiagrams, saveDiagram, DiagramDocument, IS_DEMO_MODE } from '@/lib/api/storage';
 import { nanoid } from 'nanoid';
 import { DiagramRegistry } from '@/lib/diagrams/registry';
 
@@ -30,6 +30,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (IS_DEMO_MODE) {
+    return NextResponse.json({ error: 'Demo mode: creating diagrams is disabled' }, { status: 403 });
+  }
+
   try {
     const body = await request.json();
     const { name, type = 'flowchart', code } = body;

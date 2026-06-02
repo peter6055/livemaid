@@ -1,0 +1,108 @@
+name: cd/railway-pr-preview
+
+on:
+  workflow_run:
+    workflows:
+      - ci/pr-checks
+    types:
+      - completed
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  deploy_preview:
+    if: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.pull_requests[0] != null }}
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    permissions:
+      contents: read
+    env:
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
+      RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
+      RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
+      RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+      PR_HEAD_REF: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: Link Railway project
+        run: |
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            fi
+          else
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID"
+            fi
+          fi
+
+      - name: Recreate preview environment
+        run: |
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          railway environment delete "pr-$PR_NUMBER" || true
+          set --
+          if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+            set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
+          fi
+          if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
+            if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              railway environment new "pr-$PR_NUMBER" \
+                "$@" \
+                --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
+                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            else
+              railway environment new "pr-$PR_NUMBER" "$@"
+            fi
+          else
+            if [ -n "$RAILWAY_SERVICE_ID" ]; then
+              railway environment new "pr-$PR_NUMBER" \
+                "$@" \
+                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
+            else
+              railway environment new "pr-$PR_NUMBER" "$@"
+            fi
+          fi
+
+  destroy_preview:
+    if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    permissions:
+      contents: read
+    env:
+      RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+      RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
+      RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Link Railway project
+        run: |
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          if [ -n "$RAILWAY_WORKSPACE_ID" ]; then
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID" --workspace "$RAILWAY_WORKSPACE_ID"
+            fi
+          else
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              railway link --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_TEMPLATE_ENV_ID"
+            else
+              railway link --project "$RAILWAY_PROJECT_ID"
+            fi
+          fi
+
+      - name: Delete preview environment
+        run: |
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          railway environment delete "pr-$PR_NUMBER" || true

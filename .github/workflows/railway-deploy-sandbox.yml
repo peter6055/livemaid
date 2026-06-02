@@ -1,0 +1,32 @@
+name: cd/railway-sandbox
+
+on:
+  workflow_run:
+    workflows:
+      - ci/release
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy to Railway
+        run: |
+          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
+          railway up --detach --service "$RAILWAY_SERVICE"
+        env:
+          RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
+          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || github.event.repository.name }}

@@ -38,8 +38,10 @@ import {
 } from "@/components/ui/alert-dialog";
 
 import { Input } from "@/components/ui/input";
+import { DemoBanner } from "@/components/DemoBanner";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
-export default function Dashboard() {
+export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const { theme, setTheme } = useTheme();
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -195,10 +197,24 @@ export default function Dashboard() {
               <Menu className="w-5 h-5" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
-                <PlusSquare className="w-4 h-4" />
-                <span>New Diagram</span>
-              </DropdownMenuItem>
+              {isDemo ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="block" />}>
+                      <DropdownMenuItem disabled className="cursor-not-allowed opacity-50 rounded-md px-3 py-2.5 text-[15px] flex items-center gap-2">
+                        <PlusSquare className="w-4 h-4" />
+                        <span>New Diagram</span>
+                      </DropdownMenuItem>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">Read-only in demo mode</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <DropdownMenuItem onClick={openCreateDialog} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                  <PlusSquare className="w-4 h-4" />
+                  <span>New Diagram</span>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full">
                 <span className="flex items-center gap-2">
                   <Moon className="w-4 h-4" />
@@ -218,6 +234,8 @@ export default function Dashboard() {
           <span className="text-sm font-medium text-muted-foreground border-l border-border pl-4">The WYSIWYG Mermaid Editor</span>
         </div>
       </nav>
+
+      {isDemo && <DemoBanner />}
 
       {isNavigating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
@@ -274,10 +292,24 @@ export default function Dashboard() {
                 </button>
               )}
             </div>
-            <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
-              <Plus className="w-5 h-5 mr-2" />
-              New Diagram
-            </Button>
+            {isDemo ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger render={<span className="inline-flex" />}>
+                    <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60">
+                      <Plus className="w-5 h-5 mr-2" />
+                      New Diagram
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Read-only in demo mode</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 py-2.5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 whitespace-nowrap">
+                <Plus className="w-5 h-5 mr-2" />
+                New Diagram
+              </Button>
+            )}
           </div>
         </div>
 
@@ -343,9 +375,22 @@ export default function Dashboard() {
                 : 'Try a different search term or create a new diagram.'}
             </p>
             <div className="flex gap-3">
-              <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
-                Create Diagram
-              </Button>
+              {isDemo ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger render={<span className="inline-flex" />}>
+                      <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-6 shadow-sm pointer-events-none opacity-60">
+                        Create Diagram
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Read-only in demo mode</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
+                  Create Diagram
+                </Button>
+              )}
               {diagrams.length > 0 && (
                 <Button variant="outline" onClick={() => setSearchQuery("")}>
                   Clear Search
@@ -363,6 +408,7 @@ export default function Dashboard() {
                   onRename={openRenameDialog}
                   onDelete={openDeleteDialog}
                   onNavigate={handleNavigate}
+                  isDemo={isDemo}
                 />
               ))}
             </div>
