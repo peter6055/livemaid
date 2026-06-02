@@ -254,8 +254,8 @@ export function EditorCanvas({
                 <div 
                   ref={containerRef}
                   className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
-                  onClick={!isLocked ? handleSvgClick : undefined}
-                  onDoubleClick={(e) => { if (!isLocked) handleEditClick(e); }}
+                  onClick={!isLocked ? ((e) => { console.log('[container.onClick] fired'); handleSvgClick(e); }) : undefined}
+                  onDoubleClick={(e) => { console.log('[container.onDoubleClick] fired'); if (!isLocked) handleEditClick(e); }}
                   onMouseMove={handleMouseMove}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}

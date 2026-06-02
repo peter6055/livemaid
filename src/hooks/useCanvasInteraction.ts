@@ -20,6 +20,12 @@ export function useCanvasInteraction({
     determineDiagramType: (code: string) => string;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const selectedNodeIdRef = useRef<string | null>(null);
+  // Keep ref in sync with state
+  const setSelectedNodeIdWithRef = useCallback((id: string | null) => {
+    selectedNodeIdRef.current = id;
+    setSelectedNodeId(id);
+  }, []);
   const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
   const [selectionBox, setSelectionBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
   const [textBox, setTextBox] = useState<{x: number, y: number, width: number, height: number} | null>(null);
@@ -495,7 +501,7 @@ export function useCanvasInteraction({
     }
 
     const nodeId = `SEQ_MSG_${messageIndex}`;
-    setSelectedNodeId(nodeId);
+    setSelectedNodeIdWithRef(nodeId);
     setSelectedSvgId(lineEl?.id || textEl?.id || null);
 
     if (startInlineEdit) {
@@ -1040,7 +1046,7 @@ export function useCanvasInteraction({
       // If we couldn't find the selected element in the new SVG, clear the selection
       setSelectionBox(null);
       setTextBox(null);
-      setSelectedNodeId(null);
+      setSelectedNodeIdWithRef(null);
       setSelectedSvgId(null);
     }
   }, [selectedNodeId, selectedSvgId, selectionBox, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
@@ -1078,6 +1084,7 @@ export function useCanvasInteraction({
 
 
   const getClickedNode = useCallback((target: Element) => {
+    console.log('[getClickedNode] Called with target:', target?.tagName, target?.id, target?.className);
     const isSequenceMessageLineElement = (el: SVGElement | null) => {
       if (!el?.classList) return false;
       return Array.from(el.classList).some((c) => c.startsWith('messageLine'));
@@ -1145,6 +1152,7 @@ export function useCanvasInteraction({
           ? (resolvedByName as string)
           : (nearest?.actorId || resolvedByName || actorDisplayName);
         nodeId = `SEQ_ACTOR_${actorId}`;
+        console.log('[getClickedNode] Actor detected, actorDisplayName:', actorDisplayName, 'resolved:', resolvedByName, 'final actorId:', actorId, 'nodeId:', nodeId);
         break;
       }
       // Sequence message text
@@ -1321,40 +1329,61 @@ export function useCanvasInteraction({
             height: textRect.height / scale
         };
         
+        console.log('[getClickedNode] Returning:', { cleanId, rawSvgId });
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
+    console.log('[getClickedNode] No match found, returning null');
     return null;
   }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
 
   const handleEditClick = useCallback((e: React.MouseEvent | Event) => {
+    console.log('[handleEditClick] Called with event type:', e.type);
     if ('stopPropagation' in e) e.stopPropagation();
     // Guard: if already editing, do nothing (prevents double-fire from native dblclick + timer)
-    if (isInlineEditing) return;
+    if (isInlineEditing) {
+      console.log('[handleEditClick] Already editing, returning');
+      return;
+    }
     
     const currentType = determineDiagramType(code);
+    console.log('[handleEditClick] Diagram type:', currentType);
     if (!(currentType === 'graph' || currentType === 'flowchart' || currentType === 'sequence')) {
+        console.log('[handleEditClick] Invalid diagram type, returning');
         return;
     }
 
-    // Use elementFromPoint to find the actual element at the double-click position,
-    // since e.target might be the container div or an overlay div
+    // Use elementsFromPoint (plural) to find the actual SVG element at the double-click position,
+    // since e.target might be the container div or an overlay div sitting on top of the SVG
     let targetElement = e.target as Element;
     if ('clientX' in e && 'clientY' in e) {
-      const elementAtPoint = document.elementFromPoint(e.clientX, e.clientY);
-      if (elementAtPoint) {
-        targetElement = elementAtPoint;
+      const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
+      console.log('[handleEditClick] elementsFromPoint found:', elementsAtPoint.map(el => el.tagName + (el.id ? '#' + el.id : '') + (el.className && typeof el.className === 'string' ? '.' + el.className.split(' ')[0] : '')));
+      // Find the first SVG element (not a div/overlay) — these are the actual Mermaid diagram elements
+      const svgElement = elementsAtPoint.find(el => el.tagName.toLowerCase() !== 'div' && el.namespaceURI === 'http://www.w3.org/2000/svg');
+      if (svgElement) {
+        console.log('[handleEditClick] Using SVG element:', svgElement.tagName, svgElement.className);
+        targetElement = svgElement;
+      } else {
+        const firstEl = elementsAtPoint[0];
+        console.log('[handleEditClick] No SVG element found, using first:', firstEl?.tagName);
+        if (firstEl) targetElement = firstEl;
       }
+    } else {
+      console.log('[handleEditClick] No clientX/clientY, using e.target');
     }
 
     const result = getClickedNode(targetElement);
-    let targetNodeId = selectedNodeId;
+    // Use ref for selectedNodeId to avoid stale closure — state updates from first click
+    // may not be visible in this callback if it was created before the state update
+    let targetNodeId = selectedNodeIdRef.current;
+    console.log('[handleEditClick] targetNodeId from ref:', targetNodeId, 'result:', result?.cleanId);
 
     if (result) {
         setSelectionBox(result.newSelectionBox);
         setTextBox(result.newTextBox);
-        setSelectedNodeId(result.cleanId);
+        setSelectedNodeIdWithRef(result.cleanId);
         setSelectedSvgId(result.rawSvgId);
         targetNodeId = result.cleanId;
     }
@@ -1366,7 +1395,10 @@ export function useCanvasInteraction({
     if (targetNodeId.startsWith('SEQ_ACTOR_')) {
         // Read the current display label from the actor declaration
         const actorId = targetNodeId.replace('SEQ_ACTOR_', '');
+        console.log('[handleEditClick] SEQ_ACTOR found, actorId:', actorId);
+        console.log('[handleEditClick] Full code:', code);
         const lines = code.split('\n');
+        console.log('[handleEditClick] Code lines count:', lines.length);
         let foundLabel = actorId;
         for (const line of lines) {
             const trimmed = line.trim();
@@ -1374,13 +1406,16 @@ export function useCanvasInteraction({
             if (match) {
                 const id = match[1];
                 const alias = match[2];
+                console.log('[handleEditClick] Matched line:', {trimmed, id, alias});
                 if (id === actorId) {
                     foundLabel = alias?.trim() || id;
+                    console.log('[handleEditClick] Found label:', foundLabel);
                     break;
                 }
             }
         }
         currentText = foundLabel;
+        console.log('[handleEditClick] Setting currentText to:', currentText);
     } else if (targetNodeId.startsWith('SEQ_MSG_')) {
         const idx = parseInt(targetNodeId.replace('SEQ_MSG_', ''), 10);
       const msgLines = getSequenceMessageEntries(code).map((entry) => entry.line);
@@ -1452,28 +1487,27 @@ export function useCanvasInteraction({
             inlineInputRef.current.select();
         }
     }, 10);
-  }, [code, getClickedNode, selectedNodeId, determineDiagramType, getSequenceMessageEntries, isInlineEditing]);
+  }, [code, getClickedNode, setSelectedNodeIdWithRef, determineDiagramType, getSequenceMessageEntries, isInlineEditing]);
 
-  const lastClickTimeRef = useRef<number>(0);
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (isLocked) return;
-    if (isInlineEditing) return;
+    console.log('[handleSvgClick] Click event fired, type:', e.type);
+    if (isLocked) {
+      console.log('[handleSvgClick] Locked, returning');
+      return;
+    }
+    if (isInlineEditing) {
+      console.log('[handleSvgClick] Already editing, returning');
+      return;
+    }
 
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) {
+      console.log('[handleSvgClick] No container');
+      return;
+    }
     const containerRectForScale = container.getBoundingClientRect();
     const scale = containerRectForScale.width / container.offsetWidth;
-
-    const currentTime = new Date().getTime();
-    const timeSinceLastClick = currentTime - lastClickTimeRef.current;
-    
-    if (timeSinceLastClick < 400) {
-        lastClickTimeRef.current = 0;
-        handleEditClick(e);
-        return;
-    }
-    lastClickTimeRef.current = currentTime;
 
     // Shift browser focus away from any text editors/inputs so global delete shortcuts are active
     if (typeof document !== 'undefined' && document.activeElement && document.activeElement instanceof HTMLElement) {
@@ -1487,7 +1521,15 @@ export function useCanvasInteraction({
 
     const clicked = getClickedNode(target);
     if (clicked) {
-        setSelectedNodeId(clicked.cleanId);
+        // Double-click-to-edit: if the user clicks an already-selected node, open edit mode immediately.
+        // This is more reliable than a fixed timer window (e.g. 400ms, 4000ms) because SVG re-renders
+        // between clicks can detach elements, causing native dblclick and timer-based detection to fail.
+        // The ref (selectedNodeIdRef) is updated synchronously on the first click so this is always accurate.
+        if (clicked.cleanId === selectedNodeIdRef.current) {
+            handleEditClick(e);
+            return;
+        }
+        setSelectedNodeIdWithRef(clicked.cleanId);
         setSelectedSvgId(clicked.rawSvgId);
       // Use canonical hit-test boxes from getClickedNode.
       // For SEQ_MSG this is already the combined text+line selection bounds.
@@ -1503,7 +1545,7 @@ export function useCanvasInteraction({
           if (current.id) {
             const cleanId = normalizeId(current.id);
             if (isEdgeId(cleanId)) {
-              setSelectedNodeId(cleanId);
+              setSelectedNodeIdWithRef(cleanId);
               setSelectedSvgId(current.id);
               
               const rect = current.getBoundingClientRect();
@@ -1537,14 +1579,14 @@ export function useCanvasInteraction({
         }
 
         if (!edgeFound) {
-          setSelectedNodeId(null);
+          setSelectedNodeIdWithRef(null);
           setSelectedSvgId(null);
           setSelectionBox(null);
           setTextBox(null);
           setIsInlineEditing(false);
         }
     }
-  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing]);
+  }, [getClickedNode, containerRef, normalizeId, handleEditClick, isLocked, isInlineEditing, setSelectedNodeIdWithRef]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       const container = containerRef.current;
