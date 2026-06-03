@@ -71,8 +71,9 @@ export function InlineTextEditor({
 
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
-  const relativeNodeX = textBox.x - (selectionBox.x - 4);
-  const relativeNodeY = textBox.y - (selectionBox.y - 4);
+  const offsetCanvas = 4 / scale;
+  const relativeNodeX = textBox.x - (selectionBox.x - offsetCanvas);
+  const relativeNodeY = textBox.y - (selectionBox.y - offsetCanvas);
   const centerX = relativeNodeX + textBox.width / 2;
   const centerY = relativeNodeY + textBox.height / 2;
 

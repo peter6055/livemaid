@@ -142,6 +142,13 @@ export function EditorCanvas({
     y: number;
     mode: 'root' | 'note';
   } | null>(null);
+  // Viewport-space indicator for sequence drag — lives outside the TransformWrapper so
+  // canvas pan/zoom never affects its coordinate system. Positions are relative to canvasShellRef.
+  const [seqDragIndicator, setSeqDragIndicator] = useState<{
+    x1: number; y1: number;
+    x2: number; y2: number;
+    snapX: number | null;
+  } | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
 
   const viewport = containerRef.current?.closest('.relative.overflow-hidden');
@@ -316,7 +323,7 @@ export function EditorCanvas({
           centerOnInit={true}
           smooth={true}
           wheel={{ wheelDisabled: true, step: 0.05 }}
-          panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.isDragging }}
+          panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.active, excluded: ['seq-connect-btn'] }}
           trackPadPanning={{ disabled: false }}
           limitToBounds={false}
           doubleClick={{ disabled: true }}
@@ -411,12 +418,13 @@ export function EditorCanvas({
                       data-seq-msg-hover-trigger="true"
                       data-scale-lock-border
                       data-scale-lock-shadow
-                      className="absolute pointer-events-none z-20 border-indigo-500 rounded-md"
+                      className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
-                        left: hoveredSequenceMessageBox.x - 4,
-                        top: hoveredSequenceMessageBox.y - 4,
-                        width: hoveredSequenceMessageBox.width + 8,
-                        height: hoveredSequenceMessageBox.height + 8,
+                        left: hoveredSequenceMessageBox.x - 4 / state.scale,
+                        top: hoveredSequenceMessageBox.y - 4 / state.scale,
+                        width: hoveredSequenceMessageBox.width + 8 / state.scale,
+                        height: hoveredSequenceMessageBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
@@ -425,12 +433,13 @@ export function EditorCanvas({
 
                   {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !selectedNodeId?.startsWith('SEQ_MSG_') && !selectedNodeId?.startsWith('SEQ_NOTE_') && !isInlineEditing && !connectionState.active && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredSequenceActorBox.x - 4,
-                        top: hoveredSequenceActorBox.y - 4,
-                        width: hoveredSequenceActorBox.width + 8,
-                        height: hoveredSequenceActorBox.height + 8,
+                        left: hoveredSequenceActorBox.x - 4 / state.scale,
+                        top: hoveredSequenceActorBox.y - 4 / state.scale,
+                        width: hoveredSequenceActorBox.width + 8 / state.scale,
+                        height: hoveredSequenceActorBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.55,
@@ -440,12 +449,13 @@ export function EditorCanvas({
 
                   {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredFlowchartNodeBox.x - 3,
-                        top: hoveredFlowchartNodeBox.y - 3,
-                        width: hoveredFlowchartNodeBox.width + 6,
-                        height: hoveredFlowchartNodeBox.height + 6,
+                        left: hoveredFlowchartNodeBox.x - 3 / state.scale,
+                        top: hoveredFlowchartNodeBox.y - 3 / state.scale,
+                        width: hoveredFlowchartNodeBox.width + 6 / state.scale,
+                        height: hoveredFlowchartNodeBox.height + 6 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.6,
@@ -463,7 +473,7 @@ export function EditorCanvas({
                           data-seq-plus-anchor-y={String(slotY)}
                           data-scale-lock
                           data-base-transform="translate(-50%, -50%)"
-                          className="absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
+                          className="seq-connect-btn absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                           style={{
                             left: sequenceLifelineOverlay.x,
                             top: slotY,
@@ -492,11 +502,30 @@ export function EditorCanvas({
                               if (!dragging && (Math.abs(ev.clientX - startClientX) > 5 || Math.abs(ev.clientY - startClientY) > 5)) {
                                 dragging = true;
                                 startSequenceConnection(actorId, anchorY);
+                                setSeqDragIndicator({ x1: anchorX, y1: anchorMenuY, x2: anchorX, y2: anchorMenuY, snapX: null });
+                              }
+                              if (dragging) {
+                                const shellRect = canvasShellRef.current?.getBoundingClientRect();
+                                if (!shellRect) return;
+                                const cursorX = ev.clientX - shellRect.left;
+                                // Viewport-space snap detection: find the nearest actor-line within 28 viewport-px
+                                let snapX: number | null = null;
+                                const actorLineEls = containerRef.current?.querySelectorAll('line.actor-line') ?? [];
+                                for (const lineEl of actorLineEls) {
+                                  const lr = (lineEl as Element).getBoundingClientRect();
+                                  const lifelineViewportX = lr.left - shellRect.left; // center of the zero-width line
+                                  if (Math.abs(lifelineViewportX - cursorX) <= 28) {
+                                    snapX = lifelineViewportX;
+                                    break;
+                                  }
+                                }
+                                setSeqDragIndicator({ x1: anchorX, y1: anchorMenuY, x2: snapX !== null ? snapX : cursorX, y2: anchorMenuY, snapX });
                               }
                             };
                             const onUp = () => {
                               window.removeEventListener('mousemove', onMove);
                               window.removeEventListener('mouseup', onUp);
+                              setSeqDragIndicator(null);
                               if (!dragging) {
                                 setSequencePlusMenu({
                                   actorId,
@@ -517,7 +546,7 @@ export function EditorCanvas({
                     </div>
                   )}
 
-                  {connectionState.isDragging && connectionState.startPos && connectionState.mousePos && (
+                  {connectionState.isDragging && connectionState.startPos && connectionState.mousePos && currentType !== 'sequence' && (
                     <svg className="absolute inset-0 pointer-events-none z-30 overflow-visible">
                       <defs>
                         <marker id="sequence-preview-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -577,12 +606,13 @@ export function EditorCanvas({
                     <div 
                       data-scale-lock-border
                       data-scale-lock-shadow
-                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      className="absolute border-indigo-500 pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - 4,
-                        top: selectionBox.y - 4,
-                        width: selectionBox.width + 8,
-                        height: selectionBox.height + 8,
+                        left: selectionBox.x - 4 / state.scale,
+                        top: selectionBox.y - 4 / state.scale,
+                        width: selectionBox.width + 8 / state.scale,
+                        height: selectionBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
@@ -706,6 +736,39 @@ export function EditorCanvas({
             </>
           )}
         </TransformWrapper>
+
+        {/* Sequence drag indicator — rendered at canvasShell level (outside TransformWrapper)
+            so canvas pan/zoom never affects its coordinate system.
+            All positions are viewport-relative to canvasShellRef. */}
+        {seqDragIndicator && (
+          <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+            <defs>
+              <marker id="seq-drag-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
+              </marker>
+            </defs>
+            <line
+              x1={seqDragIndicator.x1}
+              y1={seqDragIndicator.y1}
+              x2={seqDragIndicator.x2}
+              y2={seqDragIndicator.y2}
+              stroke="#2563eb"
+              strokeDasharray="10,8"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              shapeRendering="geometricPrecision"
+              markerEnd="url(#seq-drag-arrow)"
+            />
+            {seqDragIndicator.snapX !== null && (
+              <g transform={`translate(${seqDragIndicator.snapX}, ${seqDragIndicator.y1})`}>
+                <circle r={5} fill="#10b981" />
+                <line x1={-2.5} y1={0} x2={2.5} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+                <line x1={0} y1={-2.5} x2={0} y2={2.5} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              </g>
+            )}
+          </svg>
+        )}
 
         {sequencePlusMenu && (
           <div
