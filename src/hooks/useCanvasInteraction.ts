@@ -700,7 +700,7 @@ export function useCanvasInteraction({
     if (containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
       const scale = containerRect.width / containerRef.current.offsetWidth;
-      const noteRects = Array.from(containerRef.current.querySelectorAll('.note rect')) as SVGElement[];
+      const noteRects = Array.from(containerRef.current.querySelectorAll('rect.note')) as SVGElement[];
       for (const noteRect of noteRects) {
         const r = noteRect.getBoundingClientRect();
         const top = (r.top - containerRect.top + containerRef.current.scrollTop) / scale;
