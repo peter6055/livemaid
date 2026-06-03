@@ -687,7 +687,7 @@ export function useCanvasInteraction({
       for (const line of messageLines) {
         const rect = line.getBoundingClientRect();
         const centerY = (rect.top - containerRect.top + containerRef.current.scrollTop + rect.height / 2) / scale;
-        if (centerY >= start && centerY <= lifeline.y2 + 28) {
+        if (centerY >= globalTop && centerY <= lifeline.y2 + 28) {
           rowAnchors.push(Math.round(centerY));
         }
       }
@@ -695,21 +695,45 @@ export function useCanvasInteraction({
 
     const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
 
-    // Collect note vertical ranges to avoid placing + buttons inside notes
+    // Collect note vertical ranges (only for notes that overlap this lifeline's X position).
+    // Notes on other lifelines share Y-rows but don't visually overlap this lifeline's + buttons.
     const noteRanges: Array<{ top: number; bottom: number }> = [];
+    let noteScale = 1;
     if (containerRef.current) {
       const containerRect = containerRef.current.getBoundingClientRect();
-      const scale = containerRect.width / containerRef.current.offsetWidth;
+      noteScale = containerRect.width / containerRef.current.offsetWidth;
       const noteRects = Array.from(containerRef.current.querySelectorAll('rect.note')) as SVGElement[];
       for (const noteRect of noteRects) {
         const r = noteRect.getBoundingClientRect();
-        const top = (r.top - containerRect.top + containerRef.current.scrollTop) / scale;
-        const bottom = (r.bottom - containerRect.top + containerRef.current.scrollTop) / scale;
-        noteRanges.push({ top: top - 4, bottom: bottom + 4 });
+        // Convert note X range to canvas coordinates
+        const noteLeft = (r.left - containerRect.left) / noteScale;
+        const noteRight = (r.right - containerRect.left) / noteScale;
+        // Only consider notes that horizontally overlap this lifeline's X position (with button radius margin)
+        const buttonRadius = 12 / noteScale;
+        if (lifeline.x < noteLeft - buttonRadius || lifeline.x > noteRight + buttonRadius) continue;
+        const top = (r.top - containerRect.top + containerRef.current.scrollTop) / noteScale;
+        const bottom = (r.bottom - containerRect.top + containerRef.current.scrollTop) / noteScale;
+        noteRanges.push({ top, bottom });
       }
     }
+    // The + button has a 12px physical radius. Add 1 extra canvas unit for strict clearance.
+    const noteBuffer = Math.ceil(12 / noteScale);
 
-    const isInNote = (y: number) => noteRanges.some(({ top, bottom }) => y >= top && y <= bottom);
+    // Push a Y value below any note whose visual extent (±noteBuffer) the slot would overlap.
+    // A slot overlaps a note if the button (radius=noteBuffer) reaches the note boundary.
+    const pushBelowNotes = (y: number): number => {
+      let result = y;
+      for (let iter = 0; iter < noteRanges.length * 2 + 1; iter++) {
+        // Find ALL notes the button would visually overlap and take the one with the highest bottom
+        const overlapping = noteRanges.filter(n => result >= n.top - noteBuffer && result <= n.bottom + noteBuffer);
+        if (overlapping.length === 0) break;
+        const maxBottom = Math.max(...overlapping.map(n => n.bottom));
+        const next = maxBottom + noteBuffer;
+        if (next <= result) break; // no forward progress, avoid infinite loop
+        result = next;
+      }
+      return Math.round(result);
+    };
 
     // Empty lifeline: one dynamic handle that follows hover and snaps to safe bounds.
     if (rows.length === 0) {
@@ -717,28 +741,51 @@ export function useCanvasInteraction({
       return [Math.round(Math.max(start, Math.min(end, fallbackY)))];
     }
 
-    // Existing messages: create insertion lanes around attached messages.
-    // This yields one slot above the first, one between each adjacent pair,
-    // and one below the last (rows + 1 total before clamping/dedup).
+    // Existing messages: one slot above the first, one midpoint between each adjacent pair,
+    // one slot below the last. Each slot is pushed below any note it would visually overlap.
     const VERTICAL_GRID_STEP = 56;
-    // Keep the "above first" slot close to the first message (16px above),
-    // not deep into the note area above.
     const firstGap = 12;
     const lastGap = rows.length > 1
       ? Math.max(28, Math.round((rows[rows.length - 1] - rows[rows.length - 2]) / 2))
       : VERTICAL_GRID_STEP;
     const targetYs: number[] = [];
-    targetYs.push(Math.round(rows[0] - firstGap));
+    // Above-first-row slot: push below any overlapping note. If pushed past rows[0],
+    // push UPWARD to sit just above the note instead.
+    const firstSlotRaw = Math.round(rows[0] - firstGap);
+    const firstSlotPushed = pushBelowNotes(firstSlotRaw);
+    let firstSlot: number;
+    if (firstSlotPushed <= rows[0]) {
+      firstSlot = firstSlotPushed; // fits between note and first row
+    } else {
+      // Note fills the gap — place button above the note instead
+      const minNoteTop = noteRanges
+        .filter(n => firstSlotRaw >= n.top - noteBuffer)
+        .reduce((min, n) => Math.min(min, n.top), Infinity);
+      firstSlot = Number.isFinite(minNoteTop)
+        ? Math.floor(minNoteTop - noteBuffer) - 1  // just above the note's buffer zone
+        : firstSlotRaw;
+    }
+    targetYs.push(firstSlot);
 
     for (let i = 0; i < rows.length - 1; i += 1) {
-      targetYs.push(Math.round((rows[i] + rows[i + 1]) / 2));
+      targetYs.push(pushBelowNotes(Math.round((rows[i] + rows[i + 1]) / 2)));
     }
 
-    targetYs.push(Math.round(rows[rows.length - 1] + lastGap));
+    targetYs.push(pushBelowNotes(Math.round(rows[rows.length - 1] + lastGap)));
 
+    // The first slot (targetYs[0]) is already well-placed by the firstSlot logic above —
+    // it sits at rows[0]-firstGap (or above a note), which may be above start when the
+    // first message is close to the actor box. We keep it as-is (only clamping to the
+    // lifeline bottom); all other slots clamp to [start, end] as usual.
     const contextual = targetYs
-      .map((y) => Math.max(start, Math.min(end, y)))
-      .filter((y) => !isInNote(y))
+      .map((y, i) => {
+        if (i === 0) {
+          // First slot: clamp only to lifeline extent (not to start), then push below notes.
+          // This ensures a button always appears ABOVE the first message even in dense diagrams.
+          return pushBelowNotes(Math.max(globalTop, Math.min(end, y)));
+        }
+        return pushBelowNotes(Math.max(start, Math.min(end, y)));
+      })
       .sort((a, b) => a - b);
 
     if (contextual.length === 0) {
