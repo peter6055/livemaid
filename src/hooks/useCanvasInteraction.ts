@@ -1386,7 +1386,7 @@ export function useCanvasInteraction({
   const dblClickHandledRef = useRef(false);
   // requestAnimationFrame handle for throttling mousemove
   const mouseMoveRafRef = useRef<number | null>(null);
-  const mouseMoveInnerRef = useRef<((x: number, y: number, t: EventTarget | null) => void) | null>(null);
+  const mouseMoveInnerRef = useRef<((x: number, y: number, t: EventTarget | null, r: DOMRect | null) => void) | null>(null);
 
   const handleEditClick = useCallback((e: React.MouseEvent | Event) => {
     if ('stopPropagation' in e) e.stopPropagation();
@@ -1600,17 +1600,26 @@ export function useCanvasInteraction({
       const clientX = e.clientX;
       const clientY = e.clientY;
       const eventTarget = e.target;
+      // Capture the container rect SYNCHRONOUSLY at event time so that the RAF
+      // callback uses a rect that is consistent with the clientX/clientY values.
+      // If we defer getBoundingClientRect() to RAF time, a CSS animation or
+      // velocity-based pan that runs between the event and the RAF can shift the
+      // container, producing a systematic offset in the computed canvas position.
+      const containerRect = containerRef.current?.getBoundingClientRect() ?? null;
       mouseMoveRafRef.current = requestAnimationFrame(() => {
         mouseMoveRafRef.current = null;
-        mouseMoveInnerRef.current?.(clientX, clientY, eventTarget);
+        mouseMoveInnerRef.current?.(clientX, clientY, eventTarget, containerRect);
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const _handleMouseMoveInner = useCallback((clientX: number, clientY: number, eventTarget: EventTarget | null) => {
+  const _handleMouseMoveInner = useCallback((clientX: number, clientY: number, eventTarget: EventTarget | null, capturedContainerRect: DOMRect | null) => {
       const container = containerRef.current;
       if (!container) return;
-      const containerRectForScale = container.getBoundingClientRect();
+      // Use the rect captured synchronously at event time. Falling back to a fresh
+      // getBoundingClientRect() only when no pre-captured rect is provided (e.g.,
+      // callers that don't go through the RAF throttle path).
+      const containerRectForScale = capturedContainerRect ?? container.getBoundingClientRect();
       const scale = containerRectForScale.width / container.offsetWidth;
       const diagramType = determineDiagramType(code);
       const e = { clientX, clientY, target: eventTarget } as React.MouseEvent<HTMLDivElement>;
@@ -1698,7 +1707,7 @@ export function useCanvasInteraction({
               const anchorY = connectionState.anchorY ?? findNearestSlot(sourceSlots, mouseY);
               const snappedAnchorY = findNearestSlot(sourceSlots, anchorY);
 
-              const snapThreshold = 28;
+              const snapThreshold = 28 / scale;
               let snapTargetId: string | null = null;
               let snapTargetPos: { x: number, y: number } | null = null;
               for (const lifeline of lifelines) {
