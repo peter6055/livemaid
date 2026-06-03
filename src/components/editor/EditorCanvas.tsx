@@ -418,12 +418,13 @@ export function EditorCanvas({
                       data-seq-msg-hover-trigger="true"
                       data-scale-lock-border
                       data-scale-lock-shadow
-                      className="absolute pointer-events-none z-20 border-indigo-500 rounded-md"
+                      className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
-                        left: hoveredSequenceMessageBox.x - 4,
-                        top: hoveredSequenceMessageBox.y - 4,
-                        width: hoveredSequenceMessageBox.width + 8,
-                        height: hoveredSequenceMessageBox.height + 8,
+                        left: hoveredSequenceMessageBox.x - 4 / state.scale,
+                        top: hoveredSequenceMessageBox.y - 4 / state.scale,
+                        width: hoveredSequenceMessageBox.width + 8 / state.scale,
+                        height: hoveredSequenceMessageBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
@@ -432,12 +433,13 @@ export function EditorCanvas({
 
                   {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !selectedNodeId?.startsWith('SEQ_MSG_') && !selectedNodeId?.startsWith('SEQ_NOTE_') && !isInlineEditing && !connectionState.active && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredSequenceActorBox.x - 4,
-                        top: hoveredSequenceActorBox.y - 4,
-                        width: hoveredSequenceActorBox.width + 8,
-                        height: hoveredSequenceActorBox.height + 8,
+                        left: hoveredSequenceActorBox.x - 4 / state.scale,
+                        top: hoveredSequenceActorBox.y - 4 / state.scale,
+                        width: hoveredSequenceActorBox.width + 8 / state.scale,
+                        height: hoveredSequenceActorBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.55,
@@ -447,12 +449,13 @@ export function EditorCanvas({
 
                   {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredFlowchartNodeBox.x - 3,
-                        top: hoveredFlowchartNodeBox.y - 3,
-                        width: hoveredFlowchartNodeBox.width + 6,
-                        height: hoveredFlowchartNodeBox.height + 6,
+                        left: hoveredFlowchartNodeBox.x - 3 / state.scale,
+                        top: hoveredFlowchartNodeBox.y - 3 / state.scale,
+                        width: hoveredFlowchartNodeBox.width + 6 / state.scale,
+                        height: hoveredFlowchartNodeBox.height + 6 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.6,
@@ -603,12 +606,13 @@ export function EditorCanvas({
                     <div 
                       data-scale-lock-border
                       data-scale-lock-shadow
-                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      className="absolute border-indigo-500 pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - 4,
-                        top: selectionBox.y - 4,
-                        width: selectionBox.width + 8,
-                        height: selectionBox.height + 8,
+                        left: selectionBox.x - 4 / state.scale,
+                        top: selectionBox.y - 4 / state.scale,
+                        width: selectionBox.width + 8 / state.scale,
+                        height: selectionBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
