@@ -1,6 +1,14 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
 import { isEdgeId, parseEdgeId, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
 
+// Padding (canvas units) added around a sequence message's raw line+label bounds to
+// produce the unified hover/selection border box. The hover box and the selection box
+// MUST both use this exact value so they stay pixel-identical (one single border box).
+const SEQ_MSG_SELECTION_PADDING = { x: 2, y: 1 };
+// Padding (canvas units) for the clickable/hoverable hit-test band. Kept SMALLER than the
+// visible box padding (especially vertically) so the interactive area is tighter than the
+// drawn box, preventing accidental clicks on adjacent message rows.
+const SEQ_MSG_HITTEST_PADDING = { x: 2, y: 1 };
 
 export function useCanvasInteraction({ 
     code, 
@@ -51,6 +59,7 @@ export function useCanvasInteraction({
   } | null>(null);
   const [hoveredSequenceActorBox, setHoveredSequenceActorBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredSequenceMessageBox, setHoveredSequenceMessageBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [hoveredSequenceNoteBox, setHoveredSequenceNoteBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredFlowchartNodeBox, setHoveredFlowchartNodeBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
   const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
@@ -109,6 +118,53 @@ export function useCanvasInteraction({
     }
     return nearest;
   }, []);
+
+  // Live hit-test: returns the message whose connection band (line + label, with
+  // padding) contains the given canvas-space point. Computed directly from the DOM
+  // so it is reliable on cold load, independent of any precomputed-areas state.
+  const findSequenceMessageBandAtPoint = useCallback(
+    (canvasX: number, canvasY: number): { index: number; el: SVGElement } | null => {
+      const container = containerRef.current;
+      if (!container) return null;
+      const containerRect = container.getBoundingClientRect();
+      const scale = containerRect.width / container.offsetWidth;
+      const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+      const messageLineEls = Array.from(
+        container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+      ) as SVGElement[];
+      const paddingX = SEQ_MSG_HITTEST_PADDING.x;
+      const paddingY = SEQ_MSG_HITTEST_PADDING.y;
+      let bestIndex = -1;
+      let bestEl: SVGElement | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < messageTextEls.length; i += 1) {
+        const textEl = messageTextEls[i];
+        const lineEl = findNearestLineForText(textEl, messageLineEls);
+        const textRect = textEl.getBoundingClientRect();
+        const lineRect = lineEl?.getBoundingClientRect();
+        const left = Math.min(textRect.left, lineRect?.left ?? textRect.left);
+        const top = Math.min(textRect.top, lineRect?.top ?? textRect.top);
+        const right = Math.max(textRect.right, lineRect?.right ?? textRect.right);
+        const bottom = Math.max(textRect.bottom, lineRect?.bottom ?? textRect.bottom);
+        const x = (left - containerRect.left + container.scrollLeft) / scale - paddingX;
+        const y = (top - containerRect.top + container.scrollTop) / scale - paddingY;
+        const w = Math.max(0, (right - left) / scale + paddingX * 2);
+        const h = Math.max(0, (bottom - top) / scale + paddingY * 2);
+        if (canvasX >= x && canvasX <= x + w && canvasY >= y && canvasY <= y + h) {
+          // Bands of adjacent messages can overlap (padding); pick the one whose
+          // vertical center is closest to the cursor.
+          const dist = Math.abs(canvasY - (y + h / 2));
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestIndex = i;
+            bestEl = textEl;
+          }
+        }
+      }
+      return bestEl ? { index: bestIndex, el: bestEl } : null;
+    },
+    [containerRef, findNearestLineForText]
+  );
 
   const clearSequenceMessageHoverHighlight = useCallback(() => {
     hoveredSequenceTargetsRef.current.textEl?.classList.remove('sequence-msg-hover-highlight-text');
@@ -181,14 +237,15 @@ export function useCanvasInteraction({
         const top = Math.min(lineRect?.top ?? Number.POSITIVE_INFINITY, textRect?.top ?? Number.POSITIVE_INFINITY);
         const right = Math.max(lineRect?.right ?? Number.NEGATIVE_INFINITY, textRect?.right ?? Number.NEGATIVE_INFINITY);
         const bottom = Math.max(lineRect?.bottom ?? Number.NEGATIVE_INFINITY, textRect?.bottom ?? Number.NEGATIVE_INFINITY);
-        const paddingX = 12;
-        const paddingY = 3;
 
+        // Equal padding (canvas units) applied here AND in the click/recalc selection box
+        // builders, so the hover box and the selection box stay pixel-identical — one
+        // single border box for both states (see SEQ_MSG_SELECTION_PADDING).
         setHoveredSequenceMessageBox({
-          x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
-          y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
-          width: Math.max(0, (right - left) / scale + paddingX * 2),
-          height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+          x: (left - containerRect.left + container.scrollLeft) / scale - SEQ_MSG_SELECTION_PADDING.x,
+          y: (top - containerRect.top + container.scrollTop) / scale - SEQ_MSG_SELECTION_PADDING.y,
+          width: Math.max(0, (right - left) / scale + SEQ_MSG_SELECTION_PADDING.x * 2),
+          height: Math.max(0, (bottom - top) / scale + SEQ_MSG_SELECTION_PADDING.y * 2),
         });
       } else {
         setHoveredSequenceMessageBox(null);
@@ -200,31 +257,44 @@ export function useCanvasInteraction({
     setHoveredSequenceMessageBox(null);
   }, [containerRef, clearSequenceMessageHoverHighlight, findNearestLineForText, findNearestTextForLine]);
 
-  useEffect(() => {
+  // Resolve the hover target to a message element. When the pointer is over the
+  // empty connection band (not exactly on the line/label), fall back to the band's
+  // messageText so the whole connection stays highlighted — matching note rect.note.
+  // NOTE: This hover handling is wired through React's onMouseOver/onMouseOut props on
+  // the canvas container (see EditorCanvas) rather than a manual addEventListener effect.
+  // A previous addEventListener-in-useEffect approach silently attached to a stale DOM
+  // node whenever the container remounted without the effect's deps changing, leaving the
+  // live container with NO hover listener. React-managed props re-bind automatically on
+  // every remount, so the hover ring stays reliable.
+  const resolveMessageHoverTarget = useCallback((clientX: number, clientY: number, rawTarget: EventTarget | null): EventTarget | null => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container) return rawTarget;
+    if (
+      rawTarget instanceof Element &&
+      rawTarget.closest('.messageText, [class^="messageLine"], [class*=" messageLine"]')
+    ) {
+      return rawTarget;
+    }
+    const rect = container.getBoundingClientRect();
+    const scale = rect.width / container.offsetWidth;
+    const cx = (clientX - rect.left + container.scrollLeft) / scale;
+    const cy = (clientY - rect.top + container.scrollTop) / scale;
+    const band = findSequenceMessageBandAtPoint(cx, cy);
+    return band ? band.el : rawTarget;
+  }, [containerRef, findSequenceMessageBandAtPoint]);
 
-    const onMouseOver = (e: MouseEvent) => {
-      if (determineDiagramType(code) !== 'sequence') return;
-      updateSequenceMessageHoverHighlight(e.target);
-    };
+  const handleSequenceHoverOver = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (determineDiagramType(code) !== 'sequence') return;
+    updateSequenceMessageHoverHighlight(resolveMessageHoverTarget(e.clientX, e.clientY, e.target));
+  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, resolveMessageHoverTarget]);
 
-    const onMouseOut = (e: MouseEvent) => {
-      if (determineDiagramType(code) !== 'sequence') {
-        clearSequenceMessageHoverHighlight();
-        return;
-      }
-      updateSequenceMessageHoverHighlight(e.relatedTarget);
-    };
-
-    container.addEventListener('mouseover', onMouseOver);
-    container.addEventListener('mouseout', onMouseOut);
-
-    return () => {
-      container.removeEventListener('mouseover', onMouseOver);
-      container.removeEventListener('mouseout', onMouseOut);
-    };
-  }, [containerRef, code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight]);
+  const handleSequenceHoverOut = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (determineDiagramType(code) !== 'sequence') {
+      clearSequenceMessageHoverHighlight();
+      return;
+    }
+    updateSequenceMessageHoverHighlight(resolveMessageHoverTarget(e.clientX, e.clientY, e.relatedTarget));
+  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight, resolveMessageHoverTarget]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -544,13 +614,13 @@ export function useCanvasInteraction({
     const top = Math.min(textRect?.top ?? Number.POSITIVE_INFINITY, lineRect?.top ?? Number.POSITIVE_INFINITY);
     const right = Math.max(textRect?.right ?? Number.NEGATIVE_INFINITY, lineRect?.right ?? Number.NEGATIVE_INFINITY);
     const bottom = Math.max(textRect?.bottom ?? Number.NEGATIVE_INFINITY, lineRect?.bottom ?? Number.NEGATIVE_INFINITY);
-    const paddingX = 12;
-    const paddingY = 3;
+    // Equal padding (canvas units) — must match the click/recalc selection box builders
+    // so the hover box and the selection box stay pixel-identical (one single border box).
     setHoveredSequenceMessageBox({
-      x: (left - containerRect.left + container.scrollLeft) / scale - paddingX,
-      y: (top - containerRect.top + container.scrollTop) / scale - paddingY,
-      width: Math.max(0, (right - left) / scale + paddingX * 2),
-      height: Math.max(0, (bottom - top) / scale + paddingY * 2),
+      x: (left - containerRect.left + container.scrollLeft) / scale - SEQ_MSG_SELECTION_PADDING.x,
+      y: (top - containerRect.top + container.scrollTop) / scale - SEQ_MSG_SELECTION_PADDING.y,
+      width: Math.max(0, (right - left) / scale + SEQ_MSG_SELECTION_PADDING.x * 2),
+      height: Math.max(0, (bottom - top) / scale + SEQ_MSG_SELECTION_PADDING.y * 2),
     });
   }, [containerRef, findNearestLineForText]);
 
@@ -583,8 +653,9 @@ export function useCanvasInteraction({
       }
       if (inFrontmatter) continue;
 
-      // Match: Note [left|right|over] of [Participant]: [Text]
-      const noteMatch = trimmed.match(/^Note\s+(left|right|over)\s+of\s+(.+?)(?:\s*:\s*(.*))?$/i);
+      // Match: "Note left|right of Participant: Text" OR "Note over Participant: Text"
+      // The "of" keyword is optional for the "over" position (Mermaid uses "Note over X" not "Note over of X").
+      const noteMatch = trimmed.match(/^Note\s+(left|right|over)\s+(?:of\s+)?(.+?)(?:\s*:\s*(.*))?$/i);
       if (noteMatch) {
         const [, position, participant, text] = noteMatch;
         entries.push({
@@ -629,7 +700,10 @@ export function useCanvasInteraction({
 
     const lines = sourceCode.split('\n');
     const noteEntry = noteEntries[noteIndex];
-    const newLine = `    Note ${newPosition} of ${noteEntry.participant}: ${noteEntry.text}`;
+    // Use correct Mermaid syntax: "Note over X" (no "of") vs "Note left|right of X"
+    const newLine = newPosition === 'over'
+      ? `    Note over ${noteEntry.participant}: ${noteEntry.text}`
+      : `    Note ${newPosition} of ${noteEntry.participant}: ${noteEntry.text}`;
     lines[noteEntry.index] = newLine;
 
     return lines.join('\n');
@@ -695,45 +769,14 @@ export function useCanvasInteraction({
 
     const rows = [...new Set(rowAnchors)].sort((a, b) => a - b);
 
-    // Collect note vertical ranges (only for notes that overlap this lifeline's X position).
-    // Notes on other lifelines share Y-rows but don't visually overlap this lifeline's + buttons.
-    const noteRanges: Array<{ top: number; bottom: number }> = [];
-    let noteScale = 1;
-    if (containerRef.current) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      noteScale = containerRect.width / containerRef.current.offsetWidth;
-      const noteRects = Array.from(containerRef.current.querySelectorAll('rect.note')) as SVGElement[];
-      for (const noteRect of noteRects) {
-        const r = noteRect.getBoundingClientRect();
-        // Convert note X range to canvas coordinates
-        const noteLeft = (r.left - containerRect.left) / noteScale;
-        const noteRight = (r.right - containerRect.left) / noteScale;
-        // Only consider notes that horizontally overlap this lifeline's X position (with button radius margin)
-        const buttonRadius = 12 / noteScale;
-        if (lifeline.x < noteLeft - buttonRadius || lifeline.x > noteRight + buttonRadius) continue;
-        const top = (r.top - containerRect.top + containerRef.current.scrollTop) / noteScale;
-        const bottom = (r.bottom - containerRect.top + containerRef.current.scrollTop) / noteScale;
-        noteRanges.push({ top, bottom });
-      }
-    }
-    // The + button has a 12px physical radius. Add 1 extra canvas unit for strict clearance.
-    const noteBuffer = Math.ceil(12 / noteScale);
-
-    // Push a Y value below any note whose visual extent (±noteBuffer) the slot would overlap.
-    // A slot overlaps a note if the button (radius=noteBuffer) reaches the note boundary.
-    const pushBelowNotes = (y: number): number => {
-      let result = y;
-      for (let iter = 0; iter < noteRanges.length * 2 + 1; iter++) {
-        // Find ALL notes the button would visually overlap and take the one with the highest bottom
-        const overlapping = noteRanges.filter(n => result >= n.top - noteBuffer && result <= n.bottom + noteBuffer);
-        if (overlapping.length === 0) break;
-        const maxBottom = Math.max(...overlapping.map(n => n.bottom));
-        const next = maxBottom + noteBuffer;
-        if (next <= result) break; // no forward progress, avoid infinite loop
-        result = next;
-      }
-      return Math.round(result);
-    };
+    // FLAT-SURFACE GRID — NOTE-INDEPENDENT:
+    // Every lifeline is treated as a flat plane. The slot grid (above-first / midpoints /
+    // below-last) is derived PURELY from the shared global message rows, so it is IDENTICAL
+    // for every lifeline regardless of which lifeline is hovered. Notes have ZERO effect on
+    // placement: their presence or absence never inserts, removes, shifts, or resizes a slot.
+    // This guarantees uniform vertical alignment of the purple "+" buttons across all
+    // lifelines (the "Order 1 rule" applied everywhere). Do NOT reintroduce note avoidance —
+    // it breaks the flat-surface guarantee by making columns drift relative to one another.
 
     // Empty lifeline: one dynamic handle that follows hover and snaps to safe bounds.
     if (rows.length === 0) {
@@ -742,49 +785,35 @@ export function useCanvasInteraction({
     }
 
     // Existing messages: one slot above the first, one midpoint between each adjacent pair,
-    // one slot below the last. Each slot is pushed below any note it would visually overlap.
+    // one slot below the last.
     const VERTICAL_GRID_STEP = 56;
     const firstGap = 12;
     const lastGap = rows.length > 1
       ? Math.max(28, Math.round((rows[rows.length - 1] - rows[rows.length - 2]) / 2))
       : VERTICAL_GRID_STEP;
     const targetYs: number[] = [];
-    // Above-first-row slot: push below any overlapping note. If pushed past rows[0],
-    // push UPWARD to sit just above the note instead.
-    const firstSlotRaw = Math.round(rows[0] - firstGap);
-    const firstSlotPushed = pushBelowNotes(firstSlotRaw);
-    let firstSlot: number;
-    if (firstSlotPushed <= rows[0]) {
-      firstSlot = firstSlotPushed; // fits between note and first row
-    } else {
-      // Note fills the gap — place button above the note instead
-      const minNoteTop = noteRanges
-        .filter(n => firstSlotRaw >= n.top - noteBuffer)
-        .reduce((min, n) => Math.min(min, n.top), Infinity);
-      firstSlot = Number.isFinite(minNoteTop)
-        ? Math.floor(minNoteTop - noteBuffer) - 1  // just above the note's buffer zone
-        : firstSlotRaw;
-    }
-    targetYs.push(firstSlot);
+    targetYs.push(Math.round(rows[0] - firstGap));
 
+    // The second slot (the first midpoint, between rows[0] and rows[1]) is nudged UP slightly so
+    // it doesn't graze the first message arrow. This is a uniform, index-based offset — it shifts
+    // identically on every lifeline, preserving the flat-surface guarantee (no note dependence).
+    const SECOND_SLOT_LIFT = 6;
     for (let i = 0; i < rows.length - 1; i += 1) {
-      targetYs.push(pushBelowNotes(Math.round((rows[i] + rows[i + 1]) / 2)));
+      const midpoint = Math.round((rows[i] + rows[i + 1]) / 2);
+      targetYs.push(i === 0 ? midpoint - SECOND_SLOT_LIFT : midpoint);
     }
 
-    targetYs.push(pushBelowNotes(Math.round(rows[rows.length - 1] + lastGap)));
+    targetYs.push(Math.round(rows[rows.length - 1] + lastGap));
 
-    // The first slot (targetYs[0]) is already well-placed by the firstSlot logic above —
-    // it sits at rows[0]-firstGap (or above a note), which may be above start when the
-    // first message is close to the actor box. We keep it as-is (only clamping to the
-    // lifeline bottom); all other slots clamp to [start, end] as usual.
+    // The first slot sits at rows[0]-firstGap, which may be above `start` when the first
+    // message is close to the actor box. We keep it as-is (only clamping to the lifeline
+    // extent) so a + always appears ABOVE the first message; all other slots clamp to [start, end].
     const contextual = targetYs
       .map((y, i) => {
         if (i === 0) {
-          // First slot: clamp only to lifeline extent (not to start), then push below notes.
-          // This ensures a button always appears ABOVE the first message even in dense diagrams.
-          return pushBelowNotes(Math.max(globalTop, Math.min(end, y)));
+          return Math.max(globalTop, Math.min(end, y));
         }
-        return pushBelowNotes(Math.max(start, Math.min(end, y)));
+        return Math.max(start, Math.min(end, y));
       })
       .sort((a, b) => a - b);
 
@@ -1106,12 +1135,27 @@ export function useCanvasInteraction({
           }
         }
       }
+
+      // For sequence notes, use rect.note for the full-box selection outline.
+      // foundElement is .noteText; we walk up to find the sibling rect.note.
+      if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+        const parentGroup = foundElement.parentElement;
+        const rectNote = (parentGroup?.querySelector('rect.note')
+          ?? parentGroup?.parentElement?.querySelector('rect.note')) as SVGElement | null;
+        if (rectNote) {
+          rect = rectNote.getBoundingClientRect();
+          textRect = foundElement.getBoundingClientRect();
+        }
+      }
       
+      // Sequence messages get equal padding so the selection box matches the hover box.
+      const msgPadX = selectedNodeId.startsWith('SEQ_MSG_') ? SEQ_MSG_SELECTION_PADDING.x : 0;
+      const msgPadY = selectedNodeId.startsWith('SEQ_MSG_') ? SEQ_MSG_SELECTION_PADDING.y : 0;
       const newSelectionBox = {
-          x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
-          y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
-          width: rect.width / scale,
-          height: rect.height / scale
+          x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale - msgPadX,
+          y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale - msgPadY,
+          width: rect.width / scale + msgPadX * 2,
+          height: rect.height / scale + msgPadY * 2
       };
 
       const newTextBox = {
@@ -1264,12 +1308,28 @@ export function useCanvasInteraction({
         nodeId = `SEQ_MSG_${idx}`;
         break;
       }
-      // Sequence note text
+      // Sequence note text (clicking the label text)
       if (currentNode.classList?.contains('noteText')) {
         foundNodeClass = true;
         const allNotes = Array.from(containerRef.current?.querySelectorAll('.noteText') || []);
         const idx = allNotes.indexOf(currentNode);
         nodeId = `SEQ_NOTE_${idx >= 0 ? idx : 0}`;
+        break;
+      }
+      // Sequence note rect (clicking the yellow background — rect.note)
+      if (currentNode.tagName?.toLowerCase() === 'rect' && currentNode.classList?.contains('note')) {
+        foundNodeClass = true;
+        // Find the nearest .noteText sibling in the same parent group to resolve the index
+        const allNoteRects = Array.from(containerRef.current?.querySelectorAll('rect.note') || []);
+        const rectIdx = allNoteRects.indexOf(currentNode);
+        // .noteText elements are in 1:1 correspondence with rect.note elements
+        const allNoteTexts = Array.from(containerRef.current?.querySelectorAll('.noteText') || []);
+        const idx = rectIdx >= 0 && rectIdx < allNoteTexts.length ? rectIdx : 0;
+        // Remap currentNode to the paired .noteText so selection/textBox logic finds the label
+        if (allNoteTexts[idx]) {
+          currentNode = allNoteTexts[idx] as SVGElement;
+        }
+        nodeId = `SEQ_NOTE_${idx}`;
         break;
       }
       currentNode = currentNode.parentElement as SVGElement | null;
@@ -1401,12 +1461,32 @@ export function useCanvasInteraction({
               rawSvgId = (pairedLine as SVGElement | null)?.id || (pairedText as SVGElement | null)?.id || rawSvgId;
             }
         }
+
+        // For sequence notes, use the full rect.note box for the selection outline.
+        // The foundElement is .noteText (for editing), but visually we want the yellow box bounds.
+        if (cleanId && cleanId.startsWith('SEQ_NOTE_')) {
+            const idx = parseInt(cleanId.replace('SEQ_NOTE_', ''), 10);
+            const allNoteTexts = Array.from(containerRef.current.querySelectorAll('.noteText')) as SVGElement[];
+            const noteTextEl = allNoteTexts[idx] || (currentNode.classList?.contains('noteText') ? currentNode : null);
+            if (noteTextEl) {
+                const parentGroup = noteTextEl.parentElement;
+                const rectNote = (parentGroup?.querySelector('rect.note')
+                  ?? parentGroup?.parentElement?.querySelector('rect.note')) as SVGElement | null;
+                if (rectNote) {
+                    rect = rectNote.getBoundingClientRect();
+                    textRect = noteTextEl.getBoundingClientRect();
+                }
+            }
+        }
         
+        // Sequence messages get equal padding so the selection box matches the hover box.
+        const msgPadX = (cleanId && cleanId.startsWith('SEQ_MSG_')) ? SEQ_MSG_SELECTION_PADDING.x : 0;
+        const msgPadY = (cleanId && cleanId.startsWith('SEQ_MSG_')) ? SEQ_MSG_SELECTION_PADDING.y : 0;
         const newSelectionBox = {
-            x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
-            y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
-            width: rect.width / scale,
-            height: rect.height / scale
+            x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale - msgPadX,
+            y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale - msgPadY,
+            width: rect.width / scale + msgPadX * 2,
+            height: rect.height / scale + msgPadY * 2
         };
 
         const newTextBox = {
@@ -1631,13 +1711,36 @@ export function useCanvasInteraction({
       setSelectionBox(clicked.newSelectionBox);
       setTextBox(clicked.newTextBox);
     } else {
+      // Message band fallback: clicking the empty connection area (between the line
+      // and label) selects the message, mirroring how clicking the yellow note area
+      // selects the note. Reuses getClickedNode on the band's messageText so the
+      // selection box/text box are computed identically to a direct line/text click.
+      const container = containerRef.current;
+      if (container && determineDiagramType(code) === 'sequence') {
+        const containerRect = container.getBoundingClientRect();
+        const scale = containerRect.width / container.offsetWidth;
+        const canvasX = (e.clientX - containerRect.left + container.scrollLeft) / scale;
+        const canvasY = (e.clientY - containerRect.top + container.scrollTop) / scale;
+        const band = findSequenceMessageBandAtPoint(canvasX, canvasY);
+        if (band) {
+          const bandClicked = getClickedNode(band.el);
+          if (bandClicked) {
+            debugLog('select-band', bandClicked.cleanId);
+            setSelectedNodeIdWithRef(bandClicked.cleanId);
+            setSelectedSvgId(bandClicked.rawSvgId);
+            setSelectionBox(bandClicked.newSelectionBox);
+            setTextBox(bandClicked.newTextBox);
+            return;
+          }
+        }
+      }
       debugLog('clear-selection');
       setSelectedNodeIdWithRef(null);
       setSelectedSvgId(null);
       setSelectionBox(null);
       setTextBox(null);
     }
-  }, [getClickedNode, isLocked, isInlineEditing, setSelectedNodeIdWithRef, setIsInlineEditing, handleEditClick]);
+  }, [getClickedNode, isLocked, isInlineEditing, setSelectedNodeIdWithRef, setIsInlineEditing, handleEditClick, code, containerRef, determineDiagramType, findSequenceMessageBandAtPoint]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
       // Throttle to one execution per animation frame — prevents expensive DOM work
@@ -1694,10 +1797,47 @@ export function useCanvasInteraction({
         } else {
           setHoveredSequenceActorBox(null);
         }
+        // Note hover detection: use rect.note for full-box bounds
+        const noteRectEl = (e.target as Element | null)?.closest('rect.note') as SVGElement | null;
+        const noteTextEl = (e.target as Element | null)?.closest('.noteText') as SVGElement | null;
+        let noteBoxEl: SVGElement | null = noteRectEl;
+        if (!noteBoxEl && noteTextEl) {
+          noteBoxEl = noteTextEl.parentElement?.querySelector('rect.note') as SVGElement | null
+            ?? noteTextEl.parentElement?.parentElement?.querySelector('rect.note') as SVGElement | null;
+        }
+        if (noteBoxEl) {
+          const noteRect = noteBoxEl.getBoundingClientRect();
+          setHoveredSequenceNoteBox({
+            x: (noteRect.left - containerRectForScale.left + container.scrollLeft) / scale,
+            y: (noteRect.top - containerRectForScale.top + container.scrollTop) / scale,
+            width: noteRect.width / scale,
+            height: noteRect.height / scale,
+          });
+        } else {
+          setHoveredSequenceNoteBox(null);
+        }
         setHoveredFlowchartNodeBox(null);
-        updateSequenceMessageHoverHighlight(e.target);
+        // Message hover: prefer the exact SVG line/text target. When the cursor is
+        // anywhere else inside a message's band (the empty connection area), fall back
+        // to that band's messageText so the entire connection is hoverable — the same
+        // full-area behavior notes get via rect.note. The trigger overlay stays
+        // pointer-events:none, so header/footer clicks are never swallowed.
+        const directMsgTarget = (e.target as Element | null)?.closest(
+          '.messageText, [class^="messageLine"], [class*=" messageLine"]'
+        );
+        if (directMsgTarget) {
+          updateSequenceMessageHoverHighlight(e.target);
+        } else {
+          const band = findSequenceMessageBandAtPoint(mouseX, mouseY);
+          if (band) {
+            updateSequenceMessageHoverHighlight(band.el);
+          } else {
+            updateSequenceMessageHoverHighlight(e.target);
+          }
+        }
       } else if (diagramType === 'flowchart' || diagramType === 'graph') {
         setHoveredSequenceActorBox(null);
+        setHoveredSequenceNoteBox(null);
         clearSequenceMessageHoverHighlight();
         // Show hover highlight on flowchart nodes.
         // Fallback: tiny rendered nodes can miss direct target resolution and surface as svg/container.
@@ -1738,6 +1878,7 @@ export function useCanvasInteraction({
         }
       } else {
         setHoveredSequenceActorBox(null);
+        setHoveredSequenceNoteBox(null);
         setHoveredFlowchartNodeBox(null);
         clearSequenceMessageHoverHighlight();
       }
@@ -1810,6 +1951,7 @@ export function useCanvasInteraction({
       } else {
         setSequenceLifelineOverlay(null);
         setHoveredSequenceActorBox(null);
+        setHoveredSequenceNoteBox(null);
       }
 
       if (connectionState.active && connectionState.startNodeId) {
@@ -1986,6 +2128,7 @@ export function useCanvasInteraction({
     return () => {
       clearSequenceMessageHoverHighlight();
       setHoveredSequenceActorBox(null);
+      setHoveredSequenceNoteBox(null);
     };
   }, [clearSequenceMessageHoverHighlight]);
 
@@ -2147,6 +2290,7 @@ export function useCanvasInteraction({
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
     dragState: null as null,
@@ -2158,6 +2302,8 @@ export function useCanvasInteraction({
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
+    handleSequenceHoverOver,
+    handleSequenceHoverOut,
     handleEditClick,
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,

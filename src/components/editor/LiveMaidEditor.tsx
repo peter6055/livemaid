@@ -78,6 +78,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
     inlineInputRef,
@@ -85,6 +86,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     handleSvgClick,
     handleMouseMove,
     handleMouseUp,
+    handleSequenceHoverOver,
+    handleSequenceHoverOut,
     handleEditClick,
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,
@@ -94,6 +97,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     setShapePicker,
     getSequenceNoteEntries,
     insertSequenceNoteAtIndex,
+    updateNotePosition,
     getSequenceInsertIndexForAnchor,
   } = useCanvasInteraction({
     code,
@@ -260,40 +264,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
     const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
     if (!Number.isFinite(idx) || idx < 0) return;
-
-    const lines = code.split('\n');
-    let noteVisualIndex = 0;
-    let inFrontmatter = false;
-    let updated = false;
-
-    for (let i = 0; i < lines.length; i += 1) {
-      const trimmed = lines[i].trim();
-      if (trimmed === '---') {
-        inFrontmatter = !inFrontmatter;
-        continue;
-      }
-      if (inFrontmatter) continue;
-      if (!(trimmed.startsWith('Note ') || trimmed.startsWith('note '))) continue;
-
-      if (noteVisualIndex === idx) {
-        const structuredMatch = lines[i].match(/^(\s*)Note\s+(left|right|over)\s+of\s+(.+?)(?:\s*:\s*(.*))?$/i);
-        if (!structuredMatch) {
-          toast.info('Only "Note [left|right|over] of [Participant]" lines can be repositioned.');
-          return;
-        }
-
-        const [, indent, , participant, text] = structuredMatch;
-        lines[i] = `${indent}Note ${position} of ${participant.trim()}: ${(text || 'new note').trim()}`;
-        updated = true;
-        break;
-      }
-
-      noteVisualIndex += 1;
-    }
-
-    if (!updated) return;
-    handleCodeChange(lines.join('\n'));
-  }, [code, handleCodeChange, selectedNodeId]);
+    const updatedCode = updateNotePosition(code, idx, position);
+    if (updatedCode !== code) handleCodeChange(updatedCode);
+  }, [code, handleCodeChange, selectedNodeId, updateNotePosition]);
 
   const handleLinkSequenceNote = useCallback(() => {
     toast.info('Link/Connect for sequence notes is not available yet.');
@@ -1944,6 +1917,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           handleSvgClick={handleSvgClick}
           handleMouseMove={handleMouseMove}
           handleMouseUp={handleMouseUp}
+          handleSequenceHoverOver={handleSequenceHoverOver}
+          handleSequenceHoverOut={handleSequenceHoverOut}
           handleEditClick={handleEditClick}
           selectionBox={selectionBox}
           connectionState={connectionState}
@@ -1951,6 +1926,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           sequenceLifelineOverlay={sequenceLifelineOverlay}
           hoveredSequenceActorBox={hoveredSequenceActorBox}
           hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+          hoveredSequenceNoteBox={hoveredSequenceNoteBox}
           hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
           sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
           startSequenceConnection={startSequenceConnection}

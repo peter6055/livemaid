@@ -19,6 +19,8 @@ interface EditorCanvasProps {
   handleSvgClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleMouseUp: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleSequenceHoverOver: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleSequenceHoverOut: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleEditClick: (e: React.MouseEvent | Event) => void;
   selectionBox: { x: number, y: number, width: number, height: number } | null;
   connectionState: {
@@ -35,6 +37,7 @@ interface EditorCanvasProps {
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
   hoveredSequenceActorBox: { x: number, y: number, width: number, height: number } | null;
   hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
+  hoveredSequenceNoteBox: { x: number, y: number, width: number, height: number } | null;
   hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
@@ -55,7 +58,7 @@ interface EditorCanvasProps {
   handleDeleteNode: () => void;
   onAddSequenceNote: (position: 'left' | 'right' | 'over') => void;
   onMoveSequenceNote: (position: 'left' | 'right' | 'over') => void;
-  onLinkSequenceNote: () => void;
+  onLinkSequenceNote?: () => void;
   setIsInlineEditing: (v: boolean) => void;
   textBox: { x: number, y: number, width: number, height: number } | null;
   theme: string | undefined;
@@ -88,6 +91,8 @@ export function EditorCanvas({
   handleSvgClick,
   handleMouseMove,
   handleMouseUp,
+  handleSequenceHoverOver,
+  handleSequenceHoverOut,
   handleEditClick,
   selectionBox,
   connectionState,
@@ -95,6 +100,7 @@ export function EditorCanvas({
   sequenceLifelineOverlay,
   hoveredSequenceActorBox,
   hoveredSequenceMessageBox,
+  hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   sequenceMessageTriggerAreas,
   startSequenceConnection,
@@ -383,6 +389,8 @@ export function EditorCanvas({
                   className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
                   onDoubleClick={!isLocked ? ((e) => { handleEditClick(e); }) : undefined}
                   onMouseMove={handleMouseMove}
+                  onMouseOver={handleSequenceHoverOver}
+                  onMouseOut={handleSequenceHoverOut}
                   onMouseUp={handleMouseUp}
                   onMouseLeave={handleMouseUp}
                 >
@@ -420,11 +428,28 @@ export function EditorCanvas({
                       data-scale-lock-shadow
                       className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
-                        left: hoveredSequenceMessageBox.x - 4 / state.scale,
-                        top: hoveredSequenceMessageBox.y - 4 / state.scale,
-                        width: hoveredSequenceMessageBox.width + 8 / state.scale,
-                        height: hoveredSequenceMessageBox.height + 8 / state.scale,
+                        left: hoveredSequenceMessageBox.x - 1 / state.scale,
+                        top: hoveredSequenceMessageBox.y - 1 / state.scale,
+                        width: hoveredSequenceMessageBox.width + 2 / state.scale,
+                        height: hoveredSequenceMessageBox.height + 2 / state.scale,
                         borderRadius: `${6 / state.scale}px`,
+                        borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
+                      }}
+                    />
+                  )}
+
+                  {currentType === 'sequence' && hoveredSequenceNoteBox && !selectedNodeId?.startsWith('SEQ_NOTE_') && !isInlineEditing && !connectionState.active && (
+                    <div
+                      data-scale-lock-border
+                      data-scale-lock-shadow
+                      className="absolute pointer-events-none z-20 border-indigo-500"
+                      style={{
+                        left: hoveredSequenceNoteBox.x - 4 / state.scale,
+                        top: hoveredSequenceNoteBox.y - 4 / state.scale,
+                        width: hoveredSequenceNoteBox.width + 8 / state.scale,
+                        height: hoveredSequenceNoteBox.height + 8 / state.scale,
+                        borderRadius: `${4 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
@@ -608,10 +633,10 @@ export function EditorCanvas({
                       data-scale-lock-shadow
                       className="absolute border-indigo-500 pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - 4 / state.scale,
-                        top: selectionBox.y - 4 / state.scale,
-                        width: selectionBox.width + 8 / state.scale,
-                        height: selectionBox.height + 8 / state.scale,
+                        left: selectionBox.x - (selectedNodeId?.startsWith('SEQ_MSG_') ? 1 : 4) / state.scale,
+                        top: selectionBox.y - (selectedNodeId?.startsWith('SEQ_MSG_') ? 1 : 4) / state.scale,
+                        width: selectionBox.width + (selectedNodeId?.startsWith('SEQ_MSG_') ? 2 : 8) / state.scale,
+                        height: selectionBox.height + (selectedNodeId?.startsWith('SEQ_MSG_') ? 2 : 8) / state.scale,
                         borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
@@ -638,7 +663,7 @@ export function EditorCanvas({
                             onEditLabel={(e) => handleEditClick(e)}
                             onAddNote={onAddSequenceNote}
                             onMoveNote={onMoveSequenceNote}
-                            onLinkNote={onLinkSequenceNote}
+
                             onDeleteNode={handleDeleteNode}
                           />
                         ) : (
@@ -773,15 +798,11 @@ export function EditorCanvas({
         {sequencePlusMenu && (
           <div
             ref={sequencePlusMenuRef}
-            className={
-              sequencePlusMenu.mode === 'root'
-                ? 'absolute pointer-events-auto z-30 rounded-xl border border-border bg-popover px-1.5 py-1 shadow-xl'
-                : 'absolute pointer-events-auto z-30 w-52 rounded-xl border border-border bg-popover p-2 shadow-xl'
-            }
+            className="absolute pointer-events-auto z-30"
             style={{
               left: sequencePlusMenu.x,
               top: sequencePlusMenu.y,
-              transform: sequencePlusMenu.mode === 'root' ? 'translate(-50%, calc(-100% - 32px))' : 'translate(-50%, calc(-100% - 32px))',
+              transform: 'translate(-50%, calc(-100% - 32px))',
             }}
             onMouseDown={(e) => {
               e.stopPropagation();
@@ -790,70 +811,73 @@ export function EditorCanvas({
               e.stopPropagation();
             }}
           >
-            {sequencePlusMenu.mode === 'root' ? (
-              <div className="flex items-center gap-1">
-                <button
-                  className="flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent"
-                  title="Note"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setSequencePlusMenu((prev) => prev ? { ...prev, mode: 'note' } : prev);
-                  }}
-                >
-                  <Pencil className="h-4 w-4" />
-                  <span className="text-sm font-medium">Note</span>
-                </button>
-                <button
-                  className="flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent"
-                  title="Self Loop Message"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onSequencePlusSelfLoop(sequencePlusMenu.actorId, sequencePlusMenu.anchorY);
-                    setSequencePlusMenu(null);
-                  }}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  <span className="text-sm font-medium">Self loop</span>
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1 text-popover-foreground">
-                <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">Note</div>
-                <button
-                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'left');
-                    setSequencePlusMenu(null);
-                  }}
-                >
-                  Add note to the left
-                </button>
-                <button
-                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'right');
-                    setSequencePlusMenu(null);
-                  }}
-                >
-                  Add note to the right
-                </button>
-                <button
-                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'over');
-                    setSequencePlusMenu(null);
-                  }}
-                >
-                  Add note over
-                </button>
+            {/* Tool box: always visible, even while the note position selection is open. */}
+            <div className="flex items-center gap-1 rounded-xl border border-border bg-popover p-1.5 shadow-xl">
+              <button
+                className={`flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent ${sequencePlusMenu.mode === 'note' ? 'bg-accent' : ''}`}
+                title="Note"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSequencePlusMenu((prev) => prev ? { ...prev, mode: prev.mode === 'note' ? 'root' : 'note' } : prev);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+                <span className="text-sm font-medium">Note</span>
+              </button>
+              <button
+                className="flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent"
+                title="Self Loop Message"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onSequencePlusSelfLoop(sequencePlusMenu.actorId, sequencePlusMenu.anchorY);
+                  setSequencePlusMenu(null);
+                }}
+              >
+                <RotateCcw className="h-4 w-4" />
+                <span className="text-sm font-medium">Self loop</span>
+              </button>
+            </div>
+
+            {sequencePlusMenu.mode === 'note' && (
+              <div className="absolute left-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
+                <div className="flex flex-col gap-1">
+                  <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">Note</div>
+                  <button
+                    className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'left');
+                      setSequencePlusMenu(null);
+                    }}
+                  >
+                    Add note to the left
+                  </button>
+                  <button
+                    className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'right');
+                      setSequencePlusMenu(null);
+                    }}
+                  >
+                    Add note to the right
+                  </button>
+                  <button
+                    className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'over');
+                      setSequencePlusMenu(null);
+                    }}
+                  >
+                    Add note over
+                  </button>
+                </div>
               </div>
             )}
           </div>
