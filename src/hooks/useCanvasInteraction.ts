@@ -283,18 +283,69 @@ export function useCanvasInteraction({
     return band ? band.el : rawTarget;
   }, [containerRef, findSequenceMessageBandAtPoint]);
 
+  // Note hover via the reliable onMouseOver/onMouseOut path (mirrors message hover). Uses a
+  // viewport-coordinate hit-test against rect.note boxes so it stays stable even when the note's
+  // reorder grab overlay (pointer-events:auto) covers the note and changes e.target.
+  const updateSequenceNoteHover = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    if (!container) { setHoveredSequenceNoteBox(null); return; }
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const noteRects = Array.from(container.querySelectorAll('rect.note')) as SVGElement[];
+    let hit: SVGElement | null = null;
+    for (const rn of noteRects) {
+      const r = rn.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) { hit = rn; break; }
+    }
+    if (hit) {
+      const r = hit.getBoundingClientRect();
+      setHoveredSequenceNoteBox({
+        x: (r.left - containerRect.left + container.scrollLeft) / scale,
+        y: (r.top - containerRect.top + container.scrollTop) / scale,
+        width: r.width / scale,
+        height: r.height / scale,
+      });
+    } else {
+      setHoveredSequenceNoteBox(null);
+    }
+  }, [containerRef]);
+
   const handleSequenceHoverOver = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (determineDiagramType(code) !== 'sequence') return;
+    // Floating-UI guard: the hover grab overlay (z-21) is a sibling of the selection
+    // box (z-20) and therefore stacks ABOVE the inline toolbar (whose z-30 is trapped
+    // inside the z-20 selection box). If we let the hover update while the cursor is
+    // over the toolbar, the grab overlay for the message BEHIND the toolbar renders on
+    // top of it and steals the press, starting a reorder that reselects that message.
+    // Clear the hover so no overlay covers the toolbar.
+    const overFloatingUi = (() => {
+      const stack = (typeof document !== 'undefined' && document.elementsFromPoint)
+        ? document.elementsFromPoint(e.clientX, e.clientY)
+        : [];
+      return stack.some((el) =>
+        el.closest?.('[data-inline-toolbar]') ||
+        el.closest?.('[data-scale-lock]') ||
+        el.closest?.('[data-scale-lock-border]')
+      );
+    })();
+    if (overFloatingUi) {
+      clearSequenceMessageHoverHighlight();
+      setHoveredSequenceNoteBox(null);
+      return;
+    }
     updateSequenceMessageHoverHighlight(resolveMessageHoverTarget(e.clientX, e.clientY, e.target));
-  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, resolveMessageHoverTarget]);
+    updateSequenceNoteHover(e.clientX, e.clientY);
+  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight, setHoveredSequenceNoteBox, resolveMessageHoverTarget, updateSequenceNoteHover]);
 
   const handleSequenceHoverOut = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (determineDiagramType(code) !== 'sequence') {
       clearSequenceMessageHoverHighlight();
+      setHoveredSequenceNoteBox(null);
       return;
     }
     updateSequenceMessageHoverHighlight(resolveMessageHoverTarget(e.clientX, e.clientY, e.relatedTarget));
-  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight, resolveMessageHoverTarget]);
+    updateSequenceNoteHover(e.clientX, e.clientY);
+  }, [code, determineDiagramType, updateSequenceMessageHoverHighlight, clearSequenceMessageHoverHighlight, resolveMessageHoverTarget, updateSequenceNoteHover]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -625,7 +676,9 @@ export function useCanvasInteraction({
   }, [containerRef, findNearestLineForText]);
 
   const parseSequenceMessageActors = useCallback((line: string) => {
-    const match = line.trim().match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
+    // Match all Mermaid sequence message operators (longest-first to avoid prefix conflicts):
+    // bidirectional, dotted/solid filled-arrow, cross, and async-open variants.
+    const match = line.trim().match(/^(\S+)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/);
     if (!match) return null;
     return {
       from: match[1],
@@ -719,6 +772,47 @@ export function useCanvasInteraction({
 
     return lines.join('\n');
   }, [getSequenceNoteEntries]);
+
+  // Select (or edit) a sequence note by its `.noteText` DOM index. Mirrors
+  // triggerHoveredSequenceMessageSelection but for notes (selection box = rect.note full box,
+  // text box = noteText). Used by the note grab overlay's no-drag mouseup path so notes can be
+  // selected/edited even though the overlay intercepts the underlying SVG click.
+  const triggerHoveredSequenceNoteSelection = useCallback((startInlineEdit = false, index = -1) => {
+    const container = containerRef.current;
+    if (!container) return;
+    const noteTextEls = Array.from(container.querySelectorAll('.noteText')) as SVGElement[];
+    const textEl = noteTextEls[index] || null;
+    if (!textEl) return;
+    const parentGroup = textEl.parentElement;
+    const rectNote = (parentGroup?.querySelector('rect.note')
+      ?? parentGroup?.parentElement?.querySelector('rect.note')) as SVGElement | null;
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const boxEl: SVGElement = rectNote || textEl;
+    const rect = boxEl.getBoundingClientRect();
+    const textRect = textEl.getBoundingClientRect();
+
+    setSelectionBox({
+      x: (rect.left - containerRect.left + container.scrollLeft) / scale,
+      y: (rect.top - containerRect.top + container.scrollTop) / scale,
+      width: rect.width / scale,
+      height: rect.height / scale,
+    });
+    setTextBox({
+      x: (textRect.left - containerRect.left + container.scrollLeft) / scale,
+      y: (textRect.top - containerRect.top + container.scrollTop) / scale,
+      width: textRect.width / scale,
+      height: textRect.height / scale,
+    });
+    setSelectedNodeIdWithRef(`SEQ_NOTE_${index}`);
+    setSelectedSvgId(textEl.id || rectNote?.id || null);
+
+    if (startInlineEdit) {
+      const noteEntry = getSequenceNoteEntries(code)[index];
+      setEditingText(noteEntry?.text || '');
+      setIsInlineEditing(true);
+    }
+  }, [containerRef, code, getSequenceNoteEntries]);
 
   const getSequenceAnchorSlots = useCallback((lifeline: { actorId: string; x: number; y1: number; y2: number }, hoverY?: number) => {
     const allLifelines = getSequenceLifelines();
@@ -1523,9 +1617,16 @@ export function useCanvasInteraction({
         return;
     }
 
-    // Resolve actual SVG element via elementsFromPoint to bypass overlay divs
+    // Resolve actual SVG element via elementsFromPoint to bypass overlay divs.
+    // EXCEPTION: when invoked from a floating toolbar (e.g. the Rename button), the cursor is
+    // over the toolbar — NOT the diagram element — so elementsFromPoint would resolve to whatever
+    // SVG sits behind the toolbar (e.g. an actor header) and edit the WRONG element. In that case
+    // we keep the currently-selected node and its existing selection/text boxes.
+    const fromToolbar = Boolean(
+      (e.target as Element | null)?.closest?.('[data-inline-toolbar], [data-scale-lock]')
+    );
     let targetElement = e.target as Element;
-    if ('clientX' in e && 'clientY' in e) {
+    if (!fromToolbar && 'clientX' in e && 'clientY' in e) {
       const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
       const svgElement = elementsAtPoint.find(el => el.tagName.toLowerCase() !== 'div' && el.namespaceURI === 'http://www.w3.org/2000/svg');
       if (svgElement) {
@@ -1536,7 +1637,7 @@ export function useCanvasInteraction({
       }
     }
 
-    const result = getClickedNode(targetElement);
+    const result = fromToolbar ? null : getClickedNode(targetElement);
     // Use ref for selectedNodeId to avoid stale closure
     let targetNodeId = selectedNodeIdRef.current;
 
@@ -1778,7 +1879,28 @@ export function useCanvasInteraction({
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
 
       if (diagramType === 'sequence') {
+        // Floating-UI guard (mirror of handleSequenceHoverOver): the mousemove path
+        // also drives sequence hover, and unlike onMouseOver it keeps firing while the
+        // cursor sits over the inline toolbar. Without this, moving onto the style bar
+        // hit-tests the message band BEHIND it and renders that message's hover overlay
+        // (the "back connection" accidentally highlighting). Bail and clear hover when
+        // the pointer is over any floating UI so the toolbar stays clean.
+        const overFloatingUi = (typeof document !== 'undefined' && document.elementsFromPoint)
+          ? document.elementsFromPoint(e.clientX, e.clientY).some((el) =>
+              el.closest?.('[data-inline-toolbar]') ||
+              el.closest?.('[data-scale-lock]') ||
+              el.closest?.('[data-scale-lock-border]')
+            )
+          : false;
+        if (overFloatingUi) {
+          setHoveredSequenceActorBox(null);
+          setHoveredSequenceNoteBox(null);
+          setHoveredFlowchartNodeBox(null);
+          clearSequenceMessageHoverHighlight();
+          return;
+        }
         const actorTarget = (e.target as Element | null)?.closest('.actor') as SVGElement | null;
+
         if (actorTarget) {
           // Prefer rect.actor for accurate full-width bounds; text.actor is just the label (narrow)
           let boundsEl: SVGElement = actorTarget;
@@ -1804,6 +1926,20 @@ export function useCanvasInteraction({
         if (!noteBoxEl && noteTextEl) {
           noteBoxEl = noteTextEl.parentElement?.querySelector('rect.note') as SVGElement | null
             ?? noteTextEl.parentElement?.parentElement?.querySelector('rect.note') as SVGElement | null;
+        }
+        // Coordinate fallback: when the cursor is over the note's reorder grab overlay (or any
+        // non-note element), e.target is no longer the note, so the closest() lookups above miss.
+        // Hit-test rect.note boxes by viewport coordinates so the note hover (and its grab overlay)
+        // stays stable instead of flickering on/off as the overlay covers the note.
+        if (!noteBoxEl) {
+          const noteRects = Array.from(container.querySelectorAll('rect.note')) as SVGElement[];
+          for (const rn of noteRects) {
+            const r = rn.getBoundingClientRect();
+            if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+              noteBoxEl = rn;
+              break;
+            }
+          }
         }
         if (noteBoxEl) {
           const noteRect = noteBoxEl.getBoundingClientRect();
@@ -2308,6 +2444,7 @@ export function useCanvasInteraction({
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,
     triggerSequenceMessageHoverByIndex,
+    triggerHoveredSequenceNoteSelection,
     shapePicker,
     setShapePicker,
     // Note handling functions

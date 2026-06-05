@@ -92,6 +92,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,
     triggerSequenceMessageHoverByIndex,
+    triggerHoveredSequenceNoteSelection,
     startSequenceConnection,
     shapePicker,
     setShapePicker,
@@ -211,7 +212,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     if (selectedNodeId.startsWith('SEQ_MSG_')) {
       const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
       const msg = getSequenceMessageEntries(code)[idx]?.line?.trim();
-      const actorMatch = msg?.match(/^(\S+)\s*(?:-->>|-->|->>|->|-\))\s*(\S+)\s*:/);
+      const actorMatch = msg?.match(/^(\S+)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/);
       if (actorMatch?.[1]) {
         return resolveSequenceDisplayName(actorMatch[1]);
       }
@@ -1167,6 +1168,100 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId, selectedSvgId, toMermaidColorToken]);
 
+  // Reorder a sequence message to a new chronological slot (0..N). The moved message's
+  // source line is spliced relative to the other message lines, so interleaved notes/blocks
+  // stay in place. Routes through handleCodeChange so undo/redo + autonumber behave normally.
+  // Reorder a sequence item (message OR note) to a new slot in the UNIFIED visual order of all
+  // reorderable rows (messages + notes, sorted by source line). `item` identifies the dragged
+  // row by kind + its per-kind DOM index; `toSlot` is the unified slot (0 = before first row,
+  // M = after last). The single source line is spliced relative to the other rows, so unrelated
+  // lines (blocks, participants) stay put. Routes through handleCodeChange (undo/autonumber).
+  const handleReorderSequenceItem = useCallback((item: { kind: 'msg' | 'note'; index: number }, toSlot: number) => {
+    const msgs = getSequenceMessageEntries(code).map((e, i) => ({ srcIndex: e.index, kind: 'msg' as const, domIndex: i }));
+    const notes = getSequenceNoteEntries(code).map((e, i) => ({ srcIndex: e.index, kind: 'note' as const, domIndex: i }));
+    const unified = [...msgs, ...notes].sort((a, b) => a.srcIndex - b.srcIndex);
+    const N = unified.length;
+    const fromPos = unified.findIndex((u) => u.kind === item.kind && u.domIndex === item.index);
+    if (fromPos < 0) return;
+    const slot = Math.max(0, Math.min(N, toSlot));
+    // Dropping into its own position is a no-op.
+    if (slot === fromPos || slot === fromPos + 1) return;
+
+    const lines = code.split('\n');
+    const srcIdx = unified[fromPos].srcIndex;
+    const movedLine = lines[srcIdx];
+
+    // The row that should immediately FOLLOW the moved one is original unified[slot] — for BOTH
+    // up- and down-moves. (No +1 for down-moves: `slot` indexes the original array; the source
+    // line shift from removal is compensated below via `refOrigIndex > srcIdx`.)
+    let refOrigIndex: number | null = null;
+    if (slot < N) {
+      refOrigIndex = unified[slot].srcIndex;
+    }
+
+    lines.splice(srcIdx, 1); // remove source line first
+
+    let insertAt: number;
+    if (refOrigIndex !== null) {
+      insertAt = refOrigIndex > srcIdx ? refOrigIndex - 1 : refOrigIndex;
+    } else {
+      // Insert after the last remaining row.
+      const remaining = unified.filter((_, i) => i !== fromPos);
+      const last = remaining[remaining.length - 1];
+      const lastIdx = last.srcIndex > srcIdx ? last.srcIndex - 1 : last.srcIndex;
+      insertAt = lastIdx + 1;
+    }
+
+    lines.splice(insertAt, 0, movedLine);
+    handleCodeChange(lines.join('\n'));
+    setSelectionBox(null);
+    setSelectedNodeId(null);
+  }, [code, getSequenceMessageEntries, getSequenceNoteEntries, handleCodeChange, setSelectionBox, setSelectedNodeId]);
+
+  // Change the connector operator of the selected sequence message (e.g. `->>` → `-->>` → `-x`),
+  // preserving the sender, receiver, message text, and surrounding spacing. The operator is
+  // swapped only at the position between the two actors and before the colon, so participant IDs
+  // and the label payload are never touched.
+  const handleChangeSequenceMessageType = useCallback((operator: string) => {
+    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
+    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const entries = getSequenceMessageEntries(code);
+    const entry = entries[idx];
+    if (!entry) return;
+
+    const lines = code.split('\n');
+    const line = lines[entry.index];
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return;
+    const beforeColon = line.substring(0, colonIdx);
+    const afterColon = line.substring(colonIdx);
+
+    // Swap the operator that sits immediately before the receiver actor at the end of the
+    // pre-colon segment. Anchoring on the trailing actor avoids matching a stray `-` inside the
+    // sender id. Operator alternation is longest-first to avoid prefix conflicts.
+    const swapRe = /(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/;
+    if (!swapRe.test(beforeColon)) return;
+    const newBefore = beforeColon.replace(swapRe, `${operator}$2$3$4`);
+    if (newBefore === beforeColon) return;
+    lines[entry.index] = newBefore + afterColon;
+    handleCodeChange(lines.join('\n'));
+  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId]);
+
+  // The connector operator of the currently selected sequence message (for the toolbar's active
+  // state). Null when no message is selected or it can't be parsed.
+  const currentSequenceMessageOperator = useMemo(() => {
+    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return null;
+    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    const entry = getSequenceMessageEntries(code)[idx];
+    if (!entry) return null;
+    const colonIdx = entry.line.indexOf(':');
+    const beforeColon = colonIdx === -1 ? entry.line : entry.line.substring(0, colonIdx);
+    const m = beforeColon.match(/(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/);
+    return m ? m[1] : null;
+  }, [code, getSequenceMessageEntries, selectedNodeId]);
+
   const handleDeleteNode = useCallback(() => {
       if (!selectedNodeId) return;
       let newCode = code;
@@ -1867,7 +1962,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                 <>
                   <div className="h-5 w-px bg-border mx-1" />
                   <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="text-sm font-medium text-foreground">Autonumber</span>
+                    <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">Auto Number</span>
                     <button
                       onClick={() => {
                         if (code.match(/autonumber/i)) {
@@ -1943,6 +2038,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           handleDeleteNode={handleDeleteNode}
           onAddSequenceNote={handleAddSequenceNote}
           onMoveSequenceNote={handleMoveSequenceNote}
+          onChangeSequenceMessageType={handleChangeSequenceMessageType}
+          currentSequenceMessageOperator={currentSequenceMessageOperator}
           onLinkSequenceNote={handleLinkSequenceNote}
           setIsInlineEditing={setIsInlineEditing}
           textBox={textBox}
@@ -1955,6 +2052,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
           onHoveredSequenceMessageClick={(index) => triggerHoveredSequenceMessageSelection(false, index)}
           onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
+          onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
+          onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
+          onReorderSequenceItem={handleReorderSequenceItem}
           onDeselect={handleDeselect}
           onResetStyle={handleResetStyle}
           onUpdateEdgeStyle={handleUpdateEdgeStyle}
