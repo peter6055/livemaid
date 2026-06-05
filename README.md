@@ -84,26 +84,26 @@ This repository follows the flow:
 - Open a pull request targeting `main`.
 
 ### 2) PR Check
-- Workflow: `ci/pr-checks` (`/tmp/workspace/peter6055/livemaid/.github/workflows/pr-checks.yml`)
+- Workflow: `ci/pr-checks` (`.github/workflows/pr-checks.yml`)
 - Trigger: `pull_request` on `main`
 - Action: installs dependencies and runs `npm run build`.
 
 ### 3) PR Deployment (Preview Environment)
-- Workflow: `cd/railway-pr-preview` (`/tmp/workspace/peter6055/livemaid/.github/workflows/railway-pr-envs.yml`)
+- Workflow: `cd/railway-pr-preview` (`.github/workflows/railway-deploy-pr-review.yml`)
 - Trigger: successful completion of `ci/pr-checks` for pull requests (`workflow_run`)
-- Action: creates/recreates Railway preview environment `pr-<PR_NUMBER>`.
+- Action: creates/recreates Railway preview environment `pr-<PR_NUMBER>` and immediately triggers a deployment from the PR branch source.
 - Cleanup: on PR close/merge, the same workflow deletes `pr-<PR_NUMBER>`.
 
 ### 4) Merge
 - Merge PR into `main` (recommended: squash and merge).
 
 ### 5) Release
-- Workflow: `ci/release` (`/tmp/workspace/peter6055/livemaid/.github/workflows/docker-publish.yml`)
+- Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
 - Trigger: `push` to `main`
 - Action: builds and publishes Docker image to GHCR, then creates a GitHub Release (`v1.0.<run_number>`).
 
 ### 6) Sandbox Deployment
-- Workflow: `cd/railway` (`/tmp/workspace/peter6055/livemaid/.github/workflows/railway-deploy.yml`)
+- Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
 - Trigger: successful completion of `ci/release` (`workflow_run`)
 - Action: deploys latest release to Railway sandbox service.
 

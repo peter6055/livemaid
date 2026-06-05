@@ -27,7 +27,15 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && break
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "npm ci failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
 
       - name: Build
         run: npm run build
