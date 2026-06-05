@@ -44,7 +44,7 @@ export function SequenceManipulationToolbar({
     };
   }, []);
 
-  const btnCls = "pointer-events-auto flex items-center justify-center h-7 w-7 rounded-md hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
+  const btnCls = "pointer-events-auto flex items-center justify-center h-8 rounded-md px-2 gap-1 hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
 
   return (
     <div
@@ -62,9 +62,10 @@ export function SequenceManipulationToolbar({
           <>
             <button className={btnCls} onClick={onEditLabel} title="Rename">
               <Pencil className="w-3.5 h-3.5" />
+              <span className="text-sm font-medium">Rename</span>
             </button>
 
-            <div className="w-px h-4 bg-border mx-0.5" />
+            <div className="w-px h-5 bg-border mx-0.5" />
           </>
         )}
 
@@ -89,12 +90,13 @@ export function SequenceManipulationToolbar({
               <Link2 className="w-3.5 h-3.5" />
             </button>
 
-            <div className="w-px h-4 bg-border mx-0.5" />
+            <div className="w-px h-5 bg-border mx-0.5" />
           </>
         )}
 
         <button className={`${btnCls} hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/30`} onClick={onDeleteNode} title="Delete">
           <Trash2 className="w-3.5 h-3.5" />
+          {!isNoteSelected && <span className="text-sm font-medium">Delete</span>}
         </button>
       </div>
 

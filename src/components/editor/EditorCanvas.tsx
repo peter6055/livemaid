@@ -1,11 +1,11 @@
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { Lock, Unlock, Plus } from "lucide-react";
+import { Lock, Unlock, Plus, Pencil, RotateCcw } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { isEdgeId } from "@/lib/diagrams/utils";
-import { CSSProperties, RefObject, useEffect } from "react";
+import { CSSProperties, RefObject, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
 
@@ -38,6 +38,8 @@ interface EditorCanvasProps {
   hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
   startSequenceConnection: (actorId: string, anchorY: number) => void;
+  onSequencePlusSelfLoop: (actorId: string, anchorY: number) => void;
+  onSequencePlusNote: (actorId: string, anchorY: number, position: 'left' | 'right' | 'over') => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
@@ -96,6 +98,8 @@ export function EditorCanvas({
   hoveredFlowchartNodeBox,
   sequenceMessageTriggerAreas,
   startSequenceConnection,
+  onSequencePlusSelfLoop,
+  onSequencePlusNote,
   onHoveredSequenceMessageHover,
   onHoveredSequenceMessageClick,
   onHoveredSequenceMessageDoubleClick,
@@ -130,6 +134,23 @@ export function EditorCanvas({
   setShapePicker,
   handleCodeChange,
 }: EditorCanvasProps) {
+  const canvasShellRef = useRef<HTMLDivElement | null>(null);
+  const [sequencePlusMenu, setSequencePlusMenu] = useState<{
+    actorId: string;
+    anchorY: number;
+    x: number;
+    y: number;
+    mode: 'root' | 'note';
+  } | null>(null);
+  // Viewport-space indicator for sequence drag — lives outside the TransformWrapper so
+  // canvas pan/zoom never affects its coordinate system. Positions are relative to canvasShellRef.
+  const [seqDragIndicator, setSeqDragIndicator] = useState<{
+    x1: number; y1: number;
+    x2: number; y2: number;
+    snapX: number | null;
+  } | null>(null);
+  const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
+
   const viewport = containerRef.current?.closest('.relative.overflow-hidden');
   const viewportWidth = viewport?.clientWidth || 800;
   const viewportHeight = viewport?.clientHeight || 600;
@@ -148,13 +169,13 @@ export function EditorCanvas({
     // 2. Scale-lock borders
     const borderElements = container.querySelectorAll('[data-scale-lock-border]');
     borderElements.forEach((el: any) => {
-      el.style.borderWidth = `${2 * inverse}px`;
+      el.style.borderWidth = `${1.25 * inverse}px`;
     });
 
     // 3. Scale-lock shadows
     const shadowElements = container.querySelectorAll('[data-scale-lock-shadow]');
     shadowElements.forEach((el: any) => {
-      el.style.boxShadow = `0 0 0 ${4 * inverse}px rgba(99, 102, 241, 0.2)`;
+      el.style.boxShadow = `0 0 0 ${2 * inverse}px rgba(99, 102, 241, 0.2)`;
     });
 
     // 4. Scale-lock strokes
@@ -181,6 +202,17 @@ export function EditorCanvas({
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, [shapePicker, setShapePicker]);
+
+  useEffect(() => {
+    if (!sequencePlusMenu) return;
+    const onOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && sequencePlusMenuRef.current?.contains(target)) return;
+      setSequencePlusMenu(null);
+    };
+    document.addEventListener('mousedown', onOutsideClick);
+    return () => document.removeEventListener('mousedown', onOutsideClick);
+  }, [sequencePlusMenu]);
 
   // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
   // React bubbling/capture handlers. Use a document-level capture fallback so single
@@ -276,7 +308,7 @@ export function EditorCanvas({
   }, [containerRef, handleSvgClick, isLocked]);
 
   return (
-    <div className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
+    <div ref={canvasShellRef} className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
         <div 
           className="absolute inset-0 z-0 pointer-events-none opacity-100" 
           style={{
@@ -291,7 +323,7 @@ export function EditorCanvas({
           centerOnInit={true}
           smooth={true}
           wheel={{ wheelDisabled: true, step: 0.05 }}
-          panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.isDragging }}
+          panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.active, excluded: ['seq-connect-btn'] }}
           trackPadPanning={{ disabled: false }}
           limitToBounds={false}
           doubleClick={{ disabled: true }}
@@ -381,30 +413,33 @@ export function EditorCanvas({
                     />
                   ))}
 
-                  {currentType === 'sequence' && hoveredSequenceMessageBox && !isInlineEditing && !connectionState.active && (
+                  {currentType === 'sequence' && hoveredSequenceMessageBox && !selectedNodeId?.startsWith('SEQ_MSG_') && !isInlineEditing && !connectionState.active && (
                     <div
                       data-seq-msg-hover-trigger="true"
-                      className="absolute pointer-events-none z-20 rounded-xl"
+                      data-scale-lock-border
+                      data-scale-lock-shadow
+                      className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
-                        left: hoveredSequenceMessageBox.x,
-                        top: hoveredSequenceMessageBox.y,
-                        width: hoveredSequenceMessageBox.width,
-                        height: hoveredSequenceMessageBox.height,
-                        border: `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale})) solid #7c3aed`,
-                        boxShadow: `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`,
-                        borderRadius: `calc(10px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        left: hoveredSequenceMessageBox.x - 4 / state.scale,
+                        top: hoveredSequenceMessageBox.y - 4 / state.scale,
+                        width: hoveredSequenceMessageBox.width + 8 / state.scale,
+                        height: hoveredSequenceMessageBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
+                        borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
                     />
                   )}
 
-                  {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !isInlineEditing && !connectionState.active && (
+                  {currentType === 'sequence' && hoveredSequenceActorBox && !selectedNodeId?.startsWith('SEQ_ACTOR_') && !selectedNodeId?.startsWith('SEQ_MSG_') && !selectedNodeId?.startsWith('SEQ_NOTE_') && !isInlineEditing && !connectionState.active && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredSequenceActorBox.x - 4,
-                        top: hoveredSequenceActorBox.y - 4,
-                        width: hoveredSequenceActorBox.width + 8,
-                        height: hoveredSequenceActorBox.height + 8,
+                        left: hoveredSequenceActorBox.x - 4 / state.scale,
+                        top: hoveredSequenceActorBox.y - 4 / state.scale,
+                        width: hoveredSequenceActorBox.width + 8 / state.scale,
+                        height: hoveredSequenceActorBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.55,
@@ -414,31 +449,16 @@ export function EditorCanvas({
 
                   {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
                     <div
-                      className="absolute pointer-events-none z-[19] border-indigo-400 rounded-md"
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
                       style={{
-                        left: hoveredFlowchartNodeBox.x - 3,
-                        top: hoveredFlowchartNodeBox.y - 3,
-                        width: hoveredFlowchartNodeBox.width + 6,
-                        height: hoveredFlowchartNodeBox.height + 6,
+                        left: hoveredFlowchartNodeBox.x - 3 / state.scale,
+                        top: hoveredFlowchartNodeBox.y - 3 / state.scale,
+                        width: hoveredFlowchartNodeBox.width + 6 / state.scale,
+                        height: hoveredFlowchartNodeBox.height + 6 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         borderStyle: 'solid',
                         opacity: 0.6,
-                      }}
-                    />
-                  )}
-
-                  {currentType === 'sequence' && selectedNodeId?.startsWith('SEQ_ACTOR_') && selectionBox && !isInlineEditing && (
-                    <div
-                      data-scale-lock-border
-                      data-scale-lock-shadow
-                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
-                      style={{
-                        left: selectionBox.x - 4,
-                        top: selectionBox.y - 4,
-                        width: selectionBox.width + 8,
-                        height: selectionBox.height + 8,
-                        borderWidth: `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                        boxShadow: `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`,
                       }}
                     />
                   )}
@@ -448,19 +468,76 @@ export function EditorCanvas({
                       {sequenceLifelineOverlay.slots.map((slotY) => (
                         <button
                           key={`${sequenceLifelineOverlay.actorId}-${slotY}`}
+                          data-seq-plus-actor-id={sequenceLifelineOverlay.actorId}
+                          data-seq-plus-anchor-x={String(sequenceLifelineOverlay.x)}
+                          data-seq-plus-anchor-y={String(slotY)}
                           data-scale-lock
                           data-base-transform="translate(-50%, -50%)"
-                          className="absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
+                          className="seq-connect-btn absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                           style={{
                             left: sequenceLifelineOverlay.x,
                             top: slotY,
                             transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`
                           }}
-                          title="Drag to connect"
+                          title="Add sequence action"
                           onMouseDown={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
-                            startSequenceConnection(sequenceLifelineOverlay.actorId, slotY);
+                            const actorId = e.currentTarget.getAttribute('data-seq-plus-actor-id') || sequenceLifelineOverlay.actorId;
+                            const anchorY = Number(e.currentTarget.getAttribute('data-seq-plus-anchor-y') || slotY);
+                            const rootRect = canvasShellRef.current?.getBoundingClientRect();
+                            const buttonRect = e.currentTarget.getBoundingClientRect();
+                            const anchorX = rootRect
+                              ? buttonRect.left - rootRect.left + buttonRect.width / 2
+                              : Number(e.currentTarget.getAttribute('data-seq-plus-anchor-x') || sequenceLifelineOverlay.x);
+                            const anchorMenuY = rootRect
+                              ? buttonRect.top - rootRect.top + buttonRect.height / 2
+                              : anchorY;
+
+                            const startClientX = e.clientX;
+                            const startClientY = e.clientY;
+                            let dragging = false;
+
+                            const onMove = (ev: MouseEvent) => {
+                              if (!dragging && (Math.abs(ev.clientX - startClientX) > 5 || Math.abs(ev.clientY - startClientY) > 5)) {
+                                dragging = true;
+                                startSequenceConnection(actorId, anchorY);
+                                setSeqDragIndicator({ x1: anchorX, y1: anchorMenuY, x2: anchorX, y2: anchorMenuY, snapX: null });
+                              }
+                              if (dragging) {
+                                const shellRect = canvasShellRef.current?.getBoundingClientRect();
+                                if (!shellRect) return;
+                                const cursorX = ev.clientX - shellRect.left;
+                                // Viewport-space snap detection: find the nearest actor-line within 28 viewport-px
+                                let snapX: number | null = null;
+                                const actorLineEls = containerRef.current?.querySelectorAll('line.actor-line') ?? [];
+                                for (const lineEl of actorLineEls) {
+                                  const lr = (lineEl as Element).getBoundingClientRect();
+                                  const lifelineViewportX = lr.left - shellRect.left; // center of the zero-width line
+                                  if (Math.abs(lifelineViewportX - cursorX) <= 28) {
+                                    snapX = lifelineViewportX;
+                                    break;
+                                  }
+                                }
+                                setSeqDragIndicator({ x1: anchorX, y1: anchorMenuY, x2: snapX !== null ? snapX : cursorX, y2: anchorMenuY, snapX });
+                              }
+                            };
+                            const onUp = () => {
+                              window.removeEventListener('mousemove', onMove);
+                              window.removeEventListener('mouseup', onUp);
+                              setSeqDragIndicator(null);
+                              if (!dragging) {
+                                setSequencePlusMenu({
+                                  actorId,
+                                  anchorY,
+                                  x: anchorX,
+                                  y: anchorMenuY,
+                                  mode: 'root',
+                                });
+                              }
+                            };
+                            window.addEventListener('mousemove', onMove);
+                            window.addEventListener('mouseup', onUp);
                           }}
                         >
                           <Plus className="w-3.5 h-3.5 mx-auto my-auto pointer-events-none" strokeWidth={3} />
@@ -469,7 +546,7 @@ export function EditorCanvas({
                     </div>
                   )}
 
-                  {connectionState.isDragging && connectionState.startPos && connectionState.mousePos && (
+                  {connectionState.isDragging && connectionState.startPos && connectionState.mousePos && currentType !== 'sequence' && (
                     <svg className="absolute inset-0 pointer-events-none z-30 overflow-visible">
                       <defs>
                         <marker id="sequence-preview-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
@@ -509,6 +586,8 @@ export function EditorCanvas({
                     </svg>
                   )}
 
+
+
                   {isInlineEditing && selectedSvgId && (
                      <style>{`
                         #${selectedSvgId} .label,
@@ -527,19 +606,15 @@ export function EditorCanvas({
                     <div 
                       data-scale-lock-border
                       data-scale-lock-shadow
-                      className="absolute border-indigo-500 rounded-md pointer-events-none z-20"
+                      className="absolute border-indigo-500 pointer-events-none z-20"
                       style={{
-                        left: selectionBox.x - (selectedNodeId?.startsWith('SEQ_MSG_') ? 10 : 4),
-                        top: selectionBox.y - (selectedNodeId?.startsWith('SEQ_MSG_') ? 2 : 4),
-                        width: selectionBox.width + (selectedNodeId?.startsWith('SEQ_MSG_') ? 20 : 8),
-                        height: selectionBox.height + (selectedNodeId?.startsWith('SEQ_MSG_') ? 4 : 8),
-                        borderColor: selectedNodeId?.startsWith('SEQ_MSG_') ? '#7c3aed' : undefined,
-                        borderWidth: selectedNodeId?.startsWith('SEQ_MSG_')
-                          ? `calc(2.75px * var(--zoom-inverse-scale, ${1 / state.scale}))`
-                          : `calc(2px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                        boxShadow: selectedNodeId?.startsWith('SEQ_MSG_')
-                          ? `0 0 0 calc(3px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(124, 58, 237, 0.28)`
-                          : `0 0 0 calc(4px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
+                        left: selectionBox.x - 4 / state.scale,
+                        top: selectionBox.y - 4 / state.scale,
+                        width: selectionBox.width + 8 / state.scale,
+                        height: selectionBox.height + 8 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
+                        borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / state.scale})) rgba(99, 102, 241, 0.2)`
                       }}
                     >
                       {!isInlineEditing && (
@@ -661,6 +736,128 @@ export function EditorCanvas({
             </>
           )}
         </TransformWrapper>
+
+        {/* Sequence drag indicator — rendered at canvasShell level (outside TransformWrapper)
+            so canvas pan/zoom never affects its coordinate system.
+            All positions are viewport-relative to canvasShellRef. */}
+        {seqDragIndicator && (
+          <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+            <defs>
+              <marker id="seq-drag-arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#2563eb" />
+              </marker>
+            </defs>
+            <line
+              x1={seqDragIndicator.x1}
+              y1={seqDragIndicator.y1}
+              x2={seqDragIndicator.x2}
+              y2={seqDragIndicator.y2}
+              stroke="#2563eb"
+              strokeDasharray="10,8"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              shapeRendering="geometricPrecision"
+              markerEnd="url(#seq-drag-arrow)"
+            />
+            {seqDragIndicator.snapX !== null && (
+              <g transform={`translate(${seqDragIndicator.snapX}, ${seqDragIndicator.y1})`}>
+                <circle r={5} fill="#10b981" />
+                <line x1={-2.5} y1={0} x2={2.5} y2={0} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+                <line x1={0} y1={-2.5} x2={0} y2={2.5} stroke="#ffffff" strokeWidth={1.5} strokeLinecap="round" />
+              </g>
+            )}
+          </svg>
+        )}
+
+        {sequencePlusMenu && (
+          <div
+            ref={sequencePlusMenuRef}
+            className={
+              sequencePlusMenu.mode === 'root'
+                ? 'absolute pointer-events-auto z-30 rounded-xl border border-border bg-popover px-1.5 py-1 shadow-xl'
+                : 'absolute pointer-events-auto z-30 w-52 rounded-xl border border-border bg-popover p-2 shadow-xl'
+            }
+            style={{
+              left: sequencePlusMenu.x,
+              top: sequencePlusMenu.y,
+              transform: sequencePlusMenu.mode === 'root' ? 'translate(-50%, calc(-100% - 32px))' : 'translate(-50%, calc(-100% - 32px))',
+            }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            {sequencePlusMenu.mode === 'root' ? (
+              <div className="flex items-center gap-1">
+                <button
+                  className="flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent"
+                  title="Note"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSequencePlusMenu((prev) => prev ? { ...prev, mode: 'note' } : prev);
+                  }}
+                >
+                  <Pencil className="h-4 w-4" />
+                  <span className="text-sm font-medium">Note</span>
+                </button>
+                <button
+                  className="flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent"
+                  title="Self Loop Message"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSequencePlusSelfLoop(sequencePlusMenu.actorId, sequencePlusMenu.anchorY);
+                    setSequencePlusMenu(null);
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  <span className="text-sm font-medium">Self loop</span>
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1 text-popover-foreground">
+                <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">Note</div>
+                <button
+                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'left');
+                    setSequencePlusMenu(null);
+                  }}
+                >
+                  Add note to the left
+                </button>
+                <button
+                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'right');
+                    setSequencePlusMenu(null);
+                  }}
+                >
+                  Add note to the right
+                </button>
+                <button
+                  className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSequencePlusNote(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, 'over');
+                    setSequencePlusMenu(null);
+                  }}
+                >
+                  Add note over
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {shapePicker && (
           <div 

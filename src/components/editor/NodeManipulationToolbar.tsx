@@ -34,6 +34,18 @@ export function NodeManipulationToolbar({
   onResetStyle
 }: NodeManipulationToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const labeledActionBtnCls = "h-8 px-2.5 flex items-center justify-center gap-1 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-sm font-semibold leading-none";
+  const isSubgraphSelected = (() => {
+    if (!selectedNodeId) return false;
+
+    const escapedId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const subgraphDeclRegex = new RegExp(`^\\s*subgraph\\s+${escapedId}(?:\\s|\\[|$)`, 'm');
+    if (subgraphDeclRegex.test(code)) return true;
+
+    if (typeof document === 'undefined' || !selectedSvgId) return false;
+    const selectedEl = document.getElementById(selectedSvgId);
+    return Boolean(selectedEl?.classList.contains('cluster') || selectedEl?.closest('.cluster'));
+  })();
 
   useEffect(() => {
     const el = containerRef.current;
@@ -138,7 +150,7 @@ export function NodeManipulationToolbar({
         ref={containerRef}
         data-scale-lock
         data-base-transform="translateX(-50%) translateY(-100%)"
-        className="absolute flex items-center gap-0.5 bg-background border border-border rounded-full px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
+        className="absolute flex items-center gap-0.5 bg-background border border-border rounded-xl px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
         style={{
           left: '50%',
           top: `calc(-10px * var(--zoom-inverse-scale, ${1 / scale}))`,
@@ -165,7 +177,7 @@ export function NodeManipulationToolbar({
         {/* Background Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Background Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Background Color" />
           }>
                 <Palette className="w-4 h-4" />
                 <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveBgColor() }} />
@@ -190,7 +202,7 @@ export function NodeManipulationToolbar({
         {/* Border Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Border Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Border Color" />
           }>
                 <Square className="w-4 h-4" />
                 <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveStrokeColor() }} />
@@ -217,7 +229,7 @@ export function NodeManipulationToolbar({
         {/* Text Color */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Text Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Text Color" />
           }>
                 <Type className="w-4 h-4" />
                 <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: getActiveTextColor() }} />
@@ -296,63 +308,66 @@ export function NodeManipulationToolbar({
         <div className="w-px h-4 bg-border mx-1" />
 
         {/* Shape Selector */}
-        <DropdownMenu>
-          <DropdownMenuTrigger render={
-            <button 
-              className="h-8 px-2 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-xs font-semibold gap-0.5"
-              title="Change Shape"
-            />
-          }>
-              Shape <ChevronsDown className="w-3 h-3 text-muted-foreground" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="center" side="top">
-              {/* Basic Shapes */}
-              <div className="flex flex-col gap-3">
-                <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Basic</p>
-                <div className="grid grid-cols-6 gap-2">
-                  {BASIC_SHAPES.map((shape, i) => (
-                      <DropdownMenuItem 
-                        key={i}
-                        onClick={() => onChangeShape(shape as any)}
-                        className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
-                        title={shape.l}
-                      >
-                        <svg viewBox="0 0 24 24" className="w-5 h-5">
-                            {shape.i}
-                        </svg>
-                      </DropdownMenuItem>
-                  ))}
+        {!isSubgraphSelected && (
+          <DropdownMenu>
+            <DropdownMenuTrigger render={
+              <button 
+                className={`${labeledActionBtnCls} gap-0.5`}
+                title="Change Shape"
+              />
+            }>
+                Shape <ChevronsDown className="w-3 h-3 text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6" sideOffset={10} align="center" side="top">
+                {/* Basic Shapes */}
+                <div className="flex flex-col gap-3">
+                  <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Basic</p>
+                  <div className="grid grid-cols-6 gap-2">
+                    {BASIC_SHAPES.map((shape, i) => (
+                        <DropdownMenuItem 
+                          key={i}
+                          onClick={() => onChangeShape(shape as any)}
+                          className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                          title={shape.l}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-5 h-5">
+                              {shape.i}
+                          </svg>
+                        </DropdownMenuItem>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Extended Shapes */}
-              <div className="flex flex-col gap-3 mt-4">
-                <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Extended (Mermaid v11+)</p>
-                <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                  {EXTENDED_SHAPES.map((shape, i) => (
-                      <DropdownMenuItem 
-                        key={i}
-                        onClick={() => onChangeShape(shape as any)}
-                        className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
-                        title={shape.l}
-                      >
-                        <svg viewBox="0 0 24 24" className="w-5 h-5">
-                            {shape.i}
-                        </svg>
-                      </DropdownMenuItem>
-                  ))}
+                {/* Extended Shapes */}
+                <div className="flex flex-col gap-3 mt-4">
+                  <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">Extended (Mermaid v11+)</p>
+                  <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                    {EXTENDED_SHAPES.map((shape, i) => (
+                        <DropdownMenuItem 
+                          key={i}
+                          onClick={() => onChangeShape(shape as any)}
+                          className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                          title={shape.l}
+                        >
+                          <svg viewBox="0 0 24 24" className="w-5 h-5">
+                              {shape.i}
+                          </svg>
+                        </DropdownMenuItem>
+                    ))}
+                  </div>
                 </div>
-              </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         {/* Duplicate */}
         <button 
             onClick={(e) => { e.preventDefault(); onDuplicateNode(); }}
-            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
+          className={labeledActionBtnCls}
             title="Duplicate Node"
         >
-            <Copy className="w-4 h-4" />
+          <Copy className="w-3.5 h-3.5" />
+          <span>Duplicate</span>
         </button>
 
         <div className="w-px h-4 bg-border mx-1" />
@@ -360,10 +375,11 @@ export function NodeManipulationToolbar({
         {/* Reset Style */}
         <button 
             onClick={(e) => { e.preventDefault(); onResetStyle?.(); }}
-            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
+          className={labeledActionBtnCls}
             title="Reset to Theme Defaults"
         >
-            <RotateCcw className="w-4 h-4" />
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Reset</span>
         </button>
 
         <div className="w-px h-4 bg-border mx-1" />
@@ -374,7 +390,7 @@ export function NodeManipulationToolbar({
                 e.preventDefault();
                 onDeleteNode();
             }}
-            className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-destructive/10 text-red-500 hover:text-destructive transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-destructive/10 text-red-500 hover:text-destructive transition-colors"
             title="Delete Node (Backspace/Delete)"
         >
             <Trash2 className="w-4 h-4" />
