@@ -64,7 +64,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   const [exportFormat, setExportFormat] = useState('PNG');
   const [exportBg, setExportBg] = useState('transparent');
   const allowBrowserBackRef = useRef(false);
-  
+
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
@@ -94,6 +94,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     triggerSequenceMessageHoverByIndex,
     triggerHoveredSequenceNoteSelection,
     startSequenceConnection,
+    getSequenceMessageEndpointGeometry,
+    getSequenceLifelines,
     shapePicker,
     setShapePicker,
     getSequenceNoteEntries,
@@ -276,12 +278,12 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   const handleResetStyle = useCallback(() => {
     if (!selectedNodeId) return;
     let newCode = code;
-    
+
     // 1. Remove style lines
     const lines = newCode.split('\n');
     const filteredLines = lines.filter(line => {
-        const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
-        return !isStyleLine;
+      const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
+      return !isStyleLine;
     });
     newCode = filteredLines.join('\n');
 
@@ -289,17 +291,17 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
     const match = newCode.match(nodeRegex);
     if (match) {
-        const originalLabel = match[3];
-        const cleanLabel = originalLabel
-            .replace(/<b[^>]*>/gi, '')
-            .replace(/<\/b>/gi, '')
-            .replace(/<i[^>]*>/gi, '')
-            .replace(/<\/i>/gi, '')
-            .replace(/<span[^>]*>/gi, '')
-            .replace(/<\/span>/gi, '');
-        
-        const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
-        newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);
+      const originalLabel = match[3];
+      const cleanLabel = originalLabel
+        .replace(/<b[^>]*>/gi, '')
+        .replace(/<\/b>/gi, '')
+        .replace(/<i[^>]*>/gi, '')
+        .replace(/<\/i>/gi, '')
+        .replace(/<span[^>]*>/gi, '')
+        .replace(/<\/span>/gi, '');
+
+      const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+      newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);
     }
 
     handleCodeChange(newCode);
@@ -307,7 +309,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const nodeId = selectedNodeId;
     setSelectedNodeId(null);
     setTimeout(() => {
-        setSelectedNodeId(nodeId);
+      setSelectedNodeId(nodeId);
     }, 50);
   }, [code, handleCodeChange, selectedNodeId, setSelectedNodeId]);
 
@@ -355,7 +357,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   const editorRef = useRef<any>(null);
 
   const handleEditorDidMount = (editor: any) => {
-      editorRef.current = editor;
+    editorRef.current = editor;
   };
 
   const handleThemeChange = (theme: string) => {
@@ -508,23 +510,23 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   }, [code, currentFont]);
 
   const handleUpdateStyle = useCallback((property: string, value: string) => {
-      if (!selectedNodeId) return;
-      let newCode = code;
-      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
-      const match = newCode.match(styleRegex);
-      if (match) {
-          let styleProps = match[1];
-          const propRegex = new RegExp(`${property}:[^,]+`);
-          if (propRegex.test(styleProps)) {
-              styleProps = styleProps.replace(propRegex, `${property}:${value}`);
-          } else {
-              styleProps += `,${property}:${value}`;
-          }
-          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+    if (!selectedNodeId) return;
+    let newCode = code;
+    const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
+    const match = newCode.match(styleRegex);
+    if (match) {
+      let styleProps = match[1];
+      const propRegex = new RegExp(`${property}:[^,]+`);
+      if (propRegex.test(styleProps)) {
+        styleProps = styleProps.replace(propRegex, `${property}:${value}`);
       } else {
-          newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
+        styleProps += `,${property}:${value}`;
       }
-      handleCodeChange(newCode);
+      newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+    } else {
+      newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
+    }
+    handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId]);
 
   const handleGlobalBoldItalic = useCallback((format: 'bold' | 'italic') => {
@@ -625,94 +627,94 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   }, [code, selectedNodeId, handleCodeChange, handleUpdateEdgeStyle]);
 
   const handleFormatNodeLabel = useCallback((format: string, colorValue?: string) => {
-      if (!selectedNodeId) return;
-      const getStyleVal = (property: string): string | null => {
-        const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm'));
-        if (match) {
-          const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
-          return propMatch ? propMatch[1] : null;
-        }
-        return null;
-      };
-
-      if (format === 'bold') {
-          handleGlobalBoldItalic('bold');
-          if (getStyleVal('font-weight')) {
-              handleUpdateStyle('font-weight', 'normal');
-          }
-      } else if (format === 'italic') {
-          handleGlobalBoldItalic('italic');
-          if (getStyleVal('font-style')) {
-              handleUpdateStyle('font-style', 'normal');
-          }
-      } else if (format === 'color' && colorValue) {
-          handleUpdateStyle('color', colorValue);
+    if (!selectedNodeId) return;
+    const getStyleVal = (property: string): string | null => {
+      const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm'));
+      if (match) {
+        const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
+        return propMatch ? propMatch[1] : null;
       }
+      return null;
+    };
+
+    if (format === 'bold') {
+      handleGlobalBoldItalic('bold');
+      if (getStyleVal('font-weight')) {
+        handleUpdateStyle('font-weight', 'normal');
+      }
+    } else if (format === 'italic') {
+      handleGlobalBoldItalic('italic');
+      if (getStyleVal('font-style')) {
+        handleUpdateStyle('font-style', 'normal');
+      }
+    } else if (format === 'color' && colorValue) {
+      handleUpdateStyle('color', colorValue);
+    }
   }, [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic]);
 
   const handleFormatText = (format: string, colorValue?: string) => {
     console.log('[handleFormatText] format:', format, 'colorValue:', colorValue);
     if (!inlineInputRef.current) {
-        console.log('[handleFormatText] inlineInputRef.current is null/undefined');
-        return;
+      console.log('[handleFormatText] inlineInputRef.current is null/undefined');
+      return;
     }
-    
+
     let start = inlineInputRef.current.selectionStart;
     let end = inlineInputRef.current.selectionEnd;
-    
+
     if (start === end && typeof (inlineInputRef.current as any)._lastSelectionStart === 'number') {
-        const lastStart = (inlineInputRef.current as any)._lastSelectionStart;
-        const lastEnd = (inlineInputRef.current as any)._lastSelectionEnd;
-        if (lastStart !== lastEnd) {
-            start = lastStart;
-            end = lastEnd;
-        }
+      const lastStart = (inlineInputRef.current as any)._lastSelectionStart;
+      const lastEnd = (inlineInputRef.current as any)._lastSelectionEnd;
+      if (lastStart !== lastEnd) {
+        start = lastStart;
+        end = lastEnd;
+      }
     }
-    
+
     let selectedText = editingText.substring(start, end);
     console.log('[handleFormatText] start:', start, 'end:', end, 'selectedText:', selectedText, 'editingText:', editingText);
-    
+
     const isSelectionEmpty = !selectedText;
     if (isSelectionEmpty) {
-        start = 0;
-        end = editingText.length;
-        selectedText = editingText;
+      start = 0;
+      end = editingText.length;
+      selectedText = editingText;
     }
-    
+
     let before = '';
     let after = '';
-    
+
     if (format === 'bold') {
-        before = '<b>';
-        after = '</b>';
+      before = '<b>';
+      after = '</b>';
     } else if (format === 'italic') {
-        before = '<i>';
-        after = '</i>';
+      before = '<i>';
+      after = '</i>';
     } else if (format === 'color' && colorValue) {
-        before = `<span style='color:${colorValue}'>`;
-        after = '</span>';
+      before = `<span style='color:${colorValue}'>`;
+      after = '</span>';
     }
-    
+
     const newText = editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
     console.log('[handleFormatText] setting editingText to:', newText);
     setEditingText(newText);
-    
+
     setTimeout(() => {
-        if (inlineInputRef.current) {
-            inlineInputRef.current.focus();
-            inlineInputRef.current.setSelectionRange(start, start + before.length + selectedText.length + after.length);
-        }
+      if (inlineInputRef.current) {
+        inlineInputRef.current.focus();
+        inlineInputRef.current.setSelectionRange(start, start + before.length + selectedText.length + after.length);
+      }
     }, 10);
   };
 
   const handleEditSubmit = () => {
     if (!selectedNodeId || !isInlineEditing) {
-        setIsInlineEditing(false);
-        return;
+      setIsInlineEditing(false);
+      return;
     }
-    
+
     let newCode = code;
-    
+
     const isMessageLine = (line: string) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('%%')) return false;
@@ -730,17 +732,17 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       let msgCount = 0;
       let noteCount = 0;
       let inFrontmatter = false;
-      
+
       return lines.map((line, lineIndex) => {
         const trimmed = line.trim();
-        
+
         // Skip frontmatter sections (--- ... ---)
         if (trimmed === '---') {
           inFrontmatter = !inFrontmatter;
           return null;
         }
         if (inFrontmatter) return null;
-        
+
         if (isMessageLine(line)) {
           return { type: 'msg', index: msgCount++, lineIndex };
         } else if (isNoteLine(line)) {
@@ -751,99 +753,99 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     };
 
     if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-        const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-        const newText = editingText.replace(/\n/g, '<br/>');
-        
-        let found = false;
-        const lines = code.split('\n');
-        newCode = lines.map(line => {
-            const trimmed = line.trim();
-            // Match all participant declaration types including special @{} syntax
-            // e.g. "participant P843@{ "type": "database" } as New Database"
-            // e.g. "participant Alice as Alice"
-            // e.g. "actor Bob"
-            const declMatch = trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?\s+as\s+(.+)$/i) ||
-                              trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?$/i);
-            if (declMatch) {
-                const id = declMatch[2];
-                const alias = declMatch[3];
-                
-                if (id === actorId) {
-                    found = true;
-                    if (alias !== undefined) {
-                        // Replace "as [old alias]" at end of line
-                        const asIdx = line.lastIndexOf(` as `);
-                        if (asIdx !== -1) {
-                            return line.substring(0, asIdx) + ` as ${newText}`;
-                        }
-                    } else {
-                        // No alias yet — append "as [newText]"
-                        return line.trimEnd() + ` as ${newText}`;
-                    }
-                }
-            }
-            return line;
-        }).join('\n');
-        
-        if (!found) {
-            // Only insert a new declaration if we truly couldn't find this actor at all
-            const headerIdx = lines.findIndex(l => l.trim().startsWith('sequenceDiagram'));
-            const declLine = `    participant ${actorId} as ${newText}`;
-            if (headerIdx !== -1) {
-                lines.splice(headerIdx + 1, 0, declLine);
+      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+      const newText = editingText.replace(/\n/g, '<br/>');
+
+      let found = false;
+      const lines = code.split('\n');
+      newCode = lines.map(line => {
+        const trimmed = line.trim();
+        // Match all participant declaration types including special @{} syntax
+        // e.g. "participant P843@{ "type": "database" } as New Database"
+        // e.g. "participant Alice as Alice"
+        // e.g. "actor Bob"
+        const declMatch = trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?\s+as\s+(.+)$/i) ||
+          trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?$/i);
+        if (declMatch) {
+          const id = declMatch[2];
+          const alias = declMatch[3];
+
+          if (id === actorId) {
+            found = true;
+            if (alias !== undefined) {
+              // Replace "as [old alias]" at end of line
+              const asIdx = line.lastIndexOf(` as `);
+              if (asIdx !== -1) {
+                return line.substring(0, asIdx) + ` as ${newText}`;
+              }
             } else {
-                lines.unshift('sequenceDiagram', declLine);
+              // No alias yet — append "as [newText]"
+              return line.trimEnd() + ` as ${newText}`;
             }
-            newCode = lines.join('\n');
+          }
         }
+        return line;
+      }).join('\n');
+
+      if (!found) {
+        // Only insert a new declaration if we truly couldn't find this actor at all
+        const headerIdx = lines.findIndex(l => l.trim().startsWith('sequenceDiagram'));
+        const declLine = `    participant ${actorId} as ${newText}`;
+        if (headerIdx !== -1) {
+          lines.splice(headerIdx + 1, 0, declLine);
+        } else {
+          lines.unshift('sequenceDiagram', declLine);
+        }
+        newCode = lines.join('\n');
+      }
     } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
-        const parts = selectedNodeId.split('_');
-        const targetIndex = parseInt(parts[2], 10);
-        const newText = editingText.replace(/\n/g, '<br/>');
-        const lines = code.split('\n');
-        
-        const mappings = getCodeLineMappings(lines);
-        const targetMapping = mappings.find(m => m.type === 'msg' && m.index === targetIndex);
-        if (targetMapping) {
-            const lineIdx = targetMapping.lineIndex;
-            const line = lines[lineIdx];
-            const colonIdx = line.indexOf(':');
-            if (colonIdx !== -1) {
-                lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
-                newCode = lines.join('\n');
-            }
+      const parts = selectedNodeId.split('_');
+      const targetIndex = parseInt(parts[2], 10);
+      const newText = editingText.replace(/\n/g, '<br/>');
+      const lines = code.split('\n');
+
+      const mappings = getCodeLineMappings(lines);
+      const targetMapping = mappings.find(m => m.type === 'msg' && m.index === targetIndex);
+      if (targetMapping) {
+        const lineIdx = targetMapping.lineIndex;
+        const line = lines[lineIdx];
+        const colonIdx = line.indexOf(':');
+        if (colonIdx !== -1) {
+          lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
+          newCode = lines.join('\n');
         }
+      }
     } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
-        const parts = selectedNodeId.split('_');
-        const targetIndex = parseInt(parts[2], 10);
-        const newText = editingText.replace(/\n/g, '<br/>');
-        const lines = code.split('\n');
-        
-        const mappings = getCodeLineMappings(lines);
-        const targetMapping = mappings.find(m => m.type === 'note' && m.index === targetIndex);
-        if (targetMapping) {
-            const lineIdx = targetMapping.lineIndex;
-            const line = lines[lineIdx];
-            const colonIdx = line.indexOf(':');
-            if (colonIdx !== -1) {
-                lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
-                newCode = lines.join('\n');
-            }
+      const parts = selectedNodeId.split('_');
+      const targetIndex = parseInt(parts[2], 10);
+      const newText = editingText.replace(/\n/g, '<br/>');
+      const lines = code.split('\n');
+
+      const mappings = getCodeLineMappings(lines);
+      const targetMapping = mappings.find(m => m.type === 'note' && m.index === targetIndex);
+      if (targetMapping) {
+        const lineIdx = targetMapping.lineIndex;
+        const line = lines[lineIdx];
+        const colonIdx = line.indexOf(':');
+        if (colonIdx !== -1) {
+          lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
+          newCode = lines.join('\n');
         }
+      }
     } else if (selectedNodeId.startsWith('SEQ_')) {
-        const oldText = selectedNodeId.replace('SEQ_', '');
-        const newText = editingText.replace(/\n/g, '<br/>');
-        newCode = newCode.split('\n').map(line => {
-             if (line.includes(oldText)) {
-                 return line.replace(oldText, newText);
-             }
-             return line;
-        }).join('\n');
-    } else if (isEdgeId(selectedNodeId)) {
-        const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
-        if (src && dst) {
-            newCode = updateLinkStyleAndLabel(newCode, src, dst, { label: editingText }, occurrenceIndex);
+      const oldText = selectedNodeId.replace('SEQ_', '');
+      const newText = editingText.replace(/\n/g, '<br/>');
+      newCode = newCode.split('\n').map(line => {
+        if (line.includes(oldText)) {
+          return line.replace(oldText, newText);
         }
+        return line;
+      }).join('\n');
+    } else if (isEdgeId(selectedNodeId)) {
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      if (src && dst) {
+        newCode = updateLinkStyleAndLabel(newCode, src, dst, { label: editingText }, occurrenceIndex);
+      }
     } else {
       // Flowchart cluster/subgraph title rename path.
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
@@ -915,40 +917,40 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       } else {
         const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         if (nodeRegex.test(newCode)) {
-            const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
-            newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
+          const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
         } else {
-            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
-            if (standaloneRegex.test(newCode)) {
-                newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
+          const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
+          if (standaloneRegex.test(newCode)) {
+            newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
+          } else {
+            const lines = newCode.split('\n');
+            let insertIndex = -1;
+            for (let i = 0; i < lines.length; i++) {
+              const trimmed = lines[i].trim();
+              if (
+                trimmed.startsWith('style ') ||
+                trimmed.startsWith('linkStyle ') ||
+                trimmed.startsWith('classDef ') ||
+                trimmed.startsWith('class ')
+              ) {
+                insertIndex = i;
+                break;
+              }
+            }
+
+            const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
+            if (insertIndex !== -1) {
+              lines.splice(insertIndex, 0, newDeclaration);
+              newCode = lines.join('\n');
             } else {
-                const lines = newCode.split('\n');
-                let insertIndex = -1;
-                for (let i = 0; i < lines.length; i++) {
-                    const trimmed = lines[i].trim();
-                    if (
-                        trimmed.startsWith('style ') || 
-                        trimmed.startsWith('linkStyle ') || 
-                        trimmed.startsWith('classDef ') || 
-                        trimmed.startsWith('class ')
-                    ) {
-                        insertIndex = i;
-                        break;
-                    }
-                }
-                
-                const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
-                if (insertIndex !== -1) {
-                    lines.splice(insertIndex, 0, newDeclaration);
-                    newCode = lines.join('\n');
-                } else {
-                    newCode += `\n${newDeclaration}`;
-                }
+              newCode += `\n${newDeclaration}`;
             }
+          }
         }
-            }
+      }
     }
-    
+
     // If nothing changed, skip recompile and keep selection — behaves like Escape.
     // This prevents an unnecessary SVG recompile that shifts node positions,
     // which would cause the next click to miss the node (the "clicks die" bug).
@@ -969,203 +971,203 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // the current edit before any cross-element or background transition.
   commitEditRef.current = handleEditSubmit;
 
-    const handleChangeShape = useCallback((shape: {b?: [string, string] | null, expanded?: string, isText?: boolean}) => {
-      if (!selectedNodeId) return;
-      let newCode = code;
-      const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const handleChangeShape = useCallback((shape: { b?: [string, string] | null, expanded?: string, isText?: boolean }) => {
+    if (!selectedNodeId) return;
+    let newCode = code;
+    const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-      // Remove standalone text-shape helper lines only; do not strip inline declarations
-      // that may be part of an edge statement on the same line.
-      const standaloneTextShapeRegex = new RegExp(`(^|\\n)\\s*${escapedNodeId}\\s*@\\{\\s*shape:\\s*text\\s*\\}\\s*(?=\\n|$)`, 'g');
-      newCode = newCode.replace(standaloneTextShapeRegex, '$1');
+    // Remove standalone text-shape helper lines only; do not strip inline declarations
+    // that may be part of an edge statement on the same line.
+    const standaloneTextShapeRegex = new RegExp(`(^|\\n)\\s*${escapedNodeId}\\s*@\\{\\s*shape:\\s*text\\s*\\}\\s*(?=\\n|$)`, 'g');
+    newCode = newCode.replace(standaloneTextShapeRegex, '$1');
 
-      let replaced = false;
+    let replaced = false;
 
-      const formatReplacement = (label: string): string => {
-        if (shape.isText) {
-          return `${selectedNodeId}["${label}"]\\n    ${selectedNodeId}@{ shape: text }`;
-        }
-        if (shape.expanded) {
-          return `${selectedNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
-        }
-        if (shape.b) {
-          return `${selectedNodeId}${shape.b[0]}"${label}"${shape.b[1]}`;
-        }
-        return `${selectedNodeId}["${label}"]`;
-      };
-
-      // Token-only replacement for @{} declarations. This preserves any trailing
-      // edge content on the same line, e.g. A@{...} --> B.
-      const atDeclarationRegex = new RegExp(
-        `${escapedNodeId}\\s*@\\{\\s*shape:[^,]+,\\s*label:\\s*["']?([\\s\\S]*?)["']?\\s*\\}`,
-        'g'
-      );
-      newCode = newCode.replace(atDeclarationRegex, (_m, label) => {
-        replaced = true;
-        return formatReplacement(label ?? selectedNodeId);
-      });
-
-      // Token-only replacement for bracket/delimiter based node shapes.
-      const bracketTokenRegex = new RegExp(
-        `${escapedNodeId}\\s*(?:\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`,
-        'gm'
-      );
-      newCode = newCode.replace(bracketTokenRegex, (_m, label) => {
-        replaced = true;
-        return formatReplacement(label ?? selectedNodeId);
-      });
-
-      if (!replaced) {
-        if (shape.isText) {
-          newCode += `\\n    ${selectedNodeId}["${selectedNodeId}"]\\n    ${selectedNodeId}@{ shape: text }`;
-        } else if (shape.expanded) {
-          newCode += `\\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
-        } else if (shape.b) {
-          newCode += `\\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
-        }
+    const formatReplacement = (label: string): string => {
+      if (shape.isText) {
+        return `${selectedNodeId}["${label}"]\\n    ${selectedNodeId}@{ shape: text }`;
       }
+      if (shape.expanded) {
+        return `${selectedNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
+      }
+      if (shape.b) {
+        return `${selectedNodeId}${shape.b[0]}"${label}"${shape.b[1]}`;
+      }
+      return `${selectedNodeId}["${label}"]`;
+    };
 
-      handleCodeChange(newCode);
-    }, [code, handleCodeChange, selectedNodeId]);
+    // Token-only replacement for @{} declarations. This preserves any trailing
+    // edge content on the same line, e.g. A@{...} --> B.
+    const atDeclarationRegex = new RegExp(
+      `${escapedNodeId}\\s*@\\{\\s*shape:[^,]+,\\s*label:\\s*["']?([\\s\\S]*?)["']?\\s*\\}`,
+      'g'
+    );
+    newCode = newCode.replace(atDeclarationRegex, (_m, label) => {
+      replaced = true;
+      return formatReplacement(label ?? selectedNodeId);
+    });
+
+    // Token-only replacement for bracket/delimiter based node shapes.
+    const bracketTokenRegex = new RegExp(
+      `${escapedNodeId}\\s*(?:\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`,
+      'gm'
+    );
+    newCode = newCode.replace(bracketTokenRegex, (_m, label) => {
+      replaced = true;
+      return formatReplacement(label ?? selectedNodeId);
+    });
+
+    if (!replaced) {
+      if (shape.isText) {
+        newCode += `\\n    ${selectedNodeId}["${selectedNodeId}"]\\n    ${selectedNodeId}@{ shape: text }`;
+      } else if (shape.expanded) {
+        newCode += `\\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
+      } else if (shape.b) {
+        newCode += `\\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
+      }
+    }
+
+    handleCodeChange(newCode);
+  }, [code, handleCodeChange, selectedNodeId]);
 
   const handleDuplicateNode = useCallback(() => {
-      if (!selectedNodeId) return;
-      let newCode = code;
-      const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      
-      let prefix = 'n';
-      const prefixMatch = selectedNodeId.match(/^([a-zA-Z]+)/);
-      if (prefixMatch) {
-          prefix = prefixMatch[1];
-      }
-      
-      let i = 1;
-      while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, 'm').test(newCode)) {
-          i++;
-      }
-      const newNodeId = `${prefix}${i}`;
-      
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
-      const match = newCode.match(nodeRegex);
-        let duplicatedDeclaration = '';
-      if (match) {
-          duplicatedDeclaration = `    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
-      } else {
-          duplicatedDeclaration = `    ${newNodeId}["Copy of Node"]`;
-      }
+    if (!selectedNodeId) return;
+    let newCode = code;
+    const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // Keep duplicate inside the same subgraph block as the source node when possible.
-        const linesForPlacement = code.split('\n');
-        const declLineIdx = linesForPlacement.findIndex((line) => {
-          const trimmed = line.trim();
-           return new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}([^a-zA-Z0-9_]|$)`).test(trimmed) &&
-             !trimmed.startsWith('style ') &&
-             !trimmed.startsWith('class ') &&
-             !trimmed.startsWith('classDef ') &&
-             !trimmed.startsWith('linkStyle ');
-        });
+    let prefix = 'n';
+    const prefixMatch = selectedNodeId.match(/^([a-zA-Z]+)/);
+    if (prefixMatch) {
+      prefix = prefixMatch[1];
+    }
 
-        let inserted = false;
-        if (declLineIdx !== -1) {
-          const stack: number[] = [];
-          let targetEnd = -1;
-          for (let i = 0; i < linesForPlacement.length; i++) {
-            const t = linesForPlacement[i].trim();
-            if (t.startsWith('subgraph ')) stack.push(i);
-            else if (t === 'end' && stack.length > 0) {
-              const start = stack.pop()!;
-              if (start <= declLineIdx && declLineIdx <= i) {
-                targetEnd = i;
-              }
-            }
-          }
+    let i = 1;
+    while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, 'm').test(newCode)) {
+      i++;
+    }
+    const newNodeId = `${prefix}${i}`;
 
-          if (targetEnd !== -1) {
-            linesForPlacement.splice(targetEnd, 0, `    ${duplicatedDeclaration.trim()}`);
-            newCode = linesForPlacement.join('\n');
-            inserted = true;
+    const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+    const match = newCode.match(nodeRegex);
+    let duplicatedDeclaration = '';
+    if (match) {
+      duplicatedDeclaration = `    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
+    } else {
+      duplicatedDeclaration = `    ${newNodeId}["Copy of Node"]`;
+    }
+
+    // Keep duplicate inside the same subgraph block as the source node when possible.
+    const linesForPlacement = code.split('\n');
+    const declLineIdx = linesForPlacement.findIndex((line) => {
+      const trimmed = line.trim();
+      return new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}([^a-zA-Z0-9_]|$)`).test(trimmed) &&
+        !trimmed.startsWith('style ') &&
+        !trimmed.startsWith('class ') &&
+        !trimmed.startsWith('classDef ') &&
+        !trimmed.startsWith('linkStyle ');
+    });
+
+    let inserted = false;
+    if (declLineIdx !== -1) {
+      const stack: number[] = [];
+      let targetEnd = -1;
+      for (let i = 0; i < linesForPlacement.length; i++) {
+        const t = linesForPlacement[i].trim();
+        if (t.startsWith('subgraph ')) stack.push(i);
+        else if (t === 'end' && stack.length > 0) {
+          const start = stack.pop()!;
+          if (start <= declLineIdx && declLineIdx <= i) {
+            targetEnd = i;
           }
         }
-
-        if (!inserted) {
-          newCode += `\n${duplicatedDeclaration}`;
-        }
-      
-      const lines = newCode.split('\n');
-      const propertiesToDuplicate: string[] = [];
-        let copiedExplicitStyle = false;
-      lines.forEach(line => {
-          if (line.match(new RegExp(`^\\s*style\\s+${escapedNodeId}\\s+`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${escapedNodeId}`), `style ${newNodeId}`));
-            copiedExplicitStyle = true;
-          }
-          if (line.match(new RegExp(`^\\s*click\\s+${escapedNodeId}\\s+`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${escapedNodeId}`), `click ${newNodeId}`));
-          }
-          if (line.match(new RegExp(`^\\s*class\\s+.*\\b${escapedNodeId}\\b.*\\s+\\S+\\s*$`))) {
-            const m = line.match(/^\s*class\s+(.+?)\s+(\S+)\s*$/);
-            if (m) {
-              const nodeList = m[1].split(',').map(s => s.trim());
-              const className = m[2];
-              if (nodeList.includes(selectedNodeId)) {
-                propertiesToDuplicate.push(`    class ${newNodeId} ${className}`);
-              }
-            }
-          }
-          if (line.match(new RegExp(`^\\s*${escapedNodeId}\\@\\{\\s*shape:`))) {
-              propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${escapedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
-          }
-      });
-      if (propertiesToDuplicate.length > 0) {
-          newCode += '\n' + propertiesToDuplicate.join('\n');
       }
 
-        // Fallback style clone: if there was no explicit style line to copy, clone
-        // currently rendered fill/stroke/text colors from the selected SVG element.
-        if (!copiedExplicitStyle && selectedSvgId) {
-          try {
-            const selectedEl = document.getElementById(selectedSvgId);
-            if (selectedEl) {
-              const shapeEl = selectedEl.querySelector('rect, circle, polygon, path.node, path, ellipse') as Element | null;
-              const textEl = selectedEl.querySelector('.label, text, .nodeLabel') as Element | null;
+      if (targetEnd !== -1) {
+        linesForPlacement.splice(targetEnd, 0, `    ${duplicatedDeclaration.trim()}`);
+        newCode = linesForPlacement.join('\n');
+        inserted = true;
+      }
+    }
 
-              const shapeStyle = shapeEl ? window.getComputedStyle(shapeEl) : null;
-              const textStyle = textEl ? window.getComputedStyle(textEl) : null;
+    if (!inserted) {
+      newCode += `\n${duplicatedDeclaration}`;
+    }
 
-              const styleParts: string[] = [];
-              const fill = toMermaidColorToken(shapeStyle?.fill);
-              const stroke = toMermaidColorToken(shapeStyle?.stroke);
-              const textColor = toMermaidColorToken(textStyle?.fill);
-
-              if (fill) styleParts.push(`fill:${fill}`);
-              if (stroke) styleParts.push(`stroke:${stroke}`);
-              if (textColor) styleParts.push(`color:${textColor}`);
-
-              if (styleParts.length > 0) {
-                newCode += `\n    style ${newNodeId} ${styleParts.join(',')}`;
-              }
-            }
-          } catch (err) {
-            // Non-fatal: duplication should still succeed even if style fallback fails.
-            console.warn('Duplicate style fallback failed:', err);
+    const lines = newCode.split('\n');
+    const propertiesToDuplicate: string[] = [];
+    let copiedExplicitStyle = false;
+    lines.forEach(line => {
+      if (line.match(new RegExp(`^\\s*style\\s+${escapedNodeId}\\s+`))) {
+        propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${escapedNodeId}`), `style ${newNodeId}`));
+        copiedExplicitStyle = true;
+      }
+      if (line.match(new RegExp(`^\\s*click\\s+${escapedNodeId}\\s+`))) {
+        propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${escapedNodeId}`), `click ${newNodeId}`));
+      }
+      if (line.match(new RegExp(`^\\s*class\\s+.*\\b${escapedNodeId}\\b.*\\s+\\S+\\s*$`))) {
+        const m = line.match(/^\s*class\s+(.+?)\s+(\S+)\s*$/);
+        if (m) {
+          const nodeList = m[1].split(',').map(s => s.trim());
+          const className = m[2];
+          if (nodeList.includes(selectedNodeId)) {
+            propertiesToDuplicate.push(`    class ${newNodeId} ${className}`);
           }
         }
-      
-      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
-      let edgesToAppend = [];
-      let matchTo;
-      while ((matchTo = toRegex.exec(code)) !== null) {
-          edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
       }
-      
-      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
-      let matchFrom;
-      while ((matchFrom = fromRegex.exec(code)) !== null) {
-          edgesToAppend.push(`\n    ${newNodeId} ${matchFrom[2]} ${matchFrom[3]}`);
+      if (line.match(new RegExp(`^\\s*${escapedNodeId}\\@\\{\\s*shape:`))) {
+        propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${escapedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
       }
-      
-      newCode += edgesToAppend.join('');
-      handleCodeChange(newCode);
+    });
+    if (propertiesToDuplicate.length > 0) {
+      newCode += '\n' + propertiesToDuplicate.join('\n');
+    }
+
+    // Fallback style clone: if there was no explicit style line to copy, clone
+    // currently rendered fill/stroke/text colors from the selected SVG element.
+    if (!copiedExplicitStyle && selectedSvgId) {
+      try {
+        const selectedEl = document.getElementById(selectedSvgId);
+        if (selectedEl) {
+          const shapeEl = selectedEl.querySelector('rect, circle, polygon, path.node, path, ellipse') as Element | null;
+          const textEl = selectedEl.querySelector('.label, text, .nodeLabel') as Element | null;
+
+          const shapeStyle = shapeEl ? window.getComputedStyle(shapeEl) : null;
+          const textStyle = textEl ? window.getComputedStyle(textEl) : null;
+
+          const styleParts: string[] = [];
+          const fill = toMermaidColorToken(shapeStyle?.fill);
+          const stroke = toMermaidColorToken(shapeStyle?.stroke);
+          const textColor = toMermaidColorToken(textStyle?.fill);
+
+          if (fill) styleParts.push(`fill:${fill}`);
+          if (stroke) styleParts.push(`stroke:${stroke}`);
+          if (textColor) styleParts.push(`color:${textColor}`);
+
+          if (styleParts.length > 0) {
+            newCode += `\n    style ${newNodeId} ${styleParts.join(',')}`;
+          }
+        }
+      } catch (err) {
+        // Non-fatal: duplication should still succeed even if style fallback fails.
+        console.warn('Duplicate style fallback failed:', err);
+      }
+    }
+
+    const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+    let edgesToAppend = [];
+    let matchTo;
+    while ((matchTo = toRegex.exec(code)) !== null) {
+      edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
+    }
+
+    const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+    let matchFrom;
+    while ((matchFrom = fromRegex.exec(code)) !== null) {
+      edgesToAppend.push(`\n    ${newNodeId} ${matchFrom[2]} ${matchFrom[3]}`);
+    }
+
+    newCode += edgesToAppend.join('');
+    handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId, selectedSvgId, toMermaidColorToken]);
 
   // Reorder a sequence message to a new chronological slot (0..N). The moved message's
@@ -1218,6 +1220,63 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     setSelectedNodeId(null);
   }, [code, getSequenceMessageEntries, getSequenceNoteEntries, handleCodeChange, setSelectionBox, setSelectedNodeId]);
 
+  // Reorder participant lifelines (the visual columns) to match a new left-to-right order produced
+  // by a horizontal drag on the canvas. Mermaid lays out columns in FIRST-APPEARANCE order, so to
+  // force an arbitrary order we DECLARE every lifeline explicitly at the top in the target order:
+  //   1. Parse existing `participant`/`actor`/typed declaration lines → map actorId → full line.
+  //   2. Build the new declaration block in `newOrderIds` order, REUSING each participant's existing
+  //      declaration verbatim (keyword + `@{type}` + ` as Alias` all preserved); synthesize a plain
+  //      `    participant <id>` only for implicit participants that had no declaration line.
+  //   3. Remove all old declaration lines and splice the new block in at the first-declaration
+  //      position (or right after `sequenceDiagram` + optional `autonumber`/frontmatter when the
+  //      diagram had only implicit participants).
+  // Only the participant declaration ORDER changes — message lines, blocks, notes, and the logical
+  // flow are untouched. Routes through handleCodeChange (single undo). `newOrderIds` is the FULL set
+  // of current lifelines (explicit + implicit) in the desired left-to-right order.
+  const handleReorderSequenceLifelines = useCallback((newOrderIds: string[]) => {
+    if (!Array.isArray(newOrderIds) || newOrderIds.length === 0) return;
+    const lines = code.split('\n');
+
+    // [indent] keyword <id>[@{...}][ as Alias] — id is g2 (matched against the lifeline order).
+    const declRe = /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
+    // Map actorId → full declaration line for every existing declaration, plus their line indices.
+    const declLine = new Map<string, string>();
+    const declIdxs: number[] = [];
+    let inFrontmatter = false;
+    let headerEndIdx = 0; // index just after `sequenceDiagram` (+ autonumber/frontmatter)
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') { inFrontmatter = !inFrontmatter; headerEndIdx = i + 1; continue; }
+      if (inFrontmatter) { headerEndIdx = i + 1; continue; }
+      if (/^sequenceDiagram\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
+      if (/^(autonumber|title)\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
+      const m = lines[i].match(declRe);
+      if (m && m[2]) {
+        declLine.set(m[2], lines[i]);
+        declIdxs.push(i);
+      }
+    }
+
+    const indent = '    ';
+    const block = newOrderIds.map((id) => declLine.get(id) ?? `${indent}participant ${id}`);
+
+    // Insertion anchor: where the first existing declaration sat (so the block stays where the
+    // user already had it); otherwise right after the diagram header.
+    const anchor = declIdxs.length > 0 ? Math.min(...declIdxs) : headerEndIdx;
+    const declSet = new Set(declIdxs);
+    const remaining = lines.filter((_, i) => !declSet.has(i));
+    // Recompute the anchor against the filtered array (removed decls before the anchor shift it up).
+    const removedBeforeAnchor = declIdxs.filter((i) => i < anchor).length;
+    const insertAt = Math.max(0, Math.min(remaining.length, anchor - removedBeforeAnchor));
+    remaining.splice(insertAt, 0, ...block);
+
+    const next = remaining.join('\n');
+    if (next === code) return; // order unchanged — no-op
+    handleCodeChange(next);
+    setSelectionBox(null);
+    setSelectedNodeId(null);
+  }, [code, handleCodeChange, setSelectionBox, setSelectedNodeId]);
+
   // Change the connector operator of the selected sequence message (e.g. `->>` → `-->>` → `-x`),
   // preserving the sender, receiver, message text, and surrounding spacing. The operator is
   // swapped only at the position between the two actors and before the colon, so participant IDs
@@ -1248,6 +1307,41 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     handleCodeChange(lines.join('\n'));
   }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId]);
 
+  // Reassign one endpoint (sender or receiver) of the selected sequence message to a different
+  // participant — the code-side of the visual endpoint drag-and-drop. The sender, receiver, and
+  // operator each sit in a fixed slot of the pre-colon segment, so we swap ONLY the targeted
+  // actor id and leave the operator, the OTHER actor, the message label (everything from the
+  // colon onward), and all surrounding whitespace untouched. When the new sender equals the
+  // receiver (or vice-versa) the resulting `A->>A: msg` line is a valid Mermaid self-message, so
+  // cross→self and self→cross morphing falls out for free from this single substitution.
+  const handleChangeSequenceMessageEndpoint = useCallback((endpoint: 'source' | 'target', newActorId: string) => {
+    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
+    if (!newActorId) return;
+    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    if (!Number.isFinite(idx) || idx < 0) return;
+    const entry = getSequenceMessageEntries(code)[idx];
+    if (!entry) return;
+
+    const lines = code.split('\n');
+    const line = lines[entry.index];
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) return;
+    const beforeColon = line.substring(0, colonIdx);
+    const afterColon = line.substring(colonIdx);
+
+    // [indent] SENDER [sp] OPERATOR [sp] RECEIVER [trailing sp]. The SENDER group is LAZY
+    // (`\S+?`) so a greedy match can't swallow the leading dash of a double-dash operator
+    // (e.g. `B-->>A` would otherwise split as sender `B-` + op `-->>`).
+    const m = beforeColon.match(/^(\s*)(\S+?)(\s*)(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/);
+    if (!m) return;
+    const [, indent, from, sp1, op, sp2, to, sp3] = m;
+    const newFrom = endpoint === 'source' ? newActorId : from;
+    const newTo = endpoint === 'target' ? newActorId : to;
+    if (newFrom === from && newTo === to) return; // dropped on the same lifeline — no-op
+    lines[entry.index] = `${indent}${newFrom}${sp1}${op}${sp2}${newTo}${sp3}${afterColon}`;
+    handleCodeChange(lines.join('\n'));
+  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId]);
+
   // The connector operator of the currently selected sequence message (for the toolbar's active
   // state). Null when no message is selected or it can't be parsed.
   const currentSequenceMessageOperator = useMemo(() => {
@@ -1262,95 +1356,146 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     return m ? m[1] : null;
   }, [code, getSequenceMessageEntries, selectedNodeId]);
 
-  const handleDeleteNode = useCallback(() => {
-      if (!selectedNodeId) return;
-      let newCode = code;
+  // Regex that splits a sequence participant declaration into [indent, id, " as Alias"], tolerating
+  // an optional `@{ ... }` metadata token (which carries the visual type). Used by both the type
+  // mutation and the active-type read-back. The keyword (participant/actor/database/…) and the
+  // `@{}` token are deliberately NOT captured for reuse — they are rewritten from scratch.
+  const SEQ_PARTICIPANT_DECL_RE = /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
 
-      // Sequence diagram deletions
-      if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-          const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-          // Remove participant/actor declaration lines and all lines referencing this actor
+  // Change the architectural TYPE of the selected participant (e.g. standard box → database). Only
+  // the type flag is rewritten; the participant id, alias, and indentation are preserved. `participant`
+  // and `actor` use Mermaid keyword syntax (and any prior `@{}` token is dropped); every other type
+  // uses the `participant ID@{ "type": "X" } as Alias` metadata form — matching what the top
+  // "Participants" picker writes. Routes through handleCodeChange so it is a single undo transaction.
+  const handleChangeSequenceParticipantType = useCallback((typeKey: string) => {
+    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
+    if (!typeKey) return;
+    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+    const lines = code.split('\n');
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = lines[i].match(SEQ_PARTICIPANT_DECL_RE);
+      if (!m || m[2] !== actorId) continue;
+      const indent = m[1] ?? '';
+      const asClause = m[3] ?? '';
+      let newLine: string;
+      if (typeKey === 'participant') newLine = `${indent}participant ${actorId}${asClause}`;
+      else if (typeKey === 'actor') newLine = `${indent}actor ${actorId}${asClause}`;
+      else newLine = `${indent}participant ${actorId}@{ "type": "${typeKey}" }${asClause}`;
+      if (newLine === lines[i]) return; // already this type — no-op
+      lines[i] = newLine;
+      handleCodeChange(lines.join('\n'));
+      return;
+    }
+  }, [code, handleCodeChange, selectedNodeId, SEQ_PARTICIPANT_DECL_RE]);
+
+  // The visual type of the currently selected participant (for the toolbar's active-state
+  // highlight). Reads the `@{ "type": "X" }` token if present, else falls back to the declaration
+  // keyword (`actor` → actor, plain `participant` → participant). Null when no actor is selected.
+  const currentSequenceParticipantType = useMemo(() => {
+    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return null;
+    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+    const keywordRe = /^\s*(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(\s*@\{[^}]*\})?(?:\s+as\s+.+?)?\s*$/i;
+    for (const line of code.split('\n')) {
+      const m = line.match(keywordRe);
+      if (!m || m[2] !== actorId) continue;
+      const meta = m[3] || '';
+      const typeMatch = meta.match(/"type"\s*:\s*"([^"]+)"/i);
+      if (typeMatch) return typeMatch[1].toLowerCase();
+      const keyword = m[1].toLowerCase();
+      return keyword === 'actor' ? 'actor' : keyword === 'participant' ? 'participant' : keyword;
+    }
+    return null;
+  }, [code, selectedNodeId]);
+
+  const handleDeleteNode = useCallback(() => {
+    if (!selectedNodeId) return;
+    let newCode = code;
+
+    // Sequence diagram deletions
+    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
+      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+      // Remove participant/actor declaration lines and all lines referencing this actor
+      const lines = code.split('\n');
+      const filtered = lines.filter(line => {
+        const trimmed = line.trim();
+        // Remove declaration — handles all types including @{} syntax
+        // e.g. "participant P843@{ "type": "database" } as New Database"
+        const declMatch = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+.+)?$/i);
+        if (declMatch && declMatch[1] === actorId) return false;
+        // Remove lines referencing this actor (as sender, receiver, or in notes)
+        const refRegex = new RegExp(`(^|[^a-zA-Z0-9_])${actorId}(?:[^a-zA-Z0-9_]|$)`);
+        if (refRegex.test(trimmed) && trimmed !== 'sequenceDiagram') return false;
+        return true;
+      });
+      newCode = filtered.join('\n');
+    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      if (Number.isFinite(idx) && idx >= 0) {
+        const entries = getSequenceMessageEntries(code);
+        const targetLineIndex = entries[idx]?.index;
+        if (Number.isFinite(targetLineIndex)) {
           const lines = code.split('\n');
-          const filtered = lines.filter(line => {
-              const trimmed = line.trim();
-              // Remove declaration — handles all types including @{} syntax
-              // e.g. "participant P843@{ "type": "database" } as New Database"
-              const declMatch = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+.+)?$/i);
-              if (declMatch && declMatch[1] === actorId) return false;
-              // Remove lines referencing this actor (as sender, receiver, or in notes)
-              const refRegex = new RegExp(`(^|[^a-zA-Z0-9_])${actorId}(?:[^a-zA-Z0-9_]|$)`);
-              if (refRegex.test(trimmed) && trimmed !== 'sequenceDiagram') return false;
-              return true;
-          });
+          const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
           newCode = filtered.join('\n');
-      } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
-          const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-          if (Number.isFinite(idx) && idx >= 0) {
-            const entries = getSequenceMessageEntries(code);
-            const targetLineIndex = entries[idx]?.index;
-            if (Number.isFinite(targetLineIndex)) {
-              const lines = code.split('\n');
-              const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
-              newCode = filtered.join('\n');
-            }
-          }
-      } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
-          const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
-          const isNoteLine = (line: string) => {
-              const trimmed = line.trim();
-              return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
-          };
-          const lines = code.split('\n');
-          let noteCount = 0;
-          const filtered = lines.filter(line => {
-              if (isNoteLine(line)) {
-                  if (noteCount === idx) { noteCount++; return false; }
-                  noteCount++;
-              }
-              return true;
-          });
-          newCode = filtered.join('\n');
-      } else {
-          // Flowchart deletion logic
-          const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
-          const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
-          
-          let parents = [];
-          let matchTo;
-          while ((matchTo = toRegex.exec(code)) !== null) {
-              parents.push({ id: matchTo[1], arrow: matchTo[2] });
-          }
-          
-          let children = [];
-          let matchFrom;
-          while ((matchFrom = fromRegex.exec(code)) !== null) {
-              children.push({ id: matchFrom[3], arrow: matchFrom[2] });
-          }
-          
-          let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
-          let preservedDefinitions = [];
-          for (const nodeId of nodesToPreserve) {
-              const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
-              const match = newCode.match(nodeRegex);
-              if (match) {
-                  preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
-              } else {
-                  preservedDefinitions.push(`\n    ${nodeId}`);
-              }
-          }
-          
-          const lines = newCode.split('\n');
-          const filteredLines = lines.filter(line => {
-              const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
-              return !mentionRegex.test(line);
-          });
-          
-          newCode = filteredLines.join('\n') + preservedDefinitions.join('');
+        }
       }
-      
-      handleCodeChange(newCode);
-      setSelectionBox(null);
-      setSelectedNodeId(null);
+    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
+      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+      const isNoteLine = (line: string) => {
+        const trimmed = line.trim();
+        return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
+      };
+      const lines = code.split('\n');
+      let noteCount = 0;
+      const filtered = lines.filter(line => {
+        if (isNoteLine(line)) {
+          if (noteCount === idx) { noteCount++; return false; }
+          noteCount++;
+        }
+        return true;
+      });
+      newCode = filtered.join('\n');
+    } else {
+      // Flowchart deletion logic
+      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+
+      let parents = [];
+      let matchTo;
+      while ((matchTo = toRegex.exec(code)) !== null) {
+        parents.push({ id: matchTo[1], arrow: matchTo[2] });
+      }
+
+      let children = [];
+      let matchFrom;
+      while ((matchFrom = fromRegex.exec(code)) !== null) {
+        children.push({ id: matchFrom[3], arrow: matchFrom[2] });
+      }
+
+      let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
+      let preservedDefinitions = [];
+      for (const nodeId of nodesToPreserve) {
+        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+        const match = newCode.match(nodeRegex);
+        if (match) {
+          preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
+        } else {
+          preservedDefinitions.push(`\n    ${nodeId}`);
+        }
+      }
+
+      const lines = newCode.split('\n');
+      const filteredLines = lines.filter(line => {
+        const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
+        return !mentionRegex.test(line);
+      });
+
+      newCode = filteredLines.join('\n') + preservedDefinitions.join('');
+    }
+
+    handleCodeChange(newCode);
+    setSelectionBox(null);
+    setSelectedNodeId(null);
   }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId, setSelectionBox, setSelectedNodeId]);
 
   const performNavigation = useCallback((url: string, message: string) => {
@@ -1462,10 +1607,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       return false;
     }
   };
-  
+
   const handleExport = async () => {
     let finalSvgContent = svgContent;
-    
+
     // Inject background if needed for SVG/PNG
     if (exportBg !== 'transparent') {
       const bgRect = `<rect width="100%" height="100%" fill="${exportBg}" />`;
@@ -1484,7 +1629,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       try {
         const svgContainer = containerRef.current?.querySelector('svg');
         if (!svgContainer) throw new Error("No SVG found");
-        
+
         let w = 800; let h = 600;
         const viewBoxMatch = svgContainer.outerHTML.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
         if (viewBoxMatch) { w = parseFloat(viewBoxMatch[1]); h = parseFloat(viewBoxMatch[2]); }
@@ -1498,13 +1643,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           width: w,
           height: h,
           style: {
-             transform: 'none',
-             transformOrigin: 'top left',
-             width: `${w}px`,
-             height: `${h}px`
+            transform: 'none',
+            transformOrigin: 'top left',
+            width: `${w}px`,
+            height: `${h}px`
           }
         });
-        
+
         const a = document.createElement('a');
         a.href = dataUrl;
         a.download = `${doc?.name || 'diagram'}.png`;
@@ -1642,7 +1787,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         </div>
       )}
 
-      <EditorHeader 
+      <EditorHeader
         doc={doc}
         saving={saving}
         isDemo={IS_DEMO_MODE}
@@ -1705,7 +1850,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                             <>
                               <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 rounded-lg border border-border bg-background p-1 shadow-sm">
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomIn()}>
-                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"/></svg>
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
                                 </Button>
                                 <div className="h-px bg-border" />
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => resetTransform()}>
@@ -1713,7 +1858,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                                 </Button>
                                 <div className="h-px bg-border" />
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomOut()}>
-                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H5V11H19V13Z"/></svg>
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H5V11H19V13Z" /></svg>
                                 </Button>
                               </div>
 
@@ -1765,7 +1910,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                       className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       aria-label="Close version history"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
                     </button>
                   </div>
                 </div>
@@ -1882,7 +2027,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         {isCodePanelOpen && (
           <>
             <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
-              <EditorCodePanel 
+              <EditorCodePanel
                 code={code}
                 handleCodeChange={handleCodeChange}
                 handleEditorDidMount={handleEditorDidMount}
@@ -1918,7 +2063,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                 <Redo2 className="w-4 h-4" />
               </Button>
               <div className="h-5 w-px bg-border" />
-              
+
               <DropdownMenu>
                 <DropdownMenuTrigger render={
                   <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
@@ -1926,44 +2071,44 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                   </Button>
                 } />
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
-                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
-                    <div className="flex flex-col">
-                      {['default', 'forest', 'dark', 'neutral', 'base', 'redux'].map((t) => (
-                         <DropdownMenuItem 
-                           key={t}
-                           onClick={() => handleThemeChange(t)}
-                           className="flex items-center gap-3 cursor-pointer"
-                         >
-                           <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
-                           <span className="capitalize">{t}</span>
-                         </DropdownMenuItem>
-                      ))}
-                    </div>
+                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
+                  <div className="flex flex-col">
+                    {['default', 'forest', 'dark', 'neutral', 'base', 'redux'].map((t) => (
+                      <DropdownMenuItem
+                        key={t}
+                        onClick={() => handleThemeChange(t)}
+                        className="flex items-center gap-3 cursor-pointer"
+                      >
+                        <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                        <span className="capitalize">{t}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
               <DropdownMenu>
                 <DropdownMenuTrigger render={
                   <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
-                    <Type className="w-4 h-4"/>
+                    <Type className="w-4 h-4" />
                   </Button>
                 } />
                 <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
-                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
-                    <div className="flex flex-col">
-                      {FONT_OPTIONS.map((f) => (
-                         <DropdownMenuItem 
-                           key={f.label}
-                           onClick={() => handleFontChange(f)}
-                           className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? 'bg-accent/70' : ''}`}
-                         >
-                           <span className={activeFontLabel === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
-                         </DropdownMenuItem>
-                      ))}
-                    </div>
+                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                  <div className="flex flex-col">
+                    {FONT_OPTIONS.map((f) => (
+                      <DropdownMenuItem
+                        key={f.label}
+                        onClick={() => handleFontChange(f)}
+                        className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? 'bg-accent/70' : ''}`}
+                      >
+                        <span className={activeFontLabel === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
                 </DropdownMenuContent>
               </DropdownMenu>
-              
+
               {currentType === 'sequence' && (
                 <>
                   <div className="h-5 w-px bg-border mx-1" />
@@ -1977,15 +2122,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                           handleCodeChange(code.replace(/(sequenceDiagram)/i, '$1\n    autonumber'));
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        code.match(/autonumber/i) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-                      }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                        }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                          }`}
                       />
                     </button>
                   </div>
@@ -1993,87 +2136,93 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               )}
 
               <div className="h-5 w-px bg-border" />
-              
+
               {DiagramRegistry[currentType] && DiagramRegistry[currentType].ToolbarComponent && (() => {
-                  const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
-                  return ToolbarComp ? (
-                    <ToolbarComp 
-                      code={code} 
-                      setCode={handleCodeChange} 
-                      editorRef={editorRef} 
-                      selectedNodeId={selectedNodeId} 
-                    />
-                  ) : null;
+                const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
+                return ToolbarComp ? (
+                  <ToolbarComp
+                    code={code}
+                    setCode={handleCodeChange}
+                    editorRef={editorRef}
+                    selectedNodeId={selectedNodeId}
+                  />
+                ) : null;
               })()}
             </div>
           </div>
 
           <EditorCanvas
-          code={code}
-          parseError={parseError}
-          svgContent={svgContent}
-          isLocked={isLocked}
-          setIsLocked={setIsLocked}
-          containerRef={containerRef}
-          handleSvgClick={handleSvgClick}
-          handleMouseMove={handleMouseMove}
-          handleMouseUp={handleMouseUp}
-          handleSequenceHoverOver={handleSequenceHoverOver}
-          handleSequenceHoverOut={handleSequenceHoverOut}
-          handleEditClick={handleEditClick}
-          selectionBox={selectionBox}
-          connectionState={connectionState}
-          setConnectionState={setConnectionState}
-          sequenceLifelineOverlay={sequenceLifelineOverlay}
-          hoveredSequenceActorBox={hoveredSequenceActorBox}
-          hoveredSequenceMessageBox={hoveredSequenceMessageBox}
-          hoveredSequenceNoteBox={hoveredSequenceNoteBox}
-          hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
-          sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
-          startSequenceConnection={startSequenceConnection}
-          onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
-          onSequencePlusNote={handleSequencePlusNote}
-          isInlineEditing={isInlineEditing}
-          selectedSvgId={selectedSvgId}
-          selectedNodeId={selectedNodeId}
-          currentType={currentType}
-          handleUpdateStyle={handleUpdateStyle}
-          handleFormatNodeLabel={handleFormatNodeLabel}
-          handleChangeShape={handleChangeShape}
-          handleDuplicateNode={handleDuplicateNode}
-          handleDeleteNode={handleDeleteNode}
-          onAddSequenceNote={handleAddSequenceNote}
-          onMoveSequenceNote={handleMoveSequenceNote}
-          onChangeSequenceMessageType={handleChangeSequenceMessageType}
-          currentSequenceMessageOperator={currentSequenceMessageOperator}
-          onLinkSequenceNote={handleLinkSequenceNote}
-          setIsInlineEditing={setIsInlineEditing}
-          textBox={textBox}
-          theme={currentTheme}
-          editingText={editingText}
-          setEditingText={setEditingText}
-          handleEditSubmit={handleEditSubmit}
-          inlineInputRef={inlineInputRef}
-          handleAddNodeFromSelected={handleAddNodeFromSelected}
-          onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
-          onHoveredSequenceMessageClick={(index) => triggerHoveredSequenceMessageSelection(false, index)}
-          onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
-          onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
-          onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
-          onReorderSequenceItem={handleReorderSequenceItem}
-          onDeselect={handleDeselect}
-          onResetStyle={handleResetStyle}
-          onUpdateEdgeStyle={handleUpdateEdgeStyle}
-          onUpdateEdgeColor={handleUpdateEdgeColor}
-          onUpdateEdgeCurve={handleUpdateEdgeCurve}
-          onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
-          onDeleteEdge={handleDeleteEdge}
-          shapePicker={shapePicker}
-          setShapePicker={setShapePicker}
+            code={code}
+            parseError={parseError}
+            svgContent={svgContent}
+            isLocked={isLocked}
+            setIsLocked={setIsLocked}
+            containerRef={containerRef}
+            handleSvgClick={handleSvgClick}
+            handleMouseMove={handleMouseMove}
+            handleMouseUp={handleMouseUp}
+            handleSequenceHoverOver={handleSequenceHoverOver}
+            handleSequenceHoverOut={handleSequenceHoverOut}
+            handleEditClick={handleEditClick}
+            selectionBox={selectionBox}
+            connectionState={connectionState}
+            setConnectionState={setConnectionState}
+            sequenceLifelineOverlay={sequenceLifelineOverlay}
+            hoveredSequenceActorBox={hoveredSequenceActorBox}
+            hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+            hoveredSequenceNoteBox={hoveredSequenceNoteBox}
+            hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
+            sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
+            startSequenceConnection={startSequenceConnection}
+            onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
+            onSequencePlusNote={handleSequencePlusNote}
+            isInlineEditing={isInlineEditing}
+            selectedSvgId={selectedSvgId}
+            selectedNodeId={selectedNodeId}
+            currentType={currentType}
+            handleUpdateStyle={handleUpdateStyle}
+            handleFormatNodeLabel={handleFormatNodeLabel}
+            handleChangeShape={handleChangeShape}
+            handleDuplicateNode={handleDuplicateNode}
+            handleDeleteNode={handleDeleteNode}
+            onAddSequenceNote={handleAddSequenceNote}
+            onMoveSequenceNote={handleMoveSequenceNote}
+            onChangeSequenceMessageType={handleChangeSequenceMessageType}
+            currentSequenceMessageOperator={currentSequenceMessageOperator}
+            onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
+            currentSequenceParticipantType={currentSequenceParticipantType}
+            onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
+            getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
+            onLinkSequenceNote={handleLinkSequenceNote}
+            setIsInlineEditing={setIsInlineEditing}
+            textBox={textBox}
+            theme={currentTheme}
+            editingText={editingText}
+            setEditingText={setEditingText}
+            handleEditSubmit={handleEditSubmit}
+            inlineInputRef={inlineInputRef}
+            handleAddNodeFromSelected={handleAddNodeFromSelected}
+            onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
+            onHoveredSequenceMessageClick={(index) => triggerHoveredSequenceMessageSelection(false, index)}
+            onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
+            onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
+            onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
+            onReorderSequenceItem={handleReorderSequenceItem}
+            onReorderSequenceLifelines={handleReorderSequenceLifelines}
+            getSequenceLifelines={getSequenceLifelines}
+            onDeselect={handleDeselect}
+            onResetStyle={handleResetStyle}
+            onUpdateEdgeStyle={handleUpdateEdgeStyle}
+            onUpdateEdgeColor={handleUpdateEdgeColor}
+            onUpdateEdgeCurve={handleUpdateEdgeCurve}
+            onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
+            onDeleteEdge={handleDeleteEdge}
+            shapePicker={shapePicker}
+            setShapePicker={setShapePicker}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
-      
+
       {/* Create Dialog */}
       <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
         <DialogContent>
@@ -2081,9 +2230,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             <DialogTitle>Create New Diagram</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <Input 
-              value={createName} 
-              onChange={(e) => setCreateName(e.target.value)} 
+            <Input
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleCreateSubmit()}
@@ -2103,9 +2252,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             <DialogTitle>Rename Diagram</DialogTitle>
           </DialogHeader>
           <div className="py-4">
-            <Input 
-              value={renameName} 
-              onChange={(e) => setRenameName(e.target.value)} 
+            <Input
+              value={renameName}
+              onChange={(e) => setRenameName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
               onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
@@ -2125,69 +2274,69 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             <DialogTitle>Export diagram</DialogTitle>
           </DialogHeader>
           <div className="flex gap-6 py-4">
-             {/* Left Column (Options) */}
-             <div className="w-1/3 flex flex-col gap-4">
-                <div>
-                   <p className="text-sm font-semibold mb-2">Export format</p>
-                   <div className="flex flex-col gap-2">
-                     {[
-                       { id: 'PNG', label: 'PNG', desc: 'High quality raster image' },
-                       { id: 'SVG', label: 'SVG', desc: 'Scalable vector graphics' },
-                       { id: 'MMD', label: 'MMD', desc: 'Mermaid syntax code' },
-                     ].map(fmt => (
-                        <div 
-                          key={fmt.id}
-                          onClick={() => {
-                            setExportFormat(fmt.id);
-                            if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
-                          }}
-                          className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-border hover:border-foreground/20'}`}
-                        >
-                           <div className="flex items-center gap-2 mb-1">
-                             <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-indigo-500' : 'border-border'}`}>
-                               {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
-                             </div>
-                             <span className="font-semibold text-foreground">{fmt.label}</span>
-                           </div>
-                           <p className="text-xs text-muted-foreground ml-6">{fmt.desc}</p>
+            {/* Left Column (Options) */}
+            <div className="w-1/3 flex flex-col gap-4">
+              <div>
+                <p className="text-sm font-semibold mb-2">Export format</p>
+                <div className="flex flex-col gap-2">
+                  {[
+                    { id: 'PNG', label: 'PNG', desc: 'High quality raster image' },
+                    { id: 'SVG', label: 'SVG', desc: 'Scalable vector graphics' },
+                    { id: 'MMD', label: 'MMD', desc: 'Mermaid syntax code' },
+                  ].map(fmt => (
+                    <div
+                      key={fmt.id}
+                      onClick={() => {
+                        setExportFormat(fmt.id);
+                        if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
+                      }}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-border hover:border-foreground/20'}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-indigo-500' : 'border-border'}`}>
+                          {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
                         </div>
-                     ))}
-                   </div>
+                        <span className="font-semibold text-foreground">{fmt.label}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-6">{fmt.desc}</p>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                   <p className="text-sm font-semibold mb-2">Background color</p>
-                   <div className="flex gap-2">
-                     {(exportFormat === 'PNG' ? ['transparent', 'white', 'black'] : ['white', 'black']).map(c => (
-                        <div 
-                          key={c}
-                          onClick={() => setExportBg(c)}
-                          className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-indigo-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
-                          style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
-                        />
-                     ))}
-                   </div>
+              </div>
+              <div>
+                <p className="text-sm font-semibold mb-2">Background color</p>
+                <div className="flex gap-2">
+                  {(exportFormat === 'PNG' ? ['transparent', 'white', 'black'] : ['white', 'black']).map(c => (
+                    <div
+                      key={c}
+                      onClick={() => setExportBg(c)}
+                      className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-indigo-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
+                      style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
+                    />
+                  ))}
                 </div>
-             </div>
-             {/* Right Column (Preview) */}
-             <div className="w-2/3 flex flex-col">
-                <p className="text-sm font-semibold mb-2">Preview</p>
-                <div 
-                  className="flex-grow border border-border rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]" 
-                  style={{ 
-                    backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
-                    backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
-                    backgroundSize: '10px 10px'
-                  }}
-                >
-                    <div dangerouslySetInnerHTML={{ __html: svgContent }} className="max-w-full max-h-full object-contain p-4 relative z-10" />
-                    <Button variant="outline" size="icon" className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20" onClick={() => {
-                        navigator.clipboard.writeText(svgContent);
-                        toast.success("SVG code copied to clipboard!");
-                    }}>
-                       <Copy className="w-4 h-4" />
-                    </Button>
-                </div>
-             </div>
+              </div>
+            </div>
+            {/* Right Column (Preview) */}
+            <div className="w-2/3 flex flex-col">
+              <p className="text-sm font-semibold mb-2">Preview</p>
+              <div
+                className="flex-grow border border-border rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]"
+                style={{
+                  backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
+                  backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
+                  backgroundSize: '10px 10px'
+                }}
+              >
+                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="max-w-full max-h-full object-contain p-4 relative z-10" />
+                <Button variant="outline" size="icon" className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20" onClick={() => {
+                  navigator.clipboard.writeText(svgContent);
+                  toast.success("SVG code copied to clipboard!");
+                }}>
+                  <Copy className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>

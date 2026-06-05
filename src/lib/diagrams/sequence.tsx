@@ -7,9 +7,9 @@ import { Users, RefreshCw, GitBranch, SquareSquare } from "lucide-react";
 import { useState } from "react";
 
 // SVG icons for each participant type
-const ParticipantIcon = ({ type }: { type: string }) => {
-  const iconProps = "w-12 h-12 stroke-current stroke-2 fill-none";
-  
+export const ParticipantIcon = ({ type, className }: { type: string; className?: string }) => {
+  const iconProps = className ?? "w-12 h-12 stroke-current stroke-2 fill-none";
+
   switch (type) {
     case 'participant':
       return (
@@ -92,85 +92,110 @@ const ParticipantIcon = ({ type }: { type: string }) => {
   }
 };
 
+// The eight sequence participant archetypes (shared by the top "Participants" picker and the
+// inline canvas SequenceManipulationToolbar "Type" dropdown).
+export const PARTICIPANT_TYPES: Array<{ key: string; label: string }> = [
+  { key: 'participant', label: 'Participant' },
+  { key: 'actor', label: 'Actor' },
+  { key: 'boundary', label: 'Boundary' },
+  { key: 'control', label: 'Control' },
+  { key: 'entity', label: 'Entity' },
+  { key: 'database', label: 'Database' },
+  { key: 'collections', label: 'Collections' },
+  { key: 'queue', label: 'Queue' },
+];
+
 const SequenceToolbar = ({ code, setCode }: EditorContext) => {
   const [showParticipantPicker, setShowParticipantPicker] = useState(false);
-  
-  const participantTypes = [
-    { key: 'participant', label: 'Participant' },
-    { key: 'actor', label: 'Actor' },
-    { key: 'boundary', label: 'Boundary' },
-    { key: 'control', label: 'Control' },
-    { key: 'entity', label: 'Entity' },
-    { key: 'database', label: 'Database' },
-    { key: 'collections', label: 'Collections' },
-    { key: 'queue', label: 'Queue' },
-  ];
+
+  const participantTypes = PARTICIPANT_TYPES;
 
   const handleAddParticipant = (type: string) => {
-      const timestamp = Date.now().toString().slice(-3);
-      const displayNames: Record<string, string> = {
-        'participant': 'Participant',
-        'actor': 'Actor',
-        'boundary': 'Boundary',
-        'control': 'Control',
-        'entity': 'Entity',
-        'database': 'Database',
-        'collections': 'Collections',
-        'queue': 'Queue',
-      };
+    const displayNames: Record<string, string> = {
+      'participant': 'Participant',
+      'actor': 'Actor',
+      'boundary': 'Boundary',
+      'control': 'Control',
+      'entity': 'Entity',
+      'database': 'Database',
+      'collections': 'Collections',
+      'queue': 'Queue',
+    };
 
-      let newCode = code;
-      const lines = newCode.split('\n');
-      const insertIdx = lines.findIndex(l => 
-        !l.trim().startsWith('sequenceDiagram') && 
-        !l.trim().startsWith('participant') && 
-        !l.trim().startsWith('actor') && 
-        l.trim() !== ''
-      );
-      
-      let insertLine = '';
-      if (type === 'participant') {
-        insertLine = `    participant P${timestamp} as New ${displayNames[type]}`;
-      } else if (type === 'actor') {
-        insertLine = `    actor A${timestamp} as New ${displayNames[type]}`;
-      } else {
-        insertLine = `    participant P${timestamp}@{ "type": "${type}" } as New ${displayNames[type]}`;
-      }
+    const lines = code.split('\n');
 
-      if (insertIdx === -1 || insertIdx === 0) {
-          newCode += `\n${insertLine}`;
-      } else {
-          lines.splice(insertIdx, 0, insertLine);
-          newCode = lines.join('\n');
-      }
-      setCode(newCode);
-      setShowParticipantPicker(false);
+    // AC 1.3 — Auto-ID: scan every existing participant ID (from declarations AND message
+    // references) so the new id never collides. Pick the first unused single uppercase letter
+    // (A, B, C, … → E when A–D exist); fall back to a timestamped id only if all 26 are taken.
+    const usedIds = new Set<string>();
+    const declRe = /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)/i;
+    const msgRe = /^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/;
+    let lastDeclIdx = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      const dm = trimmed.match(declRe);
+      if (dm) { usedIds.add(dm[1]); lastDeclIdx = i; }
+      const mm = trimmed.match(msgRe);
+      if (mm) { usedIds.add(mm[1]); usedIds.add(mm[2]); }
+    }
+    let newId = '';
+    for (let i = 0; i < 26; i += 1) {
+      const c = String.fromCharCode(65 + i);
+      if (!usedIds.has(c)) { newId = c; break; }
+    }
+    if (!newId) newId = `P${Date.now().toString().slice(-3)}`;
+
+    let insertLine = '';
+    if (type === 'participant') {
+      insertLine = `    participant ${newId} as New ${displayNames[type]}`;
+    } else if (type === 'actor') {
+      insertLine = `    actor ${newId} as New ${displayNames[type]}`;
+    } else {
+      insertLine = `    participant ${newId}@{ "type": "${type}" } as New ${displayNames[type]}`;
+    }
+
+    // AC 1.1 / 1.2 — Right-side insertion. Mermaid lays out participant columns in first-appearance
+    // order, so the new participant must be DECLARED AFTER every existing one to land on the far
+    // right. When explicit declarations exist, inject directly beneath the last declaration block
+    // (clean code, renders rightmost). When participants are only implicit (declared via messages),
+    // there is no declaration block — appending at the very END makes the new column appear after
+    // all message-referenced participants, i.e. rightmost (declaring it at the top would wrongly
+    // place it on the far LEFT — the bug this fixes).
+    let newCode: string;
+    if (lastDeclIdx >= 0) {
+      lines.splice(lastDeclIdx + 1, 0, insertLine);
+      newCode = lines.join('\n');
+    } else {
+      newCode = code.replace(/\s*$/, '') + `\n${insertLine}`;
+    }
+    setCode(newCode);
+    setShowParticipantPicker(false);
   };
 
   const handleAddBlock = (type: 'alt' | 'loop' | 'rect' | 'opt' | 'par') => {
-      let block = '';
-      if (type === 'alt') {
-          block = `\n    alt Condition\n        A->>B: Message\n    else Alternative\n        A->>B: Message\n    end`;
-      } else if (type === 'loop') {
-          block = `\n    loop Loop Name\n        A->>B: Message\n    end`;
-      } else if (type === 'rect') {
-          block = `\n    rect rgb(200, 200, 255)\n        note right of A: Highlighted section\n    end`;
-      } else if (type === 'opt') {
-          block = `\n    opt Optional\n        A->>B: Message\n    end`;
-      } else if (type === 'par') {
-          block = `\n    par Action 1\n        A->>B: Message 1\n    and Action 2\n        A->>C: Message 2\n    end`;
-      }
-      const newCode = code + block;
-      setCode(newCode);
+    let block = '';
+    if (type === 'alt') {
+      block = `\n    alt Condition\n        A->>B: Message\n    else Alternative\n        A->>B: Message\n    end`;
+    } else if (type === 'loop') {
+      block = `\n    loop Loop Name\n        A->>B: Message\n    end`;
+    } else if (type === 'rect') {
+      block = `\n    rect rgb(200, 200, 255)\n        note right of A: Highlighted section\n    end`;
+    } else if (type === 'opt') {
+      block = `\n    opt Optional\n        A->>B: Message\n    end`;
+    } else if (type === 'par') {
+      block = `\n    par Action 1\n        A->>B: Message 1\n    and Action 2\n        A->>C: Message 2\n    end`;
+    }
+    const newCode = code + block;
+    setCode(newCode);
   };
 
   return (
     <>
       <div className="flex items-center gap-2 rounded-xl bg-background p-0 border-none">
         <div className="relative">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
             onClick={() => setShowParticipantPicker(!showParticipantPicker)}
             title="Add Participant"
@@ -207,29 +232,29 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
             <span className="text-sm font-medium">Logic</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
-              <DropdownMenuItem onClick={() => handleAddBlock('alt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-                <GitBranch className="w-4 h-4" />
-                <span className="flex-1 text-sm font-medium">Alt (If/Else)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAddBlock('opt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-                <GitBranch className="w-4 h-4 opacity-50" />
-                <span className="flex-1 text-sm font-medium">Opt (Optional)</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAddBlock('loop')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-                <RefreshCw className="w-4 h-4" />
-                <span className="flex-1 text-sm font-medium">Loop</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleAddBlock('par')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-                <RefreshCw className="w-4 h-4 opacity-50" />
-                <span className="flex-1 text-sm font-medium">Par (Parallel)</span>
-              </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAddBlock('alt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
+              <GitBranch className="w-4 h-4" />
+              <span className="flex-1 text-sm font-medium">Alt (If/Else)</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAddBlock('opt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
+              <GitBranch className="w-4 h-4 opacity-50" />
+              <span className="flex-1 text-sm font-medium">Opt (Optional)</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAddBlock('loop')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
+              <RefreshCw className="w-4 h-4" />
+              <span className="flex-1 text-sm font-medium">Loop</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleAddBlock('par')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
+              <RefreshCw className="w-4 h-4 opacity-50" />
+              <span className="flex-1 text-sm font-medium">Par (Parallel)</span>
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
         <div className="w-px h-6 bg-border mx-1" />
 
         <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent flex items-center gap-2" onClick={() => handleAddBlock('rect')} title="Add Highlight Box">
-            <SquareSquare className="w-4 h-4" />
+          <SquareSquare className="w-4 h-4" />
           <span className="text-sm font-medium">Highlight</span>
         </Button>
       </div>

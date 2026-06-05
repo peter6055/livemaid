@@ -1,5 +1,6 @@
 import { useRef, useEffect, useState } from "react";
-import { ArrowLeftRight, Pencil, Trash2, Spline } from "lucide-react";
+import { ArrowLeftRight, Pencil, Trash2, Spline, Shapes } from "lucide-react";
+import { ParticipantIcon, PARTICIPANT_TYPES } from "@/lib/diagrams/sequence";
 
 interface SequenceManipulationToolbarProps {
   selectedNodeId: string | null;
@@ -9,6 +10,8 @@ interface SequenceManipulationToolbarProps {
   onMoveNote: (position: "left" | "right" | "over") => void;
   onChangeMessageType?: (operator: string) => void;
   currentMessageOperator?: string | null;
+  onChangeParticipantType?: (typeKey: string) => void;
+  currentParticipantType?: string | null;
   onDeleteNode: () => void;
 }
 
@@ -28,13 +31,17 @@ export function SequenceManipulationToolbar({
   onMoveNote,
   onChangeMessageType,
   currentMessageOperator,
+  onChangeParticipantType,
+  currentParticipantType,
   onDeleteNode,
 }: SequenceManipulationToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isNoteSelected = Boolean(selectedNodeId?.startsWith("SEQ_NOTE_"));
   const isMessageSelected = Boolean(selectedNodeId?.startsWith("SEQ_MSG_"));
+  const isActorSelected = Boolean(selectedNodeId?.startsWith("SEQ_ACTOR_"));
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
+  const [participantMenuOpen, setParticipantMenuOpen] = useState(false);
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -71,9 +78,20 @@ export function SequenceManipulationToolbar({
     return () => document.removeEventListener("pointerdown", onDocPointerDown);
   }, [typeMenuOpen]);
 
+  // Close the Participant Type dropdown on outside click.
+  useEffect(() => {
+    if (!participantMenuOpen) return;
+    const onDocPointerDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) setParticipantMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onDocPointerDown);
+    return () => document.removeEventListener("pointerdown", onDocPointerDown);
+  }, [participantMenuOpen]);
+
   useEffect(() => {
     setMoveMenuOpen(false);
     setTypeMenuOpen(false);
+    setParticipantMenuOpen(false);
   }, [selectedNodeId]);
 
   const btnCls = "pointer-events-auto flex items-center justify-center h-9 rounded-md px-3 gap-1 whitespace-nowrap hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
@@ -103,6 +121,56 @@ export function SequenceManipulationToolbar({
               <Pencil className="w-3.5 h-3.5" />
               <span className="text-sm font-semibold">Rename</span>
             </button>
+
+            <div className="w-px h-5 bg-border mx-0.5" />
+          </>
+        )}
+
+        {isActorSelected && onChangeParticipantType && (
+          <>
+            <div className="relative">
+              <button
+                className={btnCls}
+                title="Participant Type"
+                onMouseDownCapture={(e) => {
+                  // Toggle on capture-phase mousedown (same reliability rationale as the Message
+                  // Type button: a transient toolbar reflow can swallow the native click).
+                  e.stopPropagation();
+                  setParticipantMenuOpen((o) => !o);
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <Shapes className="w-3.5 h-3.5 shrink-0" />
+                <span className="text-sm font-semibold whitespace-nowrap">Type</span>
+              </button>
+
+              {participantMenuOpen && (
+                <div
+                  className="absolute left-1/2 top-full z-40 mt-2 w-max -translate-x-1/2 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-1 pb-1.5 text-base font-semibold text-popover-foreground">Participant Type</div>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {PARTICIPANT_TYPES.map((pt) => {
+                      const active = currentParticipantType === pt.key;
+                      return (
+                        <button
+                          key={pt.key}
+                          className={`flex w-16 flex-col items-center gap-1 rounded-lg border p-2 transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? "border-indigo-500 bg-accent ring-1 ring-indigo-500" : "border-border"}`}
+                          title={pt.label}
+                          onClick={() => { onChangeParticipantType(pt.key); setParticipantMenuOpen(false); }}
+                        >
+                          <span className="flex h-8 w-8 items-center justify-center text-foreground">
+                            <ParticipantIcon type={pt.key} className="w-7 h-7 stroke-current stroke-2 fill-none" />
+                          </span>
+                          <span className="text-[10px] font-medium leading-tight text-center">{pt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="w-px h-5 bg-border mx-0.5" />
           </>
