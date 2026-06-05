@@ -223,4 +223,4 @@ jobs:
               count="$((count + 1))"
             done
           }
-          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" || true
+          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" --yes || true
