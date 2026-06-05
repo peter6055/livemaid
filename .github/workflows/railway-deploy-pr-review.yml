@@ -25,6 +25,7 @@ jobs:
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
@@ -137,11 +138,31 @@ jobs:
               count="$((count + 1))"
             done
           }
-          retry_cmd 4 5 railway redeploy \
-            --environment "pr-$PR_NUMBER" \
-            --project "$RAILWAY_PROJECT_ID" \
-            --from-source \
-            --yes
+          extract_first_name() {
+            grep -o "\"name\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+              | head -n1 \
+              | sed 's/.*"\([^"]*\)"$/\1/'
+          }
+          ENV_NAME="pr-$PR_NUMBER"
+          SERVICE_NAME="$RAILWAY_SERVICE_NAME"
+          if [ -z "$SERVICE_NAME" ]; then
+            SERVICES_JSON="$(retry_cmd 3 5 railway service list --environment "$ENV_NAME" --json || true)"
+            SERVICE_NAME="$(printf '%s' "$SERVICES_JSON" | extract_first_name || true)"
+          fi
+          if [ -n "$SERVICE_NAME" ]; then
+            retry_cmd 4 5 railway redeploy \
+              --service "$SERVICE_NAME" \
+              --environment "$ENV_NAME" \
+              --project "$RAILWAY_PROJECT_ID" \
+              --from-source \
+              --yes
+          else
+            retry_cmd 4 5 railway redeploy \
+              --environment "$ENV_NAME" \
+              --project "$RAILWAY_PROJECT_ID" \
+              --from-source \
+              --yes
+          fi
 
   destroy_preview:
     if: ${{ github.event_name == 'pull_request' && github.event.action == 'closed' }}
