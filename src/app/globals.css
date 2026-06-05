@@ -1,6 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Merriweather:ital,wght@0,300;0,400;0,700;0,900;1,300;1,400;1,700;1,900&family=Open+Sans:ital,wght@0,300..800;1,300..800&family=Recursive:wght@300..1000&family=Source+Code+Pro:ital,wght@0,200..900;1,200..900&display=swap");
 
-.test-compilation { color: red !important; }
+.test-compilation {
+  color: red !important;
+}
 
 @import "tailwindcss";
 @import "tw-animate-css";
@@ -125,10 +127,12 @@
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
     overscroll-behavior-x: none;
   }
+
   html {
     @apply font-sans;
     overscroll-behavior-x: none;
@@ -174,6 +178,29 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+/* Sequence participant headers — full-shape hitbox.
+   Standard `participant`, `collections`, and `queue` render as solid <rect class="actor">
+   elements whose fill already captures clicks. The specialised archetypes — Actor, Boundary,
+   Control (rendered as <g class="actor-man">) and Entity, Database (rendered as <g class="actor">)
+   — are built from `fill: none` vector paths, so pointer events pass straight through their
+   interior to the canvas and only the literal strokes/text are clickable. `pointer-events:
+   bounding-box` makes the browser hit-test the ENTIRE geometric bounding box of each shape group
+   (interior whitespace included), so clicking anywhere within the figure selects the participant —
+   matching the rect-based types. `cursor: pointer` is applied across the whole footprint. */
+.mermaid-container g.actor,
+.mermaid-container g.actor-man {
+  pointer-events: bounding-box;
+  cursor: pointer !important;
+}
+
+.mermaid-container .actor,
+.mermaid-container .actor *,
+.mermaid-container g.actor-man *,
+.mermaid-container rect.actor,
+.mermaid-container text.actor {
+  cursor: pointer !important;
+}
+
 .mermaid-container .cluster,
 .mermaid-container .cluster * {
   cursor: pointer !important;
@@ -195,11 +222,12 @@ svg[aria-roledescription="error"],
 .mermaid-container path.flowchart-link.edge-hover-highlight,
 .mermaid-container .edgePath .path.edge-hover-highlight,
 .mermaid-container path.flowchart-link:hover,
-.mermaid-container .flowchart-link-hit-target:hover + path.flowchart-link,
+.mermaid-container .flowchart-link-hit-target:hover+path.flowchart-link,
 .mermaid-container .edgePath:hover path.path,
 .mermaid-container .edgePath:hover .path,
 .mermaid-container .edgePaths .edgePath:hover .path {
-  stroke: #6366f1 !important; /* Indigo-500 */
+  stroke: #6366f1 !important;
+  /* Indigo-500 */
   stroke-width: 3px !important;
 }
 
@@ -315,7 +343,8 @@ svg[aria-roledescription="error"],
 .mermaid-container .node:hover polygon,
 .mermaid-container .node:hover ellipse,
 .mermaid-container .node:hover path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
-  stroke: #6366f1 !important; /* Indigo-500 */
+  stroke: #6366f1 !important;
+  /* Indigo-500 */
   stroke-width: 2.5px !important;
 }
 
