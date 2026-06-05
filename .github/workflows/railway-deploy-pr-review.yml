@@ -25,9 +25,11 @@ jobs:
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
       RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+      RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_NAME: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_NAME }}
       RAILWAY_PREVIEW_ENV_VAR_VALUE: ${{ vars.RAILWAY_PREVIEW_ENV_VAR_VALUE }}
       RAILWAY_WORKSPACE_ID: ${{ vars.RAILWAY_WORKSPACE_ID }}
+      RAILWAY_SERVICE_TARGET: ${{ vars.RAILWAY_SERVICE_ID || vars.RAILWAY_SERVICE }}
       RAILWAY_DEFAULT_ENV: ${{ vars.RAILWAY_DEFAULT_ENV || 'sandbox' }}
       PR_NUMBER: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.pull_requests[0].number || github.event.pull_request.number }}
       PR_HEAD_REF: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_branch || github.head_ref }}
@@ -58,7 +60,7 @@ jobs:
             retry_cmd 3 5 railway link --project "$RAILWAY_PROJECT_ID" --environment "$LINK_ENV"
           fi
 
-      - name: Recreate preview environment
+      - name: Ensure preview environment
         run: |
           export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           retry_cmd() {
@@ -77,28 +79,89 @@ jobs:
               count="$((count + 1))"
             done
           }
-          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" --yes || true
-          set --
-          if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
-            set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
-          fi
-          if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
-            if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
-                "$@" \
-                --service-variable "$RAILWAY_SERVICE_ID" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
-                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
-            else
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
-            fi
+          ENV_NAME="pr-$PR_NUMBER"
+          ENVIRONMENTS_JSON="$(retry_cmd 3 5 railway environment list --json)"
+          if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$ENV_NAME\""; then
+            echo "Preview environment $ENV_NAME already exists. Skipping creation."
           else
-            if [ -n "$RAILWAY_SERVICE_ID" ]; then
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" \
-                "$@" \
-                --service-config "$RAILWAY_SERVICE_ID" "source.branch" "$PR_HEAD_REF"
-            else
-              retry_cmd 4 5 railway environment new "pr-$PR_NUMBER" "$@"
+            CREATE_FAILED=0
+            set --
+            if [ -n "$RAILWAY_TEMPLATE_ENV_ID" ]; then
+              set -- --copy "$RAILWAY_TEMPLATE_ENV_ID"
             fi
+            if [ -n "$RAILWAY_PREVIEW_ENV_VAR_NAME" ] && [ -n "$RAILWAY_PREVIEW_ENV_VAR_VALUE" ]; then
+              if [ -n "$RAILWAY_SERVICE_TARGET" ]; then
+                retry_cmd 4 5 railway environment new "$ENV_NAME" \
+                  "$@" \
+                  --service-variable "$RAILWAY_SERVICE_TARGET" "${RAILWAY_PREVIEW_ENV_VAR_NAME}=${RAILWAY_PREVIEW_ENV_VAR_VALUE}" \
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF" || CREATE_FAILED=1
+              else
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@" || CREATE_FAILED=1
+              fi
+            else
+              if [ -n "$RAILWAY_SERVICE_TARGET" ]; then
+                retry_cmd 4 5 railway environment new "$ENV_NAME" \
+                  "$@" \
+                  --service-config "$RAILWAY_SERVICE_TARGET" "source.branch" "$PR_HEAD_REF" || CREATE_FAILED=1
+              else
+                retry_cmd 4 5 railway environment new "$ENV_NAME" "$@" || CREATE_FAILED=1
+              fi
+            fi
+            if [ "$CREATE_FAILED" -ne 0 ]; then
+              ENVIRONMENTS_JSON="$(retry_cmd 3 5 railway environment list --json || true)"
+              if echo "$ENVIRONMENTS_JSON" | grep -q "\"name\"[[:space:]]*:[[:space:]]*\"$ENV_NAME\""; then
+                echo "Preview environment $ENV_NAME exists after create retries. Continuing."
+              else
+                echo "Failed to create preview environment $ENV_NAME."
+                exit 1
+              fi
+            fi
+          fi
+
+      - name: Deploy preview environment
+        run: |
+          set -euo pipefail
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
+          retry_cmd() {
+            attempts="$1"
+            base_delay="$2"
+            shift 2
+            count=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if [ "$count" -ge "$attempts" ]; then
+                return 1
+              fi
+              sleep "$((base_delay * count))"
+              count="$((count + 1))"
+            done
+          }
+          extract_first_name() {
+            grep -o "\"name\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" \
+              | head -n1 \
+              | sed 's/.*"\([^"]*\)"$/\1/'
+          }
+          ENV_NAME="pr-$PR_NUMBER"
+          SERVICE_NAME="$RAILWAY_SERVICE_NAME"
+          if [ -z "$SERVICE_NAME" ]; then
+            SERVICES_JSON="$(retry_cmd 3 5 railway service list --environment "$ENV_NAME" --json || true)"
+            SERVICE_NAME="$(printf '%s' "$SERVICES_JSON" | extract_first_name || true)"
+          fi
+          if [ -n "$SERVICE_NAME" ]; then
+            retry_cmd 4 5 railway redeploy \
+              --service "$SERVICE_NAME" \
+              --environment "$ENV_NAME" \
+              --project "$RAILWAY_PROJECT_ID" \
+              --from-source \
+              --yes
+          else
+            retry_cmd 4 5 railway redeploy \
+              --environment "$ENV_NAME" \
+              --project "$RAILWAY_PROJECT_ID" \
+              --from-source \
+              --yes
           fi
 
   destroy_preview:
@@ -160,4 +223,4 @@ jobs:
               count="$((count + 1))"
             done
           }
-          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" || true
+          retry_cmd 3 5 railway environment delete "pr-$PR_NUMBER" --yes || true
