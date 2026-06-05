@@ -1,15 +1,47 @@
-# Mermaid Syntax Documentation Reference
+# Reference Documentation Index
 
-For future agents and developers:
+This folder is the source of truth for LiveMaid's architecture, design, and implemented
+features. Read the relevant document before planning or implementing changes.
 
-When you need to understand how Mermaid syntax works in order to implement or plan support for new diagram types (e.g., Sequence Diagrams, Class Diagrams, Entity Relationship diagrams) in LiveMaid, **do not guess the syntax.**
+| Document | Purpose |
+| --- | --- |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | High-level system architecture, tech stack, and conventions. |
+| [`DESIGN.md`](./DESIGN.md) | UI/UX design specification: color tokens, typography, components, interaction polish. |
+| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md) | **Read first.** Authoritative record of every implemented feature and the constraints that must not be broken. |
+| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement. |
+| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md) | Template/process for writing a verification (test) plan. |
+| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md) | Template/process for writing a regression plan. |
 
-Please refer directly to the official Mermaid documentation repository:
+> **RULE:** All reference documentation for AI agents or developers MUST live in this
+> `reference/` folder. Do not place docs at the repo root (keep the root clean).
+
+---
+
+## Mermaid Syntax: Do Not Guess
+
+When you need to understand how Mermaid syntax works in order to implement or plan support
+for a new diagram type (e.g. Class Diagrams, Entity Relationship diagrams, State diagrams),
+**do not guess the syntax.** Read the official Mermaid documentation:
 
 **URL:** [https://github.com/mermaid-js/mermaid/tree/develop/docs](https://github.com/mermaid-js/mermaid/tree/develop/docs)
 
-### Instructions for Agents:
-1. When a user requests support for a new diagram type, navigate to or clone the relevant docs from the repository linked above.
-2. Read the specific `.md` files related to the syntax.
-3. Use that exact specification to plan how `parseMermaidToReactFlow` and `serializeReactFlowToMermaid` should be updated.
-4. Do not perform the implementation until you have thoroughly understood the official syntax.
+### How LiveMaid parses & serializes
+
+LiveMaid does **not** use a structured graph model (e.g. React Flow). The text code in the
+editor is the single source of truth, and visual edits are applied with **regex-based string
+mutation** of the raw Mermaid code. The relevant helpers live in
+[`src/lib/diagrams/utils.ts`](../src/lib/diagrams/utils.ts), for example:
+
+- `determineDiagramType(code)` — detects the diagram type from the code.
+- `updateLinkStyleAndLabel`, `updateLinkColor`, `updateLinkAnimation`, `updateMermaidCurve`,
+  `deleteLink`, `rebuildLinkStyles` — flowchart edge mutations.
+- `CONNECTOR_PATTERN` — the ordered alternation of every Mermaid connector token.
+
+Per-diagram behavior is registered as a `DiagramPlugin` in
+[`src/lib/diagrams/registry.ts`](../src/lib/diagrams/registry.ts). To add a new diagram type:
+
+1. Read the official syntax docs for that type.
+2. Inspect the actual SVG DOM Mermaid generates for it (IDs/class names differ per type).
+3. Add a `<type>.tsx` plugin and register it in `registry.ts`.
+4. Write resilient regex mutators for the code serializer. Do not implement before you fully
+   understand the official syntax.

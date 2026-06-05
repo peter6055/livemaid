@@ -1436,21 +1436,30 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
 
   const handleRenameSubmit = async () => {
     if (!renameName.trim()) return;
+    const ok = await renameDiagram(renameName);
+    if (ok) setIsRenameOpen(false);
+  };
+
+  const renameDiagram = async (name: string): Promise<boolean> => {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    if (trimmed === doc?.name) return true;
     try {
       const res = await fetch(`/api/diagrams/${documentId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: renameName.trim() }),
+        body: JSON.stringify({ name: trimmed }),
       });
       if (res.ok) {
-        setDoc(prev => prev ? { ...prev, name: renameName.trim() } : prev);
-        setIsRenameOpen(false);
+        setDoc(prev => prev ? { ...prev, name: trimmed } : prev);
         toast.success("Diagram renamed");
-      } else {
-        toast.error("Failed to rename");
+        return true;
       }
+      toast.error("Failed to rename");
+      return false;
     } catch (e) {
       toast.error("Failed to rename");
+      return false;
     }
   };
   
@@ -1641,6 +1650,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         onDuplicate={handleDuplicate}
         onNewDiagram={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}
         onRename={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }}
+        onRenameInline={renameDiagram}
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
       />
@@ -1806,10 +1816,6 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                                 </p>
                               </div>
                             </div>
-
-                            <pre className="max-h-12 overflow-hidden whitespace-pre-wrap rounded-md bg-muted/60 p-3 text-xs leading-relaxed text-muted-foreground">
-                              {version.code.split('\n').find((line) => line.trim())?.trim() || 'Empty version'}
-                            </pre>
 
                             <div className="flex items-center justify-end gap-1.5">
                               <Button

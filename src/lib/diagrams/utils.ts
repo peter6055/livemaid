@@ -447,7 +447,23 @@ export function updateLinkAnimation(
           if (animate) {
             const defaultId = generateEdgeId(src, dst, occurrenceIndex);
             edgeIdToUse = defaultId;
-            
+
+            // Special case: the source node carries inline shape metadata on the edge line,
+            // e.g. `A2@{ shape: flip-tri, label: "x" } ==>B`. Mermaid cannot parse an edge ID
+            // placed after the `}` (it expects `&` or end-of-statement, not a LINK_ID), so the
+            // naive `A2@{...} e_A2_B_0@==>B` form throws a parse error and no animation renders.
+            // Fix: split the inline shape onto its own node-definition line and put the edge ID
+            // after the bare source id — `A2@{...}` + newline + `A2 e_A2_B_0@==>B` — which Mermaid
+            // parses and animates correctly. Duplicate node defs are harmless (Mermaid merges them).
+            const inlineShapeRegex = new RegExp(`^(\\s*)(${src}@\\{[^}]*\\})\\s*`);
+            const shapeMatch = line.match(inlineShapeRegex);
+            if (shapeMatch) {
+              const indent = shapeMatch[1];
+              const shapeDef = shapeMatch[2];
+              const rest = line.slice(shapeMatch[0].length);
+              return `${indent}${shapeDef}\n${indent}${src} ${defaultId}@${rest}`;
+            }
+
             const middlePart = match[2];
             const newMiddle = `${defaultId}@${middlePart}`;
             
