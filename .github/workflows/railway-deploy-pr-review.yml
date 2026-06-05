@@ -1,17 +1,7 @@
 name: cd/railway-pr-preview
 
 on:
-  workflow_run:
-    workflows:
-      - ci/pr-checks
-    types:
-      - completed
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - closed
+  workflow_dispatch:
 
 jobs:
   deploy_preview:
