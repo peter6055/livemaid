@@ -21,7 +21,6 @@ jobs:
       contents: read
     env:
       RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
-      RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
       RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
       RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
       RAILWAY_TEMPLATE_ENV_ID: ${{ vars.RAILWAY_TEMPLATE_ENV_ID }}
@@ -70,10 +69,10 @@ jobs:
       - name: Deploy preview environment
         run: |
           set -euo pipefail
-          : "${RAILWAY_PROJECT_TOKEN:?RAILWAY_PROJECT_TOKEN is required}"
+          : "${RAILWAY_API_TOKEN:?RAILWAY_API_TOKEN is required}"
           : "${RAILWAY_PROJECT_ID:?RAILWAY_PROJECT_ID is required}"
           : "${RAILWAY_SERVICE_NAME:?RAILWAY_SERVICE_NAME is required}"
-          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
+          export RAILWAY_API_TOKEN="$RAILWAY_API_TOKEN"
           railway up --detach --service "$RAILWAY_SERVICE_NAME" --environment "pr-$PR_NUMBER" --project "$RAILWAY_PROJECT_ID"
 
   destroy_preview:
