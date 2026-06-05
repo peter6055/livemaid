@@ -8,6 +8,8 @@ import { isEdgeId } from "@/lib/diagrams/utils";
 import { CSSProperties, RefObject, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
+import { SequenceBlockArea } from "@/hooks/useCanvasInteraction";
+import { SequenceBlockType } from "@/lib/diagrams/sequenceModel";
 
 interface EditorCanvasProps {
   code: string;
@@ -40,15 +42,20 @@ interface EditorCanvasProps {
   hoveredSequenceNoteBox: { x: number, y: number, width: number, height: number } | null;
   hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
+  sequenceBlockAreas: SequenceBlockArea[];
   startSequenceConnection: (actorId: string, anchorY: number) => void;
   onSequencePlusSelfLoop: (actorId: string, anchorY: number) => void;
   onSequencePlusNote: (actorId: string, anchorY: number, position: 'left' | 'right' | 'over') => void;
+  onSequencePlusBlock: (anchorY: number, type: SequenceBlockType | 'highlight') => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
   onHoveredSequenceNoteClick?: (index: number) => void;
   onHoveredSequenceNoteDoubleClick?: (index: number) => void;
+  onSelectSequenceBlock?: (blockId: string) => void;
   onReorderSequenceItem?: (item: { kind: 'msg' | 'note'; index: number }, toSlot: number) => void;
+  onDropSequenceItemIntoBlock?: (item: { kind: 'msg' | 'note'; index: number }, blockId: string | null) => void;
+  onResizeSequenceBlock?: (blockId: string, edge: 'top' | 'bottom', anchorY: number) => void;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -108,15 +115,20 @@ export function EditorCanvas({
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   sequenceMessageTriggerAreas,
+  sequenceBlockAreas,
   startSequenceConnection,
   onSequencePlusSelfLoop,
   onSequencePlusNote,
+  onSequencePlusBlock,
   onHoveredSequenceMessageHover,
   onHoveredSequenceMessageClick,
   onHoveredSequenceMessageDoubleClick,
   onHoveredSequenceNoteClick,
   onHoveredSequenceNoteDoubleClick,
+  onSelectSequenceBlock,
   onReorderSequenceItem,
+  onDropSequenceItemIntoBlock,
+  onResizeSequenceBlock,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -184,6 +196,7 @@ export function EditorCanvas({
   // counter does NOT survive the hover→selected overlay element swap (the two clicks land on
   // different DOM nodes), so we time clicks ourselves keyed by message index.
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: '' });
+  const [activeBlockDropId, setActiveBlockDropId] = useState<string | null>(null);
 
   const viewport = containerRef.current?.closest('.relative.overflow-hidden');
   const viewportWidth = viewport?.clientWidth || 800;
@@ -507,6 +520,13 @@ export function EditorCanvas({
       if (!dragging) return;
       const cursorX = ev.clientX - shellRect.left;
       const cursorY = ev.clientY - shellRect.top;
+      const blockHit = sequenceBlockAreas.find((block) =>
+        cursorX >= block.x &&
+        cursorX <= block.x + block.width &&
+        cursorY >= block.y &&
+        cursorY <= block.y + block.height
+      );
+      setActiveBlockDropId(blockHit?.id || null);
       setSeqReorder({ fromIndex, left, width, slots, cursorY, targetSlot: findTarget(cursorX, cursorY) });
     };
     const onUp = (ev: MouseEvent) => {
@@ -515,10 +535,20 @@ export function EditorCanvas({
       if (dragging) {
         const cursorX = ev.clientX - shellRect.left;
         const cursorY = ev.clientY - shellRect.top;
+        const blockHit = sequenceBlockAreas.find((block) =>
+          cursorX >= block.x &&
+          cursorX <= block.x + block.width &&
+          cursorY >= block.y &&
+          cursorY <= block.y + block.height
+        );
         const targetSlot = findTarget(cursorX, cursorY);
-        // Strict: only reorder when the drop lands inside a valid zone. Otherwise abort (snap back).
-        if (targetSlot !== null) {
+        if (blockHit) {
+          onDropSequenceItemIntoBlock?.({ kind: draggedRow.kind, index: draggedRow.domIndex }, blockHit.id);
+        } else if (targetSlot !== null) {
+          // Strict: only reorder when the drop lands inside a valid zone. Otherwise abort (snap back).
           onReorderSequenceItem?.({ kind: draggedRow.kind, index: draggedRow.domIndex }, targetSlot);
+        } else if (draggedRow.kind === 'msg') {
+          onDropSequenceItemIntoBlock?.({ kind: draggedRow.kind, index: draggedRow.domIndex }, null);
         }
       } else {
         // No drag → treat as a click on the grabbed row. We resolve select-vs-edit HERE on mouseup
@@ -540,6 +570,25 @@ export function EditorCanvas({
         }
       }
       setSeqReorder(null);
+      setActiveBlockDropId(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  const startSequenceBlockResize = (e: React.MouseEvent<HTMLDivElement>, blockId: string, edge: 'top' | 'bottom') => {
+    e.stopPropagation();
+    e.preventDefault();
+    const shellRect = canvasShellRef.current?.getBoundingClientRect();
+    if (!shellRect) return;
+    const onMove = (ev: MouseEvent) => {
+      ev.preventDefault();
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      const anchorY = ev.clientY - shellRect.top;
+      onResizeSequenceBlock?.(blockId, edge, anchorY);
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
@@ -654,6 +703,46 @@ export function EditorCanvas({
                     className={`mermaid-container select-none ${parseError ? 'opacity-30' : ''}`}
                     dangerouslySetInnerHTML={{ __html: svgContent }}
                   />
+
+                  {currentType === 'sequence' && !isInlineEditing && sequenceBlockAreas.map((block) => {
+                    const isSelected = selectedNodeId === block.id;
+                    const isDropActive = activeBlockDropId === block.id;
+                    return (
+                      <div
+                        key={block.id}
+                        className={`absolute z-[18] border rounded-md transition-colors ${
+                          isSelected ? 'border-violet-600 bg-violet-500/15' : 'border-violet-400/70 bg-violet-400/10'
+                        } ${isDropActive ? 'bg-violet-500/25 border-violet-700' : ''}`}
+                        style={{
+                          left: block.x,
+                          top: block.y,
+                          width: block.width,
+                          height: block.height,
+                        }}
+                        onMouseDown={(event) => {
+                          event.stopPropagation();
+                          onSelectSequenceBlock?.(block.id);
+                        }}
+                        title={`${block.type.toUpperCase()} block`}
+                      >
+                        <div className="pointer-events-none absolute left-2 top-0 -translate-y-1/2 rounded bg-violet-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                          {block.type}
+                        </div>
+                        {isSelected && (
+                          <>
+                            <div
+                              className="absolute left-0 right-0 top-0 h-2 cursor-ns-resize"
+                              onMouseDown={(event) => startSequenceBlockResize(event, block.id, 'top')}
+                            />
+                            <div
+                              className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize"
+                              onMouseDown={(event) => startSequenceBlockResize(event, block.id, 'bottom')}
+                            />
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   {currentType === 'sequence' && !isInlineEditing && !connectionState.active && sequenceMessageTriggerAreas.map((area) => (
                     <div

@@ -19,6 +19,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
+import { insertBlockAroundMessageIndex, moveLineIntoBlock, moveLineOut, parseSequenceModel, resizeBlock, SequenceBlockType } from "@/lib/diagrams/sequenceModel";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { Star } from "lucide-react";
@@ -81,6 +82,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
+    sequenceBlockAreas,
     inlineInputRef,
     commitEditRef,
     handleSvgClick,
@@ -93,6 +95,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     triggerHoveredSequenceMessageSelection,
     triggerSequenceMessageHoverByIndex,
     triggerHoveredSequenceNoteSelection,
+    triggerSequenceBlockSelection,
+    getNearestSequenceMessageIndexForY,
     startSequenceConnection,
     shapePicker,
     setShapePicker,
@@ -260,6 +264,43 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
     handleCodeChange(updatedCode);
   }, [code, getSequenceInsertIndexForAnchor, handleCodeChange, insertSequenceNoteAtIndex, resolveSequenceDisplayName]);
+
+  const handleSequencePlusBlock = useCallback((anchorY: number, blockType: SequenceBlockType | 'highlight') => {
+    const messageIndex = getNearestSequenceMessageIndexForY(anchorY);
+    if (messageIndex < 0) return;
+    const normalizedType: SequenceBlockType = blockType === 'highlight' ? 'rect' : blockType;
+    const result = insertBlockAroundMessageIndex(code, messageIndex, normalizedType);
+    if (result.ok) {
+      handleCodeChange(result.code);
+    }
+  }, [code, getNearestSequenceMessageIndexForY, handleCodeChange]);
+
+  const handleResizeSequenceBlock = useCallback((blockId: string, edge: 'top' | 'bottom', anchorY: number) => {
+    const model = parseSequenceModel(code);
+    const block = model.blocks.find((candidate) => candidate.id === blockId);
+    if (!block) return;
+    const targetMessageIndex = getNearestSequenceMessageIndexForY(anchorY);
+    if (targetMessageIndex < 0) return;
+    const targetLine = model.messageLines[targetMessageIndex];
+    if (!Number.isFinite(targetLine)) return;
+    const nextStart = edge === 'top' ? targetLine : block.startLine;
+    const nextEnd = edge === 'bottom' ? targetLine : block.endLine;
+    const result = resizeBlock(code, blockId, nextStart, nextEnd);
+    if (result.ok) {
+      handleCodeChange(result.code);
+    }
+  }, [code, getNearestSequenceMessageIndexForY, handleCodeChange]);
+
+  const handleDropSequenceItemIntoBlock = useCallback((item: { kind: 'msg' | 'note'; index: number }, blockId: string | null) => {
+    if (item.kind !== 'msg') return;
+    const model = parseSequenceModel(code);
+    const sourceLine = model.messageLines[item.index];
+    if (!Number.isFinite(sourceLine)) return;
+    const result = blockId ? moveLineIntoBlock(code, sourceLine, blockId) : moveLineOut(code, sourceLine);
+    if (result.ok && result.code !== code) {
+      handleCodeChange(result.code);
+    }
+  }, [code, handleCodeChange]);
 
   const handleMoveSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
     if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
@@ -1310,6 +1351,17 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               return true;
           });
           newCode = filtered.join('\n');
+      } else if (selectedNodeId.startsWith('SEQ_BLOCK_')) {
+          const model = parseSequenceModel(code);
+          const block = model.blocks.find((candidate) => candidate.id === selectedNodeId);
+          if (block) {
+           const lines = code.split('\n');
+           const inner = lines
+             .slice(block.startLine + 1, block.endLine)
+             .map((line) => line.replace(/^ {4}/, ''));
+           lines.splice(block.startLine, block.endLine - block.startLine + 1, ...inner);
+           newCode = lines.join('\n');
+          }
       } else {
           // Flowchart deletion logic
           const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
@@ -2030,9 +2082,11 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           hoveredSequenceNoteBox={hoveredSequenceNoteBox}
           hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
           sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
+          sequenceBlockAreas={sequenceBlockAreas}
           startSequenceConnection={startSequenceConnection}
           onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
           onSequencePlusNote={handleSequencePlusNote}
+          onSequencePlusBlock={handleSequencePlusBlock}
           isInlineEditing={isInlineEditing}
           selectedSvgId={selectedSvgId}
           selectedNodeId={selectedNodeId}
@@ -2060,7 +2114,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
           onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
           onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
+          onSelectSequenceBlock={triggerSequenceBlockSelection}
           onReorderSequenceItem={handleReorderSequenceItem}
+          onDropSequenceItemIntoBlock={handleDropSequenceItemIntoBlock}
+          onResizeSequenceBlock={handleResizeSequenceBlock}
           onDeselect={handleDeselect}
           onResetStyle={handleResetStyle}
           onUpdateEdgeStyle={handleUpdateEdgeStyle}

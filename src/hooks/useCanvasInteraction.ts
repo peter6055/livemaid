@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
 import { isEdgeId, parseEdgeId, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
+import { parseSequenceModel, SequenceBlockType } from "@/lib/diagrams/sequenceModel";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -9,6 +10,21 @@ const SEQ_MSG_SELECTION_PADDING = { x: 2, y: 1 };
 // visible box padding (especially vertically) so the interactive area is tighter than the
 // drawn box, preventing accidental clicks on adjacent message rows.
 const SEQ_MSG_HITTEST_PADDING = { x: 2, y: 1 };
+
+export interface SequenceBlockArea {
+  id: string;
+  type: SequenceBlockType;
+  startLine: number;
+  endLine: number;
+  startMessageIndex: number;
+  endMessageIndex: number;
+  depth: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  isHighlight: boolean;
+}
 
 export function useCanvasInteraction({ 
     code, 
@@ -62,6 +78,7 @@ export function useCanvasInteraction({
   const [hoveredSequenceNoteBox, setHoveredSequenceNoteBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredFlowchartNodeBox, setHoveredFlowchartNodeBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
+  const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
 
   const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
@@ -352,6 +369,7 @@ export function useCanvasInteraction({
     if (!container) return;
     if (determineDiagramType(code) !== 'sequence') {
       setSequenceMessageTriggerAreas([]);
+      setSequenceBlockAreas([]);
       return;
     }
 
@@ -385,6 +403,57 @@ export function useCanvasInteraction({
     }
 
     setSequenceMessageTriggerAreas(areas);
+
+    const actorLineEls = Array.from(container.querySelectorAll('line.actor-line')) as SVGElement[];
+    let minActorX = Number.POSITIVE_INFINITY;
+    let maxActorX = Number.NEGATIVE_INFINITY;
+    for (const actorLine of actorLineEls) {
+      const r = actorLine.getBoundingClientRect();
+      minActorX = Math.min(minActorX, (r.left - containerRect.left + container.scrollLeft) / scale);
+      maxActorX = Math.max(maxActorX, (r.right - containerRect.left + container.scrollLeft) / scale);
+    }
+    if (!Number.isFinite(minActorX) || !Number.isFinite(maxActorX) || maxActorX <= minActorX) {
+      minActorX = areas.length > 0 ? Math.min(...areas.map((a) => a.x)) : 0;
+      maxActorX = areas.length > 0 ? Math.max(...areas.map((a) => a.x + a.width)) : 0;
+    }
+    const baseLeft = minActorX - 20;
+    const baseWidth = Math.max(0, maxActorX - minActorX + 40);
+
+    const model = parseSequenceModel(code);
+    const blockAreas: SequenceBlockArea[] = [];
+    model.blocks.forEach((block) => {
+      const coveredMessageIndexes = model.messageLines
+        .map((lineIndex, msgIndex) => ({ lineIndex, msgIndex }))
+        .filter((entry) => entry.lineIndex > block.startLine && entry.lineIndex < block.endLine)
+        .map((entry) => entry.msgIndex);
+      if (coveredMessageIndexes.length === 0) return;
+
+      const firstMsgIndex = coveredMessageIndexes[0];
+      const lastMsgIndex = coveredMessageIndexes[coveredMessageIndexes.length - 1];
+      const coveredAreas = coveredMessageIndexes
+        .map((index) => areas[index])
+        .filter((area): area is { index: number; x: number; y: number; width: number; height: number } => Boolean(area));
+      if (coveredAreas.length === 0) return;
+
+      const top = Math.min(...coveredAreas.map((area) => area.y)) - 14;
+      const bottom = Math.max(...coveredAreas.map((area) => area.y + area.height)) + 14;
+      const nestedInset = block.depth * 12;
+      blockAreas.push({
+        id: block.id,
+        type: block.type,
+        startLine: block.startLine,
+        endLine: block.endLine,
+        startMessageIndex: firstMsgIndex,
+        endMessageIndex: lastMsgIndex,
+        depth: block.depth,
+        x: baseLeft + nestedInset,
+        y: top,
+        width: Math.max(80, baseWidth - nestedInset * 2),
+        height: Math.max(24, bottom - top),
+        isHighlight: block.type === 'rect',
+      });
+    });
+    setSequenceBlockAreas(blockAreas);
   }, [containerRef, code, svgContent, determineDiagramType, findNearestLineForText]);
 
   const getSequenceParticipantEntries = useCallback(() => {
@@ -674,6 +743,41 @@ export function useCanvasInteraction({
       height: Math.max(0, (bottom - top) / scale + SEQ_MSG_SELECTION_PADDING.y * 2),
     });
   }, [containerRef, findNearestLineForText]);
+
+  const triggerSequenceBlockSelection = useCallback((blockId: string) => {
+    const block = sequenceBlockAreas.find((b) => b.id === blockId);
+    if (!block) return;
+    setSelectedNodeIdWithRef(blockId);
+    setSelectedSvgId(blockId);
+    setSelectionBox({
+      x: block.x,
+      y: block.y,
+      width: block.width,
+      height: block.height,
+    });
+    setTextBox({
+      x: block.x + 10,
+      y: block.y + 4,
+      width: Math.max(100, block.width - 20),
+      height: 20,
+    });
+    setIsInlineEditing(false);
+  }, [sequenceBlockAreas]);
+
+  const getNearestSequenceMessageIndexForY = useCallback((anchorY: number) => {
+    if (sequenceMessageTriggerAreas.length === 0) return -1;
+    let bestIndex = -1;
+    let bestDist = Number.POSITIVE_INFINITY;
+    sequenceMessageTriggerAreas.forEach((area) => {
+      const centerY = area.y + area.height / 2;
+      const dist = Math.abs(centerY - anchorY);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIndex = area.index;
+      }
+    });
+    return bestIndex;
+  }, [sequenceMessageTriggerAreas]);
 
   const parseSequenceMessageActors = useCallback((line: string) => {
     // Match all Mermaid sequence message operators (longest-first to avoid prefix conflicts):
@@ -1106,6 +1210,19 @@ export function useCanvasInteraction({
         if (!foundElement.id) foundElement.id = `seq-note-${idx}`;
         foundRawSvgId = foundElement.id || null;
       }
+    } else if (selectedNodeId.startsWith('SEQ_BLOCK_')) {
+      const block = sequenceBlockAreas.find((b) => b.id === selectedNodeId);
+      if (block) {
+        setSelectionBox({ x: block.x, y: block.y, width: block.width, height: block.height });
+        setTextBox({
+          x: block.x + 10,
+          y: block.y + 4,
+          width: Math.max(100, block.width - 20),
+          height: 20,
+        });
+        setSelectedSvgId(blockId);
+        return;
+      }
     } else if (selectedNodeId.startsWith('SEQ_')) {
       // Legacy fallback
       const name = selectedNodeId.replace('SEQ_', '');
@@ -1269,7 +1386,7 @@ export function useCanvasInteraction({
       setSelectedNodeIdWithRef(null);
       setSelectedSvgId(null);
     }
-  }, [selectedNodeId, selectedSvgId, selectionBox, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines]);
+  }, [selectedNodeId, selectedSvgId, selectionBox, containerRef, renderIdRef, normalizeId, resolveSequenceDisplayNameFromActorId, getSequenceLifelines, sequenceBlockAreas]);
 
   // Effect to recalculate selection on code or svgContent (re-render) change
   useEffect(() => {
@@ -2429,6 +2546,7 @@ export function useCanvasInteraction({
     hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
+    sequenceBlockAreas,
     dragState: null as null,
     setDragState: (_: any) => {},
     startSequenceConnection,
@@ -2445,6 +2563,8 @@ export function useCanvasInteraction({
     triggerHoveredSequenceMessageSelection,
     triggerSequenceMessageHoverByIndex,
     triggerHoveredSequenceNoteSelection,
+    triggerSequenceBlockSelection,
+    getNearestSequenceMessageIndexForY,
     shapePicker,
     setShapePicker,
     // Note handling functions
