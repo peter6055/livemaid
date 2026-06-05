@@ -27,7 +27,7 @@ The editor interface uses a resizable split-screen layout (`react-resizable-pane
 - **Icons**: `lucide-react`.
 
 ## 4. UI/UX Aesthetics
-- **Premium Feel**: The application enforces a dark mode by default (`bg-slate-950`), utilizing glassmorphism, subtle borders (`border-slate-800`), and smooth transitions (`transition-all`).
+- **Premium Feel**: The application is designed dark-first using deep slates for surfaces, glassmorphism, subtle borders, and smooth transitions (`transition-all`). The actual runtime theme follows the user's OS preference: `next-themes` is configured with `defaultTheme="system"` + `enableSystem` (see `src/app/layout.tsx`), so the app renders dark when the OS is dark and light when the OS is light. The visual canvas surface stays white in both themes for Mermaid readability.
 - **Micro-interactions**: Components like cards and nodes have hover states, subtle scaling, and opacity changes to feel alive and responsive.
 - **No Placeholders**: We use functional, aesthetic components instead of generic placeholders.
 - **Full Design Specification**: Complete color tokens, typography scale, component styles, and interaction guidelines are in `reference/DESIGN.md`. Always consult it before adding new UI surfaces.
@@ -42,5 +42,5 @@ The editor interface uses a resizable split-screen layout (`react-resizable-pane
 LiveMaid avoids using centralized object-oriented inheritance (e.g., `class DiagramBase`) for diagram behaviors. Instead, we use a **Composition / Plugin Architecture** built on functional React components.
 
 - **Centralized Shared Behavior**: Core canvas logic (infinite pan/zoom, coordinate mapping, and two-way sync synchronization) is centralized in `LiveMaidEditor` and shared custom hooks (`useEditorState`, `useCanvasInteraction`).
-- **Decoupled Diagram Logic**: Each diagram type is isolated into its own file (e.g., `src/lib/diagrams/flowchart.tsx`) and exports a `DiagramPlugin` interface. This plugin dictates diagram-specific behavior, default code, and renders its own interactive toolbars on top of the canvas.
-- **Parallel Agent Workflows**: Because diagram logic is perfectly decoupled, multiple AI agents or human developers can work on *different diagram types in parallel* without stepping on each other's toes or causing merge conflicts in a central file. For example, Agent A can build `mindmap.tsx` while Agent B builds `gantt.tsx`, and they only need to be exported in `src/lib/diagrams/registry.ts`.
+- **Decoupled Diagram Logic**: Each diagram type is isolated into its own file (e.g., `src/lib/diagrams/flowchart.tsx`) and exports a `DiagramPlugin` interface. This plugin dictates diagram-specific behavior, default code, and renders its own interactive toolbars on top of the canvas. **Currently implemented plugins**: `flowchart.tsx` and `sequence.tsx`, both registered in `src/lib/diagrams/registry.ts`. All other Mermaid diagram types render correctly but are visual-only (one-way sync).
+- **Parallel Agent Workflows**: Because diagram logic is decoupled, multiple AI agents or human developers can work on *different diagram types in parallel* without causing merge conflicts in a central file. A new diagram type only needs its own `<type>.tsx` plugin plus an entry in `src/lib/diagrams/registry.ts` (e.g. a future `mindmap.tsx` or `gantt.tsx`).

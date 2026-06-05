@@ -97,53 +97,59 @@ export function EdgeManipulationToolbar({
   const isAnimated = parseLinkAnimation(code, src, dst, occurrenceIndex);
 
   const ARROW_TYPES = [
-    { value: 'plain', label: 'Plain (---)', icon: '---' },
-    { value: 'arrow', label: 'Arrow (-->)', icon: '-->' },
-    { value: 'double_arrow', label: 'Double Arrow (<-->)', icon: '<-->' },
-    { value: 'cross', label: 'Cross (--x)', icon: '--x' },
-    { value: 'double_cross', label: 'Double Cross (x--x)', icon: 'x--x' },
-    { value: 'circle', label: 'Circle (--o)', icon: '--o' },
-    { value: 'double_circle', label: 'Double Circle (o--o)', icon: 'o--o' },
+    { value: 'plain', label: 'Plain line', preview: '───' },
+    { value: 'arrow', label: 'Arrow', preview: '──▶' },
+    { value: 'double_arrow', label: 'Double arrow', preview: '◀─▶' },
+    { value: 'cross', label: 'Cross', preview: '──✕' },
+    { value: 'double_cross', label: 'Double cross', preview: '✕─✕' },
+    { value: 'circle', label: 'Circle', preview: '──◯' },
+    { value: 'double_circle', label: 'Double circle', preview: '◯─◯' },
   ];
 
   const STROKE_STYLES = [
-    { value: 'solid', label: 'Solid Line' },
-    { value: 'dashed', label: 'Dashed Line' },
-    { value: 'thick', label: 'Thick Line' },
+    { value: 'solid', label: 'Solid line', preview: '───' },
+    { value: 'dashed', label: 'Dashed line', preview: '- - -' },
+    { value: 'thick', label: 'Thick line', preview: '━━━' },
   ];
 
   return (
     <div 
         ref={containerRef}
         data-scale-lock
+        data-inline-toolbar
         data-base-transform="translateX(-50%) translateY(-100%)"
-        className="absolute flex items-center gap-0.5 bg-background border border-border rounded-full px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
+        className="absolute pointer-events-auto z-50"
         style={{
           left: '50%',
-          top: `calc(-10px * var(--zoom-inverse-scale, ${1 / scale}))`,
+          top: `calc(-14px * var(--zoom-inverse-scale, ${1 / scale}))`,
           transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
-          transformOrigin: 'bottom'
+          transformOrigin: 'bottom',
+          // Transparent padding "shield" so near-miss clicks around the bar are absorbed here
+          // (stopPropagation) instead of leaking through to canvas elements behind the toolbar.
+          padding: '12px',
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
     >
+      <div className="flex items-center gap-0.5 bg-background border border-border rounded-xl px-1.5 py-1 shadow-lg text-foreground">
         {/* Arrow Type Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 px-2.5 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative gap-1 text-xs font-medium" title="Arrow Style" />
+            <button className="h-8 px-2.5 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative gap-1 text-sm font-semibold" title="Arrow Style" />
           }>
             <MoveRight className="w-4 h-4 mr-0.5" />
             <span>Arrow</span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="p-1 bg-background border border-border rounded-xl min-w-44 flex flex-col gap-0.5" align="center" side="top" sideOffset={10}>
+          <DropdownMenuContent className="p-1 bg-background border border-border rounded-xl min-w-56 flex flex-col gap-0.5" align="center" side="top" sideOffset={10}>
             {ARROW_TYPES.map(type => (
               <button
                 key={type.value}
                 onClick={() => onUpdateStyle({ arrowType: type.value })}
-                className={`w-full px-3 py-1.5 text-left text-xs rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between ${arrowType === type.value ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : ''}`}
+                className={`flex w-full items-center gap-3 px-2 py-2 text-left text-sm rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors ${arrowType === type.value ? 'bg-accent ring-1 ring-indigo-500' : ''}`}
               >
-                <span>{type.label}</span>
+                <span className="w-12 shrink-0 text-center font-mono text-base tracking-tighter text-indigo-500">{type.preview}</span>
+                <span className="flex-1">{type.label}</span>
               </button>
             ))}
           </DropdownMenuContent>
@@ -152,19 +158,20 @@ export function EdgeManipulationToolbar({
         {/* Stroke Style Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 px-2.5 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative gap-1 text-xs font-medium" title="Stroke Style" />
+            <button className="h-8 px-2.5 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative gap-1 text-sm font-semibold" title="Stroke Style" />
           }>
             <Sliders className="w-4 h-4 mr-0.5" />
             <span>Stroke</span>
           </DropdownMenuTrigger>
-          <DropdownMenuContent className="p-1 bg-background border border-border rounded-xl min-w-40 flex flex-col gap-0.5" align="center" side="top" sideOffset={10}>
+          <DropdownMenuContent className="p-1 bg-background border border-border rounded-xl min-w-52 flex flex-col gap-0.5" align="center" side="top" sideOffset={10}>
             {STROKE_STYLES.map(styleItem => (
               <button
                 key={styleItem.value}
                 onClick={() => onUpdateStyle({ stroke: styleItem.value })}
-                className={`w-full px-3 py-1.5 text-left text-xs rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors flex items-center justify-between ${stroke === styleItem.value ? 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-semibold' : ''}`}
+                className={`flex w-full items-center gap-3 px-2 py-2 text-left text-sm rounded-lg hover:bg-accent hover:text-accent-foreground transition-colors ${stroke === styleItem.value ? 'bg-accent ring-1 ring-indigo-500' : ''}`}
               >
-                <span>{styleItem.label}</span>
+                <span className="w-12 shrink-0 text-center font-mono text-base tracking-tighter text-indigo-500">{styleItem.preview}</span>
+                <span className="flex-1">{styleItem.label}</span>
               </button>
             ))}
           </DropdownMenuContent>
@@ -173,7 +180,7 @@ export function EdgeManipulationToolbar({
         {/* Line/Edge Color Picker */}
         <DropdownMenu>
           <DropdownMenuTrigger render={
-            <button className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Line Color" />
+            <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative" title="Line Color" />
           }>
             <Palette className="w-4 h-4" />
             <div className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors" style={{ backgroundColor: activeColor }} />
@@ -199,7 +206,7 @@ export function EdgeManipulationToolbar({
         {onUpdateAnimation && (
           <button
             onClick={(e) => { e.preventDefault(); onUpdateAnimation(!isAnimated); }}
-            className={`h-8 w-8 flex items-center justify-center rounded-full transition-colors ${isAnimated ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25' : 'hover:bg-accent hover:text-accent-foreground text-muted-foreground'}`}
+            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors ${isAnimated ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-500/25' : 'hover:bg-accent hover:text-accent-foreground text-muted-foreground'}`}
             title="Toggle Animation"
           >
             <Play className={`w-4 h-4 ${isAnimated ? 'animate-pulse fill-current' : ''}`} />
@@ -209,7 +216,7 @@ export function EdgeManipulationToolbar({
         {/* Edit Label */}
         <button
           onClick={(e) => { e.preventDefault(); onEditLabel(e); }}
-          className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground transition-colors"
+          className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors"
           title="Edit Label Text"
         >
           <Edit3 className="w-4 h-4" />
@@ -218,11 +225,12 @@ export function EdgeManipulationToolbar({
         {/* Delete Edge */}
         <button
           onClick={(e) => { e.preventDefault(); onDeleteEdge(); }}
-          className="h-8 w-8 flex items-center justify-center rounded-full hover:bg-red-500/10 hover:text-red-500 transition-colors text-muted-foreground"
+          className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-red-500/10 hover:text-red-500 transition-colors text-muted-foreground"
           title="Delete Edge"
         >
           <Trash2 className="w-4 h-4" />
         </button>
+      </div>
     </div>
   );
 }

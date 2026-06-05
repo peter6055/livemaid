@@ -149,18 +149,23 @@ export function NodeManipulationToolbar({
     <div 
         ref={containerRef}
         data-scale-lock
+        data-inline-toolbar
         data-base-transform="translateX(-50%) translateY(-100%)"
-        className="absolute flex items-center gap-0.5 bg-background border border-border rounded-xl px-1.5 py-1 pointer-events-auto shadow-lg z-50 text-foreground"
+        className="absolute pointer-events-auto z-50"
         style={{
           left: '50%',
-          top: `calc(-10px * var(--zoom-inverse-scale, ${1 / scale}))`,
+          top: `calc(-14px * var(--zoom-inverse-scale, ${1 / scale}))`,
           transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
-          transformOrigin: 'bottom'
+          transformOrigin: 'bottom',
+          // Transparent padding "shield" so near-miss clicks around the bar are absorbed here
+          // (stopPropagation) instead of leaking through to canvas elements behind the toolbar.
+          padding: '12px',
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={(e) => e.stopPropagation()}
     >
+      <div className="flex items-center gap-0.5 bg-background border border-border rounded-xl px-1.5 py-1 shadow-lg text-foreground">
         {/* Rename / Edit Label */}
         {onEditLabel && (
           <button
@@ -395,6 +400,7 @@ export function NodeManipulationToolbar({
         >
             <Trash2 className="w-4 h-4" />
         </button>
+      </div>
     </div>
   );
 }

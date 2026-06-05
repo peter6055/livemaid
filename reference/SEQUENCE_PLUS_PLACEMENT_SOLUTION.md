@@ -1,143 +1,106 @@
-# Sequence Plus Button Final Solution
+# Sequence Lifeline `+` Button Placement — Model & Regression Guards
 
-This document records the final-stage solution for sequence diagram plus-button count and placement.
+This document records the current model for sequence-diagram lifeline `+` button count and
+placement, plus the regression guards that protect it. It supersedes the earlier "top-lane
+bias / note-avoidance" model.
 
 ## Scope
 
-This solution covers the interactive plus buttons shown on sequence lifelines while hovering and dragging.
+The interactive `+` buttons shown on sequence lifelines while hovering and dragging.
 
-Goal:
-- Keep plus counts predictable.
-- Keep placement visually aligned across participants.
-- Preserve loop insertion usability.
-- Avoid over-populated columns of plus buttons.
-- Keep insertion index mapping stable.
+Goals:
+- Predictable count (one `+` per vertical gap — no "full wall").
+- **Identical placement on every lifeline** (columns must not drift relative to each other).
+- Preserve loop insertion usability (top + bottom of self-loop rows).
+- Stable insertion-index mapping (never write into the YAML config block).
 
-## Problem Summary
+## Final Technical Model — Flat-Surface, Note-Independent
 
-Early versions had three recurring issues:
-1. Overpopulation: plus buttons appeared at too many Y positions ("full wall" effect).
-2. Inconsistency: different participants could show different top positions/counts.
-3. Broken insertion under config frontmatter: YAML config lines (with `:`) were misclassified as sequence messages, causing invalid code insertion inside config blocks.
+**Primary logic:** `getSequenceAnchorSlots()` in `src/hooks/useCanvasInteraction.ts`.
 
-## Final Technical Model
+Every lifeline is treated as a single flat plane. The slot grid is derived **purely from the
+shared global message rows**, so it is **identical for every lifeline** regardless of which
+lifeline is hovered. **Notes have ZERO effect on placement** — their presence or absence never
+inserts, removes, shifts, or resizes a slot. This is the "Order 1 rule applied everywhere".
 
-### 1) Message Rows Source
+> **Do NOT reintroduce note-avoidance / `pushBelowNotes` / `noteRanges` logic.** It breaks the
+> flat-surface guarantee by making columns drift relative to one another. (Verified earlier:
+> with note-avoidance removed, e.g. participants Tax, Order, and Fraud all return identical
+> slots like `[7, 20, 32, 36, 41, 47, …]`.)
 
-Rendered sequence message lines (`.messageLine`) are measured from SVG and converted to canvas-space Y coordinates.
+### 1) Message rows source
 
-Inputs:
-- `containerRect`
-- current zoom `scale`
-- `scrollTop`
+Rendered message lines are measured from the SVG and projected into canvas-space Y via
+`(rect.top - containerTop + scrollTop + rect.height/2) / scale`, then deduplicated and sorted
+ascending into `rows`.
 
-Per message line center:
+The lower bound for collecting a row is `globalTop` (the actor-box top boundary), **not** the
+lifeline start below the actor box, so the first message row is never missed on dense/zoomed
+diagrams.
 
-- `centerY = (rect.top - containerTop + scrollTop + rect.height / 2) / scale`
+### 2) Slot construction (current constants)
 
-Rows are deduplicated and sorted ascending.
+For `rows` of length `n`:
 
-### 2) Shared Insertion Lanes Across Participants
+- One slot above the first row: `rows[0] - firstGap`, where `firstGap = 12`.
+- One midpoint between each adjacent pair: `(rows[i] + rows[i+1]) / 2`.
+  - The **second slot** (first midpoint, between `rows[0]` and `rows[1]`) is nudged up by a
+    uniform `SECOND_SLOT_LIFT = 6` so it doesn't graze the first arrow. This offset is
+    index-based and identical on every lifeline, preserving the flat-surface guarantee.
+- One slot below the last row: `rows[n-1] + lastGap`, where
+  `lastGap = max(28, round((rows[n-1] - rows[n-2]) / 2))` (or `VERTICAL_GRID_STEP = 56` when
+  there is only one row).
+- Empty lifeline (`n === 0`): a single dynamic handle that follows hover, clamped to bounds.
 
-Instead of computing unique lane sets per participant, a flattened global lane model is used so all participant columns show the same plus positions.
+### 3) Clamping
 
-Given sorted message row centers: `rows[0..n-1]`
+- The **first** slot clamps only to `[globalTop, end]` (so a `+` always appears ABOVE the first
+  message, even when `rows[0] - firstGap` is above the lifeline `start`).
+- **All other** slots clamp to `[start, end]`.
+- The list is sorted and deduplicated (`new Set`).
 
-Construct insertion lanes:
-1. one lane above first row
-2. one lane between each adjacent row pair
-3. one lane below last row
+### 4) Frontmatter-safe message indexing
 
-Formula:
-- `topLane = rows[0] - firstGap`
-- `middleLane[i] = (rows[i] + rows[i+1]) / 2`
-- `bottomLane = rows[n-1] + lastGap`
+`getSequenceMessageEntries()` ignores YAML frontmatter delimited by `---`: it toggles an
+`inFrontmatter` flag on lines that are exactly `---` and skips everything inside, collecting
+only true sequence message lines outside the block. This is used for insertion-index lookup,
+message-line-by-index lookup, and message-text editing. Without it, config lines containing
+`:` get misclassified as messages and drag-insertion can corrupt the config block.
 
-Then clamp each lane to safe `[start, end]` and deduplicate.
+> Note: a similar message-entry extractor also exists in `LiveMaidEditor.tsx` for the commit
+> side of mutations. Keep the two in sync (or consolidate) if you change the parsing rules.
 
-### 3) Top Lane Bias (Final-Stage Adjustment)
+## Regression Guards — Do Not Break
 
-To match expected UX, the first lane is intentionally higher than simple midpoint spacing.
+Validate these before changing any sequence `+` / slot code. Use **function-name anchors**,
+not line numbers (line numbers drift).
 
-Current approach:
-- `start = globalTop + 8`
-- `firstGap = max(38, round((rows[1] - rows[0]) * 0.9))` (fallback to fixed step when only one row)
+### Guard 1 — `getSequenceAnchorSlots()` (flat-surface invariant)
+- Slots must be derived from shared global message rows only; notes must have no effect.
+- First slot clamps to `[globalTop, end]`; others to `[start, end]`.
+- Do not reintroduce per-note avoidance or per-lifeline custom lane sets.
+- **Test**: hover several participants in a dense (10+ message) diagram and confirm every
+  lifeline shows the SAME `+` count at the SAME Y positions. Confirm a `+` appears above the
+  first message and around self-loop rows (top + bottom).
 
-This makes the first plus clearly visible above the first message area and consistent across participant types (including boundary/database heads).
+### Guard 2 — `getSequenceMessageEntries()` (frontmatter safety)
+- Must skip `---`-delimited frontmatter and index only real message lines.
+- **Test**: with a YAML config block present (`theme:`, `fontFamily:`, `themeVariables:`),
+  drag-insert a message and confirm it lands in the sequence body, never inside config.
 
-### 4) Frontmatter-Safe Message Indexing
+### Guard 3 — `+` button visual render (`EditorCanvas.tsx`, sequence lifeline overlay)
+- Button: `w-6 h-6`, `bg-indigo-600`, `ring-2 ring-white/90`, `Plus` icon; snap target is a
+  small green dot. Keep it clearly visible/clickable.
+- **Test**: confirm the `+` stays the same physical size and remains clickable at zoom 0.5x,
+  1x, 2x, and 5x (scale-locking must hold).
 
-A dedicated extractor now ignores YAML frontmatter delimited by `---`.
+### Build / type checks
+- `npm run build` passes; TypeScript diagnostics clean for edited files.
 
-Algorithm:
-- split code by lines
-- toggle `inFrontmatter` whenever a line is exactly `---`
-- while `inFrontmatter`, skip all lines
-- outside frontmatter, keep only true sequence message lines
+## Files With `+` / Slot Logic (do not move without updating this doc)
 
-This extractor is used for:
-- insertion index lookup
-- message line lookup by sequence index
-- sequence message text editing lookup
+1. `src/hooks/useCanvasInteraction.ts` — `getSequenceAnchorSlots()`, `getSequenceMessageEntries()`, slot math.
+2. `src/components/editor/EditorCanvas.tsx` — `+` button render and SVG overlays.
 
-Result: drag insertion no longer writes `actor->>actor: msg` into config blocks.
-
-## Solution-Based Rationale
-
-### Why this works
-
-1. Predictable density:
-- One lane per vertical gap means no lane spam.
-
-2. User mental model alignment:
-- Users think in "insert between existing interactions"; shared lanes directly represent those insertion opportunities.
-
-3. Cross-participant consistency:
-- Same lane set for all participants avoids confusion when comparing columns.
-
-4. Loop support:
-- Shared lane construction naturally gives insertion opportunities above and below self-loop rows.
-
-5. Safety:
-- Frontmatter isolation prevents YAML corruption from sequence operations.
-
-### Tradeoffs accepted
-
-1. Shared lanes may surface insertion points on participants not directly involved in nearby rows.
-- Accepted because consistency and predictability were prioritized.
-
-2. Top-lane is intentionally biased upward.
-- This is a UX tuning decision to improve discoverability near the top of dense diagrams.
-
-## Implementation Anchors
-
-Primary logic lives in:
-- `src/hooks/useCanvasInteraction.ts`
-
-Supporting visual behavior:
-- `src/components/editor/EditorCanvas.tsx`
-
-## Verification Checklist
-
-Use this checklist when modifying lane behavior later:
-
-1. Hover any participant in a dense sequence diagram:
-- plus lanes should align with other participants.
-
-2. Check top lane on boundary/database participants:
-- first plus should be visible and not clipped.
-
-3. Check loop-heavy sections:
-- insertion options should appear above/below loop regions without duplicates in one gap.
-
-4. Drag-insert with YAML frontmatter present:
-- inserted message must land in sequence body, never inside config block.
-
-5. Build and type checks:
-- `npm run build` passes.
-
-## Future Enhancements (Optional)
-
-1. Dynamic top bias by viewport density.
-2. Lane virtualization for extremely large diagrams.
-3. Optional "minimal lanes" mode (nearest-lane only around pointer).
+For the full sequence-interaction feature set (drag-to-connect, message/note reorder, hover
+rings, etc.) see `reference/FEATURES_AND_TRUTHS.md` § 15.

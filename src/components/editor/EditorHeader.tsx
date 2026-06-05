@@ -1,5 +1,6 @@
 import { DiagramDocument } from "@/lib/api/storage";
 import { useTheme } from "next-themes";
+import { useEffect, useRef, useState } from "react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -17,6 +18,7 @@ interface EditorHeaderProps {
   onDuplicate: () => void;
   onNewDiagram: () => void;
   onRename: () => void;
+  onRenameInline?: (name: string) => void;
   onExport: () => void;
   onVersionHistory: () => void;
 }
@@ -29,10 +31,41 @@ export function EditorHeader({
   onDuplicate,
   onNewDiagram,
   onRename,
+  onRenameInline,
   onExport,
   onVersionHistory
 }: EditorHeaderProps) {
   const { theme, setTheme } = useTheme();
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const startEditingName = () => {
+    if (isDemo || !onRenameInline) return;
+    setDraftName(doc?.name || "");
+    setIsEditingName(true);
+  };
+
+  const commitName = () => {
+    if (!isEditingName) return;
+    setIsEditingName(false);
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== (doc?.name || "")) {
+      onRenameInline?.(trimmed);
+    }
+  };
+
+  const cancelEditingName = () => {
+    setIsEditingName(false);
+    setDraftName(doc?.name || "");
+  };
+
+  useEffect(() => {
+    if (isEditingName) {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    }
+  }, [isEditingName]);
 
   return (
     <header className="h-14 border-b border-border bg-background flex items-center px-4 justify-between shrink-0 z-20">
@@ -86,11 +119,8 @@ export function EditorHeader({
             <LayoutTemplate className="w-5 h-5 text-white" />
           </div>
         </a>
-        
-        <div className="flex flex-col mr-6 border-r border-border pr-6">
-          <span className="font-bold text-sm leading-tight text-foreground tracking-tight">LiveMaid</span>
-          <span className="text-[10px] text-muted-foreground leading-tight tracking-wider uppercase font-medium">Code Your Thoughts</span>
-        </div>
+
+        <span className="font-semibold text-xl tracking-tight mr-6 text-foreground whitespace-nowrap">LiveMaid</span>
 
         <Breadcrumb>
           <BreadcrumbList>
@@ -101,22 +131,55 @@ export function EditorHeader({
             </BreadcrumbItem>
             <BreadcrumbSeparator />
             <BreadcrumbItem>
-              <BreadcrumbPage 
-                className={isDemo ? "text-foreground" : "cursor-pointer hover:underline text-indigo-500"}
-                onDoubleClick={isDemo ? undefined : onRename}
-                title={isDemo ? undefined : "Double click to rename"}
-              >
-                {doc?.name || "Untitled"}
-              </BreadcrumbPage>
+              {isEditingName ? (
+                <input
+                  ref={nameInputRef}
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitName(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); cancelEditingName(); }
+                  }}
+                  className="h-7 min-w-[8rem] max-w-[20rem] rounded-md border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  aria-label="Rename diagram"
+                />
+              ) : (
+                <span className="group flex items-center gap-1.5">
+                  <BreadcrumbPage
+                    className={isDemo ? "text-foreground" : "cursor-pointer hover:underline text-indigo-500"}
+                    onClick={isDemo ? undefined : startEditingName}
+                    title={isDemo ? undefined : "Click to rename"}
+                  >
+                    {doc?.name || "Untitled"}
+                  </BreadcrumbPage>
+                  {!isDemo && onRenameInline && (
+                    <button
+                      type="button"
+                      onClick={startEditingName}
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                      aria-label="Rename diagram"
+                      title="Rename diagram"
+                    >
+                      <PencilLine className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </span>
+              )}
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
       </div>
       <div className="flex items-center gap-3 text-sm font-medium mr-4">
-        <Button variant="ghost" size="sm" onClick={onExport} className="flex items-center gap-2 text-foreground hover:bg-accent h-9 border border-border">
+        <button
+          type="button"
+          onClick={onExport}
+          className="flex h-9 items-center gap-2 rounded-md border border-border px-3 text-foreground transition-colors hover:bg-accent"
+          aria-label="Export diagram"
+        >
           <Download className="w-4 h-4" />
           <span>Export</span>
-        </Button>
+        </button>
         <button
           type="button"
           onClick={onVersionHistory}
