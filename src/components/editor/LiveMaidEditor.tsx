@@ -95,6 +95,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     triggerHoveredSequenceNoteSelection,
     startSequenceConnection,
     getSequenceMessageEndpointGeometry,
+    getSequenceLifelines,
     shapePicker,
     setShapePicker,
     getSequenceNoteEntries,
@@ -1219,6 +1220,63 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     setSelectedNodeId(null);
   }, [code, getSequenceMessageEntries, getSequenceNoteEntries, handleCodeChange, setSelectionBox, setSelectedNodeId]);
 
+  // Reorder participant lifelines (the visual columns) to match a new left-to-right order produced
+  // by a horizontal drag on the canvas. Mermaid lays out columns in FIRST-APPEARANCE order, so to
+  // force an arbitrary order we DECLARE every lifeline explicitly at the top in the target order:
+  //   1. Parse existing `participant`/`actor`/typed declaration lines → map actorId → full line.
+  //   2. Build the new declaration block in `newOrderIds` order, REUSING each participant's existing
+  //      declaration verbatim (keyword + `@{type}` + ` as Alias` all preserved); synthesize a plain
+  //      `    participant <id>` only for implicit participants that had no declaration line.
+  //   3. Remove all old declaration lines and splice the new block in at the first-declaration
+  //      position (or right after `sequenceDiagram` + optional `autonumber`/frontmatter when the
+  //      diagram had only implicit participants).
+  // Only the participant declaration ORDER changes — message lines, blocks, notes, and the logical
+  // flow are untouched. Routes through handleCodeChange (single undo). `newOrderIds` is the FULL set
+  // of current lifelines (explicit + implicit) in the desired left-to-right order.
+  const handleReorderSequenceLifelines = useCallback((newOrderIds: string[]) => {
+    if (!Array.isArray(newOrderIds) || newOrderIds.length === 0) return;
+    const lines = code.split('\n');
+
+    // [indent] keyword <id>[@{...}][ as Alias] — id is g2 (matched against the lifeline order).
+    const declRe = /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
+    // Map actorId → full declaration line for every existing declaration, plus their line indices.
+    const declLine = new Map<string, string>();
+    const declIdxs: number[] = [];
+    let inFrontmatter = false;
+    let headerEndIdx = 0; // index just after `sequenceDiagram` (+ autonumber/frontmatter)
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') { inFrontmatter = !inFrontmatter; headerEndIdx = i + 1; continue; }
+      if (inFrontmatter) { headerEndIdx = i + 1; continue; }
+      if (/^sequenceDiagram\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
+      if (/^(autonumber|title)\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
+      const m = lines[i].match(declRe);
+      if (m && m[2]) {
+        declLine.set(m[2], lines[i]);
+        declIdxs.push(i);
+      }
+    }
+
+    const indent = '    ';
+    const block = newOrderIds.map((id) => declLine.get(id) ?? `${indent}participant ${id}`);
+
+    // Insertion anchor: where the first existing declaration sat (so the block stays where the
+    // user already had it); otherwise right after the diagram header.
+    const anchor = declIdxs.length > 0 ? Math.min(...declIdxs) : headerEndIdx;
+    const declSet = new Set(declIdxs);
+    const remaining = lines.filter((_, i) => !declSet.has(i));
+    // Recompute the anchor against the filtered array (removed decls before the anchor shift it up).
+    const removedBeforeAnchor = declIdxs.filter((i) => i < anchor).length;
+    const insertAt = Math.max(0, Math.min(remaining.length, anchor - removedBeforeAnchor));
+    remaining.splice(insertAt, 0, ...block);
+
+    const next = remaining.join('\n');
+    if (next === code) return; // order unchanged — no-op
+    handleCodeChange(next);
+    setSelectionBox(null);
+    setSelectedNodeId(null);
+  }, [code, handleCodeChange, setSelectionBox, setSelectedNodeId]);
+
   // Change the connector operator of the selected sequence message (e.g. `->>` → `-->>` → `-x`),
   // preserving the sender, receiver, message text, and surrounding spacing. The operator is
   // swapped only at the position between the two actors and before the colon, so participant IDs
@@ -2150,6 +2208,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
             onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
             onReorderSequenceItem={handleReorderSequenceItem}
+            onReorderSequenceLifelines={handleReorderSequenceLifelines}
+            getSequenceLifelines={getSequenceLifelines}
             onDeselect={handleDeselect}
             onResetStyle={handleResetStyle}
             onUpdateEdgeStyle={handleUpdateEdgeStyle}

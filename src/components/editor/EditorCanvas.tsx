@@ -49,6 +49,8 @@ interface EditorCanvasProps {
   onHoveredSequenceNoteClick?: (index: number) => void;
   onHoveredSequenceNoteDoubleClick?: (index: number) => void;
   onReorderSequenceItem?: (item: { kind: 'msg' | 'note'; index: number }, toSlot: number) => void;
+  onReorderSequenceLifelines?: (newOrderIds: string[]) => void;
+  getSequenceLifelines?: () => Array<{ actorId: string; x: number; y1: number; y2: number }>;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -128,6 +130,8 @@ export function EditorCanvas({
   onHoveredSequenceNoteClick,
   onHoveredSequenceNoteDoubleClick,
   onReorderSequenceItem,
+  onReorderSequenceLifelines,
+  getSequenceLifelines,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -194,6 +198,17 @@ export function EditorCanvas({
   // True while a message endpoint (source/target) handle is being dragged across lifelines, so the
   // static handles hide and canvas panning stays disabled for the duration of the drag.
   const [seqEndpointDragging, setSeqEndpointDragging] = useState(false);
+  // Viewport-space (canvasShellRef-relative) state for dragging a participant lifeline HORIZONTALLY
+  // to a new column position. Mirrors seqReorder but on the X axis: `slots` are vertical drop bands
+  // between/around the lifelines. Lives outside TransformWrapper; panning disabled while active.
+  const [seqLifelineReorder, setSeqLifelineReorder] = useState<{
+    fromIndex: number;
+    top: number;
+    height: number;
+    slots: Array<{ slot: number; x: number; w: number }>;
+    cursorX: number;
+    targetSlot: number | null;
+  } | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
   // hover grab overlay can distinguish a reorder-drag from a plain click (select).
@@ -316,6 +331,10 @@ export function EditorCanvas({
       if (hitFloatingUi) return;
 
       let target =
+        // Skip the participant reorder grab overlay (a pointer-events-auto div over the actor
+        // header) so the actor SVG BEHIND it is resolved — clicking the overlay must still select
+        // the participant. The overlay only starts the horizontal reorder drag.
+        elements.find((el) => container.contains(el) && !el.closest?.('.seq-actor-reorder-handle')) ||
         elements.find((el) => container.contains(el)) ||
         (event.target as HTMLElement | null) ||
         container;
@@ -683,6 +702,106 @@ export function EditorCanvas({
     window.addEventListener('mouseup', onUp);
   };
 
+  // Begin dragging a participant lifeline HORIZONTALLY to reorder the columns. Direct-drag on the
+  // header body (no handle bar) with a 3px intent threshold so a plain click still selects and a
+  // double-click still edits — both flow through the existing document-capture / dblclick handlers
+  // (which resolve the SVG behind this overlay via elementsFromPoint), so this handler deliberately
+  // does NOT stopPropagation. Runs entirely in viewport/shell space (canvasShellRef-relative) so
+  // pan/zoom never distorts coordinates (panning is also disabled while active). The dragged actor
+  // is the lifeline nearest the mousedown x; X snaps to inter-lifeline gap slots. On drop the new
+  // left-to-right actorId order is sent to onReorderSequenceLifelines, which rewrites the
+  // participant declaration order in the code.
+  const startSeqLifelineDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!getSequenceLifelines) return;
+    const shell = canvasShellRef.current;
+    const container = containerRef.current;
+    if (!shell || !container) return;
+    const shellRect = shell.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    if (!Number.isFinite(scale) || scale <= 0) return;
+
+    const toShellX = (cx: number) => cx * scale + containerRect.left - container.scrollLeft - shellRect.left;
+    const toShellY = (cy: number) => cy * scale + containerRect.top - container.scrollTop - shellRect.top;
+
+    const lifelines = getSequenceLifelines(); // sorted left→right, canvas coords
+    if (lifelines.length < 2) return; // need at least two columns to reorder
+    const xs = lifelines.map((l) => toShellX(l.x));
+    const top = toShellY(Math.min(...lifelines.map((l) => l.y1)));
+    const bottom = toShellY(Math.max(...lifelines.map((l) => l.y2)));
+    const height = Math.max(20, bottom - top);
+    const N = lifelines.length;
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    const cursorX0 = startClientX - shellRect.left;
+    let fromIndex = 0;
+    let bestD = Number.POSITIVE_INFINITY;
+    xs.forEach((x, i) => { const d = Math.abs(x - cursorX0); if (d < bestD) { bestD = d; fromIndex = i; } });
+
+    // Slots 0..N: before first, between adjacent pairs, after last. Skip the dragged column's own
+    // two adjacent slots (fromIndex, fromIndex+1) — dropping there is a no-op.
+    const endMargin = 30;
+    const slotX = (k: number) => {
+      if (k <= 0) return xs[0] - endMargin;
+      if (k >= N) return xs[N - 1] + endMargin;
+      return (xs[k - 1] + xs[k]) / 2;
+    };
+    const slots: Array<{ slot: number; x: number; w: number }> = [];
+    for (let k = 0; k <= N; k += 1) {
+      if (k === fromIndex || k === fromIndex + 1) continue;
+      slots.push({ slot: k, x: slotX(k), w: 22 });
+    }
+    if (slots.length === 0) return;
+
+    const HIT_TOL_X = 34;
+    const findTarget = (cursorX: number, cursorY: number): number | null => {
+      if (cursorY < top - 50 || cursorY > top + height + 50) return null;
+      let best: number | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const s of slots) {
+        if (Math.abs(s.x - cursorX) <= s.w / 2 + HIT_TOL_X) {
+          const d = Math.abs(s.x - cursorX);
+          if (d < bestDist) { bestDist = d; best = s.slot; }
+        }
+      }
+      return best;
+    };
+
+    let dragging = false;
+    const onMove = (ev: MouseEvent) => {
+      if (!dragging && (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)) {
+        dragging = true;
+      }
+      if (!dragging) return;
+      ev.preventDefault();
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
+      setSeqLifelineReorder({ fromIndex, top, height, slots, cursorX, targetSlot: findTarget(cursorX, cursorY) });
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      if (dragging) {
+        const cursorX = ev.clientX - shellRect.left;
+        const cursorY = ev.clientY - shellRect.top;
+        const targetSlot = findTarget(cursorX, cursorY);
+        if (targetSlot !== null) {
+          // `targetSlot` indexes the ORIGINAL lifeline array; convert to a post-removal insert index.
+          const order = lifelines.map((l) => l.actorId);
+          const moved = order[fromIndex];
+          const without = order.filter((_, i) => i !== fromIndex);
+          const insertAt = targetSlot > fromIndex ? targetSlot - 1 : targetSlot;
+          without.splice(insertAt, 0, moved);
+          onReorderSequenceLifelines?.(without);
+        }
+      }
+      setSeqLifelineReorder(null);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   return (
     <div ref={canvasShellRef} className="w-full h-full relative overflow-hidden bg-white transition-colors duration-300">
       <div
@@ -699,7 +818,7 @@ export function EditorCanvas({
         centerOnInit={true}
         smooth={true}
         wheel={{ wheelDisabled: true, step: 0.05 }}
-        panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.active || !!seqReorder || seqEndpointDragging, excluded: ['seq-connect-btn', 'seq-msg-reorder-handle', 'seq-endpoint-handle'] }}
+        panning={{ velocityDisabled: false, disabled: isInlineEditing || connectionState.active || !!seqReorder || seqEndpointDragging || !!seqLifelineReorder, excluded: ['seq-connect-btn', 'seq-msg-reorder-handle', 'seq-endpoint-handle', 'seq-actor-reorder-handle'] }}
         trackPadPanning={{ disabled: false }}
         limitToBounds={false}
         doubleClick={{ disabled: true }}
@@ -897,6 +1016,32 @@ export function EditorCanvas({
                     }}
                   />
                 )}
+
+                {/* Participant lifeline reorder grab overlay — DIRECT-DRAG of the header body to
+                    reorder columns horizontally. Rendered over the hovered actor header (and the
+                    selected actor's box) so the whole block is grabbable. Class
+                    `seq-actor-reorder-handle` is in panning.excluded so the press never starts a
+                    canvas pan. It does NOT block click-select / double-click-edit: those flow
+                    through the document-capture mousedown and native dblclick handlers, which
+                    resolve the actor SVG behind this overlay via elementsFromPoint. */}
+                {currentType === 'sequence' && getSequenceLifelines && !isLocked && !isInlineEditing && !connectionState.active && !seqLifelineReorder && (hoveredSequenceActorBox || (selectedNodeId?.startsWith('SEQ_ACTOR_') && selectionBox)) && (() => {
+                  const box = (selectedNodeId?.startsWith('SEQ_ACTOR_') && selectionBox)
+                    ? selectionBox
+                    : hoveredSequenceActorBox!;
+                  return (
+                    <div
+                      className="seq-actor-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                      style={{
+                        left: box.x - 4 / state.scale,
+                        top: box.y - 4 / state.scale,
+                        width: box.width + 8 / state.scale,
+                        height: box.height + 8 / state.scale,
+                      }}
+                      title="Drag to reorder · click to select · double-click to rename"
+                      onMouseDown={(e) => startSeqLifelineDrag(e)}
+                    />
+                  );
+                })()}
 
                 {(currentType === 'flowchart' || currentType === 'graph') && hoveredFlowchartNodeBox && !isInlineEditing && !connectionState.active && !selectionBox && (
                   <div
@@ -1327,6 +1472,46 @@ export function EditorCanvas({
               width: seqReorder.width,
               top: seqReorder.cursorY - 1.5,
               height: 3,
+              background: '#4f46e5',
+              opacity: 0.85,
+              borderRadius: 9999,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Lifeline (participant) reorder drop zones — VERTICAL bands at the inter-column gaps, plus a
+          vertical cursor guide. Viewport-relative (canvasShellRef), outside TransformWrapper, so
+          pan/zoom never shifts them (panning is disabled during the drag). */}
+      {seqLifelineReorder && (
+        <div className="absolute inset-0 pointer-events-none z-30">
+          {seqLifelineReorder.slots.map((s) => {
+            const active = seqLifelineReorder.targetSlot === s.slot;
+            const alpha = active ? 0.38 : 0.16;
+            const w = active ? Math.min(s.w + 6, s.w * 1.6 + 2) : s.w;
+            return (
+              <div
+                key={`seq-lifeline-drop-${s.slot}`}
+                className="absolute rounded-md"
+                style={{
+                  top: seqLifelineReorder.top,
+                  height: seqLifelineReorder.height,
+                  left: s.x - w / 2,
+                  width: w,
+                  border: active ? '2px solid #4f46e5' : '1.5px dashed #818cf8',
+                  backgroundImage: `repeating-linear-gradient(45deg, rgba(99,102,241,${alpha}) 0, rgba(99,102,241,${alpha}) 6px, transparent 6px, transparent 12px)`,
+                  transition: 'left 60ms linear, width 60ms linear',
+                }}
+              />
+            );
+          })}
+          <div
+            className="absolute"
+            style={{
+              top: seqLifelineReorder.top,
+              height: seqLifelineReorder.height,
+              left: seqLifelineReorder.cursorX - 1.5,
+              width: 3,
               background: '#4f46e5',
               opacity: 0.85,
               borderRadius: 9999,

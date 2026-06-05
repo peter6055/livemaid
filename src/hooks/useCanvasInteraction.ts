@@ -2002,16 +2002,29 @@ export function useCanvasInteraction({
         clearSequenceMessageHoverHighlight();
         return;
       }
-      const actorTarget = (e.target as Element | null)?.closest('.actor, .actor-man') as SVGElement | null;
-
-      if (actorTarget) {
-        // Prefer rect.actor for accurate full-width bounds; text.actor is just the label (narrow)
-        let boundsEl: SVGElement = actorTarget;
-        if (actorTarget.tagName.toLowerCase() === 'text') {
-          const parentGroup = actorTarget.parentElement;
-          const rectActor = parentGroup?.querySelector('rect.actor') as SVGElement | null;
-          if (rectActor) boundsEl = rectActor;
+      // Actor header hover — COORDINATE hit-test (not e.target.closest). The participant grab
+      // overlay (seq-actor-reorder-handle, pointer-events:auto) covers the header, so e.target
+      // becomes that div and a closest('.actor') lookup would miss → the hover box would flicker
+      // off and unmount the overlay. Hit-testing the header element bounds by viewport coordinates
+      // keeps the box stable under the overlay (same technique as note hover). Candidates: rect.actor
+      // (plain participant + bottom footers), g.actor (Entity/Database/Queue), g.actor-man
+      // (Actor/Boundary/Control). The smallest containing box wins so a parent group never shadows
+      // a more specific child.
+      const actorCandidates = Array.from(
+        container.querySelectorAll('rect.actor, g.actor, g.actor-man')
+      ) as SVGElement[];
+      let boundsEl: SVGElement | null = null;
+      let bestArea = Number.POSITIVE_INFINITY;
+      for (const cand of actorCandidates) {
+        const r = cand.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+          const area = r.width * r.height;
+          if (area < bestArea) { bestArea = area; boundsEl = cand; }
         }
+      }
+
+      if (boundsEl) {
         const actorRect = boundsEl.getBoundingClientRect();
         setHoveredSequenceActorBox({
           x: (actorRect.left - containerRectForScale.left + container.scrollLeft) / scale,
@@ -2564,6 +2577,7 @@ export function useCanvasInteraction({
     triggerSequenceMessageHoverByIndex,
     triggerHoveredSequenceNoteSelection,
     getSequenceMessageEndpointGeometry,
+    getSequenceLifelines,
     shapePicker,
     setShapePicker,
     // Note handling functions
