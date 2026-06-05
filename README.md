@@ -91,7 +91,7 @@ This repository follows the flow:
 ### 3) PR Deployment (Preview Environment)
 - Workflow: `cd/railway-pr-preview` (`.github/workflows/railway-deploy-pr-review.yml`)
 - Trigger: successful completion of `ci/pr-checks` for pull requests (`workflow_run`)
-- Action: creates/recreates Railway preview environment `pr-<PR_NUMBER>` and immediately triggers a deployment from the PR branch source.
+- Action: creates Railway preview environment `pr-<PR_NUMBER>` when missing, then deploys the PR branch source to that preview environment.
 - Cleanup: on PR close/merge, the same workflow deletes `pr-<PR_NUMBER>`.
 
 ### 4) Merge
