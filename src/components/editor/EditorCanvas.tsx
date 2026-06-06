@@ -13,7 +13,9 @@ import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
+import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -82,6 +84,10 @@ interface EditorCanvasProps {
   selectedSvgId: string | null;
   selectedNodeId: string | null;
   currentType: string;
+  /** Class-diagram property panel: the parsed class currently selected (null otherwise). */
+  selectedClass?: ParsedClass | null;
+  onApplyClassEdits?: (edits: ClassEdits) => void;
+  onCloseClassPanel?: () => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -171,6 +177,9 @@ export function EditorCanvas({
   selectedSvgId,
   selectedNodeId,
   currentType,
+  selectedClass,
+  onApplyClassEdits,
+  onCloseClassPanel,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -1640,7 +1649,7 @@ export function EditorCanvas({
                           currentParticipantType={currentSequenceParticipantType}
                           onDeleteNode={handleDeleteNode}
                         />
-                      ) : currentType === "sequence" ? null : (
+                      ) : currentType === "sequence" || currentType === "classDiagram" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -1673,6 +1682,7 @@ export function EditorCanvas({
 
                     {!isInlineEditing &&
                       currentType !== "sequence" &&
+                      currentType !== "classDiagram" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -1742,6 +1752,16 @@ export function EditorCanvas({
           </>
         )}
       </TransformWrapper>
+
+      {/* Class-diagram property panel — a viewport-level right-sidebar overlay rendered outside
+          the TransformWrapper so canvas pan/zoom never moves it. */}
+      {currentType === "classDiagram" && selectedClass && (
+        <ClassPropertyPanel
+          selectedClass={selectedClass}
+          onApply={(edits) => onApplyClassEdits?.(edits)}
+          onClose={() => onCloseClassPanel?.()}
+        />
+      )}
 
       {/* Sequence drag indicator — rendered at canvasShell level (outside TransformWrapper)
             so canvas pan/zoom never affects its coordinate system.

@@ -54,6 +54,12 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
+import {
+  classNameFromSvgId,
+  parseClassByName,
+  applyClassEdits,
+  type ClassEdits,
+} from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -219,7 +225,58 @@ export function LiveMaidEditor({
     setSelectionBox(null);
     setTextBox(null);
     setIsInlineEditing(false);
+    setSelectedClassName(null);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
+  // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
+  // node after a re-render (which happens for class nodes on every member edit), so deriving the
+  // panel directly from the selection would close it mid-edit. Instead we capture the class name on
+  // selection and keep it until an explicit close (X button, or a click that is neither the panel
+  // nor another class node — see the outside-click listener below).
+  const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (determineDiagramType(code) !== "classDiagram") {
+      setSelectedClassName(null);
+      return;
+    }
+    const name = classNameFromSvgId(selectedSvgId);
+    if (name) setSelectedClassName(name);
+  }, [code, selectedSvgId]);
+
+  // Close the panel when the user clicks anything that is neither the panel itself nor a class node
+  // (empty canvas, the code editor, the toolbar, …). Capture phase so it runs before the canvas
+  // interaction handlers. Clicking another class node is ignored here — the selection effect rebinds.
+  useEffect(() => {
+    if (!selectedClassName) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t) return;
+      if (t.closest("[data-class-property-panel]")) return;
+      const node = t.closest("g.node");
+      if (node && /classId-/.test(node.id)) return;
+      setSelectedClassName(null);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [selectedClassName]);
+
+  const selectedClass = useMemo(() => {
+    if (!selectedClassName || determineDiagramType(code) !== "classDiagram") return null;
+    return parseClassByName(code, selectedClassName);
+  }, [selectedClassName, code]);
+
+  const handleApplyClassEdits = useCallback(
+    (edits: ClassEdits) => {
+      if (!selectedClassName) return;
+      const newCode = applyClassEdits(code, selectedClassName, edits);
+      if (newCode !== code) handleCodeChange(newCode);
+      const nextName = edits.newName?.trim();
+      if (nextName && nextName !== selectedClassName) setSelectedClassName(nextName);
+    },
+    [code, handleCodeChange, selectedClassName, setSelectedClassName],
+  );
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
@@ -2896,6 +2953,9 @@ export function LiveMaidEditor({
             selectedSvgId={selectedSvgId}
             selectedNodeId={selectedNodeId}
             currentType={currentType}
+            selectedClass={selectedClass}
+            onApplyClassEdits={handleApplyClassEdits}
+            onCloseClassPanel={handleDeselect}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}

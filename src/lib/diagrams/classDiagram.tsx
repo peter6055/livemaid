@@ -109,7 +109,7 @@ export function setHideEmptyMembersBox(code: string, on: boolean): string {
   lines = lines.filter((l) => !/^[ \t]*hideEmptyMembersBox:[ \t]*/.test(l));
 
   if (on) {
-    let configIdx = lines.findIndex((l) => /^config:[ \t]*$/.test(l));
+    const configIdx = lines.findIndex((l) => /^config:[ \t]*$/.test(l));
     if (configIdx < 0) {
       // No config block yet — create one at the TOP (before title etc.).
       lines.unshift("config:", "  class:", "    hideEmptyMembersBox: true");
@@ -176,6 +176,132 @@ export function getNextClassName(code: string): string {
   let i = 1;
   while (names.has(`${base}${i}`)) i += 1;
   return `${base}${i}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Class parsing + serialization (two-way binding for the Property Panel)      */
+/* -------------------------------------------------------------------------- */
+
+export interface ParsedClass {
+  name: string;
+  annotation: string; // inner text only, e.g. "interface" (no `<<>>`)
+  attributes: string[]; // member lines WITHOUT parentheses, e.g. "+String name"
+  methods: string[]; // member lines WITH parentheses, e.g. "+makeSound() void"
+}
+
+const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const stripAnnotationDelims = (s: string) => s.trim().replace(/^<</, "").replace(/>>$/, "").trim();
+
+/** Extract the class name from a Mermaid class-node SVG id (e.g. `…-classId-Animal-6` → `Animal`). */
+export function classNameFromSvgId(svgId: string | null | undefined): string | null {
+  if (!svgId) return null;
+  const m = svgId.match(/classId-(.+)-\d+$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Read a class definition from the code by name, gathering members from BOTH the brace form
+ * (`class Foo { ... }`) and the colon form (`Foo : +member`), plus any annotation declared
+ * inline, in a separate `<<x>> Foo` line, or nested inside the braces.
+ */
+export function parseClassByName(code: string, name: string): ParsedClass {
+  const result: ParsedClass = { name, annotation: "", attributes: [], methods: [] };
+  const esc = escapeForRegex(name);
+
+  const classify = (member: string) => {
+    const t = member.trim();
+    if (!t) return;
+    if (/^<<.+>>$/.test(t)) {
+      result.annotation = stripAnnotationDelims(t);
+      return;
+    }
+    if (t.includes("(")) result.methods.push(t);
+    else result.attributes.push(t);
+  };
+
+  // 1. Brace block: `class Foo { ...body... }`
+  const braceRe = new RegExp(`(?:^|\\n)[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{([\\s\\S]*?)\\}`, "m");
+  const bm = code.match(braceRe);
+  if (bm) bm[1].split("\n").forEach(classify);
+
+  // 2. Colon form: `Foo : +member`
+  const colonRe = new RegExp(`^[ \\t]*${esc}[ \\t]*:[ \\t]*(.+)$`, "gm");
+  let cm: RegExpExecArray | null;
+  while ((cm = colonRe.exec(code))) classify(cm[1]);
+
+  // 3. Separate annotation line: `<<x>> Foo`
+  if (!result.annotation) {
+    const sepRe = new RegExp(`^[ \\t]*<<(.+?)>>[ \\t]+${esc}[ \\t]*$`, "m");
+    const sm = code.match(sepRe);
+    if (sm) result.annotation = sm[1].trim();
+  }
+
+  return result;
+}
+
+export interface ClassEdits {
+  annotation?: string;
+  attributes?: string[];
+  methods?: string[];
+  newName?: string;
+}
+
+/**
+ * Apply Property-Panel edits to a class, re-serialising it into the canonical brace form and
+ * removing now-redundant colon-form member lines / separate annotation lines for that class.
+ * Renames are propagated to relationship lines via a whole-word replacement.
+ */
+export function applyClassEdits(code: string, name: string, edits: ClassEdits): string {
+  const esc = escapeForRegex(name);
+  const targetName = (edits.newName ?? name).trim() || name;
+
+  const existing = parseClassByName(code, name);
+  const annotation =
+    edits.annotation !== undefined ? stripAnnotationDelims(edits.annotation) : existing.annotation;
+  const attributes = (edits.attributes ?? existing.attributes)
+    .map((a) => a.trim())
+    .filter(Boolean);
+  const methods = (edits.methods ?? existing.methods).map((m) => m.trim()).filter(Boolean);
+
+  const buildBlock = (indent: string) => {
+    const body: string[] = [];
+    if (annotation) body.push(`${indent}    <<${annotation}>>`);
+    attributes.forEach((a) => body.push(`${indent}    ${a}`));
+    methods.forEach((m) => body.push(`${indent}    ${m}`));
+    return `${indent}class ${targetName} {${body.length ? "\n" + body.join("\n") + "\n" + indent : ""}}`;
+  };
+
+  let result = code;
+  let replaced = false;
+
+  // Replace an existing brace block (preserving the indentation of the `class` keyword).
+  const braceRe = new RegExp(`(^|\\n)([ \\t]*)class[ \\t]+${esc}\\b[^\\n{]*\\{[\\s\\S]*?\\}`, "m");
+  if (braceRe.test(result)) {
+    result = result.replace(braceRe, (_m, pre, indent) => `${pre}${buildBlock(indent)}`);
+    replaced = true;
+  } else {
+    // Replace a bare `class Foo` declaration (no braces).
+    const declRe = new RegExp(`(^|\\n)([ \\t]*)class[ \\t]+${esc}\\b[^\\n]*`, "m");
+    if (declRe.test(result)) {
+      result = result.replace(declRe, (_m, pre, indent) => `${pre}${buildBlock(indent)}`);
+      replaced = true;
+    }
+  }
+
+  // Drop colon-form members and a separate annotation line for this class (now in the block).
+  result = result.replace(new RegExp(`(?:^|\\n)[ \\t]*${esc}[ \\t]*:[ \\t]*[^\\n]*`, "g"), "");
+  result = result.replace(new RegExp(`(?:^|\\n)[ \\t]*<<[^>]+>>[ \\t]+${esc}[ \\t]*(?=\\n|$)`, "g"), "");
+
+  // Class was only referenced (e.g. via a relationship) and never declared — append a block.
+  if (!replaced) result = result.replace(/\s*$/, "") + `\n${buildBlock("    ")}`;
+
+  // Propagate a rename to the remaining references (relationships, `note for`, cardinality lines).
+  // The regenerated block already carries the new name, so a whole-word swap only touches the rest.
+  if (targetName !== name) {
+    result = result.replace(new RegExp(`\\b${esc}\\b`, "g"), targetName);
+  }
+
+  return result;
 }
 
 /* -------------------------------------------------------------------------- */
