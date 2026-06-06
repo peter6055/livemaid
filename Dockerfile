@@ -15,9 +15,6 @@ RUN mkdir -p public
 # Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED 1
 
-ARG NEXT_PUBLIC_DEMO_MODE
-ENV NEXT_PUBLIC_DEMO_MODE=${NEXT_PUBLIC_DEMO_MODE}
-
 RUN npm run build
 
 # Production image, copy all the files and run next
@@ -53,3 +50,4 @@ ENV PORT 3000
 ENV HOSTNAME "0.0.0.0"
 
 CMD ["node", "server.js"]
+
