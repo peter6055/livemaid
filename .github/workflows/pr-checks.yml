@@ -11,7 +11,52 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Lint, format & types
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && break
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "npm ci failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
+
+      # Blocking: the type checker must stay green.
+      - name: Type check
+        run: npm run typecheck
+
+      # Non-blocking for now: the existing codebase still has lint errors.
+      # Surfaced in the job log so they can be burned down over time; flip
+      # `continue-on-error` to false (or remove it) once the backlog is clean.
+      - name: Lint
+        run: npm run lint
+        continue-on-error: true
+
+      # Non-blocking for now: existing files are not yet Prettier-formatted.
+      # Run `npm run format` to format the tree, then make this blocking.
+      - name: Format check
+        run: npm run format:check
+        continue-on-error: true
+
   validate:
+    name: Build
     runs-on: ubuntu-latest
     permissions:
       contents: read
