@@ -12,14 +12,15 @@ export function useEditorState(documentId: string) {
   const [doc, setDoc] = useState<DiagramDocument | null>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
+
   const [svgContent, setSvgContent] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState('default');
   const [currentFont, setCurrentFont] = useState('Default');
   const [parseError, setParseError] = useState<string | null>(null);
-  
+
   const renderIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -46,36 +47,36 @@ export function useEditorState(documentId: string) {
       const { svg } = await mermaid.render(id, mermaidCode);
       const interactiveSvg = addInteractionHelpersToSvg(svg);
       setSvgContent(interactiveSvg);
-      
+
       // Try to extract theme
       const match = mermaidCode.match(/theme:\s*(?:'|")?([^'"\s\n]+)/);
       if (match) {
-          const parsedTheme = match[1].trim();
-          setCurrentTheme(VALID_MERMAID_THEMES.has(parsedTheme) ? parsedTheme : 'default');
+        const parsedTheme = match[1].trim();
+        setCurrentTheme(VALID_MERMAID_THEMES.has(parsedTheme) ? parsedTheme : 'default');
       } else {
-          setCurrentTheme('default');
+        setCurrentTheme('default');
       }
 
-        // Try to extract font. We parse the full value to support nested quotes like
-        // fontFamily: '"Inter Variable", sans-serif'.
-        const fontLineMatch = mermaidCode.match(/fontFamily:\s*([^\n\r]+)/);
-        if (fontLineMatch) {
-          let fontVal = fontLineMatch[1].trim();
-          if ((fontVal.startsWith("'") && fontVal.endsWith("'")) || (fontVal.startsWith('"') && fontVal.endsWith('"'))) {
-            fontVal = fontVal.slice(1, -1);
-          }
-
-          const normalizedFont = fontVal.replace(/["']/g, '').toLowerCase();
-          const found = FONT_OPTIONS.find((f) => {
-            const optionPrimary = f.value.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
-            return normalizedFont.includes(optionPrimary);
-          });
-
-          setCurrentFont(found?.label || 'Default');
-        } else {
-          setCurrentFont('Default');
+      // Try to extract font. We parse the full value to support nested quotes like
+      // fontFamily: '"Inter Variable", sans-serif'.
+      const fontLineMatch = mermaidCode.match(/fontFamily:\s*([^\n\r]+)/);
+      if (fontLineMatch) {
+        let fontVal = fontLineMatch[1].trim();
+        if ((fontVal.startsWith("'") && fontVal.endsWith("'")) || (fontVal.startsWith('"') && fontVal.endsWith('"'))) {
+          fontVal = fontVal.slice(1, -1);
         }
-      
+
+        const normalizedFont = fontVal.replace(/["']/g, '').toLowerCase();
+        const found = FONT_OPTIONS.find((f) => {
+          const optionPrimary = f.value.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+          return normalizedFont.includes(optionPrimary);
+        });
+
+        setCurrentFont(found?.label || 'Default');
+      } else {
+        setCurrentFont('Default');
+      }
+
       if (onResetSelection) {
         onResetSelection();
       }
@@ -95,10 +96,16 @@ export function useEditorState(documentId: string) {
           setDoc(data);
           setCode(data.code);
           renderMermaid(data.code);
+        } else if (res.status === 404) {
+          // The requested diagram does not exist — surface a dedicated not-found screen
+          // instead of silently rendering an empty editor.
+          setNotFound(true);
+        } else {
+          toast.error("Failed to load diagram");
         }
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime < 600) {
-            await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
+          await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
         }
       } catch (error) {
         toast.error("Failed to load diagram");
@@ -148,6 +155,7 @@ export function useEditorState(documentId: string) {
     doc, setDoc,
     code, setCode,
     loading, setLoading,
+    notFound,
     saving, setSaving,
     svgContent, setSvgContent,
     currentTheme, setCurrentTheme,
@@ -179,28 +187,28 @@ function addInteractionHelpersToSvg(svgString: string): string {
         el.setAttribute("style", `${childStyle};pointer-events:none !important;`);
       });
     });
-    
+
     const paths = doc.querySelectorAll("path.flowchart-link, .edgePath path.path");
     paths.forEach((path) => {
       const clone = path.cloneNode(true) as SVGElement;
-      
+
       clone.classList.add("flowchart-link-hit-target");
       if (path.id) {
         clone.id = `${path.id}-hit-target`;
       }
-      
+
       clone.removeAttribute("stroke-dasharray");
       clone.setAttribute("stroke-width", "16px");
       clone.setAttribute("stroke", "transparent");
       clone.setAttribute("fill", "none");
       clone.setAttribute("opacity", "0.01");
       clone.setAttribute("style", "stroke-width: 16px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important;");
-      
+
       if (path.parentNode) {
         path.parentNode.insertBefore(clone, path);
       }
     });
-    
+
     const serializer = new XMLSerializer();
     return serializer.serializeToString(doc);
   } catch (error) {
