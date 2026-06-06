@@ -3,13 +3,32 @@ import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
-import { Loader2, Menu, LayoutTemplate, Download, History, PlusSquare, Copy, PencilLine, Moon, LayoutDashboard } from "lucide-react";
+import {
+  Loader2,
+  Menu,
+  LayoutTemplate,
+  Download,
+  History,
+  PlusSquare,
+  Copy,
+  PencilLine,
+  Moon,
+  LayoutDashboard,
+} from "lucide-react";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
@@ -34,7 +53,7 @@ export function EditorHeader({
   onRename,
   onRenameInline,
   onExport,
-  onVersionHistory
+  onVersionHistory,
 }: EditorHeaderProps) {
   const { theme, setTheme } = useTheme();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -72,42 +91,78 @@ export function EditorHeader({
     <header className="h-14 border-b border-border bg-background flex items-center px-4 justify-between shrink-0 z-20">
       <div className="flex items-center">
         <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2 text-foreground hover:bg-accent" />}>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="mr-2 text-foreground hover:bg-accent"
+              />
+            }
+          >
             <Menu className="w-5 h-5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48 bg-background border-border">
             {!isDemo && (
-              <DropdownMenuItem onClick={onNewDiagram} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <DropdownMenuItem
+                onClick={onNewDiagram}
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
+              >
                 <PlusSquare className="w-4 h-4" />
                 <span>New Diagram</span>
               </DropdownMenuItem>
             )}
             {!isDemo && (
-              <DropdownMenuItem onClick={onDuplicate} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <DropdownMenuItem
+                onClick={onDuplicate}
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
+              >
                 <Copy className="w-4 h-4" />
                 <span>Duplicate</span>
               </DropdownMenuItem>
             )}
             {!isDemo && (
-              <DropdownMenuItem onClick={onRename} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+              <DropdownMenuItem
+                onClick={onRename}
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
+              >
                 <PencilLine className="w-4 h-4" />
                 <span>Rename</span>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={onVersionHistory} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+            <DropdownMenuItem
+              onClick={onVersionHistory}
+              className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
+            >
               <History className="w-4 h-4" />
               <span>Version History</span>
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(theme === "dark" ? "light" : "dark"); }} className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.preventDefault();
+                setTheme(theme === "dark" ? "light" : "dark");
+              }}
+              className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full"
+            >
               <span className="flex items-center gap-2">
                 <Moon className="w-4 h-4" />
                 <span>Dark Mode</span>
               </span>
-              <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === 'dark' ? 'bg-indigo-500' : 'bg-slate-300'}`}>
-                <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
+              <div
+                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === "dark" ? "bg-indigo-500" : "bg-slate-300"}`}
+              >
+                <div
+                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === "dark" ? "left-4" : "left-1"}`}
+                />
               </div>
             </DropdownMenuItem>
-            <Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
+            <Link
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate("/", "Returning to Projects...");
+              }}
+            >
               <DropdownMenuItem className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Dashboard</span>
@@ -115,18 +170,36 @@ export function EditorHeader({
             </Link>
           </DropdownMenuContent>
         </DropdownMenu>
-        <Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
+        <Link
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onNavigate("/", "Returning to Projects...");
+          }}
+        >
           <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
             <LayoutTemplate className="w-5 h-5 text-white" />
           </div>
         </Link>
 
-        <span className="font-semibold text-xl tracking-tight mr-6 text-foreground whitespace-nowrap">LiveMaid</span>
+        <span className="font-semibold text-xl tracking-tight mr-6 text-foreground whitespace-nowrap">
+          LiveMaid
+        </span>
 
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink render={<Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }} />}>
+              <BreadcrumbLink
+                render={
+                  <Link
+                    href="/"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      onNavigate("/", "Returning to Projects...");
+                    }}
+                  />
+                }
+              >
                 Projects
               </BreadcrumbLink>
             </BreadcrumbItem>
@@ -139,8 +212,13 @@ export function EditorHeader({
                   onChange={(e) => setDraftName(e.target.value)}
                   onBlur={commitName}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); commitName(); }
-                    else if (e.key === 'Escape') { e.preventDefault(); cancelEditingName(); }
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitName();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEditingName();
+                    }
                   }}
                   className="h-7 min-w-[8rem] max-w-[20rem] rounded-md border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   aria-label="Rename diagram"
@@ -148,7 +226,9 @@ export function EditorHeader({
               ) : (
                 <span className="group flex items-center gap-1.5">
                   <BreadcrumbPage
-                    className={isDemo ? "text-foreground" : "cursor-pointer hover:underline text-indigo-500"}
+                    className={
+                      isDemo ? "text-foreground" : "cursor-pointer hover:underline text-indigo-500"
+                    }
                     onClick={isDemo ? undefined : startEditingName}
                     title={isDemo ? undefined : "Click to rename"}
                   >
@@ -192,7 +272,19 @@ export function EditorHeader({
         </button>
         {isDemo ? (
           <span className="flex items-center text-amber-600 dark:text-amber-400">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 mr-1.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/><path d="M9 17h6"/></svg>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="w-4 h-4 mr-1.5"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" />
+              <path d="M9 21h6" />
+              <path d="M9 17h6" />
+            </svg>
             Read Only
           </span>
         ) : saving ? (
@@ -202,7 +294,17 @@ export function EditorHeader({
           </span>
         ) : (
           <span className="flex items-center text-emerald-600">
-            <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4 mr-1.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              className="w-4 h-4 mr-1.5"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
             Saved
           </span>
         )}
