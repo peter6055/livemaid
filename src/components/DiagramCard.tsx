@@ -26,6 +26,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
 
 export interface DiagramDocument {
   id: string;
@@ -89,7 +90,7 @@ export function DiagramCard({
 
   return (
     <Card
-      draggable={!isDemo && !!onMove}
+      draggable={!!onMove}
       onDragStart={(e) => {
         e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
         e.dataTransfer.effectAllowed = "move";
@@ -130,6 +131,46 @@ export function DiagramCard({
                   </TooltipTrigger>
                   <TooltipContent>Read-only in demo mode</TooltipContent>
                 </Tooltip>
+                {onMove && moveTargets && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+                        />
+                      }
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-44">
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                          <FolderInput className="h-4 w-4" /> Move to
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                          {moveTargets
+                            .filter((t) => t.id !== (diagram.folderId ?? null))
+                            .map((t) => (
+                              <DropdownMenuItem
+                                key={t.id ?? "root"}
+                                onClick={() =>
+                                  toast.info(
+                                    "Demo mode — this is read only, changes won't be saved",
+                                  )
+                                }
+                                className="cursor-pointer"
+                                style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                              >
+                                {t.name}
+                              </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
               </TooltipProvider>
             ) : (
               <>
