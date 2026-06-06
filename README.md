@@ -78,7 +78,7 @@ We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
 
 This repository follows the flow:
 
-**PR Raised → PR Check → PR Deployment → Merge → Release → Sandbox Deployment**
+**PR Raised → PR Check → Merge → Release → Sandbox Deployment**
 
 ### 1) PR Raised
 - Open a pull request targeting `main`.
@@ -88,21 +88,15 @@ This repository follows the flow:
 - Trigger: `pull_request` on `main`
 - Action: installs dependencies and runs `npm run build`.
 
-### 3) PR Deployment (Preview Environment)
-- Workflow: `cd/railway-pr-preview` (`.github/workflows/railway-deploy-pr-review.yml`)
-- Trigger: successful completion of `ci/pr-checks` for pull requests (`workflow_run`)
-- Action: creates Railway preview environment `pr-<PR_NUMBER>` when missing, then deploys the PR branch source to that preview environment.
-- Cleanup: on PR close/merge, the same workflow deletes `pr-<PR_NUMBER>`.
-
-### 4) Merge
+### 3) Merge
 - Merge PR into `main` (recommended: squash and merge).
 
-### 5) Release
+### 4) Release
 - Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
 - Trigger: `push` to `main`
 - Action: builds and publishes Docker image to GHCR, then creates a GitHub Release (`v1.0.<run_number>`).
 
-### 6) Sandbox Deployment
+### 5) Sandbox Deployment
 - Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
 - Trigger: successful completion of `ci/release` (`workflow_run`)
 - Action: deploys latest release to Railway sandbox service.
