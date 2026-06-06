@@ -15,6 +15,11 @@ import {
   rebuildLinkStyles,
   CONNECTOR_PATTERN,
 } from "@/lib/diagrams/utils";
+import {
+  findFlowchartNodeLine,
+  findFlowchartEdgeLine,
+  findSequenceParticipantLine,
+} from "@/lib/diagrams/selectionLineMap";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -603,6 +608,61 @@ export function LiveMaidEditor({
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
   };
+
+  // Epic 4.1 — Canvas-to-code highlighting. Resolve the 0-indexed source line
+  // range that defines the currently selected canvas element so the code panel
+  // can highlight + scroll to it. Returns null when nothing is selected (which
+  // clears the decoration) or when no confident mapping exists. Read-only
+  // parsing, so it is safe in demo mode too (AC 4.1.3).
+  const highlightRange = useMemo<{ startLine: number; endLine: number } | null>(() => {
+    if (!selectedNodeId) return null;
+    const toRange = (line: number) => (line >= 0 ? { startLine: line, endLine: line } : null);
+
+    if (selectedNodeId.startsWith("SEQ_MSG_")) {
+      const idx = parseInt(selectedNodeId.slice("SEQ_MSG_".length), 10);
+      const entry = getSequenceMessageEntries(code)[idx];
+      return entry ? toRange(entry.index) : null;
+    }
+
+    if (selectedNodeId.startsWith("SEQ_NOTE_")) {
+      const idx = parseInt(selectedNodeId.slice("SEQ_NOTE_".length), 10);
+      const entry = getSequenceNoteEntries(code)[idx];
+      return entry ? toRange(entry.index) : null;
+    }
+
+    if (selectedNodeId.startsWith("SEQ_BLOCK_")) {
+      const startLine = parseInt(selectedNodeId.slice("SEQ_BLOCK_".length), 10);
+      const blk = getSequenceBlockEntries(code).find((b) => b.startLine === startLine);
+      if (blk) return { startLine: blk.startLine, endLine: blk.endLine };
+      return Number.isFinite(startLine) ? toRange(startLine) : null;
+    }
+
+    if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
+      const actorId = selectedNodeId.slice("SEQ_ACTOR_".length);
+      const declLine = findSequenceParticipantLine(code, actorId);
+      if (declLine >= 0) return toRange(declLine);
+      // Implicit participant (never declared): fall back to the first message
+      // line that references it.
+      const esc = actorId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const tokenRe = new RegExp(`(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|$)`);
+      const msg = getSequenceMessageEntries(code).find((e) => tokenRe.test(e.line));
+      return msg ? toRange(msg.index) : null;
+    }
+
+    if (isEdgeId(selectedNodeId)) {
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      return toRange(findFlowchartEdgeLine(code, src, dst, occurrenceIndex));
+    }
+
+    // Flowchart node (plain id).
+    return toRange(findFlowchartNodeLine(code, selectedNodeId));
+  }, [
+    selectedNodeId,
+    code,
+    getSequenceMessageEntries,
+    getSequenceNoteEntries,
+    getSequenceBlockEntries,
+  ]);
 
   const handleThemeChange = (theme: string) => {
     const validThemes = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
@@ -2630,6 +2690,7 @@ export function LiveMaidEditor({
                 handleCodeChange={handleCodeChange}
                 handleEditorDidMount={handleEditorDidMount}
                 parseError={parseError}
+                highlightRange={highlightRange}
               />
             </ResizablePanel>
             <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />

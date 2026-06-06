@@ -1,11 +1,17 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { type OnMount, type BeforeMount, type Monaco } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
+import { useCallback, useEffect, useRef } from "react";
+import { registerMermaidLanguage } from "@/lib/diagrams/mermaidMonarch";
+
+type MonacoStandaloneEditor = Parameters<OnMount>[0];
 
 interface EditorCodePanelProps {
   code: string;
   handleCodeChange: (value: string | undefined) => void;
   handleEditorDidMount: OnMount;
   parseError: string | null;
+  /** 0-indexed inclusive source-line range to highlight (canvas selection), or null. */
+  highlightRange?: { startLine: number; endLine: number } | null;
 }
 
 export function EditorCodePanel({
@@ -13,8 +19,62 @@ export function EditorCodePanel({
   handleCodeChange,
   handleEditorDidMount,
   parseError,
+  highlightRange = null,
 }: EditorCodePanelProps) {
   const { theme } = useTheme();
+
+  const editorRef = useRef<MonacoStandaloneEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
+  const decorationsRef = useRef<ReturnType<
+    MonacoStandaloneEditor["createDecorationsCollection"]
+  > | null>(null);
+
+  // Apply (or clear) the canvas-selection line highlight and scroll it into view.
+  const applyHighlight = useCallback((range: { startLine: number; endLine: number } | null) => {
+    const editor = editorRef.current;
+    const monaco = monacoRef.current;
+    if (!editor || !monaco) return;
+    if (!decorationsRef.current) {
+      decorationsRef.current = editor.createDecorationsCollection();
+    }
+    if (!range) {
+      decorationsRef.current.clear();
+      return;
+    }
+    // Monaco line numbers are 1-indexed; our ranges are 0-indexed.
+    const startLine = range.startLine + 1;
+    const endLine = range.endLine + 1;
+    decorationsRef.current.set([
+      {
+        range: new monaco.Range(startLine, 1, endLine, 1),
+        options: {
+          isWholeLine: true,
+          className: "canvas-code-highlight-line",
+          linesDecorationsClassName: "canvas-code-highlight-gutter",
+        },
+      },
+    ]);
+    editor.revealLineInCenter(startLine);
+  }, []);
+
+  // Register the custom Mermaid syntax highlighting before the editor mounts.
+  const handleBeforeMount: BeforeMount = (monaco) => {
+    registerMermaidLanguage(monaco);
+  };
+
+  const handleMount: OnMount = (editor, monaco) => {
+    editorRef.current = editor;
+    monacoRef.current = monaco;
+    handleEditorDidMount(editor, monaco);
+    // Apply any highlight that was already pending before the editor mounted.
+    applyHighlight(highlightRange);
+  };
+
+  // Re-apply whenever the selected element's line range changes (a null range
+  // clears the decoration — AC 4.1.2).
+  useEffect(() => {
+    applyHighlight(highlightRange);
+  }, [highlightRange, applyHighlight]);
 
   return (
     <>
@@ -27,11 +87,12 @@ export function EditorCodePanel({
         <div className="flex-grow min-h-0 relative">
           <Editor
             height="100%"
-            defaultLanguage="markdown"
+            defaultLanguage="mermaid"
             theme={theme === "dark" ? "vs-dark" : "light"}
             value={code}
             onChange={(value) => handleCodeChange(value)}
-            onMount={handleEditorDidMount}
+            beforeMount={handleBeforeMount}
+            onMount={handleMount}
             options={{
               readOnly: false,
               minimap: { enabled: false },

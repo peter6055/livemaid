@@ -573,7 +573,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
       <div className="flex flex-1 min-h-0">
         {/* ---- Left Sidebar ---- */}
         <aside
-          className={`hidden md:flex w-64 shrink-0 flex-col border-r border-border bg-background/60 sticky ${isDemo ? "top-[41px] h-[calc(100vh-41px)]" : "top-0 h-screen"}`}
+          className={`hidden md:flex w-80 shrink-0 flex-col border-r border-border bg-background/60 sticky ${isDemo ? "top-[41px] h-[calc(100vh-41px)]" : "top-0 h-screen"}`}
         >
           {/* Brand */}
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
@@ -642,6 +642,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 currentFolderId={currentFolderId}
                 onSelect={(id) => navigateToFolder(id)}
                 onDropDiagram={handleMoveDiagram}
+                onRename={openRenameFolderDialog}
+                onDelete={openDeleteFolderDialog}
+                isDemo={isDemo}
               />
             </div>
           </div>
