@@ -9,7 +9,8 @@ export function DemoBanner() {
       <p className="text-sm text-amber-700 dark:text-amber-400 font-medium">
         <span className="font-semibold">Demo Mode — Read Only</span>
         {" — "}
-        You are exploring a live demo. Creating, renaming, and deleting diagrams is disabled. Edits in the editor are not persisted.
+        You are exploring a live demo. Creating, renaming, and deleting diagrams is disabled. Edits
+        in the editor are not persisted.
       </p>
     </div>
   );

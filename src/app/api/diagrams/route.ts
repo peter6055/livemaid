@@ -1,20 +1,20 @@
-import { NextResponse } from 'next/server';
-import { getDiagrams, saveDiagram, DiagramDocument, IS_DEMO_MODE } from '@/lib/api/storage';
-import { nanoid } from 'nanoid';
-import { DiagramRegistry } from '@/lib/diagrams/registry';
+import { NextResponse } from "next/server";
+import { getDiagrams, saveDiagram, DiagramDocument, IS_DEMO_MODE } from "@/lib/api/storage";
+import { nanoid } from "nanoid";
+import { DiagramRegistry } from "@/lib/diagrams/registry";
 
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const limitStr = searchParams.get('limit');
-    const offsetStr = searchParams.get('offset');
-    const search = searchParams.get('search');
+    const limitStr = searchParams.get("limit");
+    const offsetStr = searchParams.get("offset");
+    const search = searchParams.get("search");
 
     let diagrams = await getDiagrams();
 
     if (search) {
       const lowerSearch = search.toLowerCase();
-      diagrams = diagrams.filter(d => d.name.toLowerCase().includes(lowerSearch));
+      diagrams = diagrams.filter((d) => d.name.toLowerCase().includes(lowerSearch));
     }
 
     if (limitStr !== null && offsetStr !== null) {
@@ -25,25 +25,28 @@ export async function GET(request: Request) {
 
     return NextResponse.json(diagrams);
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch diagrams' }, { status: 500 });
+    return NextResponse.json({ error: "Failed to fetch diagrams" }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
   if (IS_DEMO_MODE) {
-    return NextResponse.json({ error: 'Demo mode: creating diagrams is disabled' }, { status: 403 });
+    return NextResponse.json(
+      { error: "Demo mode: creating diagrams is disabled" },
+      { status: 403 },
+    );
   }
 
   try {
     const body = await request.json();
-    const { name, type = 'flowchart', code } = body;
-    const folderId = typeof body.folderId === 'string' ? body.folderId : null;
+    const { name, type = "flowchart", code } = body;
+    const folderId = typeof body.folderId === "string" ? body.folderId : null;
 
     if (!name) {
-      return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+      return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const plugin = DiagramRegistry[type] || DiagramRegistry['flowchart'];
+    const plugin = DiagramRegistry[type] || DiagramRegistry["flowchart"];
     const defaultCode = plugin.defaultCode;
     const finalCode = code || defaultCode;
 
@@ -64,6 +67,6 @@ export async function POST(request: Request) {
     await saveDiagram(newDiagram);
     return NextResponse.json(newDiagram, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to create diagram' }, { status: 500 });
+    return NextResponse.json({ error: "Failed to create diagram" }, { status: 500 });
   }
 }

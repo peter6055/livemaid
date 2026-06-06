@@ -10,13 +10,13 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
   const iconProps = className ?? "w-12 h-12 stroke-current stroke-2 fill-none";
 
   switch (type) {
-    case 'participant':
+    case "participant":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           <rect x="4" y="4" width="24" height="20" rx="2" />
         </svg>
       );
-    case 'actor':
+    case "actor":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Head */}
@@ -30,7 +30,7 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
           <line x1="16" y1="20" x2="22" y2="26" />
         </svg>
       );
-    case 'boundary':
+    case "boundary":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Vertical line */}
@@ -39,7 +39,7 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
           <path d="M 8 8 Q 20 4 20 16 Q 20 28 8 28" />
         </svg>
       );
-    case 'control':
+    case "control":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Circle */}
@@ -48,14 +48,14 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
           <line x1="8" y1="8" x2="24" y2="24" />
         </svg>
       );
-    case 'entity':
+    case "entity":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Circle */}
           <circle cx="16" cy="16" r="10" />
         </svg>
       );
-    case 'database':
+    case "database":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Top ellipse */}
@@ -67,7 +67,7 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
           <ellipse cx="16" cy="20" rx="9" ry="4" />
         </svg>
       );
-    case 'collections':
+    case "collections":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Top rectangle */}
@@ -76,7 +76,7 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
           <rect x="6" y="12" width="20" height="8" rx="1" />
         </svg>
       );
-    case 'queue':
+    case "queue":
       return (
         <svg viewBox="0 0 32 32" className={iconProps}>
           {/* Cylinder on side */}
@@ -94,14 +94,14 @@ export const ParticipantIcon = ({ type, className }: { type: string; className?:
 // The eight sequence participant archetypes (shared by the top "Participants" picker and the
 // inline canvas SequenceManipulationToolbar "Type" dropdown).
 export const PARTICIPANT_TYPES: Array<{ key: string; label: string }> = [
-  { key: 'participant', label: 'Participant' },
-  { key: 'actor', label: 'Actor' },
-  { key: 'boundary', label: 'Boundary' },
-  { key: 'control', label: 'Control' },
-  { key: 'entity', label: 'Entity' },
-  { key: 'database', label: 'Database' },
-  { key: 'collections', label: 'Collections' },
-  { key: 'queue', label: 'Queue' },
+  { key: "participant", label: "Participant" },
+  { key: "actor", label: "Actor" },
+  { key: "boundary", label: "Boundary" },
+  { key: "control", label: "Control" },
+  { key: "entity", label: "Entity" },
+  { key: "database", label: "Database" },
+  { key: "collections", label: "Collections" },
+  { key: "queue", label: "Queue" },
 ];
 
 const SequenceToolbar = ({ code, setCode }: EditorContext) => {
@@ -111,43 +111,53 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
 
   const handleAddParticipant = (type: string) => {
     const displayNames: Record<string, string> = {
-      'participant': 'Participant',
-      'actor': 'Actor',
-      'boundary': 'Boundary',
-      'control': 'Control',
-      'entity': 'Entity',
-      'database': 'Database',
-      'collections': 'Collections',
-      'queue': 'Queue',
+      participant: "Participant",
+      actor: "Actor",
+      boundary: "Boundary",
+      control: "Control",
+      entity: "Entity",
+      database: "Database",
+      collections: "Collections",
+      queue: "Queue",
     };
 
-    const lines = code.split('\n');
+    const lines = code.split("\n");
 
     // AC 1.3 — Auto-ID: scan every existing participant ID (from declarations AND message
     // references) so the new id never collides. Pick the first unused single uppercase letter
     // (A, B, C, … → E when A–D exist); fall back to a timestamped id only if all 26 are taken.
     const usedIds = new Set<string>();
-    const declRe = /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)/i;
+    const declRe =
+      /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)/i;
     const msgRe = /^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/;
     let lastDeclIdx = -1;
     for (let i = 0; i < lines.length; i += 1) {
       const trimmed = lines[i].trim();
       const dm = trimmed.match(declRe);
-      if (dm) { usedIds.add(dm[1]); lastDeclIdx = i; }
+      if (dm) {
+        usedIds.add(dm[1]);
+        lastDeclIdx = i;
+      }
       const mm = trimmed.match(msgRe);
-      if (mm) { usedIds.add(mm[1]); usedIds.add(mm[2]); }
+      if (mm) {
+        usedIds.add(mm[1]);
+        usedIds.add(mm[2]);
+      }
     }
-    let newId = '';
+    let newId = "";
     for (let i = 0; i < 26; i += 1) {
       const c = String.fromCharCode(65 + i);
-      if (!usedIds.has(c)) { newId = c; break; }
+      if (!usedIds.has(c)) {
+        newId = c;
+        break;
+      }
     }
     if (!newId) newId = `P${Date.now().toString().slice(-3)}`;
 
-    let insertLine = '';
-    if (type === 'participant') {
+    let insertLine = "";
+    if (type === "participant") {
       insertLine = `    participant ${newId} as New ${displayNames[type]}`;
-    } else if (type === 'actor') {
+    } else if (type === "actor") {
       insertLine = `    actor ${newId} as New ${displayNames[type]}`;
     } else {
       insertLine = `    participant ${newId}@{ "type": "${type}" } as New ${displayNames[type]}`;
@@ -163,9 +173,9 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
     let newCode: string;
     if (lastDeclIdx >= 0) {
       lines.splice(lastDeclIdx + 1, 0, insertLine);
-      newCode = lines.join('\n');
+      newCode = lines.join("\n");
     } else {
-      newCode = code.replace(/\s*$/, '') + `\n${insertLine}`;
+      newCode = code.replace(/\s*$/, "") + `\n${insertLine}`;
     }
     setCode(newCode);
     setShowParticipantPicker(false);
@@ -200,7 +210,9 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
                     <div className="w-8 h-8 flex items-center justify-center text-foreground">
                       <ParticipantIcon type={type.key} />
                     </div>
-                    <span className="text-[10px] font-medium text-foreground text-center group-hover:text-accent-foreground leading-tight">{type.label}</span>
+                    <span className="text-[10px] font-medium text-foreground text-center group-hover:text-accent-foreground leading-tight">
+                      {type.label}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -213,8 +225,8 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
 };
 
 export const SequencePlugin: DiagramPlugin = {
-  id: 'sequence',
-  label: 'Sequence Diagram',
+  id: "sequence",
+  label: "Sequence Diagram",
   defaultCode: `sequenceDiagram\n    participant A as Alice\n    participant B as Bob\n    A->>B: Hello Bob, how are you?\n    B-->>A: Great!`,
-  ToolbarComponent: SequenceToolbar
+  ToolbarComponent: SequenceToolbar,
 };

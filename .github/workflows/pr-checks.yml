@@ -48,11 +48,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # Non-blocking for now: existing files are not yet Prettier-formatted.
-      # Run `npm run format` to format the tree, then make this blocking.
+      # Blocking: the whole tree is Prettier-formatted. Run `npm run format`
+      # locally to fix any formatting drift before pushing.
       - name: Format check
         run: npm run format:check
-        continue-on-error: true
 
   validate:
     name: Build

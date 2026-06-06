@@ -15,7 +15,7 @@ jobs:
     permissions:
       contents: write
       packages: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,10 +49,10 @@ jobs:
           IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v1.0.${{ github.run_number }}"
           # Convert tag to lowercase as Docker requires lowercase image references
           IMAGE_TAG=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')
-          
+
           # Pull the image we just built and pushed
           docker pull $IMAGE_TAG
-          
+
           # Save it as a tar.gz artifact
           docker save $IMAGE_TAG | gzip > livemaid-image.tar.gz
 

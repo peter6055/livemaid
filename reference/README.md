@@ -3,14 +3,14 @@
 This folder is the source of truth for LiveMaid's architecture, design, and implemented
 features. Read the relevant document before planning or implementing changes.
 
-| Document | Purpose |
-| --- | --- |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | High-level system architecture, tech stack, and conventions. |
-| [`DESIGN.md`](./DESIGN.md) | UI/UX design specification: color tokens, typography, components, interaction polish. |
-| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md) | **Read first.** Authoritative record of every implemented feature and the constraints that must not be broken. |
-| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement. |
-| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md) | Template/process for writing a verification (test) plan. |
-| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md) | Template/process for writing a regression plan. |
+| Document                                                                       | Purpose                                                                                                        |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md)                                         | High-level system architecture, tech stack, and conventions.                                                   |
+| [`DESIGN.md`](./DESIGN.md)                                                     | UI/UX design specification: color tokens, typography, components, interaction polish.                          |
+| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md)                           | **Read first.** Authoritative record of every implemented feature and the constraints that must not be broken. |
+| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement.                              |
+| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md)     | Template/process for writing a verification (test) plan.                                                       |
+| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md)         | Template/process for writing a regression plan.                                                                |
 
 > **RULE:** All reference documentation for AI agents or developers MUST live in this
 > `reference/` folder. Do not place docs at the repo root (keep the root clean).

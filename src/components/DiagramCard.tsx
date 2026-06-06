@@ -1,13 +1,22 @@
 "use client";
 
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { FileEdit, Trash2, Clock, GitCommitVertical, Repeat2, Code2, MoreVertical, FolderInput } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
-import { useEffect, useState } from 'react';
-import mermaid from 'mermaid';
-import { determineDiagramType } from '@/lib/diagrams/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  FileEdit,
+  Trash2,
+  Clock,
+  GitCommitVertical,
+  Repeat2,
+  Code2,
+  MoreVertical,
+  FolderInput,
+} from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
+import { useEffect, useState } from "react";
+import mermaid from "mermaid";
+import { determineDiagramType } from "@/lib/diagrams/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,15 +46,15 @@ export function DiagramCard({
   moveTargets,
   isDemo = false,
 }: {
-  diagram: DiagramDocument,
-  onRename: (id: string, name: string) => void,
-  onDelete: (id: string) => void,
-  onNavigate: (url: string) => void,
-  onMove?: (id: string, folderId: string | null) => void,
-  moveTargets?: { id: string | null; name: string; depth: number }[],
-  isDemo?: boolean,
+  diagram: DiagramDocument;
+  onRename: (id: string, name: string) => void;
+  onDelete: (id: string) => void;
+  onNavigate: (url: string) => void;
+  onMove?: (id: string, folderId: string | null) => void;
+  moveTargets?: { id: string | null; name: string; depth: number }[];
+  isDemo?: boolean;
 }) {
-  const [svgContent, setSvgContent] = useState<string>('');
+  const [svgContent, setSvgContent] = useState<string>("");
   const [isCompiling, setIsCompiling] = useState<boolean>(true);
 
   useEffect(() => {
@@ -53,13 +62,17 @@ export function DiagramCard({
       const renderPreview = async () => {
         setIsCompiling(true);
         try {
-          mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', flowchart: { htmlLabels: true } });
+          mermaid.initialize({
+            startOnLoad: false,
+            securityLevel: "loose",
+            flowchart: { htmlLabels: true },
+          });
           await mermaid.parse(diagram.code!, { suppressErrors: true });
           const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
           setSvgContent(svg);
         } catch {
           // invalid syntax, don't render bomb error
-          setSvgContent('');
+          setSvgContent("");
         } finally {
           setIsCompiling(false);
         }
@@ -71,14 +84,15 @@ export function DiagramCard({
   }, [diagram.code, diagram.id]);
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
-  const isSupported = parsedType === 'graph' || parsedType === 'flowchart' || parsedType === 'sequence';
+  const isSupported =
+    parsedType === "graph" || parsedType === "flowchart" || parsedType === "sequence";
 
   return (
     <Card
       draggable={!isDemo && !!onMove}
       onDragStart={(e) => {
-        e.dataTransfer.setData('application/x-livemaid-diagram', diagram.id);
-        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
+        e.dataTransfer.effectAllowed = "move";
       }}
       className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
     >
@@ -92,7 +106,12 @@ export function DiagramCard({
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40 pointer-events-none" disabled>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground/40 pointer-events-none"
+                      disabled
+                    >
                       <FileEdit className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -100,7 +119,12 @@ export function DiagramCard({
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-300/50 pointer-events-none" disabled>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-red-300/50 pointer-events-none"
+                      disabled
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -109,12 +133,25 @@ export function DiagramCard({
               </TooltipProvider>
             ) : (
               <>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" onClick={() => onRename(diagram.id, diagram.name)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+                  onClick={() => onRename(diagram.id, diagram.name)}
+                >
                   <FileEdit className="h-4 w-4" />
                 </Button>
                 {onMove && moveTargets && (
                   <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent" />}>
+                    <DropdownMenuTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+                        />
+                      }
+                    >
                       <MoreVertical className="h-4 w-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-44">
@@ -127,7 +164,7 @@ export function DiagramCard({
                             .filter((t) => t.id !== (diagram.folderId ?? null))
                             .map((t) => (
                               <DropdownMenuItem
-                                key={t.id ?? 'root'}
+                                key={t.id ?? "root"}
                                 onClick={() => onMove(diagram.id, t.id)}
                                 className="cursor-pointer"
                                 style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
@@ -140,7 +177,12 @@ export function DiagramCard({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 )}
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10" onClick={() => onDelete(diagram.id)}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                  onClick={() => onDelete(diagram.id)}
+                >
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </>
@@ -153,19 +195,29 @@ export function DiagramCard({
           {isSupported && (
             <div className="flex items-center gap-0.5 bg-indigo-500/10 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded">
               <Repeat2 className="h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300">2-way</span>
+              <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
+                2-way
+              </span>
             </div>
           )}
           {!isSupported && (
             <div className="flex items-center gap-0.5 bg-slate-500/10 dark:bg-slate-400/10 px-1.5 py-0.5 rounded">
               <Code2 className="h-2.5 w-2.5 text-slate-600 dark:text-slate-400" />
-              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300">Code Only</span>
+              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300">
+                Code Only
+              </span>
             </div>
           )}
         </div>
       </CardHeader>
       <CardContent className="flex-grow">
-        <a href={`/editor/${diagram.id}`} onClick={(e) => { e.preventDefault(); onNavigate(`/editor/${diagram.id}`); }}>
+        <a
+          href={`/editor/${diagram.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            onNavigate(`/editor/${diagram.id}`);
+          }}
+        >
           <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
             {isCompiling ? (
               <div className="w-full h-full flex items-center justify-center gap-3 px-4 animate-pulse opacity-50 dark:opacity-40">
@@ -191,7 +243,10 @@ export function DiagramCard({
                 </div>
               </div>
             ) : svgContent ? (
-              <div dangerouslySetInnerHTML={{ __html: svgContent }} className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900" />
+              <div
+                dangerouslySetInnerHTML={{ __html: svgContent }}
+                className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900"
+              />
             ) : (
               <span className="text-zinc-500 text-xs font-medium">Preview Unavailable</span>
             )}

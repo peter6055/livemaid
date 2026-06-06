@@ -2,20 +2,52 @@
 
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
-import { determineDiagramType, isEdgeId, parseEdgeId, updateLinkStyleAndLabel, getLinkIndex, updateLinkColor, updateMermaidCurve, updateLinkAnimation, deleteLink, rebuildLinkStyles, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
+import {
+  determineDiagramType,
+  isEdgeId,
+  parseEdgeId,
+  updateLinkStyleAndLabel,
+  getLinkIndex,
+  updateLinkColor,
+  updateMermaidCurve,
+  updateLinkAnimation,
+  deleteLink,
+  rebuildLinkStyles,
+  CONNECTOR_PATTERN,
+} from "@/lib/diagrams/utils";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { Loader2, Undo2, Redo2, Type, Copy, PanelLeftClose, PanelLeftOpen, FileQuestion } from "lucide-react";
+import {
+  Loader2,
+  Undo2,
+  Redo2,
+  Type,
+  Copy,
+  PanelLeftClose,
+  PanelLeftOpen,
+  FileQuestion,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import * as htmlToImage from "html-to-image";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
@@ -43,7 +75,7 @@ function pruneEmptySequenceBlocks(lines: string[]): string[] {
   const toRemove = new Set<number>();
   for (let i = 0; i < lines.length; i += 1) {
     const t = lines[i].trim();
-    if (t === '') continue;
+    if (t === "") continue;
     if (openerRe.test(t)) {
       stack.push({ openerIdx: i, hasContent: false, sectionIdxs: [] });
     } else if (sectionRe.test(t) && stack.length) {
@@ -66,12 +98,19 @@ function pruneEmptySequenceBlocks(lines: string[]): string[] {
   return lines.filter((_, i) => !toRemove.has(i));
 }
 
-export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: string; isDemo?: boolean }) {
+export function LiveMaidEditor({
+  documentId,
+  isDemo = false,
+}: {
+  documentId: string;
+  isDemo?: boolean;
+}) {
   const IS_DEMO_MODE = isDemo;
   const router = useRouter();
 
   const {
-    doc, setDoc,
+    doc,
+    setDoc,
     code,
     loading,
     notFound,
@@ -82,12 +121,15 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     setCurrentFont,
     parseError,
     renderIdRef,
-    handleCodeChange
+    handleCodeChange,
   } = useEditorState(documentId);
 
   const [isLocked, setIsLocked] = useState(false);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
-  const [navigatingState, setNavigatingState] = useState<{ isNavigating: boolean; message: string }>({ isNavigating: false, message: '' });
+  const [navigatingState, setNavigatingState] = useState<{
+    isNavigating: boolean;
+    message: string;
+  }>({ isNavigating: false, message: "" });
 
   // Dialog states
   const [isRenameOpen, setIsRenameOpen] = useState(false);
@@ -95,27 +137,37 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   const [isNewDiagramOpen, setIsNewDiagramOpen] = useState(false);
   const [createName, setCreateName] = useState("");
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<{ url: string; message: string } | null>(null);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    url: string;
+    message: string;
+  } | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [historyDrafts, setHistoryDrafts] = useState<Record<string, string>>({});
   const [previewVersionId, setPreviewVersionId] = useState<string | null>(null);
   const [previewSvgContent, setPreviewSvgContent] = useState("");
   const [previewParseError, setPreviewParseError] = useState<string | null>(null);
-  const [exportFormat, setExportFormat] = useState('PNG');
-  const [exportBg, setExportBg] = useState('transparent');
+  const [exportFormat, setExportFormat] = useState("PNG");
+  const [exportBg, setExportBg] = useState("transparent");
   const allowBrowserBackRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
   const {
-    selectedNodeId, setSelectedNodeId,
-    selectedSvgId, setSelectedSvgId,
-    selectionBox, setSelectionBox,
-    textBox, setTextBox,
-    editingText, setEditingText,
-    isInlineEditing, setIsInlineEditing,
-    connectionState, setConnectionState,
+    selectedNodeId,
+    setSelectedNodeId,
+    selectedSvgId,
+    setSelectedSvgId,
+    selectionBox,
+    setSelectionBox,
+    textBox,
+    setTextBox,
+    editingText,
+    setEditingText,
+    isInlineEditing,
+    setIsInlineEditing,
+    connectionState,
+    setConnectionState,
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
@@ -153,7 +205,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     containerRef,
     isLocked,
     handleCodeChange,
-    determineDiagramType
+    determineDiagramType,
   });
 
   const handleDeselect = useCallback(() => {
@@ -167,8 +219,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
     const v = value.trim();
-    if (!v || v === 'none' || v === 'transparent' || v === 'rgba(0, 0, 0, 0)') return null;
-    if (v.startsWith('#')) return v;
+    if (!v || v === "none" || v === "transparent" || v === "rgba(0, 0, 0, 0)") return null;
+    if (v.startsWith("#")) return v;
 
     const rgb = v.match(/^rgba?\((\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([0-9.]+))?\)$/i);
     if (!rgb) return v;
@@ -179,25 +231,28 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const alpha = rgb[4] !== undefined ? Number(rgb[4]) : 1;
     if (!Number.isFinite(alpha) || alpha <= 0) return null;
 
-    const toHex = (n: number) => n.toString(16).padStart(2, '0');
+    const toHex = (n: number) => n.toString(16).padStart(2, "0");
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }, []);
 
-  const sanitizeMermaidStyleColors = useCallback((input: string): string => {
-    return input
-      .split('\n')
-      .map((line) => {
-        if (!/^\s*style\s+\S+\s+/i.test(line) || !/rgba?\(/i.test(line)) {
-          return line;
-        }
+  const sanitizeMermaidStyleColors = useCallback(
+    (input: string): string => {
+      return input
+        .split("\n")
+        .map((line) => {
+          if (!/^\s*style\s+\S+\s+/i.test(line) || !/rgba?\(/i.test(line)) {
+            return line;
+          }
 
-        return line.replace(/rgba?\([^)]*\)/gi, (match) => {
-          const token = toMermaidColorToken(match);
-          return token ?? 'transparent';
-        });
-      })
-      .join('\n');
-  }, [toMermaidColorToken]);
+          return line.replace(/rgba?\([^)]*\)/gi, (match) => {
+            const token = toMermaidColorToken(match);
+            return token ?? "transparent";
+          });
+        })
+        .join("\n");
+    },
+    [toMermaidColorToken],
+  );
 
   useEffect(() => {
     const sanitized = sanitizeMermaidStyleColors(code);
@@ -206,106 +261,167 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }
   }, [code, handleCodeChange, sanitizeMermaidStyleColors]);
 
-  const resolveSequenceDisplayName = useCallback((actorId: string) => {
-    const lines = code.split('\n');
-    for (const line of lines) {
-      const trimmed = line.trim();
-      const match = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i);
-      if (match && match[1] === actorId) {
-        // Always return the ID (alias key), not the display name
-        return match[1].trim();
+  const resolveSequenceDisplayName = useCallback(
+    (actorId: string) => {
+      const lines = code.split("\n");
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const match = trimmed.match(
+          /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+))?$/i,
+        );
+        if (match && match[1] === actorId) {
+          // Always return the ID (alias key), not the display name
+          return match[1].trim();
+        }
       }
-    }
-    return actorId;
-  }, [code]);
+      return actorId;
+    },
+    [code],
+  );
 
   const isSequenceMessageLine = useCallback((line: string) => {
     const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('%%')) return false;
-    const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-    if (keywords.some(kw => trimmed === kw || trimmed.startsWith(kw + ' '))) return false;
-    return trimmed.includes(':');
+    if (!trimmed || trimmed.startsWith("%%")) return false;
+    const keywords = [
+      "sequenceDiagram",
+      "Note",
+      "note",
+      "rect",
+      "alt",
+      "opt",
+      "loop",
+      "par",
+      "critical",
+      "option",
+      "else",
+      "end",
+      "participant",
+      "actor",
+      "autonumber",
+      "activate",
+      "deactivate",
+      "box",
+      "links",
+      "link",
+      "properties",
+      "details",
+    ];
+    if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
+    return trimmed.includes(":");
   }, []);
 
-  const getSequenceMessageEntries = useCallback((sourceCode: string) => {
-    const lines = sourceCode.split('\n');
-    const entries: Array<{ index: number; line: string }> = [];
-    let inFrontmatter = false;
+  const getSequenceMessageEntries = useCallback(
+    (sourceCode: string) => {
+      const lines = sourceCode.split("\n");
+      const entries: Array<{ index: number; line: string }> = [];
+      let inFrontmatter = false;
 
-    for (let i = 0; i < lines.length; i += 1) {
-      const trimmed = lines[i].trim();
-      if (trimmed === '---') {
-        inFrontmatter = !inFrontmatter;
-        continue;
+      for (let i = 0; i < lines.length; i += 1) {
+        const trimmed = lines[i].trim();
+        if (trimmed === "---") {
+          inFrontmatter = !inFrontmatter;
+          continue;
+        }
+        if (inFrontmatter) continue;
+        if (isSequenceMessageLine(lines[i])) {
+          entries.push({ index: i, line: lines[i] });
+        }
       }
-      if (inFrontmatter) continue;
-      if (isSequenceMessageLine(lines[i])) {
-        entries.push({ index: i, line: lines[i] });
-      }
-    }
 
-    return entries;
-  }, [isSequenceMessageLine]);
+      return entries;
+    },
+    [isSequenceMessageLine],
+  );
 
   const getSelectedSequenceParticipantForNote = useCallback(() => {
     if (!selectedNodeId) return null;
 
-    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+    if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
+      const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
       return resolveSequenceDisplayName(actorId);
     }
 
-    if (selectedNodeId.startsWith('SEQ_MSG_')) {
-      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    if (selectedNodeId.startsWith("SEQ_MSG_")) {
+      const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
       const msg = getSequenceMessageEntries(code)[idx]?.line?.trim();
-      const actorMatch = msg?.match(/^(\S+)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/);
+      const actorMatch = msg?.match(
+        /^(\S+)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/,
+      );
       if (actorMatch?.[1]) {
         return resolveSequenceDisplayName(actorMatch[1]);
       }
       return null;
     }
 
-    if (selectedNodeId.startsWith('SEQ_NOTE_')) {
-      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+    if (selectedNodeId.startsWith("SEQ_NOTE_")) {
+      const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
       const noteEntry = getSequenceNoteEntries(code)[idx];
       return noteEntry?.participant || null;
     }
 
     return null;
-  }, [code, getSequenceMessageEntries, getSequenceNoteEntries, resolveSequenceDisplayName, selectedNodeId]);
+  }, [
+    code,
+    getSequenceMessageEntries,
+    getSequenceNoteEntries,
+    resolveSequenceDisplayName,
+    selectedNodeId,
+  ]);
 
-  const handleAddSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
-    if (!selectedNodeId) return;
+  const handleAddSequenceNote = useCallback(
+    (position: "left" | "right" | "over") => {
+      if (!selectedNodeId) return;
 
-    const participant = getSelectedSequenceParticipantForNote();
-    if (!participant) return;
+      const participant = getSelectedSequenceParticipantForNote();
+      if (!participant) return;
 
-    let insertIndex = getSequenceMessageEntries(code).length;
-    if (selectedNodeId.startsWith('SEQ_MSG_')) {
-      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-      if (Number.isFinite(idx) && idx >= 0) {
-        insertIndex = idx;
+      let insertIndex = getSequenceMessageEntries(code).length;
+      if (selectedNodeId.startsWith("SEQ_MSG_")) {
+        const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+        if (Number.isFinite(idx) && idx >= 0) {
+          insertIndex = idx;
+        }
       }
-    }
 
-    const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
-    handleCodeChange(updatedCode);
-  }, [code, getSelectedSequenceParticipantForNote, getSequenceMessageEntries, handleCodeChange, insertSequenceNoteAtIndex, selectedNodeId]);
+      const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
+      handleCodeChange(updatedCode);
+    },
+    [
+      code,
+      getSelectedSequenceParticipantForNote,
+      getSequenceMessageEntries,
+      handleCodeChange,
+      insertSequenceNoteAtIndex,
+      selectedNodeId,
+    ],
+  );
 
-  const handleSequencePlusSelfLoop = useCallback((actorId: string, anchorY: number) => {
-    if (!actorId || !Number.isFinite(anchorY)) return;
-    const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
-    const actorNodeId = `SEQ_ACTOR_${actorId}`;
-    handleAddNodeFromSelected(actorNodeId, actorNodeId, undefined, insertIndex);
-  }, [getSequenceInsertIndexForAnchor, handleAddNodeFromSelected]);
+  const handleSequencePlusSelfLoop = useCallback(
+    (actorId: string, anchorY: number) => {
+      if (!actorId || !Number.isFinite(anchorY)) return;
+      const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
+      const actorNodeId = `SEQ_ACTOR_${actorId}`;
+      handleAddNodeFromSelected(actorNodeId, actorNodeId, undefined, insertIndex);
+    },
+    [getSequenceInsertIndexForAnchor, handleAddNodeFromSelected],
+  );
 
-  const handleSequencePlusNote = useCallback((actorId: string, anchorY: number, position: 'left' | 'right' | 'over') => {
-    if (!actorId || !Number.isFinite(anchorY)) return;
-    const participant = resolveSequenceDisplayName(actorId);
-    const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
-    const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
-    handleCodeChange(updatedCode);
-  }, [code, getSequenceInsertIndexForAnchor, handleCodeChange, insertSequenceNoteAtIndex, resolveSequenceDisplayName]);
+  const handleSequencePlusNote = useCallback(
+    (actorId: string, anchorY: number, position: "left" | "right" | "over") => {
+      if (!actorId || !Number.isFinite(anchorY)) return;
+      const participant = resolveSequenceDisplayName(actorId);
+      const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
+      const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
+      handleCodeChange(updatedCode);
+    },
+    [
+      code,
+      getSequenceInsertIndexForAnchor,
+      handleCodeChange,
+      insertSequenceNoteAtIndex,
+      resolveSequenceDisplayName,
+    ],
+  );
 
   // Insert a logic block fragment (loop/alt/opt/par/critical/break) or a `rect` highlight at the
   // chronological position indicated by `anchorY`. The block boilerplate is injected at the SOURCE
@@ -314,63 +430,78 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // requires the first two participants for the placeholder; we resolve them from the live lifelines
   // (falling back to A/B) so the inserted code parses without error. Routes through handleCodeChange
   // (single undo).
-  const handleSequencePlusBlock = useCallback((anchorY: number, type: 'loop' | 'alt' | 'opt' | 'par' | 'critical' | 'break' | 'rect') => {
-    if (!Number.isFinite(anchorY)) return;
-    const lifelines = getSequenceLifelines();
-    const a = lifelines[0]?.actorId ?? 'A';
-    const b = lifelines[1]?.actorId ?? lifelines[0]?.actorId ?? 'B';
+  const handleSequencePlusBlock = useCallback(
+    (anchorY: number, type: "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect") => {
+      if (!Number.isFinite(anchorY)) return;
+      const lifelines = getSequenceLifelines();
+      const a = lifelines[0]?.actorId ?? "A";
+      const b = lifelines[1]?.actorId ?? lifelines[0]?.actorId ?? "B";
 
-    let body = '';
-    if (type === 'alt') {
-      body = `    alt Condition\n        ${a}->>${b}: Message\n    else Alternative\n        ${a}->>${b}: Message\n    end`;
-    } else if (type === 'loop') {
-      body = `    loop Loop\n        ${a}->>${b}: Message\n    end`;
-    } else if (type === 'opt') {
-      body = `    opt Optional\n        ${a}->>${b}: Message\n    end`;
-    } else if (type === 'par') {
-      body = `    par Action 1\n        ${a}->>${b}: Message 1\n    and Action 2\n        ${a}->>${b}: Message 2\n    end`;
-    } else if (type === 'critical') {
-      body = `    critical Action\n        ${a}->>${b}: Message\n    option Failure\n        ${a}->>${b}: Message\n    end`;
-    } else if (type === 'break') {
-      body = `    break Condition\n        ${a}->>${b}: Message\n    end`;
-    } else {
-      // rect highlight
-      body = `    rect rgb(200, 220, 255)\n        ${a}->>${b}: Message\n    end`;
-    }
+      let body = "";
+      if (type === "alt") {
+        body = `    alt Condition\n        ${a}->>${b}: Message\n    else Alternative\n        ${a}->>${b}: Message\n    end`;
+      } else if (type === "loop") {
+        body = `    loop Loop\n        ${a}->>${b}: Message\n    end`;
+      } else if (type === "opt") {
+        body = `    opt Optional\n        ${a}->>${b}: Message\n    end`;
+      } else if (type === "par") {
+        body = `    par Action 1\n        ${a}->>${b}: Message 1\n    and Action 2\n        ${a}->>${b}: Message 2\n    end`;
+      } else if (type === "critical") {
+        body = `    critical Action\n        ${a}->>${b}: Message\n    option Failure\n        ${a}->>${b}: Message\n    end`;
+      } else if (type === "break") {
+        body = `    break Condition\n        ${a}->>${b}: Message\n    end`;
+      } else {
+        // rect highlight
+        body = `    rect rgb(200, 220, 255)\n        ${a}->>${b}: Message\n    end`;
+      }
 
-    const lines = code.split('\n');
-    const messageIndex = getSequenceInsertIndexForAnchor(anchorY);
-    const entries = getSequenceMessageEntries(code);
-    const insertAt = entries[messageIndex]?.index ?? (lines.length);
-    lines.splice(insertAt, 0, ...body.split('\n'));
-    handleCodeChange(lines.join('\n'));
-  }, [code, getSequenceInsertIndexForAnchor, getSequenceMessageEntries, getSequenceLifelines, handleCodeChange]);
+      const lines = code.split("\n");
+      const messageIndex = getSequenceInsertIndexForAnchor(anchorY);
+      const entries = getSequenceMessageEntries(code);
+      const insertAt = entries[messageIndex]?.index ?? lines.length;
+      lines.splice(insertAt, 0, ...body.split("\n"));
+      handleCodeChange(lines.join("\n"));
+    },
+    [
+      code,
+      getSequenceInsertIndexForAnchor,
+      getSequenceMessageEntries,
+      getSequenceLifelines,
+      handleCodeChange,
+    ],
+  );
 
   // Recolor an existing `rect` highlight (double-click the highlight box → color picker). The
   // line index comes from `resolveSequenceHighlightTarget` (Y-sorted DOM rects ↔ source rect
   // blocks); only the color argument after the `rect` keyword is rewritten, indentation preserved.
-  const handleRecolorSequenceHighlight = useCallback((lineIndex: number, color: string) => {
-    const lines = code.split('\n');
-    const line = lines[lineIndex];
-    if (line == null) return;
-    const m = line.match(/^(\s*)rect\b.*$/i);
-    if (!m) return;
-    const next = `${m[1]}rect ${color}`;
-    if (next === line) return;
-    lines[lineIndex] = next;
-    handleCodeChange(lines.join('\n'));
-  }, [code, handleCodeChange]);
+  const handleRecolorSequenceHighlight = useCallback(
+    (lineIndex: number, color: string) => {
+      const lines = code.split("\n");
+      const line = lines[lineIndex];
+      if (line == null) return;
+      const m = line.match(/^(\s*)rect\b.*$/i);
+      if (!m) return;
+      const next = `${m[1]}rect ${color}`;
+      if (next === line) return;
+      lines[lineIndex] = next;
+      handleCodeChange(lines.join("\n"));
+    },
+    [code, handleCodeChange],
+  );
 
-  const handleMoveSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
-    if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
-    const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
-    if (!Number.isFinite(idx) || idx < 0) return;
-    const updatedCode = updateNotePosition(code, idx, position);
-    if (updatedCode !== code) handleCodeChange(updatedCode);
-  }, [code, handleCodeChange, selectedNodeId, updateNotePosition]);
+  const handleMoveSequenceNote = useCallback(
+    (position: "left" | "right" | "over") => {
+      if (!selectedNodeId?.startsWith("SEQ_NOTE_")) return;
+      const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
+      if (!Number.isFinite(idx) || idx < 0) return;
+      const updatedCode = updateNotePosition(code, idx, position);
+      if (updatedCode !== code) handleCodeChange(updatedCode);
+    },
+    [code, handleCodeChange, selectedNodeId, updateNotePosition],
+  );
 
   const handleLinkSequenceNote = useCallback(() => {
-    toast.info('Link/Connect for sequence notes is not available yet.');
+    toast.info("Link/Connect for sequence notes is not available yet.");
   }, []);
 
   const handleResetStyle = useCallback(() => {
@@ -378,27 +509,30 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     let newCode = code;
 
     // 1. Remove style lines
-    const lines = newCode.split('\n');
-    const filteredLines = lines.filter(line => {
+    const lines = newCode.split("\n");
+    const filteredLines = lines.filter((line) => {
       const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
       return !isStyleLine;
     });
-    newCode = filteredLines.join('\n');
+    newCode = filteredLines.join("\n");
 
     // 2. Remove inline HTML formatting tags from label
-    const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+    const nodeRegex = new RegExp(
+      `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+      "m",
+    );
     const match = newCode.match(nodeRegex);
     if (match) {
       const originalLabel = match[3];
       const cleanLabel = originalLabel
-        .replace(/<b[^>]*>/gi, '')
-        .replace(/<\/b>/gi, '')
-        .replace(/<i[^>]*>/gi, '')
-        .replace(/<\/i>/gi, '')
-        .replace(/<span[^>]*>/gi, '')
-        .replace(/<\/span>/gi, '');
+        .replace(/<b[^>]*>/gi, "")
+        .replace(/<\/b>/gi, "")
+        .replace(/<i[^>]*>/gi, "")
+        .replace(/<\/i>/gi, "")
+        .replace(/<span[^>]*>/gi, "")
+        .replace(/<\/span>/gi, "");
 
-      const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+      const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
       newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);
     }
 
@@ -411,36 +545,48 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }, 50);
   }, [code, handleCodeChange, selectedNodeId, setSelectedNodeId]);
 
-  const handleUpdateEdgeStyle = useCallback((updates: { stroke?: string; arrowType?: string; label?: string }) => {
-    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
-    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
-    if (!src || !dst) return;
-    const updatedCode = updateLinkStyleAndLabel(code, src, dst, updates, occurrenceIndex);
-    const healedCode = rebuildLinkStyles(code, updatedCode);
-    handleCodeChange(healedCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+  const handleUpdateEdgeStyle = useCallback(
+    (updates: { stroke?: string; arrowType?: string; label?: string }) => {
+      if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      if (!src || !dst) return;
+      const updatedCode = updateLinkStyleAndLabel(code, src, dst, updates, occurrenceIndex);
+      const healedCode = rebuildLinkStyles(code, updatedCode);
+      handleCodeChange(healedCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
 
-  const handleUpdateEdgeColor = useCallback((hexColor: string) => {
-    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
-    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
-    if (!src || !dst) return;
-    const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
-    const updatedCode = updateLinkColor(code, linkIndex, hexColor);
-    handleCodeChange(updatedCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+  const handleUpdateEdgeColor = useCallback(
+    (hexColor: string) => {
+      if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      if (!src || !dst) return;
+      const linkIndex = getLinkIndex(code, src, dst, occurrenceIndex);
+      const updatedCode = updateLinkColor(code, linkIndex, hexColor);
+      handleCodeChange(updatedCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
 
-  const handleUpdateEdgeCurve = useCallback((curve: string) => {
-    const updatedCode = updateMermaidCurve(code, curve);
-    handleCodeChange(updatedCode);
-  }, [code, handleCodeChange]);
+  const handleUpdateEdgeCurve = useCallback(
+    (curve: string) => {
+      const updatedCode = updateMermaidCurve(code, curve);
+      handleCodeChange(updatedCode);
+    },
+    [code, handleCodeChange],
+  );
 
-  const handleUpdateEdgeAnimation = useCallback((animate: boolean) => {
-    if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
-    const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
-    if (!src || !dst) return;
-    const updatedCode = updateLinkAnimation(code, src, dst, occurrenceIndex, animate);
-    handleCodeChange(updatedCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+  const handleUpdateEdgeAnimation = useCallback(
+    (animate: boolean) => {
+      if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
+      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+      if (!src || !dst) return;
+      const updatedCode = updateLinkAnimation(code, src, dst, occurrenceIndex, animate);
+      handleCodeChange(updatedCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
 
   const handleDeleteEdge = useCallback(() => {
     if (!selectedNodeId || !isEdgeId(selectedNodeId)) return;
@@ -459,9 +605,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   };
 
   const handleThemeChange = (theme: string) => {
-    const validThemes = new Set(['default', 'forest', 'dark', 'neutral', 'base', 'redux']);
-    const safeTheme = validThemes.has(theme) ? theme : 'default';
-    const updatedCode = updateMermaidConfigProperty(code, 'theme', safeTheme);
+    const validThemes = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
+    const safeTheme = validThemes.has(theme) ? theme : "default";
+    const updatedCode = updateMermaidConfigProperty(code, "theme", safeTheme);
     handleCodeChange(updatedCode);
   };
 
@@ -469,51 +615,59 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     if (version.label?.trim()) return version.label.trim();
     const d = new Date(version.timestamp);
     const h = d.getHours() % 12 || 12;
-    const m = String(d.getMinutes()).padStart(2, '0');
-    const ampm = d.getHours() >= 12 ? 'PM' : 'AM';
+    const m = String(d.getMinutes()).padStart(2, "0");
+    const ampm = d.getHours() >= 12 ? "PM" : "AM";
     return `Snapshot ${index + 1} - ${h}:${m} ${ampm}`;
   }, []);
 
-  const persistHistoryEntries = useCallback(async (updatedHistory: VersionHistoryEntry[]) => {
-    if (!doc) return;
+  const persistHistoryEntries = useCallback(
+    async (updatedHistory: VersionHistoryEntry[]) => {
+      if (!doc) return;
 
-    try {
-      const response = await fetch(`/api/diagrams/${documentId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ versionHistory: updatedHistory }),
-      });
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ versionHistory: updatedHistory }),
+        });
 
-      if (!response.ok) {
-        throw new Error("Failed to update version history");
+        if (!response.ok) {
+          throw new Error("Failed to update version history");
+        }
+
+        const updatedDoc = await response.json();
+        setDoc(updatedDoc);
+        setHistoryDrafts(
+          Object.fromEntries(
+            (updatedDoc.versionHistory ?? []).map((version: VersionHistoryEntry, index: number) => [
+              version.id,
+              defaultHistoryLabel(version, index),
+            ]),
+          ),
+        );
+      } catch (error) {
+        toast.error("Failed to update version history");
       }
+    },
+    [defaultHistoryLabel, doc, documentId, setDoc],
+  );
 
-      const updatedDoc = await response.json();
-      setDoc(updatedDoc);
-      setHistoryDrafts(
-        Object.fromEntries(
-          (updatedDoc.versionHistory ?? []).map((version: VersionHistoryEntry, index: number) => [
-            version.id,
-            defaultHistoryLabel(version, index),
-          ])
-        )
-      );
-    } catch (error) {
-      toast.error("Failed to update version history");
-    }
-  }, [defaultHistoryLabel, doc, documentId, setDoc]);
-
-  const handleRollbackToVersion = useCallback((versionCode: string) => {
-    setIsHistoryOpen(false);
-    setPreviewVersionId(null);
-    handleCodeChange(versionCode);
-    toast.success('Rolled back successfully', {
-      description: 'The diagram has been restored to the selected version.',
-    });
-  }, [handleCodeChange]);
+  const handleRollbackToVersion = useCallback(
+    (versionCode: string) => {
+      setIsHistoryOpen(false);
+      setPreviewVersionId(null);
+      handleCodeChange(versionCode);
+      toast.success("Rolled back successfully", {
+        description: "The diagram has been restored to the selected version.",
+      });
+    },
+    [handleCodeChange],
+  );
 
   useEffect(() => {
-    const previewVersion = (doc?.versionHistory ?? []).find((version) => version.id === previewVersionId);
+    const previewVersion = (doc?.versionHistory ?? []).find(
+      (version) => version.id === previewVersionId,
+    );
     if (!isHistoryOpen || !previewVersion) {
       setPreviewSvgContent("");
       setPreviewParseError(null);
@@ -527,8 +681,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         setPreviewParseError(null);
         mermaid.initialize({
           startOnLoad: false,
-          theme: 'default',
-          securityLevel: 'loose',
+          theme: "default",
+          securityLevel: "loose",
           flowchart: { htmlLabels: true },
         });
         await mermaid.parse(previewVersion.code, { suppressErrors: true });
@@ -539,7 +693,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       } catch (error) {
         if (!cancelled) {
           setPreviewSvgContent("");
-          setPreviewParseError(error instanceof Error ? error.message : "Failed to render preview diagram");
+          setPreviewParseError(
+            error instanceof Error ? error.message : "Failed to render preview diagram",
+          );
         }
       }
     };
@@ -551,36 +707,38 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     };
   }, [doc?.versionHistory, isHistoryOpen, previewVersionId]);
 
-  const handleRenameHistoryEntry = useCallback((versionId: string, label: string) => {
-    if (!doc) return;
+  const handleRenameHistoryEntry = useCallback(
+    (versionId: string, label: string) => {
+      if (!doc) return;
 
-    const trimmedLabel = label.trim();
-    const updatedHistory = (doc.versionHistory ?? []).map((version) => (
-      version.id === versionId
-        ? { ...version, label: trimmedLabel || undefined }
-        : version
-    ));
+      const trimmedLabel = label.trim();
+      const updatedHistory = (doc.versionHistory ?? []).map((version) =>
+        version.id === versionId ? { ...version, label: trimmedLabel || undefined } : version,
+      );
 
-    setHistoryDrafts((current) => ({
-      ...current,
-      [versionId]: trimmedLabel || current[versionId] || '',
-    }));
-    void persistHistoryEntries(updatedHistory);
-  }, [doc, persistHistoryEntries]);
+      setHistoryDrafts((current) => ({
+        ...current,
+        [versionId]: trimmedLabel || current[versionId] || "",
+      }));
+      void persistHistoryEntries(updatedHistory);
+    },
+    [doc, persistHistoryEntries],
+  );
 
-  const handleToggleHistoryStar = useCallback((versionId: string) => {
-    if (!doc) return;
+  const handleToggleHistoryStar = useCallback(
+    (versionId: string) => {
+      if (!doc) return;
 
-    const updatedHistory = (doc.versionHistory ?? []).map((version) => (
-      version.id === versionId
-        ? { ...version, starred: !version.starred }
-        : version
-    ));
+      const updatedHistory = (doc.versionHistory ?? []).map((version) =>
+        version.id === versionId ? { ...version, starred: !version.starred } : version,
+      );
 
-    void persistHistoryEntries(updatedHistory);
-  }, [doc, persistHistoryEntries]);
+      void persistHistoryEntries(updatedHistory);
+    },
+    [doc, persistHistoryEntries],
+  );
 
-  const handleFontChange = (font: typeof FONT_OPTIONS[0]) => {
+  const handleFontChange = (font: (typeof FONT_OPTIONS)[0]) => {
     // Optimistically update selection highlight in the dropdown before Mermaid re-render finishes.
     setCurrentFont(font.label);
     const updatedCode = updateMermaidFontFamily(code, font.value);
@@ -588,172 +746,195 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   };
 
   const activeFontLabel = useMemo(() => {
-    if (currentFont && currentFont !== 'Default') return currentFont;
+    if (currentFont && currentFont !== "Default") return currentFont;
 
     const fontLineMatch = code.match(/fontFamily:\s*([^\n\r]+)/);
-    if (!fontLineMatch) return 'Default';
+    if (!fontLineMatch) return "Default";
 
     let fontVal = fontLineMatch[1].trim();
-    if ((fontVal.startsWith("'") && fontVal.endsWith("'")) || (fontVal.startsWith('"') && fontVal.endsWith('"'))) {
+    if (
+      (fontVal.startsWith("'") && fontVal.endsWith("'")) ||
+      (fontVal.startsWith('"') && fontVal.endsWith('"'))
+    ) {
       fontVal = fontVal.slice(1, -1);
     }
-    const normalizedFont = fontVal.replace(/["']/g, '').toLowerCase();
+    const normalizedFont = fontVal.replace(/["']/g, "").toLowerCase();
 
     const found = FONT_OPTIONS.find((f) => {
-      const optionPrimary = f.value.split(',')[0].replace(/["']/g, '').trim().toLowerCase();
+      const optionPrimary = f.value.split(",")[0].replace(/["']/g, "").trim().toLowerCase();
       return normalizedFont.includes(optionPrimary);
     });
 
-    return found?.label || 'Default';
+    return found?.label || "Default";
   }, [code, currentFont]);
 
-  const handleUpdateStyle = useCallback((property: string, value: string) => {
-    if (!selectedNodeId) return;
-    let newCode = code;
-    const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm');
-    const match = newCode.match(styleRegex);
-    if (match) {
-      let styleProps = match[1];
-      const propRegex = new RegExp(`${property}:[^,]+`);
-      if (propRegex.test(styleProps)) {
-        styleProps = styleProps.replace(propRegex, `${property}:${value}`);
-      } else {
-        styleProps += `,${property}:${value}`;
-      }
-      newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
-    } else {
-      newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
-    }
-    handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
-
-  const handleGlobalBoldItalic = useCallback((format: 'bold' | 'italic') => {
-    if (!selectedNodeId) return;
-
-    const toggleGlobalStyle = (text: string, style: 'bold' | 'italic') => {
-      let isBold = false;
-      let isItalic = false;
-
-      let temp = text.trim();
-      let peeled = true;
-      while (peeled) {
-        peeled = false;
-        if (temp.startsWith('<b>') && temp.endsWith('</b>')) {
-          isBold = true;
-          temp = temp.substring(3, temp.length - 4).trim();
-          peeled = true;
-        } else if (temp.startsWith('<i>') && temp.endsWith('</i>')) {
-          isItalic = true;
-          temp = temp.substring(3, temp.length - 4).trim();
-          peeled = true;
-        }
-      }
-
-      const cleanInner = temp
-        .replace(/<\/?b>/gi, '')
-        .replace(/<\/?i>/gi, '')
-        .replace(/<span[^>]*>/gi, '')
-        .replace(/<\/span>/gi, '');
-
-      if (style === 'bold') {
-        isBold = !isBold;
-      } else if (style === 'italic') {
-        isItalic = !isItalic;
-      }
-
-      let result = cleanInner;
-      if (isItalic) {
-        result = `<i>${result}</i>`;
-      }
-      if (isBold) {
-        result = `<b>${result}</b>`;
-      }
-      return result;
-    };
-
-    if (isEdgeId(selectedNodeId)) {
-      const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
-      if (!src || !dst) return;
-      const lines = code.split('\n');
-      let currentOccurrence = 0;
-      let currentLabel = "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith('%%') || trimmed.startsWith('subgraph') || trimmed.startsWith('end')) {
-          continue;
-        }
-        const linkLineRegex = new RegExp(`(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`, 'i');
-        const match = line.match(linkLineRegex);
-        if (match) {
-          if (currentOccurrence === occurrenceIndex) {
-            const middlePart = match[2];
-            const quoteMatch = middlePart.match(/"([^"]*)"/);
-            if (quoteMatch) {
-              currentLabel = quoteMatch[1];
-            } else {
-              const barMatch = middlePart.match(/\|([^|]*)\|/);
-              if (barMatch) {
-                currentLabel = barMatch[1];
-              }
-            }
-            break;
-          }
-          currentOccurrence++;
-        }
-      }
-      const newLabel = toggleGlobalStyle(currentLabel, format);
-      handleUpdateEdgeStyle({ label: newLabel });
-    } else {
-      const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
-      const match = code.match(nodeRegex);
-      let currentLabel = "";
-      if (match) {
-        currentLabel = match[3];
-      } else {
-        currentLabel = selectedNodeId;
-      }
-      const newLabel = toggleGlobalStyle(currentLabel, format);
+  const handleUpdateStyle = useCallback(
+    (property: string, value: string) => {
+      if (!selectedNodeId) return;
       let newCode = code;
+      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m");
+      const match = newCode.match(styleRegex);
       if (match) {
-        const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
-        newCode = newCode.replace(nodeRegexGlobal, `$1$2${newLabel}$4`);
+        let styleProps = match[1];
+        const propRegex = new RegExp(`${property}:[^,]+`);
+        if (propRegex.test(styleProps)) {
+          styleProps = styleProps.replace(propRegex, `${property}:${value}`);
+        } else {
+          styleProps += `,${property}:${value}`;
+        }
+        newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
       } else {
-        newCode += `\n    ${selectedNodeId}["${newLabel}"]`;
+        newCode += `\n    style ${selectedNodeId} ${property}:${value}`;
       }
       handleCodeChange(newCode);
-    }
-  }, [code, selectedNodeId, handleCodeChange, handleUpdateEdgeStyle]);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
 
-  const handleFormatNodeLabel = useCallback((format: string, colorValue?: string) => {
-    if (!selectedNodeId) return;
-    const getStyleVal = (property: string): string | null => {
-      const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, 'm'));
-      if (match) {
-        const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
-        return propMatch ? propMatch[1] : null;
-      }
-      return null;
-    };
+  const handleGlobalBoldItalic = useCallback(
+    (format: "bold" | "italic") => {
+      if (!selectedNodeId) return;
 
-    if (format === 'bold') {
-      handleGlobalBoldItalic('bold');
-      if (getStyleVal('font-weight')) {
-        handleUpdateStyle('font-weight', 'normal');
+      const toggleGlobalStyle = (text: string, style: "bold" | "italic") => {
+        let isBold = false;
+        let isItalic = false;
+
+        let temp = text.trim();
+        let peeled = true;
+        while (peeled) {
+          peeled = false;
+          if (temp.startsWith("<b>") && temp.endsWith("</b>")) {
+            isBold = true;
+            temp = temp.substring(3, temp.length - 4).trim();
+            peeled = true;
+          } else if (temp.startsWith("<i>") && temp.endsWith("</i>")) {
+            isItalic = true;
+            temp = temp.substring(3, temp.length - 4).trim();
+            peeled = true;
+          }
+        }
+
+        const cleanInner = temp
+          .replace(/<\/?b>/gi, "")
+          .replace(/<\/?i>/gi, "")
+          .replace(/<span[^>]*>/gi, "")
+          .replace(/<\/span>/gi, "");
+
+        if (style === "bold") {
+          isBold = !isBold;
+        } else if (style === "italic") {
+          isItalic = !isItalic;
+        }
+
+        let result = cleanInner;
+        if (isItalic) {
+          result = `<i>${result}</i>`;
+        }
+        if (isBold) {
+          result = `<b>${result}</b>`;
+        }
+        return result;
+      };
+
+      if (isEdgeId(selectedNodeId)) {
+        const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
+        if (!src || !dst) return;
+        const lines = code.split("\n");
+        let currentOccurrence = 0;
+        let currentLabel = "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (
+            !trimmed ||
+            trimmed.startsWith("%%") ||
+            trimmed.startsWith("subgraph") ||
+            trimmed.startsWith("end")
+          ) {
+            continue;
+          }
+          const linkLineRegex = new RegExp(
+            `(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`,
+            "i",
+          );
+          const match = line.match(linkLineRegex);
+          if (match) {
+            if (currentOccurrence === occurrenceIndex) {
+              const middlePart = match[2];
+              const quoteMatch = middlePart.match(/"([^"]*)"/);
+              if (quoteMatch) {
+                currentLabel = quoteMatch[1];
+              } else {
+                const barMatch = middlePart.match(/\|([^|]*)\|/);
+                if (barMatch) {
+                  currentLabel = barMatch[1];
+                }
+              }
+              break;
+            }
+            currentOccurrence++;
+          }
+        }
+        const newLabel = toggleGlobalStyle(currentLabel, format);
+        handleUpdateEdgeStyle({ label: newLabel });
+      } else {
+        const nodeRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+          "m",
+        );
+        const match = code.match(nodeRegex);
+        let currentLabel = "";
+        if (match) {
+          currentLabel = match[3];
+        } else {
+          currentLabel = selectedNodeId;
+        }
+        const newLabel = toggleGlobalStyle(currentLabel, format);
+        let newCode = code;
+        if (match) {
+          const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
+          newCode = newCode.replace(nodeRegexGlobal, `$1$2${newLabel}$4`);
+        } else {
+          newCode += `\n    ${selectedNodeId}["${newLabel}"]`;
+        }
+        handleCodeChange(newCode);
       }
-    } else if (format === 'italic') {
-      handleGlobalBoldItalic('italic');
-      if (getStyleVal('font-style')) {
-        handleUpdateStyle('font-style', 'normal');
+    },
+    [code, selectedNodeId, handleCodeChange, handleUpdateEdgeStyle],
+  );
+
+  const handleFormatNodeLabel = useCallback(
+    (format: string, colorValue?: string) => {
+      if (!selectedNodeId) return;
+      const getStyleVal = (property: string): string | null => {
+        const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m"));
+        if (match) {
+          const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
+          return propMatch ? propMatch[1] : null;
+        }
+        return null;
+      };
+
+      if (format === "bold") {
+        handleGlobalBoldItalic("bold");
+        if (getStyleVal("font-weight")) {
+          handleUpdateStyle("font-weight", "normal");
+        }
+      } else if (format === "italic") {
+        handleGlobalBoldItalic("italic");
+        if (getStyleVal("font-style")) {
+          handleUpdateStyle("font-style", "normal");
+        }
+      } else if (format === "color" && colorValue) {
+        handleUpdateStyle("color", colorValue);
       }
-    } else if (format === 'color' && colorValue) {
-      handleUpdateStyle('color', colorValue);
-    }
-  }, [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic]);
+    },
+    [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic],
+  );
 
   const handleFormatText = (format: string, colorValue?: string) => {
-    console.log('[handleFormatText] format:', format, 'colorValue:', colorValue);
+    console.log("[handleFormatText] format:", format, "colorValue:", colorValue);
     if (!inlineInputRef.current) {
-      console.log('[handleFormatText] inlineInputRef.current is null/undefined');
+      console.log("[handleFormatText] inlineInputRef.current is null/undefined");
       return;
     }
 
@@ -764,7 +945,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       _lastSelectionStart?: number;
       _lastSelectionEnd?: number;
     };
-    if (start === end && typeof augmentedInput._lastSelectionStart === 'number') {
+    if (start === end && typeof augmentedInput._lastSelectionStart === "number") {
       const lastStart = augmentedInput._lastSelectionStart;
       const lastEnd = augmentedInput._lastSelectionEnd ?? lastStart;
       if (lastStart !== lastEnd) {
@@ -774,7 +955,16 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }
 
     let selectedText = editingText.substring(start, end);
-    console.log('[handleFormatText] start:', start, 'end:', end, 'selectedText:', selectedText, 'editingText:', editingText);
+    console.log(
+      "[handleFormatText] start:",
+      start,
+      "end:",
+      end,
+      "selectedText:",
+      selectedText,
+      "editingText:",
+      editingText,
+    );
 
     const isSelectionEmpty = !selectedText;
     if (isSelectionEmpty) {
@@ -783,28 +973,32 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       selectedText = editingText;
     }
 
-    let before = '';
-    let after = '';
+    let before = "";
+    let after = "";
 
-    if (format === 'bold') {
-      before = '<b>';
-      after = '</b>';
-    } else if (format === 'italic') {
-      before = '<i>';
-      after = '</i>';
-    } else if (format === 'color' && colorValue) {
+    if (format === "bold") {
+      before = "<b>";
+      after = "</b>";
+    } else if (format === "italic") {
+      before = "<i>";
+      after = "</i>";
+    } else if (format === "color" && colorValue) {
       before = `<span style='color:${colorValue}'>`;
-      after = '</span>';
+      after = "</span>";
     }
 
-    const newText = editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
-    console.log('[handleFormatText] setting editingText to:', newText);
+    const newText =
+      editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
+    console.log("[handleFormatText] setting editingText to:", newText);
     setEditingText(newText);
 
     setTimeout(() => {
       if (inlineInputRef.current) {
         inlineInputRef.current.focus();
-        inlineInputRef.current.setSelectionRange(start, start + before.length + selectedText.length + after.length);
+        inlineInputRef.current.setSelectionRange(
+          start,
+          start + before.length + selectedText.length + after.length,
+        );
       }
     }, 10);
   };
@@ -819,15 +1013,39 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
 
     const isMessageLine = (line: string) => {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('%%')) return false;
-      const keywords = ['sequenceDiagram', 'Note', 'note', 'rect', 'alt', 'opt', 'loop', 'par', 'critical', 'option', 'else', 'end', 'participant', 'actor', 'autonumber', 'activate', 'deactivate', 'box', 'links', 'link', 'properties', 'details'];
-      if (keywords.some(kw => trimmed.startsWith(kw) || trimmed.startsWith(kw + ' '))) return false;
-      return trimmed.includes(':');
+      if (!trimmed || trimmed.startsWith("%%")) return false;
+      const keywords = [
+        "sequenceDiagram",
+        "Note",
+        "note",
+        "rect",
+        "alt",
+        "opt",
+        "loop",
+        "par",
+        "critical",
+        "option",
+        "else",
+        "end",
+        "participant",
+        "actor",
+        "autonumber",
+        "activate",
+        "deactivate",
+        "box",
+        "links",
+        "link",
+        "properties",
+        "details",
+      ];
+      if (keywords.some((kw) => trimmed.startsWith(kw) || trimmed.startsWith(kw + " ")))
+        return false;
+      return trimmed.includes(":");
     };
 
     const isNoteLine = (line: string) => {
       const trimmed = line.trim();
-      return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
+      return trimmed.startsWith("Note ") || trimmed.startsWith("note ");
     };
 
     const getCodeLineMappings = (lines: string[]) => {
@@ -835,134 +1053,154 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       let noteCount = 0;
       let inFrontmatter = false;
 
-      return lines.map((line, lineIndex) => {
-        const trimmed = line.trim();
+      return lines
+        .map((line, lineIndex) => {
+          const trimmed = line.trim();
 
-        // Skip frontmatter sections (--- ... ---)
-        if (trimmed === '---') {
-          inFrontmatter = !inFrontmatter;
+          // Skip frontmatter sections (--- ... ---)
+          if (trimmed === "---") {
+            inFrontmatter = !inFrontmatter;
+            return null;
+          }
+          if (inFrontmatter) return null;
+
+          if (isMessageLine(line)) {
+            return { type: "msg", index: msgCount++, lineIndex };
+          } else if (isNoteLine(line)) {
+            return { type: "note", index: noteCount++, lineIndex };
+          }
           return null;
-        }
-        if (inFrontmatter) return null;
-
-        if (isMessageLine(line)) {
-          return { type: 'msg', index: msgCount++, lineIndex };
-        } else if (isNoteLine(line)) {
-          return { type: 'note', index: noteCount++, lineIndex };
-        }
-        return null;
-      }).filter(m => m !== null) as { type: string; index: number; lineIndex: number }[];
+        })
+        .filter((m) => m !== null) as { type: string; index: number; lineIndex: number }[];
     };
 
-    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-      const newText = editingText.replace(/\n/g, '<br/>');
+    if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
+      const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
+      const newText = editingText.replace(/\n/g, "<br/>");
 
       let found = false;
-      const lines = code.split('\n');
-      newCode = lines.map(line => {
-        const trimmed = line.trim();
-        // Match all participant declaration types including special @{} syntax
-        // e.g. "participant P843@{ "type": "database" } as New Database"
-        // e.g. "participant Alice as Alice"
-        // e.g. "actor Bob"
-        const declMatch = trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?\s+as\s+(.+)$/i) ||
-          trimmed.match(/^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?$/i);
-        if (declMatch) {
-          const id = declMatch[2];
-          const alias = declMatch[3];
+      const lines = code.split("\n");
+      newCode = lines
+        .map((line) => {
+          const trimmed = line.trim();
+          // Match all participant declaration types including special @{} syntax
+          // e.g. "participant P843@{ "type": "database" } as New Database"
+          // e.g. "participant Alice as Alice"
+          // e.g. "actor Bob"
+          const declMatch =
+            trimmed.match(
+              /^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?\s+as\s+(.+)$/i,
+            ) ||
+            trimmed.match(
+              /^(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?$/i,
+            );
+          if (declMatch) {
+            const id = declMatch[2];
+            const alias = declMatch[3];
 
-          if (id === actorId) {
-            found = true;
-            if (alias !== undefined) {
-              // Replace "as [old alias]" at end of line
-              const asIdx = line.lastIndexOf(` as `);
-              if (asIdx !== -1) {
-                return line.substring(0, asIdx) + ` as ${newText}`;
+            if (id === actorId) {
+              found = true;
+              if (alias !== undefined) {
+                // Replace "as [old alias]" at end of line
+                const asIdx = line.lastIndexOf(` as `);
+                if (asIdx !== -1) {
+                  return line.substring(0, asIdx) + ` as ${newText}`;
+                }
+              } else {
+                // No alias yet — append "as [newText]"
+                return line.trimEnd() + ` as ${newText}`;
               }
-            } else {
-              // No alias yet — append "as [newText]"
-              return line.trimEnd() + ` as ${newText}`;
             }
           }
-        }
-        return line;
-      }).join('\n');
+          return line;
+        })
+        .join("\n");
 
       if (!found) {
         // Only insert a new declaration if we truly couldn't find this actor at all
-        const headerIdx = lines.findIndex(l => l.trim().startsWith('sequenceDiagram'));
+        const headerIdx = lines.findIndex((l) => l.trim().startsWith("sequenceDiagram"));
         const declLine = `    participant ${actorId} as ${newText}`;
         if (headerIdx !== -1) {
           lines.splice(headerIdx + 1, 0, declLine);
         } else {
-          lines.unshift('sequenceDiagram', declLine);
+          lines.unshift("sequenceDiagram", declLine);
         }
-        newCode = lines.join('\n');
+        newCode = lines.join("\n");
       }
-    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
-      const parts = selectedNodeId.split('_');
+    } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
+      const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, '<br/>');
-      const lines = code.split('\n');
+      const newText = editingText.replace(/\n/g, "<br/>");
+      const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
-      const targetMapping = mappings.find(m => m.type === 'msg' && m.index === targetIndex);
+      const targetMapping = mappings.find((m) => m.type === "msg" && m.index === targetIndex);
       if (targetMapping) {
         const lineIdx = targetMapping.lineIndex;
         const line = lines[lineIdx];
-        const colonIdx = line.indexOf(':');
+        const colonIdx = line.indexOf(":");
         if (colonIdx !== -1) {
-          lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
-          newCode = lines.join('\n');
+          lines[lineIdx] = line.substring(0, colonIdx + 1) + " " + newText;
+          newCode = lines.join("\n");
         }
       }
-    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
-      const parts = selectedNodeId.split('_');
+    } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
+      const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, '<br/>');
-      const lines = code.split('\n');
+      const newText = editingText.replace(/\n/g, "<br/>");
+      const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
-      const targetMapping = mappings.find(m => m.type === 'note' && m.index === targetIndex);
+      const targetMapping = mappings.find((m) => m.type === "note" && m.index === targetIndex);
       if (targetMapping) {
         const lineIdx = targetMapping.lineIndex;
         const line = lines[lineIdx];
-        const colonIdx = line.indexOf(':');
+        const colonIdx = line.indexOf(":");
         if (colonIdx !== -1) {
-          lines[lineIdx] = line.substring(0, colonIdx + 1) + ' ' + newText;
-          newCode = lines.join('\n');
+          lines[lineIdx] = line.substring(0, colonIdx + 1) + " " + newText;
+          newCode = lines.join("\n");
         }
       }
-    } else if (selectedNodeId.startsWith('SEQ_BLK_')) {
+    } else if (selectedNodeId.startsWith("SEQ_BLK_")) {
       // Rename a logic-block / section label (loop/alt/opt/par/critical/break opener, or an
       // else/and/option divider). The node id carries the absolute source line index. Only the
       // label portion after the keyword is rewritten; the keyword + indentation are preserved.
       // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
-      const lineIdx = parseInt(selectedNodeId.replace('SEQ_BLK_', ''), 10);
-      const newText = editingText.replace(/\n/g, ' ').trim();
-      const lines = code.split('\n');
+      const lineIdx = parseInt(selectedNodeId.replace("SEQ_BLK_", ""), 10);
+      const newText = editingText.replace(/\n/g, " ").trim();
+      const lines = code.split("\n");
       const line = lines[lineIdx];
       if (line != null) {
-        const m = line.match(/^(\s*)(loop|alt|opt|par|critical|break|else|and|option)\b[ \t]*(.*)$/i);
+        const m = line.match(
+          /^(\s*)(loop|alt|opt|par|critical|break|else|and|option)\b[ \t]*(.*)$/i,
+        );
         if (m) {
           lines[lineIdx] = newText ? `${m[1]}${m[2]} ${newText}` : `${m[1]}${m[2]}`;
-          newCode = lines.join('\n');
+          newCode = lines.join("\n");
         }
       }
-    } else if (selectedNodeId.startsWith('SEQ_')) {
-      const oldText = selectedNodeId.replace('SEQ_', '');
-      const newText = editingText.replace(/\n/g, '<br/>');
-      newCode = newCode.split('\n').map(line => {
-        if (line.includes(oldText)) {
-          return line.replace(oldText, newText);
-        }
-        return line;
-      }).join('\n');
+    } else if (selectedNodeId.startsWith("SEQ_")) {
+      const oldText = selectedNodeId.replace("SEQ_", "");
+      const newText = editingText.replace(/\n/g, "<br/>");
+      newCode = newCode
+        .split("\n")
+        .map((line) => {
+          if (line.includes(oldText)) {
+            return line.replace(oldText, newText);
+          }
+          return line;
+        })
+        .join("\n");
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
-        newCode = updateLinkStyleAndLabel(newCode, src, dst, { label: editingText }, occurrenceIndex);
+        newCode = updateLinkStyleAndLabel(
+          newCode,
+          src,
+          dst,
+          { label: editingText },
+          occurrenceIndex,
+        );
       }
     } else {
       // Flowchart cluster/subgraph title rename path.
@@ -970,20 +1208,23 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       // so generic node regex replacement may fail and incorrectly append a new node.
       let handledClusterRename = false;
       if (selectedSvgId && containerRef.current) {
-        const selectedEl = containerRef.current.querySelector(`#${CSS.escape(selectedSvgId)}`) as SVGElement | null;
-        if (selectedEl?.classList?.contains('cluster')) {
+        const selectedEl = containerRef.current.querySelector(
+          `#${CSS.escape(selectedSvgId)}`,
+        ) as SVGElement | null;
+        if (selectedEl?.classList?.contains("cluster")) {
           const oldLabel = (
-            selectedEl.querySelector('.cluster-label, .nodeLabel, text, tspan, p')?.textContent || ''
+            selectedEl.querySelector(".cluster-label, .nodeLabel, text, tspan, p")?.textContent ||
+            ""
           ).trim();
-          const lines = newCode.split('\n');
+          const lines = newCode.split("\n");
 
           const extractSubgraphLabel = (line: string): string | null => {
             const trimmed = line.trim();
-            if (!trimmed.startsWith('subgraph ')) return null;
+            if (!trimmed.startsWith("subgraph ")) return null;
             // subgraph id["Label"] or subgraph id[Label]
             const bracketMatch = trimmed.match(/^subgraph\s+\S+\s*\[(.*)\]\s*$/);
             if (bracketMatch) {
-              return bracketMatch[1].replace(/^"|"$/g, '').trim();
+              return bracketMatch[1].replace(/^"|"$/g, "").trim();
             }
             // subgraph "Label" or subgraph Label
             const plainMatch = trimmed.match(/^subgraph\s+(.+)$/);
@@ -1008,14 +1249,14 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             // Fallback: try matching subgraph id against selectedNodeId if possible.
             renameIndex = lines.findIndex((line) => {
               const trimmed = line.trim();
-              if (!trimmed.startsWith('subgraph ')) return false;
+              if (!trimmed.startsWith("subgraph ")) return false;
               return new RegExp(`^subgraph\\s+${selectedNodeId}\\b`).test(trimmed);
             });
           }
 
           if (renameIndex !== -1) {
             const original = lines[renameIndex];
-            const lead = original.match(/^\s*/)?.[0] || '';
+            const lead = original.match(/^\s*/)?.[0] || "";
             const trimmed = original.trim();
 
             // Preserve subgraph id; update visible title.
@@ -1023,7 +1264,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             if (idAndMaybeLabel) {
               const subId = idAndMaybeLabel[1];
               lines[renameIndex] = `${lead}subgraph ${subId}["${editingText}"]`;
-              newCode = lines.join('\n');
+              newCode = lines.join("\n");
               handledClusterRename = true;
             }
           }
@@ -1033,24 +1274,27 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       if (handledClusterRename) {
         // no-op, newCode already updated
       } else {
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+        const nodeRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+          "m",
+        );
         if (nodeRegex.test(newCode)) {
-          const nodeRegexGlobal = new RegExp(nodeRegex.source, 'gm');
+          const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
           newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
         } else {
           const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
           if (standaloneRegex.test(newCode)) {
             newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
           } else {
-            const lines = newCode.split('\n');
+            const lines = newCode.split("\n");
             let insertIndex = -1;
             for (let i = 0; i < lines.length; i++) {
               const trimmed = lines[i].trim();
               if (
-                trimmed.startsWith('style ') ||
-                trimmed.startsWith('linkStyle ') ||
-                trimmed.startsWith('classDef ') ||
-                trimmed.startsWith('class ')
+                trimmed.startsWith("style ") ||
+                trimmed.startsWith("linkStyle ") ||
+                trimmed.startsWith("classDef ") ||
+                trimmed.startsWith("class ")
               ) {
                 insertIndex = i;
                 break;
@@ -1060,7 +1304,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
             if (insertIndex !== -1) {
               lines.splice(insertIndex, 0, newDeclaration);
-              newCode = lines.join('\n');
+              newCode = lines.join("\n");
             } else {
               newCode += `\n${newDeclaration}`;
             }
@@ -1089,85 +1333,94 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // the current edit before any cross-element or background transition.
   commitEditRef.current = handleEditSubmit;
 
-  const handleChangeShape = useCallback((shape: ShapeOption) => {
-    if (!selectedNodeId) return;
-    let newCode = code;
-    const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const handleChangeShape = useCallback(
+    (shape: ShapeOption) => {
+      if (!selectedNodeId) return;
+      let newCode = code;
+      const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    // Remove standalone text-shape helper lines only; do not strip inline declarations
-    // that may be part of an edge statement on the same line.
-    const standaloneTextShapeRegex = new RegExp(`(^|\\n)\\s*${escapedNodeId}\\s*@\\{\\s*shape:\\s*text\\s*\\}\\s*(?=\\n|$)`, 'g');
-    newCode = newCode.replace(standaloneTextShapeRegex, '$1');
+      // Remove standalone text-shape helper lines only; do not strip inline declarations
+      // that may be part of an edge statement on the same line.
+      const standaloneTextShapeRegex = new RegExp(
+        `(^|\\n)\\s*${escapedNodeId}\\s*@\\{\\s*shape:\\s*text\\s*\\}\\s*(?=\\n|$)`,
+        "g",
+      );
+      newCode = newCode.replace(standaloneTextShapeRegex, "$1");
 
-    let replaced = false;
+      let replaced = false;
 
-    const formatReplacement = (label: string): string => {
-      if (shape.isText) {
-        return `${selectedNodeId}["${label}"]\\n    ${selectedNodeId}@{ shape: text }`;
+      const formatReplacement = (label: string): string => {
+        if (shape.isText) {
+          return `${selectedNodeId}["${label}"]\\n    ${selectedNodeId}@{ shape: text }`;
+        }
+        if (shape.expanded) {
+          return `${selectedNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
+        }
+        if (shape.b) {
+          return `${selectedNodeId}${shape.b[0]}"${label}"${shape.b[1]}`;
+        }
+        return `${selectedNodeId}["${label}"]`;
+      };
+
+      // Token-only replacement for @{} declarations. This preserves any trailing
+      // edge content on the same line, e.g. A@{...} --> B.
+      const atDeclarationRegex = new RegExp(
+        `${escapedNodeId}\\s*@\\{\\s*shape:[^,]+,\\s*label:\\s*["']?([\\s\\S]*?)["']?\\s*\\}`,
+        "g",
+      );
+      newCode = newCode.replace(atDeclarationRegex, (_m, label) => {
+        replaced = true;
+        return formatReplacement(label ?? selectedNodeId);
+      });
+
+      // Token-only replacement for bracket/delimiter based node shapes.
+      const bracketTokenRegex = new RegExp(
+        `${escapedNodeId}\\s*(?:\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`,
+        "gm",
+      );
+      newCode = newCode.replace(bracketTokenRegex, (_m, label) => {
+        replaced = true;
+        return formatReplacement(label ?? selectedNodeId);
+      });
+
+      if (!replaced) {
+        if (shape.isText) {
+          newCode += `\\n    ${selectedNodeId}["${selectedNodeId}"]\\n    ${selectedNodeId}@{ shape: text }`;
+        } else if (shape.expanded) {
+          newCode += `\\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
+        } else if (shape.b) {
+          newCode += `\\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
+        }
       }
-      if (shape.expanded) {
-        return `${selectedNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
-      }
-      if (shape.b) {
-        return `${selectedNodeId}${shape.b[0]}"${label}"${shape.b[1]}`;
-      }
-      return `${selectedNodeId}["${label}"]`;
-    };
 
-    // Token-only replacement for @{} declarations. This preserves any trailing
-    // edge content on the same line, e.g. A@{...} --> B.
-    const atDeclarationRegex = new RegExp(
-      `${escapedNodeId}\\s*@\\{\\s*shape:[^,]+,\\s*label:\\s*["']?([\\s\\S]*?)["']?\\s*\\}`,
-      'g'
-    );
-    newCode = newCode.replace(atDeclarationRegex, (_m, label) => {
-      replaced = true;
-      return formatReplacement(label ?? selectedNodeId);
-    });
-
-    // Token-only replacement for bracket/delimiter based node shapes.
-    const bracketTokenRegex = new RegExp(
-      `${escapedNodeId}\\s*(?:\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?([\\s\\S]*?)["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\})`,
-      'gm'
-    );
-    newCode = newCode.replace(bracketTokenRegex, (_m, label) => {
-      replaced = true;
-      return formatReplacement(label ?? selectedNodeId);
-    });
-
-    if (!replaced) {
-      if (shape.isText) {
-        newCode += `\\n    ${selectedNodeId}["${selectedNodeId}"]\\n    ${selectedNodeId}@{ shape: text }`;
-      } else if (shape.expanded) {
-        newCode += `\\n    ${selectedNodeId}@{ shape: ${shape.expanded}, label: "${selectedNodeId}" }`;
-      } else if (shape.b) {
-        newCode += `\\n    ${selectedNodeId}${shape.b[0]}"${selectedNodeId}"${shape.b[1]}`;
-      }
-    }
-
-    handleCodeChange(newCode);
-  }, [code, handleCodeChange, selectedNodeId]);
+      handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
 
   const handleDuplicateNode = useCallback(() => {
     if (!selectedNodeId) return;
     let newCode = code;
-    const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    let prefix = 'n';
+    let prefix = "n";
     const prefixMatch = selectedNodeId.match(/^([a-zA-Z]+)/);
     if (prefixMatch) {
       prefix = prefixMatch[1];
     }
 
     let i = 1;
-    while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, 'm').test(newCode)) {
+    while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(newCode)) {
       i++;
     }
     const newNodeId = `${prefix}${i}`;
 
-    const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+    const nodeRegex = new RegExp(
+      `(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+      "m",
+    );
     const match = newCode.match(nodeRegex);
-    let duplicatedDeclaration = '';
+    let duplicatedDeclaration = "";
     if (match) {
       duplicatedDeclaration = `    ${match[2].replace(selectedNodeId, newNodeId)}${match[3]}${match[4]}`;
     } else {
@@ -1175,14 +1428,16 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }
 
     // Keep duplicate inside the same subgraph block as the source node when possible.
-    const linesForPlacement = code.split('\n');
+    const linesForPlacement = code.split("\n");
     const declLineIdx = linesForPlacement.findIndex((line) => {
       const trimmed = line.trim();
-      return new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}([^a-zA-Z0-9_]|$)`).test(trimmed) &&
-        !trimmed.startsWith('style ') &&
-        !trimmed.startsWith('class ') &&
-        !trimmed.startsWith('classDef ') &&
-        !trimmed.startsWith('linkStyle ');
+      return (
+        new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}([^a-zA-Z0-9_]|$)`).test(trimmed) &&
+        !trimmed.startsWith("style ") &&
+        !trimmed.startsWith("class ") &&
+        !trimmed.startsWith("classDef ") &&
+        !trimmed.startsWith("linkStyle ")
+      );
     });
 
     let inserted = false;
@@ -1191,8 +1446,8 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       let targetEnd = -1;
       for (let i = 0; i < linesForPlacement.length; i++) {
         const t = linesForPlacement[i].trim();
-        if (t.startsWith('subgraph ')) stack.push(i);
-        else if (t === 'end' && stack.length > 0) {
+        if (t.startsWith("subgraph ")) stack.push(i);
+        else if (t === "end" && stack.length > 0) {
           const start = stack.pop()!;
           if (start <= declLineIdx && declLineIdx <= i) {
             targetEnd = i;
@@ -1202,7 +1457,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
 
       if (targetEnd !== -1) {
         linesForPlacement.splice(targetEnd, 0, `    ${duplicatedDeclaration.trim()}`);
-        newCode = linesForPlacement.join('\n');
+        newCode = linesForPlacement.join("\n");
         inserted = true;
       }
     }
@@ -1211,21 +1466,25 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       newCode += `\n${duplicatedDeclaration}`;
     }
 
-    const lines = newCode.split('\n');
+    const lines = newCode.split("\n");
     const propertiesToDuplicate: string[] = [];
     let copiedExplicitStyle = false;
-    lines.forEach(line => {
+    lines.forEach((line) => {
       if (line.match(new RegExp(`^\\s*style\\s+${escapedNodeId}\\s+`))) {
-        propertiesToDuplicate.push(line.replace(new RegExp(`style\\s+${escapedNodeId}`), `style ${newNodeId}`));
+        propertiesToDuplicate.push(
+          line.replace(new RegExp(`style\\s+${escapedNodeId}`), `style ${newNodeId}`),
+        );
         copiedExplicitStyle = true;
       }
       if (line.match(new RegExp(`^\\s*click\\s+${escapedNodeId}\\s+`))) {
-        propertiesToDuplicate.push(line.replace(new RegExp(`click\\s+${escapedNodeId}`), `click ${newNodeId}`));
+        propertiesToDuplicate.push(
+          line.replace(new RegExp(`click\\s+${escapedNodeId}`), `click ${newNodeId}`),
+        );
       }
       if (line.match(new RegExp(`^\\s*class\\s+.*\\b${escapedNodeId}\\b.*\\s+\\S+\\s*$`))) {
         const m = line.match(/^\s*class\s+(.+?)\s+(\S+)\s*$/);
         if (m) {
-          const nodeList = m[1].split(',').map(s => s.trim());
+          const nodeList = m[1].split(",").map((s) => s.trim());
           const className = m[2];
           if (nodeList.includes(selectedNodeId)) {
             propertiesToDuplicate.push(`    class ${newNodeId} ${className}`);
@@ -1233,11 +1492,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         }
       }
       if (line.match(new RegExp(`^\\s*${escapedNodeId}\\@\\{\\s*shape:`))) {
-        propertiesToDuplicate.push(line.replace(new RegExp(`^(\\s*)${escapedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`));
+        propertiesToDuplicate.push(
+          line.replace(new RegExp(`^(\\s*)${escapedNodeId}(\\@\\{.*\\})`), `$1${newNodeId}$2`),
+        );
       }
     });
     if (propertiesToDuplicate.length > 0) {
-      newCode += '\n' + propertiesToDuplicate.join('\n');
+      newCode += "\n" + propertiesToDuplicate.join("\n");
     }
 
     // Fallback style clone: if there was no explicit style line to copy, clone
@@ -1246,8 +1507,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       try {
         const selectedEl = document.getElementById(selectedSvgId);
         if (selectedEl) {
-          const shapeEl = selectedEl.querySelector('rect, circle, polygon, path.node, path, ellipse') as Element | null;
-          const textEl = selectedEl.querySelector('.label, text, .nodeLabel') as Element | null;
+          const shapeEl = selectedEl.querySelector(
+            "rect, circle, polygon, path.node, path, ellipse",
+          ) as Element | null;
+          const textEl = selectedEl.querySelector(".label, text, .nodeLabel") as Element | null;
 
           const shapeStyle = shapeEl ? window.getComputedStyle(shapeEl) : null;
           const textStyle = textEl ? window.getComputedStyle(textEl) : null;
@@ -1262,29 +1525,35 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           if (textColor) styleParts.push(`color:${textColor}`);
 
           if (styleParts.length > 0) {
-            newCode += `\n    style ${newNodeId} ${styleParts.join(',')}`;
+            newCode += `\n    style ${newNodeId} ${styleParts.join(",")}`;
           }
         }
       } catch (err) {
         // Non-fatal: duplication should still succeed even if style fallback fails.
-        console.warn('Duplicate style fallback failed:', err);
+        console.warn("Duplicate style fallback failed:", err);
       }
     }
 
-    const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
+    const toRegex = new RegExp(
+      `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`,
+      "g",
+    );
     const edgesToAppend = [];
     let matchTo;
     while ((matchTo = toRegex.exec(code)) !== null) {
       edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
     }
 
-    const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+    const fromRegex = new RegExp(
+      `(^|[^a-zA-Z0-9_])${escapedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
+      "g",
+    );
     let matchFrom;
     while ((matchFrom = fromRegex.exec(code)) !== null) {
       edgesToAppend.push(`\n    ${newNodeId} ${matchFrom[2]} ${matchFrom[3]}`);
     }
 
-    newCode += edgesToAppend.join('');
+    newCode += edgesToAppend.join("");
     handleCodeChange(newCode);
   }, [code, handleCodeChange, selectedNodeId, selectedSvgId, toMermaidColorToken]);
 
@@ -1296,54 +1565,72 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // row by kind + its per-kind DOM index; `toSlot` is the unified slot (0 = before first row,
   // M = after last). The single source line is spliced relative to the other rows, so unrelated
   // lines (blocks, participants) stay put. Routes through handleCodeChange (undo/autonumber).
-  const handleReorderSequenceItem = useCallback((item: { kind: 'msg' | 'note'; index: number }, toSlot: number) => {
-    const msgs = getSequenceMessageEntries(code).map((e, i) => ({ srcIndex: e.index, kind: 'msg' as const, domIndex: i }));
-    const notes = getSequenceNoteEntries(code).map((e, i) => ({ srcIndex: e.index, kind: 'note' as const, domIndex: i }));
-    const unified = [...msgs, ...notes].sort((a, b) => a.srcIndex - b.srcIndex);
-    const N = unified.length;
-    const fromPos = unified.findIndex((u) => u.kind === item.kind && u.domIndex === item.index);
-    if (fromPos < 0) return;
-    const slot = Math.max(0, Math.min(N, toSlot));
-    // Dropping into its own position is a no-op.
-    if (slot === fromPos || slot === fromPos + 1) return;
+  const handleReorderSequenceItem = useCallback(
+    (item: { kind: "msg" | "note"; index: number }, toSlot: number) => {
+      const msgs = getSequenceMessageEntries(code).map((e, i) => ({
+        srcIndex: e.index,
+        kind: "msg" as const,
+        domIndex: i,
+      }));
+      const notes = getSequenceNoteEntries(code).map((e, i) => ({
+        srcIndex: e.index,
+        kind: "note" as const,
+        domIndex: i,
+      }));
+      const unified = [...msgs, ...notes].sort((a, b) => a.srcIndex - b.srcIndex);
+      const N = unified.length;
+      const fromPos = unified.findIndex((u) => u.kind === item.kind && u.domIndex === item.index);
+      if (fromPos < 0) return;
+      const slot = Math.max(0, Math.min(N, toSlot));
+      // Dropping into its own position is a no-op.
+      if (slot === fromPos || slot === fromPos + 1) return;
 
-    const lines = code.split('\n');
-    const srcIdx = unified[fromPos].srcIndex;
-    const movedLine = lines[srcIdx];
+      const lines = code.split("\n");
+      const srcIdx = unified[fromPos].srcIndex;
+      const movedLine = lines[srcIdx];
 
-    // The row that should immediately FOLLOW the moved one is original unified[slot] — for BOTH
-    // up- and down-moves. (No +1 for down-moves: `slot` indexes the original array; the source
-    // line shift from removal is compensated below via `refOrigIndex > srcIdx`.)
-    let refOrigIndex: number | null = null;
-    if (slot < N) {
-      refOrigIndex = unified[slot].srcIndex;
-    }
+      // The row that should immediately FOLLOW the moved one is original unified[slot] — for BOTH
+      // up- and down-moves. (No +1 for down-moves: `slot` indexes the original array; the source
+      // line shift from removal is compensated below via `refOrigIndex > srcIdx`.)
+      let refOrigIndex: number | null = null;
+      if (slot < N) {
+        refOrigIndex = unified[slot].srcIndex;
+      }
 
-    lines.splice(srcIdx, 1); // remove source line first
+      lines.splice(srcIdx, 1); // remove source line first
 
-    let insertAt: number;
-    if (refOrigIndex !== null) {
-      insertAt = refOrigIndex > srcIdx ? refOrigIndex - 1 : refOrigIndex;
-    } else {
-      // Insert after the last remaining row.
-      const remaining = unified.filter((_, i) => i !== fromPos);
-      const last = remaining[remaining.length - 1];
-      const lastIdx = last.srcIndex > srcIdx ? last.srcIndex - 1 : last.srcIndex;
-      insertAt = lastIdx + 1;
-    }
+      let insertAt: number;
+      if (refOrigIndex !== null) {
+        insertAt = refOrigIndex > srcIdx ? refOrigIndex - 1 : refOrigIndex;
+      } else {
+        // Insert after the last remaining row.
+        const remaining = unified.filter((_, i) => i !== fromPos);
+        const last = remaining[remaining.length - 1];
+        const lastIdx = last.srcIndex > srcIdx ? last.srcIndex - 1 : last.srcIndex;
+        insertAt = lastIdx + 1;
+      }
 
-    lines.splice(insertAt, 0, movedLine);
+      lines.splice(insertAt, 0, movedLine);
 
-    // Moving a message/note OUT of a block can leave that block empty (e.g. dragging the sole
-    // message out of a `rect … end` highlight). An empty block (`rect`/`loop`/`opt`/`alt`/`par`/
-    // `critical`/`break` whose body has no message/note, only section dividers) parses but CRASHES
-    // Mermaid's sequence renderer during bounds calc, breaking the whole diagram. Prune any block
-    // left truly empty by the move so the reorder never produces an unrenderable diagram.
-    const pruned = pruneEmptySequenceBlocks(lines);
-    handleCodeChange(pruned.join('\n'));
-    setSelectionBox(null);
-    setSelectedNodeId(null);
-  }, [code, getSequenceMessageEntries, getSequenceNoteEntries, handleCodeChange, setSelectionBox, setSelectedNodeId]);
+      // Moving a message/note OUT of a block can leave that block empty (e.g. dragging the sole
+      // message out of a `rect … end` highlight). An empty block (`rect`/`loop`/`opt`/`alt`/`par`/
+      // `critical`/`break` whose body has no message/note, only section dividers) parses but CRASHES
+      // Mermaid's sequence renderer during bounds calc, breaking the whole diagram. Prune any block
+      // left truly empty by the move so the reorder never produces an unrenderable diagram.
+      const pruned = pruneEmptySequenceBlocks(lines);
+      handleCodeChange(pruned.join("\n"));
+      setSelectionBox(null);
+      setSelectedNodeId(null);
+    },
+    [
+      code,
+      getSequenceMessageEntries,
+      getSequenceNoteEntries,
+      handleCodeChange,
+      setSelectionBox,
+      setSelectedNodeId,
+    ],
+  );
 
   // Reorder participant lifelines (the visual columns) to match a new left-to-right order produced
   // by a horizontal drag on the canvas. Mermaid lays out columns in FIRST-APPEARANCE order, so to
@@ -1358,79 +1645,99 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // Only the participant declaration ORDER changes — message lines, blocks, notes, and the logical
   // flow are untouched. Routes through handleCodeChange (single undo). `newOrderIds` is the FULL set
   // of current lifelines (explicit + implicit) in the desired left-to-right order.
-  const handleReorderSequenceLifelines = useCallback((newOrderIds: string[]) => {
-    if (!Array.isArray(newOrderIds) || newOrderIds.length === 0) return;
-    const lines = code.split('\n');
+  const handleReorderSequenceLifelines = useCallback(
+    (newOrderIds: string[]) => {
+      if (!Array.isArray(newOrderIds) || newOrderIds.length === 0) return;
+      const lines = code.split("\n");
 
-    // [indent] keyword <id>[@{...}][ as Alias] — id is g2 (matched against the lifeline order).
-    const declRe = /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
-    // Map actorId → full declaration line for every existing declaration, plus their line indices.
-    const declLine = new Map<string, string>();
-    const declIdxs: number[] = [];
-    let inFrontmatter = false;
-    let headerEndIdx = 0; // index just after `sequenceDiagram` (+ autonumber/frontmatter)
-    for (let i = 0; i < lines.length; i += 1) {
-      const trimmed = lines[i].trim();
-      if (trimmed === '---') { inFrontmatter = !inFrontmatter; headerEndIdx = i + 1; continue; }
-      if (inFrontmatter) { headerEndIdx = i + 1; continue; }
-      if (/^sequenceDiagram\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
-      if (/^(autonumber|title)\b/.test(trimmed)) { headerEndIdx = i + 1; continue; }
-      const m = lines[i].match(declRe);
-      if (m && m[2]) {
-        declLine.set(m[2], lines[i]);
-        declIdxs.push(i);
+      // [indent] keyword <id>[@{...}][ as Alias] — id is g2 (matched against the lifeline order).
+      const declRe =
+        /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
+      // Map actorId → full declaration line for every existing declaration, plus their line indices.
+      const declLine = new Map<string, string>();
+      const declIdxs: number[] = [];
+      let inFrontmatter = false;
+      let headerEndIdx = 0; // index just after `sequenceDiagram` (+ autonumber/frontmatter)
+      for (let i = 0; i < lines.length; i += 1) {
+        const trimmed = lines[i].trim();
+        if (trimmed === "---") {
+          inFrontmatter = !inFrontmatter;
+          headerEndIdx = i + 1;
+          continue;
+        }
+        if (inFrontmatter) {
+          headerEndIdx = i + 1;
+          continue;
+        }
+        if (/^sequenceDiagram\b/.test(trimmed)) {
+          headerEndIdx = i + 1;
+          continue;
+        }
+        if (/^(autonumber|title)\b/.test(trimmed)) {
+          headerEndIdx = i + 1;
+          continue;
+        }
+        const m = lines[i].match(declRe);
+        if (m && m[2]) {
+          declLine.set(m[2], lines[i]);
+          declIdxs.push(i);
+        }
       }
-    }
 
-    const indent = '    ';
-    const block = newOrderIds.map((id) => declLine.get(id) ?? `${indent}participant ${id}`);
+      const indent = "    ";
+      const block = newOrderIds.map((id) => declLine.get(id) ?? `${indent}participant ${id}`);
 
-    // Insertion anchor: where the first existing declaration sat (so the block stays where the
-    // user already had it); otherwise right after the diagram header.
-    const anchor = declIdxs.length > 0 ? Math.min(...declIdxs) : headerEndIdx;
-    const declSet = new Set(declIdxs);
-    const remaining = lines.filter((_, i) => !declSet.has(i));
-    // Recompute the anchor against the filtered array (removed decls before the anchor shift it up).
-    const removedBeforeAnchor = declIdxs.filter((i) => i < anchor).length;
-    const insertAt = Math.max(0, Math.min(remaining.length, anchor - removedBeforeAnchor));
-    remaining.splice(insertAt, 0, ...block);
+      // Insertion anchor: where the first existing declaration sat (so the block stays where the
+      // user already had it); otherwise right after the diagram header.
+      const anchor = declIdxs.length > 0 ? Math.min(...declIdxs) : headerEndIdx;
+      const declSet = new Set(declIdxs);
+      const remaining = lines.filter((_, i) => !declSet.has(i));
+      // Recompute the anchor against the filtered array (removed decls before the anchor shift it up).
+      const removedBeforeAnchor = declIdxs.filter((i) => i < anchor).length;
+      const insertAt = Math.max(0, Math.min(remaining.length, anchor - removedBeforeAnchor));
+      remaining.splice(insertAt, 0, ...block);
 
-    const next = remaining.join('\n');
-    if (next === code) return; // order unchanged — no-op
-    handleCodeChange(next);
-    setSelectionBox(null);
-    setSelectedNodeId(null);
-  }, [code, handleCodeChange, setSelectionBox, setSelectedNodeId]);
+      const next = remaining.join("\n");
+      if (next === code) return; // order unchanged — no-op
+      handleCodeChange(next);
+      setSelectionBox(null);
+      setSelectedNodeId(null);
+    },
+    [code, handleCodeChange, setSelectionBox, setSelectedNodeId],
+  );
 
   // Change the connector operator of the selected sequence message (e.g. `->>` → `-->>` → `-x`),
   // preserving the sender, receiver, message text, and surrounding spacing. The operator is
   // swapped only at the position between the two actors and before the colon, so participant IDs
   // and the label payload are never touched.
-  const handleChangeSequenceMessageType = useCallback((operator: string) => {
-    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
-    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-    if (!Number.isFinite(idx) || idx < 0) return;
-    const entries = getSequenceMessageEntries(code);
-    const entry = entries[idx];
-    if (!entry) return;
+  const handleChangeSequenceMessageType = useCallback(
+    (operator: string) => {
+      if (!selectedNodeId?.startsWith("SEQ_MSG_")) return;
+      const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+      if (!Number.isFinite(idx) || idx < 0) return;
+      const entries = getSequenceMessageEntries(code);
+      const entry = entries[idx];
+      if (!entry) return;
 
-    const lines = code.split('\n');
-    const line = lines[entry.index];
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return;
-    const beforeColon = line.substring(0, colonIdx);
-    const afterColon = line.substring(colonIdx);
+      const lines = code.split("\n");
+      const line = lines[entry.index];
+      const colonIdx = line.indexOf(":");
+      if (colonIdx === -1) return;
+      const beforeColon = line.substring(0, colonIdx);
+      const afterColon = line.substring(colonIdx);
 
-    // Swap the operator that sits immediately before the receiver actor at the end of the
-    // pre-colon segment. Anchoring on the trailing actor avoids matching a stray `-` inside the
-    // sender id. Operator alternation is longest-first to avoid prefix conflicts.
-    const swapRe = /(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/;
-    if (!swapRe.test(beforeColon)) return;
-    const newBefore = beforeColon.replace(swapRe, `${operator}$2$3$4`);
-    if (newBefore === beforeColon) return;
-    lines[entry.index] = newBefore + afterColon;
-    handleCodeChange(lines.join('\n'));
-  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId]);
+      // Swap the operator that sits immediately before the receiver actor at the end of the
+      // pre-colon segment. Anchoring on the trailing actor avoids matching a stray `-` inside the
+      // sender id. Operator alternation is longest-first to avoid prefix conflicts.
+      const swapRe = /(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/;
+      if (!swapRe.test(beforeColon)) return;
+      const newBefore = beforeColon.replace(swapRe, `${operator}$2$3$4`);
+      if (newBefore === beforeColon) return;
+      lines[entry.index] = newBefore + afterColon;
+      handleCodeChange(lines.join("\n"));
+    },
+    [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId],
+  );
 
   // Reassign one endpoint (sender or receiver) of the selected sequence message to a different
   // participant — the code-side of the visual endpoint drag-and-drop. The sender, receiver, and
@@ -1439,43 +1746,48 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // colon onward), and all surrounding whitespace untouched. When the new sender equals the
   // receiver (or vice-versa) the resulting `A->>A: msg` line is a valid Mermaid self-message, so
   // cross→self and self→cross morphing falls out for free from this single substitution.
-  const handleChangeSequenceMessageEndpoint = useCallback((endpoint: 'source' | 'target', newActorId: string) => {
-    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return;
-    if (!newActorId) return;
-    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
-    if (!Number.isFinite(idx) || idx < 0) return;
-    const entry = getSequenceMessageEntries(code)[idx];
-    if (!entry) return;
+  const handleChangeSequenceMessageEndpoint = useCallback(
+    (endpoint: "source" | "target", newActorId: string) => {
+      if (!selectedNodeId?.startsWith("SEQ_MSG_")) return;
+      if (!newActorId) return;
+      const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+      if (!Number.isFinite(idx) || idx < 0) return;
+      const entry = getSequenceMessageEntries(code)[idx];
+      if (!entry) return;
 
-    const lines = code.split('\n');
-    const line = lines[entry.index];
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) return;
-    const beforeColon = line.substring(0, colonIdx);
-    const afterColon = line.substring(colonIdx);
+      const lines = code.split("\n");
+      const line = lines[entry.index];
+      const colonIdx = line.indexOf(":");
+      if (colonIdx === -1) return;
+      const beforeColon = line.substring(0, colonIdx);
+      const afterColon = line.substring(colonIdx);
 
-    // [indent] SENDER [sp] OPERATOR [sp] RECEIVER [trailing sp]. The SENDER group is LAZY
-    // (`\S+?`) so a greedy match can't swallow the leading dash of a double-dash operator
-    // (e.g. `B-->>A` would otherwise split as sender `B-` + op `-->>`).
-    const m = beforeColon.match(/^(\s*)(\S+?)(\s*)(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/);
-    if (!m) return;
-    const [, indent, from, sp1, op, sp2, to, sp3] = m;
-    const newFrom = endpoint === 'source' ? newActorId : from;
-    const newTo = endpoint === 'target' ? newActorId : to;
-    if (newFrom === from && newTo === to) return; // dropped on the same lifeline — no-op
-    lines[entry.index] = `${indent}${newFrom}${sp1}${op}${sp2}${newTo}${sp3}${afterColon}`;
-    handleCodeChange(lines.join('\n'));
-  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId]);
+      // [indent] SENDER [sp] OPERATOR [sp] RECEIVER [trailing sp]. The SENDER group is LAZY
+      // (`\S+?`) so a greedy match can't swallow the leading dash of a double-dash operator
+      // (e.g. `B-->>A` would otherwise split as sender `B-` + op `-->>`).
+      const m = beforeColon.match(
+        /^(\s*)(\S+?)(\s*)(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/,
+      );
+      if (!m) return;
+      const [, indent, from, sp1, op, sp2, to, sp3] = m;
+      const newFrom = endpoint === "source" ? newActorId : from;
+      const newTo = endpoint === "target" ? newActorId : to;
+      if (newFrom === from && newTo === to) return; // dropped on the same lifeline — no-op
+      lines[entry.index] = `${indent}${newFrom}${sp1}${op}${sp2}${newTo}${sp3}${afterColon}`;
+      handleCodeChange(lines.join("\n"));
+    },
+    [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId],
+  );
 
   // The connector operator of the currently selected sequence message (for the toolbar's active
   // state). Null when no message is selected or it can't be parsed.
   const currentSequenceMessageOperator = useMemo(() => {
-    if (!selectedNodeId?.startsWith('SEQ_MSG_')) return null;
-    const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+    if (!selectedNodeId?.startsWith("SEQ_MSG_")) return null;
+    const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
     if (!Number.isFinite(idx) || idx < 0) return null;
     const entry = getSequenceMessageEntries(code)[idx];
     if (!entry) return null;
-    const colonIdx = entry.line.indexOf(':');
+    const colonIdx = entry.line.indexOf(":");
     const beforeColon = colonIdx === -1 ? entry.line : entry.line.substring(0, colonIdx);
     const m = beforeColon.match(/(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/);
     return m ? m[1] : null;
@@ -1485,49 +1797,54 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // an optional `@{ ... }` metadata token (which carries the visual type). Used by both the type
   // mutation and the active-type read-back. The keyword (participant/actor/database/…) and the
   // `@{}` token are deliberately NOT captured for reuse — they are rewritten from scratch.
-  const SEQ_PARTICIPANT_DECL_RE = /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
+  const SEQ_PARTICIPANT_DECL_RE =
+    /^(\s*)(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(\s+as\s+.+?)?\s*$/i;
 
   // Change the architectural TYPE of the selected participant (e.g. standard box → database). Only
   // the type flag is rewritten; the participant id, alias, and indentation are preserved. `participant`
   // and `actor` use Mermaid keyword syntax (and any prior `@{}` token is dropped); every other type
   // uses the `participant ID@{ "type": "X" } as Alias` metadata form — matching what the top
   // "Participants" picker writes. Routes through handleCodeChange so it is a single undo transaction.
-  const handleChangeSequenceParticipantType = useCallback((typeKey: string) => {
-    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return;
-    if (!typeKey) return;
-    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-    const lines = code.split('\n');
-    for (let i = 0; i < lines.length; i += 1) {
-      const m = lines[i].match(SEQ_PARTICIPANT_DECL_RE);
-      if (!m || m[2] !== actorId) continue;
-      const indent = m[1] ?? '';
-      const asClause = m[3] ?? '';
-      let newLine: string;
-      if (typeKey === 'participant') newLine = `${indent}participant ${actorId}${asClause}`;
-      else if (typeKey === 'actor') newLine = `${indent}actor ${actorId}${asClause}`;
-      else newLine = `${indent}participant ${actorId}@{ "type": "${typeKey}" }${asClause}`;
-      if (newLine === lines[i]) return; // already this type — no-op
-      lines[i] = newLine;
-      handleCodeChange(lines.join('\n'));
-      return;
-    }
-  }, [code, handleCodeChange, selectedNodeId, SEQ_PARTICIPANT_DECL_RE]);
+  const handleChangeSequenceParticipantType = useCallback(
+    (typeKey: string) => {
+      if (!selectedNodeId?.startsWith("SEQ_ACTOR_")) return;
+      if (!typeKey) return;
+      const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
+      const lines = code.split("\n");
+      for (let i = 0; i < lines.length; i += 1) {
+        const m = lines[i].match(SEQ_PARTICIPANT_DECL_RE);
+        if (!m || m[2] !== actorId) continue;
+        const indent = m[1] ?? "";
+        const asClause = m[3] ?? "";
+        let newLine: string;
+        if (typeKey === "participant") newLine = `${indent}participant ${actorId}${asClause}`;
+        else if (typeKey === "actor") newLine = `${indent}actor ${actorId}${asClause}`;
+        else newLine = `${indent}participant ${actorId}@{ "type": "${typeKey}" }${asClause}`;
+        if (newLine === lines[i]) return; // already this type — no-op
+        lines[i] = newLine;
+        handleCodeChange(lines.join("\n"));
+        return;
+      }
+    },
+    [code, handleCodeChange, selectedNodeId, SEQ_PARTICIPANT_DECL_RE],
+  );
 
   // The visual type of the currently selected participant (for the toolbar's active-state
   // highlight). Reads the `@{ "type": "X" }` token if present, else falls back to the declaration
   // keyword (`actor` → actor, plain `participant` → participant). Null when no actor is selected.
   const currentSequenceParticipantType = useMemo(() => {
-    if (!selectedNodeId?.startsWith('SEQ_ACTOR_')) return null;
-    const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
-    const keywordRe = /^\s*(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(\s*@\{[^}]*\})?(?:\s+as\s+.+?)?\s*$/i;
-    for (const line of code.split('\n')) {
+    if (!selectedNodeId?.startsWith("SEQ_ACTOR_")) return null;
+    const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
+    const keywordRe =
+      /^\s*(participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(\s*@\{[^}]*\})?(?:\s+as\s+.+?)?\s*$/i;
+    for (const line of code.split("\n")) {
       const m = line.match(keywordRe);
       if (!m || m[2] !== actorId) continue;
-      const meta = m[3] || '';
+      const meta = m[3] || "";
       const typeMatch = meta.match(/"type"\s*:\s*"([^"]+)"/i);
       if (typeMatch) return typeMatch[1].toLowerCase();
       const keyword = m[1].toLowerCase();
-      return keyword === 'actor' ? 'actor' : keyword === 'participant' ? 'participant' : keyword;
+      return keyword === "actor" ? "actor" : keyword === "participant" ? "participant" : keyword;
     }
     return null;
   }, [code, selectedNodeId]);
@@ -1537,53 +1854,64 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     let newCode = code;
 
     // Sequence diagram deletions
-    if (selectedNodeId.startsWith('SEQ_ACTOR_')) {
-      const actorId = selectedNodeId.replace('SEQ_ACTOR_', '');
+    if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
+      const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
       // Remove participant/actor declaration lines and all lines referencing this actor
-      const lines = code.split('\n');
-      const filtered = lines.filter(line => {
+      const lines = code.split("\n");
+      const filtered = lines.filter((line) => {
         const trimmed = line.trim();
         // Remove declaration — handles all types including @{} syntax
         // e.g. "participant P843@{ "type": "database" } as New Database"
-        const declMatch = trimmed.match(/^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+.+)?$/i);
+        const declMatch = trimmed.match(
+          /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+(\S+?)(?:\s*@\{[^}]*\})?(?:\s+as\s+.+)?$/i,
+        );
         if (declMatch && declMatch[1] === actorId) return false;
         // Remove lines referencing this actor (as sender, receiver, or in notes)
         const refRegex = new RegExp(`(^|[^a-zA-Z0-9_])${actorId}(?:[^a-zA-Z0-9_]|$)`);
-        if (refRegex.test(trimmed) && trimmed !== 'sequenceDiagram') return false;
+        if (refRegex.test(trimmed) && trimmed !== "sequenceDiagram") return false;
         return true;
       });
-      newCode = filtered.join('\n');
-    } else if (selectedNodeId.startsWith('SEQ_MSG_')) {
-      const idx = parseInt(selectedNodeId.replace('SEQ_MSG_', ''), 10);
+      newCode = filtered.join("\n");
+    } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
+      const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
       if (Number.isFinite(idx) && idx >= 0) {
         const entries = getSequenceMessageEntries(code);
         const targetLineIndex = entries[idx]?.index;
         if (Number.isFinite(targetLineIndex)) {
-          const lines = code.split('\n');
+          const lines = code.split("\n");
           const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
-          newCode = filtered.join('\n');
+          newCode = filtered.join("\n");
         }
       }
-    } else if (selectedNodeId.startsWith('SEQ_NOTE_')) {
-      const idx = parseInt(selectedNodeId.replace('SEQ_NOTE_', ''), 10);
+    } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
+      const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
       const isNoteLine = (line: string) => {
         const trimmed = line.trim();
-        return trimmed.startsWith('Note ') || trimmed.startsWith('note ');
+        return trimmed.startsWith("Note ") || trimmed.startsWith("note ");
       };
-      const lines = code.split('\n');
+      const lines = code.split("\n");
       let noteCount = 0;
-      const filtered = lines.filter(line => {
+      const filtered = lines.filter((line) => {
         if (isNoteLine(line)) {
-          if (noteCount === idx) { noteCount++; return false; }
+          if (noteCount === idx) {
+            noteCount++;
+            return false;
+          }
           noteCount++;
         }
         return true;
       });
-      newCode = filtered.join('\n');
+      newCode = filtered.join("\n");
     } else {
       // Flowchart deletion logic
-      const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
-      const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
+      const toRegex = new RegExp(
+        `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`,
+        "g",
+      );
+      const fromRegex = new RegExp(
+        `(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
+        "g",
+      );
 
       const parents = [];
       let matchTo;
@@ -1597,10 +1925,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         children.push({ id: matchFrom[3], arrow: matchFrom[2] });
       }
 
-      const nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
+      const nodesToPreserve = new Set([...parents.map((p) => p.id), ...children.map((c) => c.id)]);
       const preservedDefinitions = [];
       for (const nodeId of nodesToPreserve) {
-        const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
+        const nodeRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+          "m",
+        );
         const match = newCode.match(nodeRegex);
         if (match) {
           preservedDefinitions.push(`\n    ${match[2]}${match[3]}${match[4]}`);
@@ -1609,42 +1940,55 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         }
       }
 
-      const lines = newCode.split('\n');
-      const filteredLines = lines.filter(line => {
+      const lines = newCode.split("\n");
+      const filteredLines = lines.filter((line) => {
         const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
         return !mentionRegex.test(line);
       });
 
-      newCode = filteredLines.join('\n') + preservedDefinitions.join('');
+      newCode = filteredLines.join("\n") + preservedDefinitions.join("");
     }
 
     handleCodeChange(newCode);
     setSelectionBox(null);
     setSelectedNodeId(null);
-  }, [code, getSequenceMessageEntries, handleCodeChange, selectedNodeId, setSelectionBox, setSelectedNodeId]);
+  }, [
+    code,
+    getSequenceMessageEntries,
+    handleCodeChange,
+    selectedNodeId,
+    setSelectionBox,
+    setSelectedNodeId,
+  ]);
 
-  const performNavigation = useCallback((url: string, message: string) => {
-    setNavigatingState({ isNavigating: true, message });
-    setTimeout(() => {
-      router.push(url);
-    }, 400);
-  }, [router]);
+  const performNavigation = useCallback(
+    (url: string, message: string) => {
+      setNavigatingState({ isNavigating: true, message });
+      setTimeout(() => {
+        router.push(url);
+      }, 400);
+    },
+    [router],
+  );
 
-  const handleNavigate = useCallback((url: string, message: string, skipConfirm: boolean = false) => {
-    if (skipConfirm) {
-      performNavigation(url, message);
-    } else {
-      setPendingNavigation({ url, message });
-      setIsExitConfirmOpen(true);
-    }
-  }, [performNavigation]);
+  const handleNavigate = useCallback(
+    (url: string, message: string, skipConfirm: boolean = false) => {
+      if (skipConfirm) {
+        performNavigation(url, message);
+      } else {
+        setPendingNavigation({ url, message });
+        setIsExitConfirmOpen(true);
+      }
+    },
+    [performNavigation],
+  );
 
   const handleConfirmExitNavigation = useCallback(() => {
     if (!pendingNavigation) return;
     const next = pendingNavigation;
     setPendingNavigation(null);
     setIsExitConfirmOpen(false);
-    if (next.url === '__browser_back__') {
+    if (next.url === "__browser_back__") {
       allowBrowserBackRef.current = true;
       window.history.back();
       return;
@@ -1672,7 +2016,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       if (res.ok) {
         const newDiagram = await res.json();
         toast.success("Diagram duplicated");
-        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...', true);
+        handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...", true);
       } else {
         toast.error("Failed to duplicate");
       }
@@ -1695,7 +2039,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       if (res.ok) {
         const newDiagram = await res.json();
         setIsNewDiagramOpen(false);
-        handleNavigate(`/editor/${newDiagram.id}`, 'Loading Workspace...');
+        handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...");
       } else {
         toast.error("Failed to create diagram");
       }
@@ -1721,7 +2065,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         body: JSON.stringify({ name: trimmed }),
       });
       if (res.ok) {
-        setDoc(prev => prev ? { ...prev, name: trimmed } : prev);
+        setDoc((prev) => (prev ? { ...prev, name: trimmed } : prev));
         toast.success("Diagram renamed");
         return true;
       }
@@ -1737,58 +2081,64 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     let finalSvgContent = svgContent;
 
     // Inject background if needed for SVG/PNG
-    if (exportBg !== 'transparent') {
+    if (exportBg !== "transparent") {
       const bgRect = `<rect width="100%" height="100%" fill="${exportBg}" />`;
       finalSvgContent = finalSvgContent.replace(/(<svg[^>]*>)/, `$1${bgRect}`);
     }
 
-    if (exportFormat === 'SVG') {
-      const blob = new Blob([finalSvgContent], { type: 'image/svg+xml' });
+    if (exportFormat === "SVG") {
+      const blob = new Blob([finalSvgContent], { type: "image/svg+xml" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `${doc?.name || 'diagram'}.svg`;
+      a.download = `${doc?.name || "diagram"}.svg`;
       a.click();
       URL.revokeObjectURL(url);
-    } else if (exportFormat === 'PNG') {
+    } else if (exportFormat === "PNG") {
       try {
-        const svgContainer = containerRef.current?.querySelector('svg');
+        const svgContainer = containerRef.current?.querySelector("svg");
         if (!svgContainer) throw new Error("No SVG found");
 
-        let w = 800; let h = 600;
-        const viewBoxMatch = svgContainer.outerHTML.match(/viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/);
-        if (viewBoxMatch) { w = parseFloat(viewBoxMatch[1]); h = parseFloat(viewBoxMatch[2]); }
+        let w = 800;
+        let h = 600;
+        const viewBoxMatch = svgContainer.outerHTML.match(
+          /viewBox="[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)"/,
+        );
+        if (viewBoxMatch) {
+          w = parseFloat(viewBoxMatch[1]);
+          h = parseFloat(viewBoxMatch[2]);
+        }
 
         // Use html-to-image to properly render foreignObjects and bypass canvas taint
         const dataUrl = await htmlToImage.toPng(svgContainer as unknown as HTMLElement, {
-          backgroundColor: exportBg === 'transparent' ? undefined : exportBg,
+          backgroundColor: exportBg === "transparent" ? undefined : exportBg,
           pixelRatio: 5,
           skipFonts: true,
-          fontEmbedCSS: '',
+          fontEmbedCSS: "",
           width: w,
           height: h,
           style: {
-            transform: 'none',
-            transformOrigin: 'top left',
+            transform: "none",
+            transformOrigin: "top left",
             width: `${w}px`,
-            height: `${h}px`
-          }
+            height: `${h}px`,
+          },
         });
 
-        const a = document.createElement('a');
+        const a = document.createElement("a");
         a.href = dataUrl;
-        a.download = `${doc?.name || 'diagram'}.png`;
+        a.download = `${doc?.name || "diagram"}.png`;
         a.click();
       } catch (err) {
         console.error("PNG export error", err);
         toast.error("Failed to export PNG");
       }
-    } else if (exportFormat === 'MMD') {
-      const blob = new Blob([code], { type: 'text/plain' });
+    } else if (exportFormat === "MMD") {
+      const blob = new Blob([code], { type: "text/plain" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
-      a.download = `${doc?.name || 'diagram'}.mmd`;
+      a.download = `${doc?.name || "diagram"}.mmd`;
       a.click();
       URL.revokeObjectURL(url);
     } else {
@@ -1803,67 +2153,77 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
 
       // Ignore keydown if the user is typing in any text input, textarea, or Monaco editor
       const activeEl = document.activeElement;
-      const isInputActive = activeEl && (
-        activeEl.tagName === 'INPUT' ||
-        activeEl.tagName === 'TEXTAREA' ||
-        activeEl.getAttribute('contenteditable') === 'true' ||
-        activeEl.closest('.monaco-editor')
-      );
+      const isInputActive =
+        activeEl &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.getAttribute("contenteditable") === "true" ||
+          activeEl.closest(".monaco-editor"));
 
       // Undo/redo: always handled globally (routes to Monaco even when canvas has focus)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         if (isInputActive) return; // let Monaco handle it natively
         e.preventDefault();
-        editorRef.current?.trigger('keyboard', 'undo', null);
+        editorRef.current?.trigger("keyboard", "undo", null);
         return;
       }
-      if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+      if (
+        (e.metaKey || e.ctrlKey) &&
+        (e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey))
+      ) {
         if (isInputActive) return;
         e.preventDefault();
-        editorRef.current?.trigger('keyboard', 'redo', null);
+        editorRef.current?.trigger("keyboard", "redo", null);
         return;
       }
 
       if (!selectedNodeId) return;
       if (isInputActive) return;
 
-      if (e.key === 'Backspace' || e.key === 'Delete') {
+      if (e.key === "Backspace" || e.key === "Delete") {
         e.preventDefault();
         if (isEdgeId(selectedNodeId)) {
           handleDeleteEdge();
         } else {
           handleDeleteNode();
         }
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'b') {
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
         e.preventDefault();
-        handleGlobalBoldItalic('bold');
-      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i') {
+        handleGlobalBoldItalic("bold");
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
         e.preventDefault();
-        handleGlobalBoldItalic('italic');
+        handleGlobalBoldItalic("italic");
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isLocked, isInlineEditing, selectedNodeId, handleDeleteEdge, handleDeleteNode, handleGlobalBoldItalic]);
+  }, [
+    isLocked,
+    isInlineEditing,
+    selectedNodeId,
+    handleDeleteEdge,
+    handleDeleteNode,
+    handleGlobalBoldItalic,
+  ]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
-      event.returnValue = '';
+      event.returnValue = "";
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
   }, []);
 
   useEffect(() => {
     const guardState = { __editorGuard: true };
-    window.history.pushState(guardState, '', window.location.href);
+    window.history.pushState(guardState, "", window.location.href);
 
     const handlePopState = () => {
       if (allowBrowserBackRef.current) {
@@ -1872,16 +2232,16 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       }
 
       setPendingNavigation({
-        url: '__browser_back__',
-        message: 'Leaving editor...'
+        url: "__browser_back__",
+        message: "Leaving editor...",
       });
       setIsExitConfirmOpen(true);
-      window.history.pushState(guardState, '', window.location.href);
+      window.history.pushState(guardState, "", window.location.href);
     };
 
-    window.addEventListener('popstate', handlePopState);
+    window.addEventListener("popstate", handlePopState);
     return () => {
-      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener("popstate", handlePopState);
     };
   }, []);
 
@@ -1906,7 +2266,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             The diagram you&apos;re looking for doesn&apos;t exist or may have been deleted.
           </p>
         </div>
-        <Button onClick={() => router.push('/')} className="mt-1">
+        <Button onClick={() => router.push("/")} className="mt-1">
           Back to Projects
         </Button>
       </div>
@@ -1914,10 +2274,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   }
 
   const currentType = determineDiagramType(code);
-  const sortedHistory = [...(doc?.versionHistory ?? [])]
-    .sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const sortedHistory = [...(doc?.versionHistory ?? [])].sort(
+    (a, b) =>
+      Number(Boolean(b.starred)) - Number(Boolean(a.starred)) ||
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+  );
   const selectedPreviewVersion = previewVersionId
-    ? sortedHistory.find((version) => version.id === previewVersionId) ?? null
+    ? (sortedHistory.find((version) => version.id === previewVersionId) ?? null)
     : null;
 
   return (
@@ -1926,7 +2289,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
           <div className="flex flex-col items-center gap-4">
             <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-            <p className="text-lg font-medium text-foreground animate-pulse">{navigatingState.message}</p>
+            <p className="text-lg font-medium text-foreground animate-pulse">
+              {navigatingState.message}
+            </p>
           </div>
         </div>
       )}
@@ -1937,8 +2302,14 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
         onDuplicate={handleDuplicate}
-        onNewDiagram={() => { setCreateName("New Diagram"); setIsNewDiagramOpen(true); }}
-        onRename={() => { setRenameName(doc?.name || ""); setIsRenameOpen(true); }}
+        onNewDiagram={() => {
+          setCreateName("New Diagram");
+          setIsNewDiagramOpen(true);
+        }}
+        onRename={() => {
+          setRenameName(doc?.name || "");
+          setIsRenameOpen(true);
+        }}
         onRenameInline={renameDiagram}
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
@@ -1963,11 +2334,17 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                 <div className="flex h-full flex-col">
                   <div className="flex items-center justify-between border-b border-border px-4 py-3 dark:bg-zinc-800/95">
                     <div>
-                      <p className="text-sm font-semibold text-foreground">Snapshot Diagram Preview</p>
-                      <p className="text-xs text-muted-foreground">Pan, zoom, and inspect safely before applying rollback.</p>
+                      <p className="text-sm font-semibold text-foreground">
+                        Snapshot Diagram Preview
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Pan, zoom, and inspect safely before applying rollback.
+                      </p>
                     </div>
                     <span className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground">
-                      {selectedPreviewVersion ? defaultHistoryLabel(selectedPreviewVersion, 0) : 'No snapshot selected'}
+                      {selectedPreviewVersion
+                        ? defaultHistoryLabel(selectedPreviewVersion, 0)
+                        : "No snapshot selected"}
                     </span>
                   </div>
 
@@ -1993,25 +2370,50 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                           {({ zoomIn, zoomOut, resetTransform }) => (
                             <>
                               <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 rounded-lg border border-border bg-background p-1 shadow-sm">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomIn()}>
-                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z" /></svg>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => zoomIn()}
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4">
+                                    <path
+                                      fill="currentColor"
+                                      d="M19 13H13V19H11V13H5V11H11V5H13V11H19V13Z"
+                                    />
+                                  </svg>
                                 </Button>
                                 <div className="h-px bg-border" />
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => resetTransform()}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => resetTransform()}
+                                >
                                   <span className="text-[10px] font-bold">1:1</span>
                                 </Button>
                                 <div className="h-px bg-border" />
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => zoomOut()}>
-                                  <svg viewBox="0 0 24 24" className="h-4 w-4"><path fill="currentColor" d="M19 13H5V11H19V13Z" /></svg>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => zoomOut()}
+                                >
+                                  <svg viewBox="0 0 24 24" className="h-4 w-4">
+                                    <path fill="currentColor" d="M19 13H5V11H19V13Z" />
+                                  </svg>
                                 </Button>
                               </div>
 
                               <TransformComponent
-                                wrapperStyle={{ width: '100%', height: '100%' }}
-                                contentStyle={{ width: '100%', height: '100%' }}
+                                wrapperStyle={{ width: "100%", height: "100%" }}
+                                contentStyle={{ width: "100%", height: "100%" }}
                               >
                                 <div className="flex h-full w-full cursor-grab items-center justify-center bg-white active:cursor-grabbing">
-                                  <div className="select-none" dangerouslySetInnerHTML={{ __html: previewSvgContent }} />
+                                  <div
+                                    className="select-none"
+                                    dangerouslySetInnerHTML={{ __html: previewSvgContent }}
+                                  />
                                 </div>
                               </TransformComponent>
                             </>
@@ -2025,8 +2427,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                     ) : (
                       <div className="flex h-full items-center justify-center p-8">
                         <div className="max-w-md text-center">
-                          <p className="text-sm font-medium text-foreground">Select a snapshot to preview</p>
-                          <p className="mt-1 text-sm text-muted-foreground">Use the Preview button in the right panel to render that version on this read-only canvas.</p>
+                          <p className="text-sm font-medium text-foreground">
+                            Select a snapshot to preview
+                          </p>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            Use the Preview button in the right panel to render that version on this
+                            read-only canvas.
+                          </p>
                         </div>
                       </div>
                     )}
@@ -2054,7 +2461,20 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                       className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                       aria-label="Close version history"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
                     </button>
                   </div>
                 </div>
@@ -2065,11 +2485,14 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                       <div>
                         <p className="text-sm font-medium text-foreground">Current saved version</p>
                         <p className="text-xs text-muted-foreground">
-                          {doc?.updatedAt ? format(new Date(doc.updatedAt), 'MMM d, yyyy h:mm a') : 'Unknown save time'}
+                          {doc?.updatedAt
+                            ? format(new Date(doc.updatedAt), "MMM d, yyyy h:mm a")
+                            : "Unknown save time"}
                         </p>
                       </div>
                       <span className="rounded-full border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                        {doc?.versionHistory?.length ?? 0} snapshot{(doc?.versionHistory?.length ?? 0) === 1 ? '' : 's'}
+                        {doc?.versionHistory?.length ?? 0} snapshot
+                        {(doc?.versionHistory?.length ?? 0) === 1 ? "" : "s"}
                       </span>
                     </div>
                   </div>
@@ -2077,7 +2500,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                   <div className="space-y-3">
                     {sortedHistory.length > 0 ? (
                       sortedHistory.map((version, index) => (
-                        <div key={version.id} className={`rounded-lg border bg-background shadow-sm transition-colors ${previewVersionId === version.id ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-border'}`}>
+                        <div
+                          key={version.id}
+                          className={`rounded-lg border bg-background shadow-sm transition-colors ${previewVersionId === version.id ? "border-indigo-500 ring-1 ring-indigo-500/30" : "border-border"}`}
+                        >
                           <div className="space-y-3 p-4">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1 space-y-2">
@@ -2086,22 +2512,40 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                                     type="button"
                                     onClick={() => handleToggleHistoryStar(version.id)}
                                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                                    aria-label={version.starred ? 'Unstar history entry' : 'Star history entry'}
-                                    title={version.starred ? 'Unstar' : 'Star'}
+                                    aria-label={
+                                      version.starred
+                                        ? "Unstar history entry"
+                                        : "Star history entry"
+                                    }
+                                    title={version.starred ? "Unstar" : "Star"}
                                   >
-                                    <Star className={`h-3.5 w-3.5 ${version.starred ? 'fill-amber-400 text-amber-400' : ''}`} />
+                                    <Star
+                                      className={`h-3.5 w-3.5 ${version.starred ? "fill-amber-400 text-amber-400" : ""}`}
+                                    />
                                   </button>
                                   <Input
-                                    value={historyDrafts[version.id] ?? defaultHistoryLabel(version, index)}
-                                    onChange={(event) => setHistoryDrafts((current) => ({ ...current, [version.id]: event.target.value }))}
-                                    onBlur={(event) => handleRenameHistoryEntry(version.id, event.target.value)}
-                                    onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
+                                    value={
+                                      historyDrafts[version.id] ??
+                                      defaultHistoryLabel(version, index)
+                                    }
+                                    onChange={(event) =>
+                                      setHistoryDrafts((current) => ({
+                                        ...current,
+                                        [version.id]: event.target.value,
+                                      }))
+                                    }
+                                    onBlur={(event) =>
+                                      handleRenameHistoryEntry(version.id, event.target.value)
+                                    }
+                                    onKeyDown={(event) => {
+                                      if (event.key === "Enter") event.currentTarget.blur();
+                                    }}
                                     className="h-7 flex-1 bg-background text-xs"
                                     aria-label="Rename history entry"
                                   />
                                 </div>
                                 <p className="text-xs text-muted-foreground">
-                                  {format(new Date(version.timestamp), 'MMM d, yyyy h:mm a')}
+                                  {format(new Date(version.timestamp), "MMM d, yyyy h:mm a")}
                                 </p>
                               </div>
                             </div>
@@ -2110,18 +2554,22 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => setPreviewVersionId(previewVersionId === version.id ? null : version.id)}
+                                onClick={() =>
+                                  setPreviewVersionId(
+                                    previewVersionId === version.id ? null : version.id,
+                                  )
+                                }
                                 className="h-7 px-2 text-xs text-muted-foreground"
                               >
-                                {previewVersionId === version.id ? 'Hide Preview' : 'Preview'}
+                                {previewVersionId === version.id ? "Hide Preview" : "Preview"}
                               </Button>
                               <Button
-                                variant={previewVersionId === version.id ? 'default' : 'outline'}
+                                variant={previewVersionId === version.id ? "default" : "outline"}
                                 size="sm"
                                 onClick={() => handleRollbackToVersion(version.code)}
                                 className="h-7 px-2 text-xs"
                               >
-                                {previewVersionId === version.id ? 'Apply Rollback' : 'Rollback'}
+                                {previewVersionId === version.id ? "Apply Rollback" : "Rollback"}
                               </Button>
                             </div>
                           </div>
@@ -2161,7 +2609,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             </p>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={handleCancelExitNavigation}>Stay</Button>
+            <Button variant="outline" onClick={handleCancelExitNavigation}>
+              Stay
+            </Button>
             <Button onClick={handleConfirmExitNavigation}>Leave Editor</Button>
           </DialogFooter>
         </DialogContent>
@@ -2170,7 +2620,11 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       <ResizablePanelGroup orientation="horizontal" className="flex-grow">
         {isCodePanelOpen && (
           <>
-            <ResizablePanel defaultSize={30} minSize={20} className="bg-background flex flex-col border-r border-border">
+            <ResizablePanel
+              defaultSize={30}
+              minSize={20}
+              className="bg-background flex flex-col border-r border-border"
+            >
               <EditorCodePanel
                 code={code}
                 handleCodeChange={handleCodeChange}
@@ -2182,7 +2636,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           </>
         )}
 
-        <ResizablePanel defaultSize={isCodePanelOpen ? 70 : 100} className="bg-white relative overflow-hidden text-zinc-900">
+        <ResizablePanel
+          defaultSize={isCodePanelOpen ? 70 : 100}
+          className="bg-white relative overflow-hidden text-zinc-900"
+        >
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
             <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
               <Button
@@ -2200,30 +2657,56 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               </Button>
               <div className="h-5 w-px bg-border" />
 
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'undo', null)} title="Undo">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => editorRef.current?.trigger("keyboard", "undo", null)}
+                title="Undo"
+              >
                 <Undo2 className="w-4 h-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground" onClick={() => editorRef.current?.trigger('keyboard', 'redo', null)} title="Redo">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                onClick={() => editorRef.current?.trigger("keyboard", "redo", null)}
+                title="Redo"
+              >
                 <Redo2 className="w-4 h-4" />
               </Button>
               <div className="h-5 w-px bg-border" />
 
               <DropdownMenu>
-                <DropdownMenuTrigger render={
-                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
-                    <div className={`w-5 h-5 rounded-full border ${currentTheme === 'dark' ? 'bg-zinc-800 border-zinc-900' : currentTheme === 'forest' ? 'bg-green-400 border-green-500' : currentTheme === 'neutral' ? 'bg-slate-200 border-slate-300' : currentTheme === 'base' ? 'bg-orange-100 border-orange-200' : currentTheme === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'}`} />
-                  </Button>
-                } />
-                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                    >
+                      <div
+                        className={`w-5 h-5 rounded-full border ${currentTheme === "dark" ? "bg-zinc-800 border-zinc-900" : currentTheme === "forest" ? "bg-green-400 border-green-500" : currentTheme === "neutral" ? "bg-slate-200 border-slate-300" : currentTheme === "base" ? "bg-orange-100 border-orange-200" : currentTheme === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"}`}
+                      />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent
+                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                  sideOffset={10}
+                  align="start"
+                >
                   <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
                   <div className="flex flex-col">
-                    {['default', 'forest', 'dark', 'neutral', 'base', 'redux'].map((t) => (
+                    {["default", "forest", "dark", "neutral", "base", "redux"].map((t) => (
                       <DropdownMenuItem
                         key={t}
                         onClick={() => handleThemeChange(t)}
                         className="flex items-center gap-3 cursor-pointer"
                       >
-                        <div className={`w-4 h-4 rounded border ${t === 'dark' ? 'bg-zinc-800 border-zinc-900' : t === 'forest' ? 'bg-green-200 border-green-300' : t === 'neutral' ? 'bg-slate-200 border-slate-300' : t === 'base' ? 'bg-orange-100 border-orange-200' : t === 'redux' ? 'bg-[#4f197b] border-[#4f197b]' : 'bg-pink-100 border-pink-200'} ${currentTheme === t ? 'ring-2 ring-indigo-500' : ''}`} />
+                        <div
+                          className={`w-4 h-4 rounded border ${t === "dark" ? "bg-zinc-800 border-zinc-900" : t === "forest" ? "bg-green-200 border-green-300" : t === "neutral" ? "bg-slate-200 border-slate-300" : t === "base" ? "bg-orange-100 border-orange-200" : t === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"} ${currentTheme === t ? "ring-2 ring-indigo-500" : ""}`}
+                        />
                         <span className="capitalize">{t}</span>
                       </DropdownMenuItem>
                     ))}
@@ -2232,47 +2715,69 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               </DropdownMenu>
 
               <DropdownMenu>
-                <DropdownMenuTrigger render={
-                  <Button variant="ghost" size="icon" className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center">
-                    <Type className="w-4 h-4" />
-                  </Button>
-                } />
-                <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2" sideOffset={10} align="start">
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                    >
+                      <Type className="w-4 h-4" />
+                    </Button>
+                  }
+                />
+                <DropdownMenuContent
+                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                  sideOffset={10}
+                  align="start"
+                >
                   <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
                   <div className="flex flex-col">
                     {FONT_OPTIONS.map((f) => (
                       <DropdownMenuItem
                         key={f.label}
                         onClick={() => handleFontChange(f)}
-                        className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? 'bg-accent/70' : ''}`}
+                        className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? "bg-accent/70" : ""}`}
                       >
-                        <span className={activeFontLabel === f.label ? 'font-bold text-indigo-500' : ''}>{f.label}</span>
+                        <span
+                          className={activeFontLabel === f.label ? "font-bold text-indigo-500" : ""}
+                        >
+                          {f.label}
+                        </span>
                       </DropdownMenuItem>
                     ))}
                   </div>
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              {currentType === 'sequence' && (
+              {currentType === "sequence" && (
                 <>
                   <div className="h-5 w-px bg-border mx-1" />
                   <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">Auto Number</span>
+                    <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
+                      Auto Number
+                    </span>
                     <button
                       onClick={() => {
                         if (code.match(/autonumber/i)) {
-                          handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ''));
+                          handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ""));
                         } else {
-                          handleCodeChange(code.replace(/(sequenceDiagram)/i, '$1\n    autonumber'));
+                          handleCodeChange(
+                            code.replace(/(sequenceDiagram)/i, "$1\n    autonumber"),
+                          );
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-                        }`}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                        code.match(/autonumber/i)
+                          ? "bg-indigo-600"
+                          : "bg-slate-200 dark:bg-slate-700"
+                      }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                          }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                        }`}
                       />
                     </button>
                   </div>
@@ -2281,17 +2786,19 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
 
               <div className="h-5 w-px bg-border" />
 
-              {DiagramRegistry[currentType] && DiagramRegistry[currentType].ToolbarComponent && (() => {
-                const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
-                return ToolbarComp ? (
-                  <ToolbarComp
-                    code={code}
-                    setCode={handleCodeChange}
-                    editorRef={editorRef}
-                    selectedNodeId={selectedNodeId}
-                  />
-                ) : null;
-              })()}
+              {DiagramRegistry[currentType] &&
+                DiagramRegistry[currentType].ToolbarComponent &&
+                (() => {
+                  const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
+                  return ToolbarComp ? (
+                    <ToolbarComp
+                      code={code}
+                      setCode={handleCodeChange}
+                      editorRef={editorRef}
+                      selectedNodeId={selectedNodeId}
+                    />
+                  ) : null;
+                })()}
             </div>
           </div>
 
@@ -2351,10 +2858,18 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             inlineInputRef={inlineInputRef}
             handleAddNodeFromSelected={handleAddNodeFromSelected}
             onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
-            onHoveredSequenceMessageClick={(index) => triggerHoveredSequenceMessageSelection(false, index)}
-            onHoveredSequenceMessageDoubleClick={(index) => triggerHoveredSequenceMessageSelection(true, index)}
-            onHoveredSequenceNoteClick={(index) => triggerHoveredSequenceNoteSelection(false, index)}
-            onHoveredSequenceNoteDoubleClick={(index) => triggerHoveredSequenceNoteSelection(true, index)}
+            onHoveredSequenceMessageClick={(index) =>
+              triggerHoveredSequenceMessageSelection(false, index)
+            }
+            onHoveredSequenceMessageDoubleClick={(index) =>
+              triggerHoveredSequenceMessageSelection(true, index)
+            }
+            onHoveredSequenceNoteClick={(index) =>
+              triggerHoveredSequenceNoteSelection(false, index)
+            }
+            onHoveredSequenceNoteDoubleClick={(index) =>
+              triggerHoveredSequenceNoteSelection(true, index)
+            }
             onReorderSequenceItem={handleReorderSequenceItem}
             onReorderSequenceLifelines={handleReorderSequenceLifelines}
             getSequenceLifelines={getSequenceLifelines}
@@ -2383,12 +2898,16 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewDiagramOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">Create</Button>
+            <Button variant="outline" onClick={() => setIsNewDiagramOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">
+              Create
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2405,12 +2924,16 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               onChange={(e) => setRenameName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>Cancel</Button>
-            <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">Rename</Button>
+            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">
+              Rename
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2428,21 +2951,25 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
                 <p className="text-sm font-semibold mb-2">Export format</p>
                 <div className="flex flex-col gap-2">
                   {[
-                    { id: 'PNG', label: 'PNG', desc: 'High quality raster image' },
-                    { id: 'SVG', label: 'SVG', desc: 'Scalable vector graphics' },
-                    { id: 'MMD', label: 'MMD', desc: 'Mermaid syntax code' },
-                  ].map(fmt => (
+                    { id: "PNG", label: "PNG", desc: "High quality raster image" },
+                    { id: "SVG", label: "SVG", desc: "Scalable vector graphics" },
+                    { id: "MMD", label: "MMD", desc: "Mermaid syntax code" },
+                  ].map((fmt) => (
                     <div
                       key={fmt.id}
                       onClick={() => {
                         setExportFormat(fmt.id);
-                        if (fmt.id !== 'PNG' && exportBg === 'transparent') setExportBg('white');
+                        if (fmt.id !== "PNG" && exportBg === "transparent") setExportBg("white");
                       }}
-                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30' : 'border-border hover:border-foreground/20'}`}
+                      className={`p-3 border rounded-lg cursor-pointer transition-colors ${exportFormat === fmt.id ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30" : "border-border hover:border-foreground/20"}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? 'border-indigo-500' : 'border-border'}`}>
-                          {exportFormat === fmt.id && <div className="w-2 h-2 rounded-full bg-indigo-500" />}
+                        <div
+                          className={`w-4 h-4 rounded-full border flex items-center justify-center ${exportFormat === fmt.id ? "border-indigo-500" : "border-border"}`}
+                        >
+                          {exportFormat === fmt.id && (
+                            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                          )}
                         </div>
                         <span className="font-semibold text-foreground">{fmt.label}</span>
                       </div>
@@ -2454,12 +2981,23 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               <div>
                 <p className="text-sm font-semibold mb-2">Background color</p>
                 <div className="flex gap-2">
-                  {(exportFormat === 'PNG' ? ['transparent', 'white', 'black'] : ['white', 'black']).map(c => (
+                  {(exportFormat === "PNG"
+                    ? ["transparent", "white", "black"]
+                    : ["white", "black"]
+                  ).map((c) => (
                     <div
                       key={c}
                       onClick={() => setExportBg(c)}
-                      className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? 'border-indigo-500' : 'border-border'} ${c === 'white' ? 'bg-white' : c === 'black' ? 'bg-black' : ''}`}
-                      style={c === 'transparent' ? { backgroundImage: 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)', backgroundSize: '10px 10px' } : undefined}
+                      className={`w-8 h-8 rounded-md border-2 cursor-pointer ${exportBg === c ? "border-indigo-500" : "border-border"} ${c === "white" ? "bg-white" : c === "black" ? "bg-black" : ""}`}
+                      style={
+                        c === "transparent"
+                          ? {
+                              backgroundImage:
+                                "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
+                              backgroundSize: "10px 10px",
+                            }
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -2471,24 +3009,39 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
               <div
                 className="flex-grow border border-border rounded-lg overflow-hidden relative flex items-center justify-center min-h-[300px]"
                 style={{
-                  backgroundColor: exportBg === 'transparent' ? 'transparent' : exportBg,
-                  backgroundImage: exportBg === 'transparent' ? 'conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)' : 'none',
-                  backgroundSize: '10px 10px'
+                  backgroundColor: exportBg === "transparent" ? "transparent" : exportBg,
+                  backgroundImage:
+                    exportBg === "transparent"
+                      ? "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)"
+                      : "none",
+                  backgroundSize: "10px 10px",
                 }}
               >
-                <div dangerouslySetInnerHTML={{ __html: svgContent }} className="max-w-full max-h-full object-contain p-4 relative z-10" />
-                <Button variant="outline" size="icon" className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20" onClick={() => {
-                  navigator.clipboard.writeText(svgContent);
-                  toast.success("SVG code copied to clipboard!");
-                }}>
+                <div
+                  dangerouslySetInnerHTML={{ __html: svgContent }}
+                  className="max-w-full max-h-full object-contain p-4 relative z-10"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="absolute top-2 right-2 bg-white/80 backdrop-blur-sm z-20"
+                  onClick={() => {
+                    navigator.clipboard.writeText(svgContent);
+                    toast.success("SVG code copied to clipboard!");
+                  }}
+                >
                   <Copy className="w-4 h-4" />
                 </Button>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsExportOpen(false)}>Cancel</Button>
-            <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">Export</Button>
+            <Button variant="outline" onClick={() => setIsExportOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleExport} className="bg-black text-white hover:bg-zinc-800">
+              Export
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

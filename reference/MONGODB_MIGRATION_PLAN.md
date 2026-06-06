@@ -33,20 +33,20 @@ Consumers (unchanged by a backend swap): `src/app/api/diagrams/route.ts`,
 
 ## 2. Current model → MongoDB mapping (clean, no model change)
 
-| Current (file system) | MongoDB equivalent |
-| --- | --- |
-| `data/<id>.json` (1 file = 1 doc) | `diagrams` collection, one document per diagram |
-| `data/folders/<id>.json` | `folders` collection |
-| `getDiagram(id)` | `findOne({ _id: id })` |
-| `saveDiagram(doc)` | `replaceOne({ _id }, doc, { upsert: true })` |
-| `getDiagrams()` (scan + filter `!deletedAt`, sort `updatedAt` desc) | `find({ deletedAt: null }).sort({ updatedAt: -1 })` |
-| `deleteDiagram` (set `deletedAt`) | `updateOne({ _id }, { $set: { deletedAt } })` |
-| `subPages`, `comments` arrays | embedded sub-documents (canonical Mongo pattern) |
-| `folderId` / `parentId` nullable refs | adjacency-list tree (standard pattern) |
-| soft delete `deletedAt` | filter + partial index |
-| `nanoid` `id` field | use as string `_id` (or map `id ↔ _id` in a thin serializer) |
-| ISO-string timestamps | BSON `Date` (convert in the `normalize*` helpers — the single conversion point) |
-| `DEMO_MODE` separate `demo/` dir | read-only connection / `demo` DB + the existing write no-op guards |
+| Current (file system)                                               | MongoDB equivalent                                                              |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `data/<id>.json` (1 file = 1 doc)                                   | `diagrams` collection, one document per diagram                                 |
+| `data/folders/<id>.json`                                            | `folders` collection                                                            |
+| `getDiagram(id)`                                                    | `findOne({ _id: id })`                                                          |
+| `saveDiagram(doc)`                                                  | `replaceOne({ _id }, doc, { upsert: true })`                                    |
+| `getDiagrams()` (scan + filter `!deletedAt`, sort `updatedAt` desc) | `find({ deletedAt: null }).sort({ updatedAt: -1 })`                             |
+| `deleteDiagram` (set `deletedAt`)                                   | `updateOne({ _id }, { $set: { deletedAt } })`                                   |
+| `subPages`, `comments` arrays                                       | embedded sub-documents (canonical Mongo pattern)                                |
+| `folderId` / `parentId` nullable refs                               | adjacency-list tree (standard pattern)                                          |
+| soft delete `deletedAt`                                             | filter + partial index                                                          |
+| `nanoid` `id` field                                                 | use as string `_id` (or map `id ↔ _id` in a thin serializer)                    |
+| ISO-string timestamps                                               | BSON `Date` (convert in the `normalize*` helpers — the single conversion point) |
+| `DEMO_MODE` separate `demo/` dir                                    | read-only connection / `demo` DB + the existing write no-op guards              |
 
 ## 3. Concrete migration steps (when we move)
 
@@ -71,22 +71,25 @@ Consumers (unchanged by a backend swap): `src/app/api/diagrams/route.ts`,
 ## 4. The one real design change: split `versionHistory` into a `versions` collection
 
 ### Why
+
 `versionHistory` is an embedded, append-only array of **full code snapshots** (capped at 100). The
 demo diagram is already ~100 KB; 100 snapshots of a large diagram can approach Mongo's **16 MB
 document limit**, and every diagram read drags the whole history along even though the editor only
 needs it when the history panel is opened.
 
 ### Target shape
+
 ```ts
 interface VersionRecord {
-  id: string;          // existing entry id (nanoid)
-  diagramId: string;   // FK → DiagramDocument.id (the new index key)
-  code: string;        // the snapshot
+  id: string; // existing entry id (nanoid)
+  diagramId: string; // FK → DiagramDocument.id (the new index key)
+  code: string; // the snapshot
   timestamp: string;
   label?: string;
   starred?: boolean;
 }
 ```
+
 - **FS backend** (if kept in parallel): `data/versions/<diagramId>.json` (one array file per diagram,
   atomic rewrite; mirrors the `folders/` subdir pattern).
 - **Mongo backend**: `versions` collection, compound index `{ diagramId: 1, timestamp: -1 }`, optional
@@ -94,6 +97,7 @@ interface VersionRecord {
 - `DiagramDocument.versionHistory` is **removed** from the stored doc.
 
 ### StorageAdapter additions
+
 ```ts
 getVersions(diagramId: string): Promise<VersionRecord[]>;   // starred first, then timestamp desc
 appendVersion(v: VersionRecord): Promise<void>;             // prepend + cap at 100, never prune a starred entry
@@ -102,6 +106,7 @@ deleteVersions(diagramId: string): Promise<void>;
 ```
 
 ### API surface
+
 - **New** `GET /api/diagrams/[id]/versions` → version list (replaces reading `doc.versionHistory`).
 - **New** `PATCH /api/diagrams/[id]/versions/[versionId]` → label/star toggle (currently done by
   PUTing the whole diagram with a mutated array).
@@ -110,6 +115,7 @@ deleteVersions(diagramId: string): Promise<void>;
   contains `versionHistory`. Rollback stays a normal `PUT` with the chosen `code`.
 
 ### Frontend touch points (small, isolated)
+
 - `LiveMaidEditor.tsx` history panel: fetch `GET …/versions` when the panel opens; `PATCH …` for
   star/label (instead of reading `doc.versionHistory` / PUTing the diagram). History preview render
   is unchanged.
@@ -118,6 +124,7 @@ deleteVersions(diagramId: string): Promise<void>;
 - Dashboard/cards: **no change** (never used `versionHistory`).
 
 ### Invariants to preserve
+
 - Ordering is "**starred first, then newest**" — centralize that sort in the adapter so FS and Mongo
   agree.
 - The 100-cap prune must **never** delete a `starred` entry.
@@ -125,6 +132,7 @@ deleteVersions(diagramId: string): Promise<void>;
   (read legacy, write new) so a half-migrated `data/` still works.
 
 ### Sequencing (incremental, reversible)
+
 1. Add adapter methods + backfill with **dual-read** (prefer versions store, fall back to embedded
    array).
 2. Flip writes to the versions store.

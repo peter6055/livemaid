@@ -4,11 +4,13 @@ This document serves as the source of truth for the implemented features and arc
 **ALL AGENTS MUST READ THIS DOCUMENT before making changes to ensure existing features are not accidentally broken.**
 
 ## 1. Diagram Types & Two-Way Sync
+
 - **Supported Two-Way Sync**: `flowchart` (and `graph`) and `sequenceDiagram`. These diagrams allow visual editing (e.g., double-clicking text, adding nodes via buttons) which automatically updates the underlying Mermaid code.
 - **Visual-Only (One-Way Sync)**: All other Mermaid diagram types. These render correctly but are read-only on the canvas. Users must edit the code directly to change them.
 - **Implementation**: The `determineDiagramType` function in `src/lib/diagrams/utils.ts` determines the type. Features like the Quick Add Node button rely on this type to know what code to append.
 
 ## 2. Pan & Zoom Engine (`react-zoom-pan-pinch`)
+
 - **Infinite Canvas (Mouse Dragging)**: We use `react-zoom-pan-pinch`. We explicitly set `limitToBounds={false}`. This is **CRITICAL** because without it, the library locks panning when the diagram fits entirely within the view, breaking the ability to drag the canvas with the mouse.
 - **Wheel Config**: `wheel={{ wheelDisabled: true, step: 0.05 }}` is used on the main editor canvas to prevent accidental wheel-zoom while editing.
 - **Trackpad Interaction**: Trackpad panning remains enabled (`trackPadPanning={{ disabled: false }}`), and zoom is performed through the zoom controls and pinch gestures.
@@ -17,7 +19,8 @@ This document serves as the source of truth for the implemented features and arc
 - **Interaction Locks**: `panning={{ disabled: isInlineEditing || dragState?.isDragging }}` is set to prevent the canvas from moving while the user is typing in the inline editor or dragging sequence elements.
 
 ## 3. Interactive Node Selection & Editing
-- **Node Resolution (`getClickedNode`)**: When a user clicks the canvas, we traverse up the DOM tree from the `e.target` to find a container with the `.node` or `.cluster` class. 
+
+- **Node Resolution (`getClickedNode`)**: When a user clicks the canvas, we traverse up the DOM tree from the `e.target` to find a container with the `.node` or `.cluster` class.
 - **ID Normalization**: Mermaid injects dynamic prefixes (e.g. `flowchart-mermaid-svg-1234-`). The `getClickedNode` function cleans this raw SVG ID into a clean ID (e.g., `A`) that matches the actual Mermaid code. Both `rawSvgId` and `cleanId` are returned.
 - **Selection Box**: We calculate the bounding box of the `.label`, `foreignObject`, or `text` inside the node and apply the current zoom `scale` to render a perfectly aligned selection outline.
 - **Layout Alignment Observers**:
@@ -44,6 +47,7 @@ This document serves as the source of truth for the implemented features and arc
   - **Debug logging (opt-in only)**: click diagnostics are behind `window.__LM_DEBUG_CLICKS = true` or `localStorage['livemaid:debug-clicks']='1'`; default runtime is quiet.
 
 ## 4. Inline Text Editing (The Overlay)
+
 - **Overlay Positioning**: When a user double-clicks a node, an absolute-positioned `<textarea>` is rendered on top of the diagram. It calculates its exact position and size based on the SVG element's bounding box.
 - **Hiding Original Text**: To avoid double text (seeing the SVG text behind the textarea), we inject a dynamic `<style>` tag that sets `opacity: 0 !important` on the specific `#${selectedSvgId} .label, text, foreignObject` while editing is active.
 - **Event Propagation (CRITICAL)**: All overlay UI elements (toolbar, textarea) MUST have `onMouseDown={(e) => e.stopPropagation()}` and `onClick={(e) => e.stopPropagation()}`. If this is missed, clicking the overlay will trigger the canvas pan/zoom handlers underneath and steal focus or cause jitter.
@@ -52,28 +56,33 @@ This document serves as the source of truth for the implemented features and arc
 - **Drift-Free Viewport Coordinate Bounds**: Hover elements, overlays, and context menus (like `shapePicker`) that render in the static viewport space must calculate coordinates by subtracting `.getBoundingClientRect()` of the closest static container (`.relative.overflow-hidden`) rather than the zoomed/panned inner canvas (`containerRef.current`). This guarantees 1:1 screen-to-cursor matching with absolute precision under any zoom or pan level.
 
 ## 5. Quick Add Node (+ Button)
+
 - **Visibility**: Appears below the selection box when a node is selected (and inline editing is not active).
-- **Code Generation (`handleAddNodeFromSelected`)**: 
+- **Code Generation (`handleAddNodeFromSelected`)**:
   - For flowcharts: Appends `\n {selectedNodeId} --> NewNode{i}[New Node]`. It auto-increments the `i` to avoid ID collisions.
   - For sequence diagrams: Appends `\n {selectedNodeId}->>NewActor: new msg`.
 - **Sequence UX Rule**: In sequence diagrams, the selected-node quick-add `+` control is hidden to prevent click-to-add creation from the selection box. Sequence creation remains available through lifeline anchor `+` handles via drag-to-connect interactions.
 
 ## 6. Theme Management
+
 - We manually inject or update the Mermaid configuration block (`--- \n config: \n theme: 'dark' \n ---`) at the top of the raw Mermaid code string to control themes. This ensures the theme is persisted directly in the diagram code itself.
 
 ## 7. Modular Architecture
+
 - The editor logic is split into several modular components in `src/components/editor/`: `EditorHeader`, `EditorCodePanel`, `EditorCanvas`, `NodeManipulationToolbar`, and `InlineTextEditor`.
 - State logic is handled by `useEditorState` and `useCanvasInteraction` custom hooks.
 - Extracted constants and utilities live in `src/lib/diagrams/`.
 
 ## 8. Dashboard & Card Preview Skeletons
+
 - **High-Fidelity Dashboard Skeleton Loaders**: Replacing standard loading spinners, the dashboard uses a premium animated CSS grid of 6 skeleton cards that match `DiagramCard` proportions and layouts.
 - **Asynchronous Card Preview Skeletons**: Diagram cards employ an `isCompiling` state during asynchronous Mermaid SVG compilation. While compiling, a high-fidelity animated flowchart preview skeleton—complete with rounded start nodes, a rotated decision diamond, an end rectangle, and connectors/arrows—is rendered to represent the loading diagram.
 - **White Background Previews**: All diagram card previews and skeleton loaders utilize high-contrast `bg-white` canvas containers to ensure high legibility and clear contrast in both light and dark modes.
 
 ## 9. Flowchart Edge/Connector Styling & Label Editing
+
 - **Interactive Edge Selection**: Users can click directly on a flowchart link (edge path) or its text label. The editor identifies the adjacent `.edgeLabel` node, snaps the coordinates to the label, and assigns it a queryable dynamic ID (`edge-label-${cleanId}`).
-- **Strict Parallel Edge Isolation (Hover & Selection)**: Mermaid v11+ automatically injects a unique, canonical `data-id` attribute containing the exact path ID (e.g. `L_src_dst_index`) on the `<g class="label">` container inside *every* `.edgeLabel` container (both labeled and unlabeled). We map hover highlight and click selection strictly using these canonical IDs instead of array index fallbacks (`edgeLabels.indexOf`). This completely eliminates index-drift, ensuring that hover isolation and selection are strictly isolated to individual parallel edge occurrences without parallel leakage or mapping drift.
+- **Strict Parallel Edge Isolation (Hover & Selection)**: Mermaid v11+ automatically injects a unique, canonical `data-id` attribute containing the exact path ID (e.g. `L_src_dst_index`) on the `<g class="label">` container inside _every_ `.edgeLabel` container (both labeled and unlabeled). We map hover highlight and click selection strictly using these canonical IDs instead of array index fallbacks (`edgeLabels.indexOf`). This completely eliminates index-drift, ensuring that hover isolation and selection are strictly isolated to individual parallel edge occurrences without parallel leakage or mapping drift.
 - **Unlabeled Edge Bounding Box Snapping**: If an edge has no label, its `.edgeLabel` container exists but contains empty text and has zero width/height. To prevent the selection overlay from collapsing or flying to `(0, 0)`, coordinates for unlabeled edges are measured directly from the visual `<path.flowchart-link>` bounding box rather than snapping to the empty label container.
 - **Edge Manipulation Toolbar**: When an edge is selected, a dedicated scale-locked floating toolbar appears on the canvas. It provides quick controls for:
   - **Arrow Style**: Configures the connector arrowhead (plain, arrow, double arrow, cross, double cross, circle, double circle).
@@ -93,6 +102,7 @@ This document serves as the source of truth for the implemented features and arc
 - **Preset Color Selection Cleanups**: Removed the redundant `'White'` and `'Black'` presets from `PRESET_COLORS` in `src/lib/diagrams/constants.ts` to provide a premium, tailored preset palette for flowchart elements.
 
 ## 10. Version History & Rollback
+
 - **Snapshot Source of Truth**: Each diagram document persists a `versionHistory` array in its local JSON file. The editor records the previously saved Mermaid code whenever a real code change is committed through the save path.
 - **User Metadata**: History entries can be renamed inline and starred as pinned favorites. These fields live on the same version record and are persisted back through the diagram update route.
 - **No Per-Entry Code Preview**: Snapshot rows show the editable name, timestamp, star, and Preview/Rollback actions only. The raw-code `<pre>` snippet that older versions rendered per entry has been removed to keep the list compact; users inspect a version via the read-only Preview canvas instead.
@@ -104,6 +114,7 @@ This document serves as the source of truth for the implemented features and arc
 - **Retention**: Version history is capped at the most recent 100 snapshots so local JSON documents remain predictable while still preserving long-running edit history.
 
 ## 11. Testing & Browser Interaction Best Practices
+
 - **Temporary Test Diagrams**: To prevent binding failures, corrupted workspace states, or broken diagrams during interactive browser testing, you MUST always create a new, temporary diagram/flowchart at the start of your test session.
 - **Cleanup**: Once your browser testing is completed and verified, you MUST delete or purge the temporary diagram/flowchart to restore the workspace to its clean, original state.
 - **Human-Reaction Simulation Protocol (Click/Double-Click Bugs)**:
@@ -115,21 +126,24 @@ This document serves as the source of truth for the implemented features and arc
   - Keep one reproducible script for "human-like" regression: select A, double-click A to edit, immediately double-click B, verify B editor opens and A commit is preserved.
 
 ## 12. Global Keyboard Shortcuts
+
 - **Keyboard-Driven Canvas Deletion**: When a diagram node or flowchart edge/line is selected, users can press `Backspace` or `Delete` on their keyboard to instantly delete it from the diagram canvas and Mermaid code.
 - **Form/Input and Code Isolation**: The keydown event listener is completely disabled when any input, textarea, contenteditable container, or the Monaco Editor has focus. This prevents elements from being accidentally deleted while typing comments or updating diagram text code.
 - **Canvas Focus Blur**: To ensure that selecting canvas elements (which are SVG elements and not focusable by default) immediately enables deletion shortcuts without being blocked by active Monaco editor focus, clicking any canvas element or empty space (inside `handleSvgClick`) programmatically blurs the active text input or editor via `document.activeElement.blur()`. This shifts browser focus away from Monaco/inputs to the document body, activating the deletion listeners safely.
 
 ## 13. Exit Confirmation
+
 - **Leave Editor Notice Dialog**: Internal navigation away from the current editor route uses a confirmation dialog before routing, requiring explicit user confirmation (`Leave Editor`) or cancellation (`Stay`).
 - **Browser Exit Prompt**: Refreshing or closing the tab while in the editor triggers the browser-native `beforeunload` confirmation prompt.
 - **Browser Back Button Guard**: Pressing the browser back button inside the editor is intercepted and routed through the same leave-editor confirmation dialog before navigation is allowed.
 
 ## 14. Dashboard Lazy Loading
+
 - **Pagination Strategy**: The dashboard implements progressive loading of diagram cards using IntersectionObserver API. Initially, 6 diagrams are displayed, with additional batches of 6 loaded as the user scrolls down.
-- **State Management**: 
+- **State Management**:
   - `displayCount` state tracks the current number of diagrams to display (starts at 6, increments by 6).
   - `sentinelRef` creates a sentinel div at the bottom of the grid that triggers loading when visible.
-- **Computed Values**: 
+- **Computed Values**:
   - `filteredDiagrams` uses `useMemo` to filter all diagrams by search query (only recalculates when diagrams or searchQuery changes).
   - `displayedDiagrams` uses `useMemo` to slice filtered diagrams to show only `displayCount` items (optimizes rendering performance).
 - **Intersection Observer**: Watches the sentinel div with `threshold: 0.1`. When the sentinel becomes visible and more diagrams exist, `displayCount` is incremented by 6 (capped at total available).
@@ -138,6 +152,7 @@ This document serves as the source of truth for the implemented features and arc
 - **Performance Benefit**: Lazy loading reduces initial page render time and DOM complexity by only rendering visible cards in the viewport, significantly improving dashboard responsiveness with large diagram libraries.
 
 ## 15. Sequence Diagram Visual Interactions
+
 - **Double-Click Rename**: Double-clicking a sequence participant (actor) box opens the `InlineTextEditor` overlay positioned at the actor's header box. On submit, `handleEditSubmit` updates the `as {alias}` portion of the participant declaration in the Mermaid code.
 - **Logic-Block / Section Label Rename (double-click)**: Double-clicking a logic block's label box renames it inline. The opener label (e.g. the `Retry` in `loop Retry`, rendered by Mermaid as a `.loopText` `[Retry]` box) and section-divider labels (`else`/`and`/`option`, rendered as `.sectionTitle` boxes) are both editable. On submit only the label PORTION of the source line is rewritten (`handleEditSubmit` `SEQ_BLK_` branch: `/^(\s*)(loop|alt|opt|par|critical|break|else|and|option)\b[ \t]*(.*)$/` → keep indent + keyword, replace the rest; an empty new label collapses to the bare keyword). Implementation details:
   - **DOM→source mapping is by Y-sort, NOT DOM order (CRITICAL)**: Mermaid does NOT paint `.loopText`/`.sectionTitle` in source order — nested/inner blocks paint their labels FIRST (verified: source openers OUTER,INNER,P-A,LAST paint as INNER,P-A,OUTER,LAST). But a block's label always sits at the TOP of its box and section dividers never vertically cross, so **sorting the label elements by their on-screen `getBoundingClientRect().top` reproduces SOURCE order exactly**. `resolveSequenceBlockLabelTarget(clickedEl)` (in `useCanvasInteraction.ts`) Y-sorts all `.loopText` (resp. `.sectionTitle`) and indexes into the parser's source-ordered openers (resp. else/and/option dividers from `getSequenceBlockEntries().sections`), returning the absolute source `lineIndex`. The node id is `SEQ_BLK_<lineIndex>`.
@@ -151,7 +166,7 @@ This document serves as the source of truth for the implemented features and arc
 - **Sequence Note Actions in Floating Toolbar**: Selecting a sequence actor or message shows a Note button in `SequenceManipulationToolbar`. Clicking the Note button opens the Add Note dialog modal. Selecting a sequence note shows note-specific controls: `Change position` (left/right/over), `Link/Connect` placeholder action, and `Delete`. All add/move actions mutate Mermaid DSL immediately and re-render via the normal `handleCodeChange` path.
 - **Message Type Mutation (inline operator swap)**: Selecting a sequence message (`SEQ_MSG_*`) shows a `Message Type` dropdown button in `SequenceManipulationToolbar` (between Rename and Delete; hidden for actors/notes). The dropdown lists four standard UML styles mapped to Mermaid operators: Solid+filled `->>`, Dashed+filled `-->>`, Solid+cross `-x`, Dashed+cross `--x`. The currently-active operator is highlighted (computed by `currentSequenceMessageOperator` in LiveMaidEditor via a `useMemo` that parses the selected message's pre-colon operator). Selecting an option calls `handleChangeSequenceMessageType(operator)` which: locates the selected message's source line (via `getSequenceMessageEntries`), splits at the first `:`, and swaps ONLY the operator in the pre-colon segment using `swapRe = /(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)(\s*)(\S+)(\s*)$/` (anchored on the trailing receiver actor so a stray `-` in the sender id is never matched; `$2$3$4` preserve receiver + spacing). Sender, receiver, label text, and surrounding spacing are untouched. Routes through `handleCodeChange` so undo + re-render are normal; cycling all four types is idempotent (no code degradation). The dropdown and toolbar dismiss on outside click. **CRITICAL**: introducing the cross operators (`-x`, `--x`) required extending the actor-parsing regexes in `parseSequenceMessageActors` (useCanvasInteraction) and `getSelectedSequenceParticipantForNote` (LiveMaidEditor) to the full operator alternation, or participant/actor resolution breaks for cross-typed messages.
 - **Note Hover Ring**: Hovering over a sequence note (`rect.note` or `.noteText`) shows the same indigo border + glow ring as sequence messages and flowchart nodes. Detection prefers `rect.note` directly; when hovering `.noteText`, the code walks up to the parent group to find the sibling `rect.note` for full-box bounds. The ring is suppressed while a note is already selected (`SEQ_NOTE_*`), during inline editing, or during an active connection drag.
-- **Note Selection Box (Full Box)**: Clicking a sequence note selects it and outlines the full yellow note rectangle (`rect.note`), not just the text portion. The `textBox` (used for inline editing) still points to `.noteText` for accurate textarea placement. Both bounds are measured at click time via `getClickedNode` with a SEQ_NOTE_ special case, mirroring the SEQ_MSG_ paired-element pattern.
+- **Note Selection Box (Full Box)**: Clicking a sequence note selects it and outlines the full yellow note rectangle (`rect.note`), not just the text portion. The `textBox` (used for inline editing) still points to `.noteText` for accurate textarea placement. Both bounds are measured at click time via `getClickedNode` with a SEQ*NOTE* special case, mirroring the SEQ*MSG* paired-element pattern.
 - **Note Position Syntax (CRITICAL)**: Mermaid uses two distinct syntaxes for note positions: `Note left of Actor: text` / `Note right of Actor: text` (with "of") and `Note over Actor: text` (without "of"). All note parsing (`getSequenceNoteEntries`) and mutation (`updateNotePosition`, `insertSequenceNoteAtIndex`) must respect this distinction. The parser regex uses `(?:of\s+)?` to accept both forms; the writer emits the correct form per position. `handleMoveSequenceNote` delegates to `updateNotePosition` to ensure a single source of truth.
 - **Shared Insertion Lanes**: Sequence `+` handles are generated from a flattened global set of message rows and reused across all participant lifelines. Lanes are placed one above the first row, one between each adjacent row pair, and one below the last row, then clamped/deduplicated. The first lane is intentionally biased upward so the top insertion `+` is significantly higher and clearly visible across participant types. This guarantees one `+` per vertical gap, gives loop rows top+bottom insertion handles, and keeps participant columns visually aligned.
 - **Contextual `+` Action Menu**: Clicking a lifeline `+` handle opens a compact two-action chip (Note + Self Loop) pinned to that lane and scale-locked with zoom. Choosing `Self Loop Message` immediately inserts `{actor}->>{actor}: new msg` at the clicked lane. Choosing `Note` keeps the chip (the "tool box") visible and expands a note-position chooser DIRECTLY BELOW it with direct actions (`Add note to the left/right/over`) — the chip is NOT replaced/hidden while the position selection is open (the active `Note` button is highlighted), and selection inserts `Note {position} of {participant}: new note` at the same lane. Both actions resolve insertion index from the clicked anchor Y, ensuring placement under the correct participant and in the correct chronological position.
@@ -221,8 +236,8 @@ This document serves as the source of truth for the implemented features and arc
   - **Contextual `+ > Logic` menu (US1)**: The lifeline `+` action chip gains a `Logic` button (`GitBranch` icon, gated by the `onSequencePlusBlock` prop) alongside Note/Self-Loop. It toggles `sequencePlusMenu.mode` to `'logic'`, expanding a submenu DIRECTLY BELOW the chip (tool box stays visible, same pattern as the Note sub-menu) listing the six logic blocks + a divider + `Highlight Box` (→ `rect`). Choosing one calls `onSequencePlusBlock(anchorY, type)` → `handleSequencePlusBlock` in LiveMaidEditor, which resolves two lifelines (`getSequenceLifelines()[0]/[1]`, fallback `A`/`B`), builds the per-type boilerplate body (each wraps a `${a}->>${b}: Message`), and inserts it at the anchor-resolved chronological index (`getSequenceInsertIndexForAnchor`). Routes through `handleCodeChange` (single undo). Overlays appear immediately because the geometry effect re-runs on the resulting `code`/`svgContent` change.
   - **Styling**: Logic blocks = violet (`rgba(124,58,237,0.5)` border, `rgba(139,92,246,0.07)` fill) with a `bg-violet-600` label pill; highlights = amber (`rgba(217,119,6,0.55)` / `rgba(251,191,36,0.08)`) with a `bg-amber-600` pill. The pill reads `<type> · <label>` (label truncated at 18 chars). Overlays are `z-[16] pointer-events-none` in Phase 1 (visual sync only — resize/move/select/delete arrive in later phases).
 
-
 ## 16. Demo Mode
+
 - **Activation**: Set `DEMO_MODE=true` and `NEXT_PUBLIC_DEMO_MODE=true` as environment variables. Typically done via Docker Compose (see `docker-compose.yml`, the `livemaid-demo` service).
 - **Read-Only Storage**: When `DEMO_MODE=true`, the server reads diagram data from the `./demo/` directory instead of `./data/`. The `saveDiagram` and `deleteDiagram` functions in `src/lib/api/storage.ts` are no-ops.
 - **Disabled Write APIs**: The `POST /api/diagrams` (create) and `DELETE /api/diagrams/[id]` routes return HTTP 403. The `PUT /api/diagrams/[id]` route silently returns the existing document unchanged instead of saving.
@@ -232,14 +247,17 @@ This document serves as the source of truth for the implemented features and arc
 - **Demo Content**: Populate the `./demo/` folder with pre-seeded `.json` diagram files (same format as `./data/`) that showcase the app's capabilities.
 
 ## 17. Editor Header & Chrome (`EditorHeader.tsx`)
+
 - **Branding parity with the Dashboard**: The editor header shows the purple `LayoutTemplate` logo box and the `LiveMaid` wordmark (`text-xl font-semibold tracking-tight`) styled to match the Dashboard nav. The longer slogan was removed from the editor header (it stays on the Dashboard) to leave room for the breadcrumb.
 - **Inline Diagram Rename (header breadcrumb)**: The diagram name in the breadcrumb is inline-editable. A `PencilLine` button appears next to the name on hover; clicking the name or the pencil swaps it for an `<input>` (pre-selected). **Enter** commits via `onRenameInline` (PUT `/api/diagrams/[id]`, optimistic `setDoc`, "Diagram renamed" toast); **Escape** cancels and restores. The legacy menu "Rename" dialog still exists and shares the same persistence path. Both are disabled in demo mode.
 - **Export / History button parity**: The header `Export` and `History` buttons use identical chrome (`h-9`, `px-3`, `text-sm`, bordered) so they are pixel-matched.
 - **Auto Number toggle (sequence top toolbar)**: In sequence diagrams, `LiveMaidEditor`'s top toolbar shows an `AUTO NUMBER` label (uppercase, letter-spaced, muted) next to a switch. Toggling it adds or removes the `autonumber` line right after `sequenceDiagram` via `handleCodeChange`, so undo/redo and re-render behave normally.
 
 ## 18. Inline Toolbar Reliability (Sequence / Edge / Node Manipulation Toolbars)
+
 All three floating manipulation toolbars (`SequenceManipulationToolbar`, `EdgeManipulationToolbar`, `NodeManipulationToolbar`) are nested inside the selection box and marked with `data-inline-toolbar` + `data-scale-lock`, with a transparent padding shield and `stopPropagation` on their own pointer events. The following guards keep them robust against the canvas hit-testing underneath:
-- **Hover suppression over the toolbar (both hover paths)**: A floating-UI guard — `document.elementsFromPoint(clientX, clientY).some(el => el.closest('[data-inline-toolbar]') || el.closest('[data-scale-lock]') || el.closest('[data-scale-lock-border]'))` — runs at the top of BOTH sequence hover paths (`handleSequenceHoverOver` for `onMouseOver`, and the RAF-throttled `_handleMouseMoveInner` for `onMouseMove`). When the cursor is over a toolbar it clears all sequence hover state and returns, so the hover grab overlay of the message *behind* the toolbar never renders on top of it (which previously stole the press and reselected the wrong message). Both paths need the guard because `onMouseMove` keeps firing while the cursor sits still over the toolbar.
+
+- **Hover suppression over the toolbar (both hover paths)**: A floating-UI guard — `document.elementsFromPoint(clientX, clientY).some(el => el.closest('[data-inline-toolbar]') || el.closest('[data-scale-lock]') || el.closest('[data-scale-lock-border]'))` — runs at the top of BOTH sequence hover paths (`handleSequenceHoverOver` for `onMouseOver`, and the RAF-throttled `_handleMouseMoveInner` for `onMouseMove`). When the cursor is over a toolbar it clears all sequence hover state and returns, so the hover grab overlay of the message _behind_ the toolbar never renders on top of it (which previously stole the press and reselected the wrong message). Both paths need the guard because `onMouseMove` keeps firing while the cursor sits still over the toolbar.
 - **Stacking order**: The selection-box border `<div>` that nests the toolbar is `z-[22]`, above the `z-[21]` sequence hover grab overlays, so the toolbar paints and hit-tests above neighbouring-message overlays.
 - **Dropdown toggles fire on capture-phase mousedown**: The custom Message Type / Move dropdowns (plain `useState`, not Radix) toggle on `onMouseDownCapture`, not `onClick`. The toolbar container has a native bubble-phase `stopPropagation` listener (added via `addEventListener` in a `useEffect`) to block canvas leakage; React delegates synthetic handlers at the root, so a bubble-phase React `onPointerDown`/`onMouseDown` is killed by that native listener before it reaches the root. Capture-phase handlers fire root→target BEFORE any bubble listener, so the dropdown opens reliably even when a transient re-render moves the toolbar so the browser fires no native `click`. (A no-op `onClick={e => e.stopPropagation()}` remains to avoid a double-toggle.)
 - **Never render the flowchart Node toolbar on a sequence diagram**: The toolbar ternary in `EditorCanvas` (`isEdgeId → Edge`, `SEQ_* → Sequence`, else `Node`) has a defensive `currentType === 'sequence' ? null :` branch before the `NodeManipulationToolbar` fallback. This prevents the wrong (flowchart) style bar from flashing during the brief window where `onDeselect` has cleared `selectedNodeId` (a separate state setter) while `selectionBox` still lingers — e.g. during a zoom/deselect transition (all zoom controls and `onZoomStart`/`onPinchStart` call `onDeselect`).

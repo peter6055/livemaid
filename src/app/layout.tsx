@@ -17,7 +17,8 @@ import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {
   title: "LiveMaid | The WYSIWYG Mermaid Editor",
-  description: "A fast, local, and visual WYSIWYG editor for Mermaid.js diagrams. Create, edit, and manage your flowcharts and sequence diagrams with a seamless split-screen experience.",
+  description:
+    "A fast, local, and visual WYSIWYG editor for Mermaid.js diagrams. Create, edit, and manage your flowcharts and sequence diagrams with a seamless split-screen experience.",
 };
 
 export default function RootLayout({
