@@ -42,10 +42,15 @@ export function determineDiagramType(sourceCode: string): string {
 }
 
 export function updateMermaidConfigProperty(code: string, property: string, value: string): string {
-  const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
+  // Capture ONLY the indented children of `config:` (group 2), not everything up to the
+  // closing `---`. This prevents trailing top-level frontmatter keys such as `title:` (added
+  // by the class-diagram Title feature after the config block) from being swallowed into the
+  // config block and then orphaned by an appended mapping entry (which produced invalid YAML).
+  const regex = /^(---\r?\n\s*config:\s*\r?\n)((?:[ \t]+[^\n]*(?:\r?\n|$))*)/m;
   const match = code.match(regex);
   if (match) {
-    let configBlock = match[1];
+    const header = match[1];
+    let configBlock = match[2].replace(/\r?\n$/, "");
     const propRegex = new RegExp(`${property}:\\s*(?:'|")?[^'"\\n\\r]+(?:'|")?`);
     if (propRegex.test(configBlock)) {
       configBlock = configBlock.replace(propRegex, `${property}: ${value}`);
@@ -53,17 +58,27 @@ export function updateMermaidConfigProperty(code: string, property: string, valu
       configBlock = configBlock.trimEnd();
       configBlock += (configBlock ? "\n" : "") + `  ${property}: ${value}`;
     }
-    return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
-  } else {
-    return `---\nconfig:\n  ${property}: ${value}\n---\n` + code;
+    return code.replace(match[0], `${header}${configBlock}\n`);
   }
+  // No `config:` block. Inject one into an existing frontmatter block (keeping config first)
+  // rather than prepending a second, duplicate frontmatter block.
+  const fmRegex = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
+  const fm = code.match(fmRegex);
+  if (fm) {
+    const body = fm[1].replace(/\s+$/, "");
+    return code.replace(fmRegex, `---\nconfig:\n  ${property}: ${value}\n${body}\n---\n`);
+  }
+  return `---\nconfig:\n  ${property}: ${value}\n---\n` + code;
 }
 
 export function updateMermaidFontFamily(code: string, fontString: string): string {
-  const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
+  // Capture ONLY the indented children of `config:` (group 2) so trailing top-level frontmatter
+  // keys (e.g. `title:`) are preserved instead of being absorbed into the config block.
+  const regex = /^(---\r?\n\s*config:\s*\r?\n)((?:[ \t]+[^\n]*(?:\r?\n|$))*)/m;
   const match = code.match(regex);
   if (match) {
-    let configBlock = match[1];
+    const header = match[1];
+    let configBlock = match[2].replace(/\r?\n$/, "");
 
     // Update top-level fontFamily
     const fontRegex = /(^|\n)  fontFamily:\s*[^\n\r]+/;
@@ -95,13 +110,22 @@ export function updateMermaidFontFamily(code: string, fontString: string): strin
         (configBlock ? "\n" : "") + `  themeVariables:\n    fontFamily: '${fontString}'`;
     }
 
-    return code.replace(match[0], `---\nconfig:\n${configBlock}\n---\n`);
-  } else {
-    return (
-      `---\nconfig:\n  fontFamily: '${fontString}'\n  themeVariables:\n    fontFamily: '${fontString}'\n---\n` +
-      code
+    return code.replace(match[0], `${header}${configBlock}\n`);
+  }
+  // No `config:` block. Inject one into an existing frontmatter block (keeping config first).
+  const fmRegex = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?/;
+  const fm = code.match(fmRegex);
+  if (fm) {
+    const body = fm[1].replace(/\s+$/, "");
+    return code.replace(
+      fmRegex,
+      `---\nconfig:\n  fontFamily: '${fontString}'\n  themeVariables:\n    fontFamily: '${fontString}'\n${body}\n---\n`,
     );
   }
+  return (
+    `---\nconfig:\n  fontFamily: '${fontString}'\n  themeVariables:\n    fontFamily: '${fontString}'\n---\n` +
+    code
+  );
 }
 
 export function isEdgeId(id: string | null): boolean {
