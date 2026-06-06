@@ -2,8 +2,7 @@
 
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Users, RefreshCw, GitBranch, SquareSquare } from "lucide-react";
+import { Users } from "lucide-react";
 import { useState } from "react";
 
 // SVG icons for each participant type
@@ -172,23 +171,6 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
     setShowParticipantPicker(false);
   };
 
-  const handleAddBlock = (type: 'alt' | 'loop' | 'rect' | 'opt' | 'par') => {
-    let block = '';
-    if (type === 'alt') {
-      block = `\n    alt Condition\n        A->>B: Message\n    else Alternative\n        A->>B: Message\n    end`;
-    } else if (type === 'loop') {
-      block = `\n    loop Loop Name\n        A->>B: Message\n    end`;
-    } else if (type === 'rect') {
-      block = `\n    rect rgb(200, 200, 255)\n        note right of A: Highlighted section\n    end`;
-    } else if (type === 'opt') {
-      block = `\n    opt Optional\n        A->>B: Message\n    end`;
-    } else if (type === 'par') {
-      block = `\n    par Action 1\n        A->>B: Message 1\n    and Action 2\n        A->>C: Message 2\n    end`;
-    }
-    const newCode = code + block;
-    setCode(newCode);
-  };
-
   return (
     <>
       <div className="flex items-center gap-2 rounded-xl bg-background p-0 border-none">
@@ -225,38 +207,6 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
             </div>
           )}
         </div>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2" />}>
-            <GitBranch className="w-4 h-4" />
-            <span className="text-sm font-medium">Logic</span>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1" sideOffset={10} align="start">
-            <DropdownMenuItem onClick={() => handleAddBlock('alt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-              <GitBranch className="w-4 h-4" />
-              <span className="flex-1 text-sm font-medium">Alt (If/Else)</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleAddBlock('opt')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-              <GitBranch className="w-4 h-4 opacity-50" />
-              <span className="flex-1 text-sm font-medium">Opt (Optional)</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleAddBlock('loop')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-              <RefreshCw className="w-4 h-4" />
-              <span className="flex-1 text-sm font-medium">Loop</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleAddBlock('par')} className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent">
-              <RefreshCw className="w-4 h-4 opacity-50" />
-              <span className="flex-1 text-sm font-medium">Par (Parallel)</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="w-px h-6 bg-border mx-1" />
-
-        <Button variant="ghost" size="sm" className="h-8 text-foreground hover:bg-accent flex items-center gap-2" onClick={() => handleAddBlock('rect')} title="Add Highlight Box">
-          <SquareSquare className="w-4 h-4" />
-          <span className="text-sm font-medium">Highlight</span>
-        </Button>
       </div>
     </>
   );

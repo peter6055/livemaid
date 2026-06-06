@@ -206,6 +206,24 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+/* Sequence diagram clickable elements — messages (select/rename), notes (select/move/rename),
+   block labels (loop/alt/opt/par/critical/break openers + else/and/option dividers, now
+   double-click renamable), and `rect` highlights (double-click recolor). All carry an explicit
+   pointer cursor so the canvas signals they are interactive on hover. */
+.mermaid-container .messageText,
+.mermaid-container [class*="messageLine"],
+.mermaid-container [class*="messageLine"] line,
+.mermaid-container [class*="messageLine"] path,
+.mermaid-container .noteText,
+.mermaid-container rect.note,
+.mermaid-container .loopText,
+.mermaid-container .loopText *,
+.mermaid-container .sectionTitle,
+.mermaid-container .sectionTitle *,
+.mermaid-container rect.rect {
+  cursor: pointer !important;
+}
+
 .mermaid-container .edgeLabel,
 .mermaid-container .edgeLabel * {
   cursor: pointer !important;

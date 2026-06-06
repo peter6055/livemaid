@@ -9,7 +9,7 @@ import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
-import { Loader2, Undo2, Redo2, Type, Copy, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Loader2, Undo2, Redo2, Type, Copy, PanelLeftClose, PanelLeftOpen, FileQuestion } from "lucide-react";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -26,6 +26,43 @@ import mermaid from "mermaid";
 import type { VersionHistoryEntry } from "@/lib/api/storage";
 import { DemoBanner } from "@/components/DemoBanner";
 
+// Remove sequence blocks left TRULY empty (an opener — rect/loop/opt/alt/par/critical/break —
+// whose body contains no message/note, only section dividers like else/and/option). Such a block
+// parses but crashes Mermaid's sequence renderer during bounds calculation, so dragging the sole
+// message out of a `rect … end` highlight would otherwise break the whole diagram. The opener, its
+// matching `end`, and any section divider lines are dropped. Stack-based + content propagation so a
+// parent that contains only empty children is itself pruned (one pass handles arbitrary nesting).
+function pruneEmptySequenceBlocks(lines: string[]): string[] {
+  const openerRe = /^(loop|alt|opt|par|critical|break|rect)\b/i;
+  const sectionRe = /^(else|and|option)\b/i;
+  const closerRe = /^end\b/i;
+  const stack: Array<{ openerIdx: number; hasContent: boolean; sectionIdxs: number[] }> = [];
+  const toRemove = new Set<number>();
+  for (let i = 0; i < lines.length; i += 1) {
+    const t = lines[i].trim();
+    if (t === '') continue;
+    if (openerRe.test(t)) {
+      stack.push({ openerIdx: i, hasContent: false, sectionIdxs: [] });
+    } else if (sectionRe.test(t) && stack.length) {
+      stack[stack.length - 1].sectionIdxs.push(i);
+    } else if (closerRe.test(t) && stack.length) {
+      const b = stack.pop()!;
+      if (!b.hasContent) {
+        toRemove.add(b.openerIdx);
+        b.sectionIdxs.forEach((x) => toRemove.add(x));
+        toRemove.add(i);
+      } else if (stack.length) {
+        stack[stack.length - 1].hasContent = true;
+      }
+    } else if (stack.length) {
+      // Any non-empty, non-structural line counts as real content for the innermost open block.
+      stack[stack.length - 1].hasContent = true;
+    }
+  }
+  if (toRemove.size === 0) return lines;
+  return lines.filter((_, i) => !toRemove.has(i));
+}
+
 export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: string; isDemo?: boolean }) {
   const IS_DEMO_MODE = isDemo;
   const router = useRouter();
@@ -34,6 +71,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     doc, setDoc,
     code,
     loading,
+    notFound,
     saving,
     svgContent,
     currentTheme,
@@ -96,6 +134,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     startSequenceConnection,
     getSequenceMessageEndpointGeometry,
     getSequenceLifelines,
+    sequenceBlockAreas,
+    getSequenceBlockEntries,
+    openHighlightRecolorRef,
     shapePicker,
     setShapePicker,
     getSequenceNoteEntries,
@@ -262,6 +303,60 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
     handleCodeChange(updatedCode);
   }, [code, getSequenceInsertIndexForAnchor, handleCodeChange, insertSequenceNoteAtIndex, resolveSequenceDisplayName]);
+
+  // Insert a logic block fragment (loop/alt/opt/par/critical/break) or a `rect` highlight at the
+  // chronological position indicated by `anchorY`. The block boilerplate is injected at the SOURCE
+  // line of the message currently at that anchor (or appended after the last message when dropped
+  // at the bottom), wrapping a placeholder message so the structure renders immediately. Mermaid
+  // requires the first two participants for the placeholder; we resolve them from the live lifelines
+  // (falling back to A/B) so the inserted code parses without error. Routes through handleCodeChange
+  // (single undo).
+  const handleSequencePlusBlock = useCallback((anchorY: number, type: 'loop' | 'alt' | 'opt' | 'par' | 'critical' | 'break' | 'rect') => {
+    if (!Number.isFinite(anchorY)) return;
+    const lifelines = getSequenceLifelines();
+    const a = lifelines[0]?.actorId ?? 'A';
+    const b = lifelines[1]?.actorId ?? lifelines[0]?.actorId ?? 'B';
+
+    let body = '';
+    if (type === 'alt') {
+      body = `    alt Condition\n        ${a}->>${b}: Message\n    else Alternative\n        ${a}->>${b}: Message\n    end`;
+    } else if (type === 'loop') {
+      body = `    loop Loop\n        ${a}->>${b}: Message\n    end`;
+    } else if (type === 'opt') {
+      body = `    opt Optional\n        ${a}->>${b}: Message\n    end`;
+    } else if (type === 'par') {
+      body = `    par Action 1\n        ${a}->>${b}: Message 1\n    and Action 2\n        ${a}->>${b}: Message 2\n    end`;
+    } else if (type === 'critical') {
+      body = `    critical Action\n        ${a}->>${b}: Message\n    option Failure\n        ${a}->>${b}: Message\n    end`;
+    } else if (type === 'break') {
+      body = `    break Condition\n        ${a}->>${b}: Message\n    end`;
+    } else {
+      // rect highlight
+      body = `    rect rgb(200, 220, 255)\n        ${a}->>${b}: Message\n    end`;
+    }
+
+    const lines = code.split('\n');
+    const messageIndex = getSequenceInsertIndexForAnchor(anchorY);
+    const entries = getSequenceMessageEntries(code);
+    const insertAt = entries[messageIndex]?.index ?? (lines.length);
+    lines.splice(insertAt, 0, ...body.split('\n'));
+    handleCodeChange(lines.join('\n'));
+  }, [code, getSequenceInsertIndexForAnchor, getSequenceMessageEntries, getSequenceLifelines, handleCodeChange]);
+
+  // Recolor an existing `rect` highlight (double-click the highlight box → color picker). The
+  // line index comes from `resolveSequenceHighlightTarget` (Y-sorted DOM rects ↔ source rect
+  // blocks); only the color argument after the `rect` keyword is rewritten, indentation preserved.
+  const handleRecolorSequenceHighlight = useCallback((lineIndex: number, color: string) => {
+    const lines = code.split('\n');
+    const line = lines[lineIndex];
+    if (line == null) return;
+    const m = line.match(/^(\s*)rect\b.*$/i);
+    if (!m) return;
+    const next = `${m[1]}rect ${color}`;
+    if (next === line) return;
+    lines[lineIndex] = next;
+    handleCodeChange(lines.join('\n'));
+  }, [code, handleCodeChange]);
 
   const handleMoveSequenceNote = useCallback((position: 'left' | 'right' | 'over') => {
     if (!selectedNodeId?.startsWith('SEQ_NOTE_')) return;
@@ -832,6 +927,22 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
           newCode = lines.join('\n');
         }
       }
+    } else if (selectedNodeId.startsWith('SEQ_BLK_')) {
+      // Rename a logic-block / section label (loop/alt/opt/par/critical/break opener, or an
+      // else/and/option divider). The node id carries the absolute source line index. Only the
+      // label portion after the keyword is rewritten; the keyword + indentation are preserved.
+      // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
+      const lineIdx = parseInt(selectedNodeId.replace('SEQ_BLK_', ''), 10);
+      const newText = editingText.replace(/\n/g, ' ').trim();
+      const lines = code.split('\n');
+      const line = lines[lineIdx];
+      if (line != null) {
+        const m = line.match(/^(\s*)(loop|alt|opt|par|critical|break|else|and|option)\b[ \t]*(.*)$/i);
+        if (m) {
+          lines[lineIdx] = newText ? `${m[1]}${m[2]} ${newText}` : `${m[1]}${m[2]}`;
+          newCode = lines.join('\n');
+        }
+      }
     } else if (selectedNodeId.startsWith('SEQ_')) {
       const oldText = selectedNodeId.replace('SEQ_', '');
       const newText = editingText.replace(/\n/g, '<br/>');
@@ -1215,7 +1326,14 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }
 
     lines.splice(insertAt, 0, movedLine);
-    handleCodeChange(lines.join('\n'));
+
+    // Moving a message/note OUT of a block can leave that block empty (e.g. dragging the sole
+    // message out of a `rect … end` highlight). An empty block (`rect`/`loop`/`opt`/`alt`/`par`/
+    // `critical`/`break` whose body has no message/note, only section dividers) parses but CRASHES
+    // Mermaid's sequence renderer during bounds calc, breaking the whole diagram. Prune any block
+    // left truly empty by the move so the reorder never produces an unrenderable diagram.
+    const pruned = pruneEmptySequenceBlocks(lines);
+    handleCodeChange(pruned.join('\n'));
     setSelectionBox(null);
     setSelectedNodeId(null);
   }, [code, getSequenceMessageEntries, getSequenceNoteEntries, handleCodeChange, setSelectionBox, setSelectedNodeId]);
@@ -1769,6 +1887,25 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     );
   }
 
+  if (notFound) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground flex-col gap-5 px-6 text-center transition-all duration-300">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-500/10">
+          <FileQuestion className="h-8 w-8 text-red-500" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-semibold">Diagram not found</h1>
+          <p className="max-w-md text-sm text-muted-foreground">
+            The diagram you&apos;re looking for doesn&apos;t exist or may have been deleted.
+          </p>
+        </div>
+        <Button onClick={() => router.push('/')} className="mt-1">
+          Back to Projects
+        </Button>
+      </div>
+    );
+  }
+
   const currentType = determineDiagramType(code);
   const sortedHistory = [...(doc?.versionHistory ?? [])]
     .sort((a, b) => Number(Boolean(b.starred)) - Number(Boolean(a.starred)) || new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
@@ -2173,9 +2310,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
             hoveredSequenceNoteBox={hoveredSequenceNoteBox}
             hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
             sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
+            sequenceBlockAreas={sequenceBlockAreas}
             startSequenceConnection={startSequenceConnection}
             onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
             onSequencePlusNote={handleSequencePlusNote}
+            onSequencePlusBlock={handleSequencePlusBlock}
+            openHighlightRecolorRef={openHighlightRecolorRef}
+            onRecolorSequenceHighlight={handleRecolorSequenceHighlight}
             isInlineEditing={isInlineEditing}
             selectedSvgId={selectedSvgId}
             selectedNodeId={selectedNodeId}

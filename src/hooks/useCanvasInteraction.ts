@@ -10,6 +10,26 @@ const SEQ_MSG_SELECTION_PADDING = { x: 2, y: 1 };
 // drawn box, preventing accidental clicks on adjacent message rows.
 const SEQ_MSG_HITTEST_PADDING = { x: 2, y: 1 };
 
+// A parsed sequence block fragment (loop/alt/opt/par/critical/break) or `rect` highlight, with its
+// source-line range, nesting depth, internal section dividers, and computed canvas geometry.
+export type SequenceBlockType = 'loop' | 'alt' | 'opt' | 'par' | 'critical' | 'break' | 'rect';
+export interface SequenceBlockEntry {
+  id: string;
+  type: SequenceBlockType;
+  isHighlight: boolean;          // true for `rect`
+  label: string;                 // the text after the keyword (e.g. "Condition", "rgb(...)")
+  startLine: number;             // source line index of the opener keyword
+  endLine: number;               // source line index of the matching `end`
+  depth: number;                 // nesting depth (0 = outermost)
+  sections: Array<{ keyword: string; line: number }>; // opener + else/and/option dividers
+}
+export interface SequenceBlockArea extends SequenceBlockEntry {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export function useCanvasInteraction({
   code,
   svgContent,
@@ -62,7 +82,14 @@ export function useCanvasInteraction({
   const [hoveredSequenceNoteBox, setHoveredSequenceNoteBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [hoveredFlowchartNodeBox, setHoveredFlowchartNodeBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<Array<{ index: number; x: number; y: number; width: number; height: number }>>([]);
+  const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const hoveredSequenceTargetsRef = useRef<{ textEl: SVGElement | null; lineEl: SVGElement | null }>({ textEl: null, lineEl: null });
+  // Opener for the highlight-recolor popover. EditorCanvas owns the popover (it needs canvasShell
+  // coords + its own state), but the dblclick that triggers it is detected here in handleEditClick
+  // (the React onDoubleClick on the canvas does NOT fire for SVG rects because react-zoom-pan-pinch
+  // intercepts it — only the document-level capture dblclick listener that drives handleEditClick
+  // works). EditorCanvas assigns `.current`; handleEditClick calls it when a highlight rect is hit.
+  const openHighlightRecolorRef = useRef<((lineIndex: number, color: string, clientX: number, clientY: number) => void) | null>(null);
 
   const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
     if (lineEls.length === 0) return null;
@@ -535,6 +562,242 @@ export function useCanvasInteraction({
 
     return entries;
   }, [isSequenceMessageLine]);
+
+  // Parse the code into a flat list of block fragments (loop/alt/opt/par/critical/break/rect),
+  // each with its source-line range, nesting depth, and internal section dividers. Stack-based so
+  // nested blocks resolve correctly; `depth` reflects how many enclosing blocks each one sits in.
+  // A deterministic `id` (`SEQ_BLOCK_<startLine>`) keys selection + geometry across re-renders.
+  const getSequenceBlockEntries = useCallback((sourceCode: string): SequenceBlockEntry[] => {
+    const lines = sourceCode.split('\n');
+    const openerRe = /^(loop|alt|opt|par|critical|break|rect)\b\s*(.*)$/i;
+    const sectionRe = /^(else|and|option)\b/i;
+    const closerRe = /^end\b/i;
+
+    const stack: SequenceBlockEntry[] = [];
+    const out: SequenceBlockEntry[] = [];
+    let inFrontmatter = false;
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (trimmed === '---') { inFrontmatter = !inFrontmatter; continue; }
+      if (inFrontmatter || !trimmed || trimmed.startsWith('%%')) continue;
+
+      const opener = trimmed.match(openerRe);
+      if (opener) {
+        const type = opener[1].toLowerCase() as SequenceBlockType;
+        stack.push({
+          id: `SEQ_BLOCK_${i}`,
+          type,
+          isHighlight: type === 'rect',
+          label: (opener[2] || '').trim(),
+          startLine: i,
+          endLine: i,
+          depth: stack.length,
+          sections: [{ keyword: type, line: i }],
+        });
+        continue;
+      }
+      if (sectionRe.test(trimmed) && stack.length > 0) {
+        stack[stack.length - 1].sections.push({ keyword: trimmed.split(/\s+/)[0].toLowerCase(), line: i });
+        continue;
+      }
+      if (closerRe.test(trimmed) && stack.length > 0) {
+        const blk = stack.pop()!;
+        blk.endLine = i;
+        out.push(blk);
+      }
+    }
+
+    // Stable order: outermost first, then by start line (matches DOM paint order for overlays).
+    return out.sort((a, b) => a.depth - b.depth || a.startLine - b.startLine);
+  }, []);
+
+  // Map a clicked Mermaid block-label element (`.loopText` for an opener label, `.sectionTitle`
+  // for an else/and/option divider label) back to its SOURCE line so the label can be renamed
+  // inline. Mermaid does NOT paint these labels in source order (inner/nested blocks paint first),
+  // but a block's label always sits at the TOP of its box and section dividers never cross — so
+  // sorting the label elements by their on-screen Y reproduces SOURCE order exactly. `rect`
+  // highlights render no `.loopText` (only a colored box), so they are excluded from the opener
+  // list; every other block (loop/alt/opt/par/critical/break) renders exactly one `.loopText`
+  // (even when label-less, as a zero-width space), keeping the Y-sorted ↔ source-order map 1:1.
+  const resolveSequenceBlockLabelTarget = useCallback((clickedEl: Element | null): { lineIndex: number } | null => {
+    const container = containerRef.current;
+    if (!container || !clickedEl) return null;
+    if (determineDiagramType(code) !== 'sequence') return null;
+
+    const labelEl = clickedEl.closest('.loopText, .sectionTitle') as SVGElement | null;
+    if (!labelEl) return null;
+    const isSection = labelEl.classList.contains('sectionTitle');
+
+    const blocks = getSequenceBlockEntries(code);
+    const byTop = (els: SVGElement[]) => els.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+
+    if (isSection) {
+      const els = byTop(Array.from(container.querySelectorAll('.sectionTitle')) as SVGElement[]);
+      const idx = els.indexOf(labelEl);
+      if (idx < 0) return null;
+      const dividers = blocks
+        .flatMap((b) => b.sections.filter((s) => /^(else|and|option)$/i.test(s.keyword)))
+        .sort((a, b) => a.line - b.line);
+      if (idx >= dividers.length) return null;
+      return { lineIndex: dividers[idx].line };
+    }
+
+    const els = byTop(Array.from(container.querySelectorAll('.loopText')) as SVGElement[]);
+    const idx = els.indexOf(labelEl);
+    if (idx < 0) return null;
+    const openers = blocks.filter((b) => b.type !== 'rect').sort((a, b) => a.startLine - b.startLine);
+    if (idx >= openers.length) return null;
+    return { lineIndex: openers[idx].startLine };
+  }, [containerRef, code, determineDiagramType, getSequenceBlockEntries]);
+
+  // Map a double-clicked `rect` highlight background (`<rect class="rect" fill="rgb(...)">`) back
+  // to its SOURCE line + current color so it can be recolored. Like the block labels, Mermaid does
+  // NOT paint these rects in source order (inner/nested rects paint first), but their TOP edges are
+  // strictly ordered, so Y-sorting the highlight rects reproduces source order. We index the
+  // Y-sorted rects into the source-ordered `rect` blocks from `getSequenceBlockEntries`.
+  const resolveSequenceHighlightTarget = useCallback((clientX: number, clientY: number): { lineIndex: number; color: string } | null => {
+    const container = containerRef.current;
+    if (!container || determineDiagramType(code) !== 'sequence') return null;
+
+    const isHighlightRect = (el: Element | null): el is SVGElement =>
+      !!el && el.tagName.toLowerCase() === 'rect' && el.getAttribute('class') === 'rect'
+      && /^rgba?\(/i.test(el.getAttribute('fill') || '');
+
+    const hit = document.elementsFromPoint(clientX, clientY).find(isHighlightRect) as SVGElement | undefined;
+    if (!hit) return null;
+
+    const rects = (Array.from(container.querySelectorAll('rect.rect')) as SVGElement[])
+      .filter((r) => /^rgba?\(/i.test(r.getAttribute('fill') || ''))
+      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    const idx = rects.indexOf(hit);
+    if (idx < 0) return null;
+
+    const blocks = getSequenceBlockEntries(code).filter((b) => b.type === 'rect').sort((a, b) => a.startLine - b.startLine);
+    if (idx >= blocks.length) return null;
+    return { lineIndex: blocks[idx].startLine, color: hit.getAttribute('fill') || '' };
+  }, [containerRef, code, determineDiagramType, getSequenceBlockEntries]);
+
+
+  // Recompute block overlay geometry (canvas coords) whenever the code or rendered SVG changes.
+  // Each block's vertical extent is derived from the rendered message/note rows whose SOURCE line
+  // falls inside the block's [startLine, endLine] range; horizontally it spans all lifelines, inset
+  // by nesting depth so children sit visibly within parents. Empty blocks fall back to the gap
+  // between their neighbouring rows. Mirrors the message-trigger-areas effect (DOM-driven, runs on
+  // every re-render so geometry tracks pan/zoom via the canvas-coord conversion).
+  //
+  // Cold-load race: `react-zoom-pan-pinch`'s <TransformComponent> mounts its children (and thus
+  // attaches `containerRef`) a frame AFTER `svgContent` is first set, so the effect can fire with
+  // the SVG ready but `containerRef.current` still null (or the lifelines not yet measurable).
+  // Ref attachment doesn't re-trigger effects, so we retry on requestAnimationFrame (bounded) until
+  // the container + lifelines are measurable, otherwise the overlays would never appear on first
+  // paint and only show up after an unrelated re-render.
+  useEffect(() => {
+    if (determineDiagramType(code) !== 'sequence') {
+      setSequenceBlockAreas([]);
+      return;
+    }
+    const blocks = getSequenceBlockEntries(code);
+    if (blocks.length === 0) { setSequenceBlockAreas([]); return; }
+
+    let rafId = 0;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 150; // ~2.5s worth of frames — covers the deferred TransformComponent mount
+
+    const compute = (): boolean => {
+      const container = containerRef.current;
+      if (!container) return false;
+
+      const lifelines = getSequenceLifelines();
+      if (lifelines.length === 0) return false;
+
+      const containerRect = container.getBoundingClientRect();
+      const scale = containerRect.width / container.offsetWidth;
+      const toY = (v: number) => (v - containerRect.top + container.scrollTop) / scale;
+
+      const messageTextEls = Array.from(container.querySelectorAll('.messageText')) as SVGElement[];
+      const messageLineEls = Array.from(
+        container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]')
+      ) as SVGElement[];
+      const noteTextEls = Array.from(container.querySelectorAll('.noteText')) as SVGElement[];
+
+      const msgEntries = getSequenceMessageEntries(code);
+      const codeLines = code.split('\n');
+      const noteSrcLines = codeLines
+        .map((l, idx) => ({ l: l.trim(), idx }))
+        .filter(({ l }) => /^note\b/i.test(l))
+        .map(({ idx }) => idx);
+
+      type Row = { srcLine: number; top: number; bottom: number };
+      const rows: Row[] = [];
+      messageTextEls.forEach((textEl, i) => {
+        const srcLine = msgEntries[i]?.index;
+        if (srcLine == null) return;
+        const tr = textEl.getBoundingClientRect();
+        const lineEl = findNearestLineForText(textEl, messageLineEls);
+        const lr = lineEl?.getBoundingClientRect();
+        rows.push({
+          srcLine,
+          top: toY(Math.min(tr.top, lr?.top ?? tr.top)),
+          bottom: toY(Math.max(tr.bottom, lr?.bottom ?? tr.bottom)),
+        });
+      });
+      noteTextEls.forEach((noteEl, i) => {
+        const srcLine = noteSrcLines[i];
+        if (srcLine == null) return;
+        const rectNote = (noteEl.parentElement?.querySelector('rect.note')
+          ?? noteEl.parentElement?.parentElement?.querySelector('rect.note')) as SVGElement | null;
+        const r = (rectNote ?? noteEl).getBoundingClientRect();
+        rows.push({ srcLine, top: toY(r.top), bottom: toY(r.bottom) });
+      });
+      rows.sort((a, b) => a.top - b.top);
+
+      const minX = Math.min(...lifelines.map((l) => l.x));
+      const maxX = Math.max(...lifelines.map((l) => l.x));
+      const globalTop = Math.min(...lifelines.map((l) => l.y1));
+
+      const headroom = 18;
+      const footer = 10;
+      const areas: SequenceBlockArea[] = blocks.map((blk) => {
+        const inner = rows.filter((r) => r.srcLine > blk.startLine && r.srcLine < blk.endLine);
+        let top: number;
+        let bottom: number;
+        if (inner.length > 0) {
+          top = Math.min(...inner.map((r) => r.top));
+          bottom = Math.max(...inner.map((r) => r.bottom));
+        } else {
+          const before = rows.filter((r) => r.srcLine < blk.startLine).slice(-1)[0];
+          const after = rows.filter((r) => r.srcLine > blk.endLine)[0];
+          top = before ? before.bottom + 8 : (after ? after.top - 40 : globalTop + 20);
+          bottom = after ? after.top - 8 : top + 36;
+        }
+        const padX = Math.max(4, 18 - blk.depth * 10);
+        return {
+          ...blk,
+          x: minX - padX,
+          y: top - headroom,
+          width: (maxX - minX) + padX * 2,
+          height: (bottom - top) + headroom + footer,
+        };
+      });
+
+      setSequenceBlockAreas(areas);
+      return true;
+    };
+
+    const tick = () => {
+      if (compute()) return;
+      attempts += 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        setSequenceBlockAreas([]);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+
+    return () => { if (rafId) cancelAnimationFrame(rafId); };
+  }, [containerRef, code, svgContent, determineDiagramType, getSequenceBlockEntries, getSequenceMessageEntries, getSequenceLifelines, findNearestLineForText]);
 
   const insertSequenceMessageAtIndex = useCallback((sourceCode: string, messageLine: string, messageIndex: number) => {
     const lines = sourceCode.split('\n');
@@ -1086,6 +1349,10 @@ export function useCanvasInteraction({
 
   const recalculateSelection = useCallback(() => {
     if (!selectedNodeId || !containerRef.current) return;
+    // Block-label inline edit (`SEQ_BLK_<line>`) manages its own selection/text box directly in
+    // handleEditClick and clears it on submit; it has no persistent SVG element to re-resolve, so
+    // skip recalc (otherwise the "couldn't find element" branch would clear the box mid-edit).
+    if (selectedNodeId.startsWith('SEQ_BLK_')) return;
 
     // Search for the element corresponding to selectedNodeId
     let foundElement: SVGElement | null = null;
@@ -1457,9 +1724,25 @@ export function useCanvasInteraction({
           resolvedByName && lifelines.some((lifeline) => lifeline.actorId === resolvedByName)
         );
 
-        const actorId = hasResolvedLifeline
-          ? (resolvedByName as string)
-          : (nearest?.actorId || resolvedByName || actorDisplayName);
+        // AMBIGUOUS LABEL GUARD: when MULTIPLE participants share the same display label (e.g. two
+        // participants both aliased "New Boundary"), label-first resolution always returns the
+        // FIRST match — so clicking the right "New Boundary" would wrongly select the left one.
+        // In that case geometry (nearest lifeline to the clicked X) is the only reliable signal,
+        // so prefer it. Unique labels keep using the robust label-first path.
+        const normalizedClickedLabel = normalizeSequenceLabel(actorDisplayName);
+        const labelMatchCount = actorDisplayName
+          ? getSequenceParticipantEntries().filter((entry) =>
+            normalizeSequenceLabel(entry.alias) === normalizedClickedLabel
+            || normalizeSequenceLabel(entry.id) === normalizedClickedLabel
+          ).length
+          : 0;
+        const labelIsAmbiguous = labelMatchCount > 1;
+
+        const actorId = (labelIsAmbiguous && nearest?.actorId)
+          ? nearest.actorId
+          : hasResolvedLifeline
+            ? (resolvedByName as string)
+            : (nearest?.actorId || resolvedByName || actorDisplayName);
         nodeId = `SEQ_ACTOR_${actorId}`;
         break;
       }
@@ -1696,7 +1979,7 @@ export function useCanvasInteraction({
       return { cleanId, rawSvgId, newSelectionBox, newTextBox };
     }
     return null;
-  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName]);
+  }, [containerRef, normalizeId, resolveSequenceActorIdFromDisplayName, getSequenceLifelines, getSvgTextDisplayName, getSequenceParticipantEntries, normalizeSequenceLabel]);
 
   const inlineInputRef = useRef<HTMLTextAreaElement>(null);
   // commitEditRef is a ref slot that LiveMaidEditor fills with handleEditSubmit.
@@ -1720,6 +2003,19 @@ export function useCanvasInteraction({
       return;
     }
 
+    // Double-clicking a `rect` highlight's colored background opens the recolor popover (highlights
+    // carry only a color, no text label). Detected here — NOT in EditorCanvas's React onDoubleClick
+    // — because react-zoom-pan-pinch swallows the synthetic dblclick on SVG rects; this path is
+    // reached via the document-level capture dblclick listener that also drives label/message edit.
+    if (currentType === 'sequence' && 'clientX' in e && 'clientY' in e && openHighlightRecolorRef.current) {
+      const hl = resolveSequenceHighlightTarget(e.clientX, e.clientY);
+      if (hl) {
+        if (isInlineEditing) { commitEditRef.current?.(); setIsInlineEditing(false); }
+        openHighlightRecolorRef.current(hl.lineIndex, hl.color, e.clientX, e.clientY);
+        return;
+      }
+    }
+
     // Resolve actual SVG element via elementsFromPoint to bypass overlay divs.
     // EXCEPTION: when invoked from a floating toolbar (e.g. the Rename button), the cursor is
     // over the toolbar — NOT the diagram element — so elementsFromPoint would resolve to whatever
@@ -1738,6 +2034,56 @@ export function useCanvasInteraction({
         const firstEl = elementsAtPoint[0];
         if (firstEl) targetElement = firstEl;
       }
+    }
+
+    // Logic-block / highlight label rename: double-clicking a block's label box (`.loopText` for
+    // the opener label like `loop Retry`, `.sectionTitle` for an `else`/`and`/`option` divider)
+    // enters inline edit on that label and rewrites ONLY the label portion of the source line.
+    // Handled before the generic node resolver so it never falls through to flowchart-node logic.
+    const blockTarget = fromToolbar ? null : resolveSequenceBlockLabelTarget(targetElement);
+    if (blockTarget) {
+      const container = containerRef.current;
+      const labelEl = (targetElement.closest?.('.loopText, .sectionTitle') as SVGElement | null);
+      if (!container || !labelEl) return;
+      const blockNodeId = `SEQ_BLK_${blockTarget.lineIndex}`;
+
+      if (isInlineEditing) {
+        if (blockNodeId === selectedNodeIdRef.current) return; // already editing this label
+        commitEditRef.current?.();
+        setIsInlineEditing(false);
+      }
+
+      const r = labelEl.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      const scale = containerRect.width / container.offsetWidth;
+      const padX = 8;
+      const padY = 4;
+      setSelectionBox({
+        x: (r.left - containerRect.left + container.scrollLeft) / scale - padX,
+        y: (r.top - containerRect.top + container.scrollTop) / scale - padY,
+        width: r.width / scale + padX * 2,
+        height: r.height / scale + padY * 2,
+      });
+      setTextBox({
+        x: (r.left - containerRect.left + container.scrollLeft) / scale,
+        y: (r.top - containerRect.top + container.scrollTop) / scale,
+        width: r.width / scale,
+        height: r.height / scale,
+      });
+      setSelectedNodeIdWithRef(blockNodeId);
+      setSelectedSvgId(null);
+
+      const lineStr = code.split('\n')[blockTarget.lineIndex] || '';
+      const labelMatch = lineStr.trim().match(/^(?:loop|alt|opt|par|critical|break|else|and|option)\b[ \t]*(.*)$/i);
+      setEditingText(labelMatch ? labelMatch[1].trim() : '');
+      setIsInlineEditing(true);
+      setTimeout(() => {
+        if (inlineInputRef.current) {
+          inlineInputRef.current.focus();
+          inlineInputRef.current.select();
+        }
+      }, 10);
+      return;
     }
 
     const result = fromToolbar ? null : getClickedNode(targetElement);
@@ -1861,7 +2207,7 @@ export function useCanvasInteraction({
         inlineInputRef.current.select();
       }
     }, 10);
-  }, [code, getClickedNode, setSelectedNodeIdWithRef, determineDiagramType, getSequenceMessageEntries, isInlineEditing]);
+  }, [code, getClickedNode, setSelectedNodeIdWithRef, determineDiagramType, getSequenceMessageEntries, isInlineEditing, resolveSequenceBlockLabelTarget, resolveSequenceHighlightTarget]);
 
 
   const handleSvgClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -2560,6 +2906,10 @@ export function useCanvasInteraction({
     hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
+    sequenceBlockAreas,
+    getSequenceBlockEntries,
+    resolveSequenceHighlightTarget,
+    openHighlightRecolorRef,
     dragState: null as null,
     setDragState: (_: any) => { },
     startSequenceConnection,

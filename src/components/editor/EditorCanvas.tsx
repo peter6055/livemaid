@@ -1,10 +1,11 @@
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
-import { Lock, Unlock, Plus, Pencil, RotateCcw } from "lucide-react";
+import { Lock, Unlock, Plus, Pencil, RotateCcw, GitBranch, SquareStack, Palette } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
@@ -40,9 +41,13 @@ interface EditorCanvasProps {
   hoveredSequenceNoteBox: { x: number, y: number, width: number, height: number } | null;
   hoveredFlowchartNodeBox: { x: number, y: number, width: number, height: number } | null;
   sequenceMessageTriggerAreas: Array<{ index: number; x: number; y: number; width: number; height: number }>;
+  sequenceBlockAreas?: SequenceBlockArea[];
   startSequenceConnection: (actorId: string, anchorY: number) => void;
   onSequencePlusSelfLoop: (actorId: string, anchorY: number) => void;
   onSequencePlusNote: (actorId: string, anchorY: number, position: 'left' | 'right' | 'over') => void;
+  onSequencePlusBlock?: (anchorY: number, type: SequenceBlockType) => void;
+  openHighlightRecolorRef?: React.MutableRefObject<((lineIndex: number, color: string, clientX: number, clientY: number) => void) | null>;
+  onRecolorSequenceHighlight?: (lineIndex: number, color: string) => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
@@ -121,9 +126,13 @@ export function EditorCanvas({
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   sequenceMessageTriggerAreas,
+  sequenceBlockAreas,
   startSequenceConnection,
   onSequencePlusSelfLoop,
   onSequencePlusNote,
+  onSequencePlusBlock,
+  openHighlightRecolorRef,
+  onRecolorSequenceHighlight,
   onHoveredSequenceMessageHover,
   onHoveredSequenceMessageClick,
   onHoveredSequenceMessageDoubleClick,
@@ -175,7 +184,15 @@ export function EditorCanvas({
     anchorY: number;
     x: number;
     y: number;
-    mode: 'root' | 'note';
+    mode: 'root' | 'note' | 'logic';
+  } | null>(null);
+  // Viewport-space (canvasShellRef-relative) popover for recoloring a `rect` highlight, opened by
+  // double-clicking the highlight's colored background. `lineIndex` is the source line of the rect.
+  const [seqHighlightColorMenu, setSeqHighlightColorMenu] = useState<{
+    lineIndex: number;
+    x: number;
+    y: number;
+    color: string;
   } | null>(null);
   // Viewport-space indicator for sequence drag — lives outside the TransformWrapper so
   // canvas pan/zoom never affects its coordinate system. Positions are relative to canvasShellRef.
@@ -210,6 +227,7 @@ export function EditorCanvas({
     targetSlot: number | null;
   } | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
+  const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
   // hover grab overlay can distinguish a reorder-drag from a plain click (select).
   const seqDidDragRef = useRef(false);
@@ -292,6 +310,34 @@ export function EditorCanvas({
     document.addEventListener('mousedown', onOutsideClick);
     return () => document.removeEventListener('mousedown', onOutsideClick);
   }, [sequencePlusMenu]);
+
+  useEffect(() => {
+    if (!seqHighlightColorMenu) return;
+    const onOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && seqHighlightColorMenuRef.current?.contains(target)) return;
+      setSeqHighlightColorMenu(null);
+    };
+    document.addEventListener('mousedown', onOutsideClick);
+    return () => document.removeEventListener('mousedown', onOutsideClick);
+  }, [seqHighlightColorMenu]);
+
+  // Register the highlight-recolor popover opener so the hook (which detects the dblclick on the
+  // `rect` highlight via its document-level capture listener) can open this canvasShell-positioned
+  // menu. Positions are converted to canvasShellRef-relative viewport coords.
+  useEffect(() => {
+    if (!openHighlightRecolorRef) return;
+    openHighlightRecolorRef.current = (lineIndex, color, clientX, clientY) => {
+      const shellRect = canvasShellRef.current?.getBoundingClientRect();
+      setSeqHighlightColorMenu({
+        lineIndex,
+        x: clientX - (shellRect?.left ?? 0),
+        y: clientY - (shellRect?.top ?? 0),
+        color,
+      });
+    };
+    return () => { if (openHighlightRecolorRef) openHighlightRecolorRef.current = null; };
+  }, [openHighlightRecolorRef]);
 
   // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
   // React bubbling/capture handlers. Use a document-level capture fallback so single
@@ -913,6 +959,12 @@ export function EditorCanvas({
                   dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
 
+                {/* Logic-block / highlight overlays are intentionally NOT drawn: Mermaid already
+                    renders the structured fragments (loop/alt/opt/par/critical/break) and `rect`
+                    highlights natively with their own labelled boxes, so a second custom box on top
+                    is redundant and visually noisy. The block geometry (`sequenceBlockAreas`) is
+                    still computed for later phases (resize/move/select targets). */}
+
                 {currentType === 'sequence' && !isInlineEditing && !connectionState.active && sequenceMessageTriggerAreas.map((area) => (
                   <div
                     key={`seq-msg-trigger-${area.index}`}
@@ -955,7 +1007,7 @@ export function EditorCanvas({
                       and double-click-to-edit breaks). */}
                 {currentType === 'sequence' && hoveredSequenceMessageBox && !isInlineEditing && !connectionState.active && !seqReorder && (
                   <div
-                    className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                    className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
                     style={{
                       left: hoveredSequenceMessageBox.x - 8 / state.scale,
                       top: hoveredSequenceMessageBox.y - 5 / state.scale,
@@ -989,7 +1041,7 @@ export function EditorCanvas({
                       note's mousedown registers the unified drag / mouseup select-edit path. */}
                 {currentType === 'sequence' && hoveredSequenceNoteBox && !isInlineEditing && !connectionState.active && !seqReorder && (
                   <div
-                    className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                    className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
                     style={{
                       left: hoveredSequenceNoteBox.x - 6 / state.scale,
                       top: hoveredSequenceNoteBox.y - 5 / state.scale,
@@ -1030,7 +1082,7 @@ export function EditorCanvas({
                     : hoveredSequenceActorBox!;
                   return (
                     <div
-                      className="seq-actor-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                      className="seq-actor-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
                       style={{
                         left: box.x - 4 / state.scale,
                         top: box.y - 4 / state.scale,
@@ -1069,7 +1121,7 @@ export function EditorCanvas({
                         data-seq-plus-anchor-y={String(slotY)}
                         data-scale-lock
                         data-base-transform="translate(-50%, -50%)"
-                        className="seq-connect-btn absolute pointer-events-auto w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
+                        className="seq-connect-btn absolute pointer-events-auto cursor-pointer w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                         style={{
                           left: sequenceLifelineOverlay.x,
                           top: slotY,
@@ -1200,7 +1252,7 @@ export function EditorCanvas({
 
                 {currentType === 'sequence' && (selectedNodeId?.startsWith('SEQ_MSG_') || selectedNodeId?.startsWith('SEQ_NOTE_')) && selectionBox && !isLocked && !isInlineEditing && !connectionState.active && (
                   <div
-                    className="seq-msg-reorder-handle absolute z-20 pointer-events-auto cursor-grab active:cursor-grabbing"
+                    className="seq-msg-reorder-handle absolute z-20 pointer-events-auto cursor-pointer"
                     style={{
                       left: selectionBox.x - 8 / state.scale,
                       top: selectionBox.y - 5 / state.scale,
@@ -1520,6 +1572,69 @@ export function EditorCanvas({
         </div>
       )}
 
+      {seqHighlightColorMenu && (
+        <div
+          ref={seqHighlightColorMenuRef}
+          className="absolute pointer-events-auto z-30"
+          style={{
+            left: seqHighlightColorMenu.x,
+            top: seqHighlightColorMenu.y,
+            transform: 'translate(-50%, calc(-100% - 12px))',
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="rounded-xl border border-border bg-popover p-2 shadow-xl">
+            <div className="px-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Highlight Color</div>
+            <div className="grid grid-cols-4 gap-1.5">
+              {([
+                { name: 'Blue', rgb: 'rgb(200, 220, 255)' },
+                { name: 'Green', rgb: 'rgb(204, 245, 217)' },
+                { name: 'Yellow', rgb: 'rgb(255, 244, 191)' },
+                { name: 'Orange', rgb: 'rgb(255, 224, 191)' },
+                { name: 'Red', rgb: 'rgb(255, 205, 205)' },
+                { name: 'Purple', rgb: 'rgb(229, 214, 255)' },
+                { name: 'Pink', rgb: 'rgb(255, 209, 235)' },
+                { name: 'Gray', rgb: 'rgb(228, 231, 236)' },
+              ]).map((c) => {
+                const isActive = (seqHighlightColorMenu.color || '').replace(/\s/g, '') === c.rgb.replace(/\s/g, '');
+                return (
+                  <button
+                    key={c.name}
+                    title={c.name}
+                    className={`h-7 w-7 rounded-full border border-slate-300 transition-transform hover:scale-110 ${isActive ? 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-popover' : ''}`}
+                    style={{ backgroundColor: c.rgb }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onRecolorSequenceHighlight?.(seqHighlightColorMenu.lineIndex, c.rgb);
+                      setSeqHighlightColorMenu(null);
+                    }}
+                  />
+                );
+              })}
+            </div>
+            <label className="mt-2 flex items-center gap-2 rounded-md px-1 py-1 text-sm text-popover-foreground">
+              <Palette className="h-4 w-4 shrink-0 text-violet-500" />
+              <span className="flex-1">Custom…</span>
+              <input
+                type="color"
+                className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
+                onMouseDown={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  const hex = e.target.value;
+                  const r = parseInt(hex.slice(1, 3), 16);
+                  const g = parseInt(hex.slice(3, 5), 16);
+                  const b = parseInt(hex.slice(5, 7), 16);
+                  onRecolorSequenceHighlight?.(seqHighlightColorMenu.lineIndex, `rgb(${r}, ${g}, ${b})`);
+                  setSeqHighlightColorMenu(null);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
       {sequencePlusMenu && (
         <div
           ref={sequencePlusMenuRef}
@@ -1563,7 +1678,65 @@ export function EditorCanvas({
               <RotateCcw className="h-4 w-4" />
               <span className="text-sm font-medium">Self loop</span>
             </button>
+            {onSequencePlusBlock && (
+              <button
+                className={`flex h-8 items-center gap-1 rounded-md px-2 text-popover-foreground hover:bg-accent ${sequencePlusMenu.mode === 'logic' ? 'bg-accent' : ''}`}
+                title="Logic block or highlight"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSequencePlusMenu((prev) => prev ? { ...prev, mode: prev.mode === 'logic' ? 'root' : 'logic' } : prev);
+                }}
+              >
+                <GitBranch className="h-4 w-4" />
+                <span className="text-sm font-medium">Logic/Highlight</span>
+              </button>
+            )}
           </div>
+
+          {sequencePlusMenu.mode === 'logic' && onSequencePlusBlock && (
+            <div className="absolute left-0 top-full mt-2 w-56 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
+              <div className="flex flex-col gap-0.5">
+                <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Logic Block</div>
+                {([
+                  { type: 'loop' as const, label: 'Loop' },
+                  { type: 'alt' as const, label: 'Alt (Conditional)' },
+                  { type: 'opt' as const, label: 'Opt (Optional)' },
+                  { type: 'par' as const, label: 'Par (Parallel)' },
+                  { type: 'critical' as const, label: 'Critical' },
+                  { type: 'break' as const, label: 'Break' },
+                ]).map((opt) => (
+                  <button
+                    key={opt.type}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onSequencePlusBlock(sequencePlusMenu.anchorY, opt.type);
+                      setSequencePlusMenu(null);
+                    }}
+                  >
+                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                    <span className="flex-1">{opt.label}</span>
+                  </button>
+                ))}
+                <div className="my-1 h-px bg-border" />
+                <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Highlight</div>
+                <button
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onSequencePlusBlock(sequencePlusMenu.anchorY, 'rect');
+                    setSequencePlusMenu(null);
+                  }}
+                >
+                  <SquareStack className="h-3.5 w-3.5 shrink-0 text-violet-500" />
+                  <span className="flex-1">Highlight Box</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {sequencePlusMenu.mode === 'note' && (
             <div className="absolute left-0 top-full mt-2 w-52 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl">
