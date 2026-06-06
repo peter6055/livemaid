@@ -2,7 +2,7 @@ import { useRef, useEffect } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Palette, Pencil, Square, Type, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
-import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
+import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 
 interface NodeManipulationToolbarProps {
   code: string;
@@ -13,7 +13,7 @@ interface NodeManipulationToolbarProps {
   onEditLabel?: (e: React.MouseEvent) => void;
   onUpdateStyle: (property: string, value: string) => void;
   onFormatNodeLabel: (format: string, value?: string) => void;
-  onChangeShape: (shape: any) => void;
+  onChangeShape: (shape: ShapeOption) => void;
   onDuplicateNode: () => void;
   onDeleteNode: () => void;
   onResetStyle?: () => void;
@@ -331,7 +331,7 @@ export function NodeManipulationToolbar({
                     {BASIC_SHAPES.map((shape, i) => (
                         <DropdownMenuItem 
                           key={i}
-                          onClick={() => onChangeShape(shape as any)}
+                          onClick={() => onChangeShape(shape)}
                           className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
                           title={shape.l}
                         >
@@ -350,7 +350,7 @@ export function NodeManipulationToolbar({
                     {EXTENDED_SHAPES.map((shape, i) => (
                         <DropdownMenuItem 
                           key={i}
-                          onClick={() => onChangeShape(shape as any)}
+                          onClick={() => onChangeShape(shape)}
                           className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
                           title={shape.l}
                         >

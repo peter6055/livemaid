@@ -24,6 +24,9 @@ import { format } from "date-fns";
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry } from "@/lib/api/storage";
+import type { MonacoCodeEditor } from "@/lib/diagrams/types";
+import type { ShapeOption } from "@/lib/diagrams/flowchart";
+import type { OnMount } from "@monaco-editor/react";
 import { DemoBanner } from "@/components/DemoBanner";
 
 // Remove sequence blocks left TRULY empty (an opener — rect/loop/opt/alt/par/critical/break —
@@ -449,9 +452,9 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     handleDeselect();
   }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
 
-  const editorRef = useRef<any>(null);
+  const editorRef = useRef<MonacoCodeEditor | null>(null);
 
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
   };
 
@@ -533,10 +536,10 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
         if (!cancelled) {
           setPreviewSvgContent(svg);
         }
-      } catch (error: any) {
+      } catch (error) {
         if (!cancelled) {
           setPreviewSvgContent("");
-          setPreviewParseError(error?.message || "Failed to render preview diagram");
+          setPreviewParseError(error instanceof Error ? error.message : "Failed to render preview diagram");
         }
       }
     };
@@ -757,9 +760,13 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     let start = inlineInputRef.current.selectionStart;
     let end = inlineInputRef.current.selectionEnd;
 
-    if (start === end && typeof (inlineInputRef.current as any)._lastSelectionStart === 'number') {
-      const lastStart = (inlineInputRef.current as any)._lastSelectionStart;
-      const lastEnd = (inlineInputRef.current as any)._lastSelectionEnd;
+    const augmentedInput = inlineInputRef.current as HTMLTextAreaElement & {
+      _lastSelectionStart?: number;
+      _lastSelectionEnd?: number;
+    };
+    if (start === end && typeof augmentedInput._lastSelectionStart === 'number') {
+      const lastStart = augmentedInput._lastSelectionStart;
+      const lastEnd = augmentedInput._lastSelectionEnd ?? lastStart;
       if (lastStart !== lastEnd) {
         start = lastStart;
         end = lastEnd;
@@ -1082,7 +1089,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
   // the current edit before any cross-element or background transition.
   commitEditRef.current = handleEditSubmit;
 
-  const handleChangeShape = useCallback((shape: { b?: [string, string] | null, expanded?: string, isText?: boolean }) => {
+  const handleChangeShape = useCallback((shape: ShapeOption) => {
     if (!selectedNodeId) return;
     let newCode = code;
     const escapedNodeId = selectedNodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1265,7 +1272,7 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
     }
 
     const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
-    let edgesToAppend = [];
+    const edgesToAppend = [];
     let matchTo;
     while ((matchTo = toRegex.exec(code)) !== null) {
       edgesToAppend.push(`\n    ${matchTo[1]} ${matchTo[2]} ${newNodeId}`);
@@ -1578,20 +1585,20 @@ export function LiveMaidEditor({ documentId, isDemo = false }: { documentId: str
       const toRegex = new RegExp(`([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`, 'g');
       const fromRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`, 'g');
 
-      let parents = [];
+      const parents = [];
       let matchTo;
       while ((matchTo = toRegex.exec(code)) !== null) {
         parents.push({ id: matchTo[1], arrow: matchTo[2] });
       }
 
-      let children = [];
+      const children = [];
       let matchFrom;
       while ((matchFrom = fromRegex.exec(code)) !== null) {
         children.push({ id: matchFrom[3], arrow: matchFrom[2] });
       }
 
-      let nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
-      let preservedDefinitions = [];
+      const nodesToPreserve = new Set([...parents.map(p => p.id), ...children.map(c => c.id)]);
+      const preservedDefinitions = [];
       for (const nodeId of nodesToPreserve) {
         const nodeRegex = new RegExp(`(^|[^a-zA-Z0-9_])(${nodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`, 'm');
         const match = newCode.match(nodeRegex);

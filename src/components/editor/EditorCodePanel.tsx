@@ -1,10 +1,10 @@
-import Editor from "@monaco-editor/react";
+import Editor, { type OnMount } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
 
 interface EditorCodePanelProps {
   code: string;
   handleCodeChange: (value: string | undefined) => void;
-  handleEditorDidMount: (editor: any, monaco: any) => void;
+  handleEditorDidMount: OnMount;
   parseError: string | null;
 }
 

@@ -80,8 +80,8 @@ export function useEditorState(documentId: string) {
       if (onResetSelection) {
         onResetSelection();
       }
-    } catch (e: any) {
-      setParseError(e?.message || "Syntax Error");
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Syntax Error");
     }
   }, []);
 
@@ -107,7 +107,7 @@ export function useEditorState(documentId: string) {
         if (elapsedTime < 600) {
           await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
         }
-      } catch (error) {
+      } catch {
         toast.error("Failed to load diagram");
       } finally {
         setLoading(false);
@@ -129,7 +129,7 @@ export function useEditorState(documentId: string) {
 
       const updatedDoc = await res.json();
       setDoc(updatedDoc);
-    } catch (error) {
+    } catch {
       toast.error("Failed to auto-save");
     } finally {
       setSaving(false);

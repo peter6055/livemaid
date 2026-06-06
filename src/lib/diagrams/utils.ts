@@ -286,8 +286,8 @@ export function updateLinkStyleAndLabel(
           }
         }
         
-        let finalStroke = updates.stroke !== undefined ? updates.stroke : current.stroke;
-        let finalArrowType = updates.arrowType !== undefined ? updates.arrowType : current.arrowType;
+        const finalStroke = updates.stroke !== undefined ? updates.stroke : current.stroke;
+        const finalArrowType = updates.arrowType !== undefined ? updates.arrowType : current.arrowType;
         const finalLabel = updates.label !== undefined ? updates.label : currentLabel;
         
         const newMiddle = getReconstructedConnector(finalStroke, finalArrowType, finalLabel);

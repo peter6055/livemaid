@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
 import { isEdgeId, parseEdgeId, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
+import type { ShapeOption } from "@/lib/diagrams/flowchart";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -28,6 +29,25 @@ export interface SequenceBlockArea extends SequenceBlockEntry {
   y: number;
   width: number;
   height: number;
+}
+
+/** Live state for the click-drag "connect two nodes" interaction. */
+export interface ConnectionState {
+  active: boolean;
+  startNodeId: string | null;
+  startPos: { x: number, y: number } | null;
+  mousePos: { x: number, y: number } | null;
+  isDragging: boolean;
+  snapTargetId: string | null;
+  snapTargetPos: { x: number, y: number } | null;
+  anchorY: number | null;
+}
+
+/** Position + origin node for the floating shape-picker popover. */
+export interface ShapePicker {
+  x: number;
+  y: number;
+  startNodeId: string;
 }
 
 export function useCanvasInteraction({
@@ -59,18 +79,9 @@ export function useCanvasInteraction({
   const [textBox, setTextBox] = useState<{ x: number, y: number, width: number, height: number } | null>(null);
   const [editingText, setEditingText] = useState("");
   const [isInlineEditing, setIsInlineEditing] = useState(false);
-  const [shapePicker, setShapePicker] = useState<{ x: number, y: number, startNodeId: string } | null>(null);
+  const [shapePicker, setShapePicker] = useState<ShapePicker | null>(null);
 
-  const [connectionState, setConnectionState] = useState<{
-    active: boolean;
-    startNodeId: string | null;
-    startPos: { x: number, y: number } | null;
-    mousePos: { x: number, y: number } | null;
-    isDragging: boolean;
-    snapTargetId: string | null;
-    snapTargetPos: { x: number, y: number } | null;
-    anchorY: number | null;
-  }>({ active: false, startNodeId: null, startPos: null, mousePos: null, isDragging: false, snapTargetId: null, snapTargetPos: null, anchorY: null });
+  const [connectionState, setConnectionState] = useState<ConnectionState>({ active: false, startNodeId: null, startPos: null, mousePos: null, isDragging: false, snapTargetId: null, snapTargetPos: null, anchorY: null });
 
   const [sequenceLifelineOverlay, setSequenceLifelineOverlay] = useState<{
     actorId: string;
@@ -2598,7 +2609,7 @@ export function useCanvasInteraction({
   const handleAddNodeFromSelected = useCallback((
     startId: string | null,
     targetNodeId?: string,
-    shape?: { b?: [string, string] | null, isText?: boolean, expanded?: string, l?: string },
+    shape?: ShapeOption,
     sequenceInsertIndex?: number
   ) => {
     if (!startId) return;
@@ -2790,7 +2801,7 @@ export function useCanvasInteraction({
 
         // Highlight matched visible paths
         const allPaths = container.querySelectorAll('path.flowchart-link, path.path');
-        allPaths.forEach((path: any) => {
+        allPaths.forEach((path: Element) => {
           if (path.id && normalizeId(path.id) === canonicalEdgeId && !path.classList.contains('flowchart-link-hit-target')) {
             path.classList.add('edge-hover-highlight');
           }
@@ -2798,7 +2809,7 @@ export function useCanvasInteraction({
 
         // Highlight matched labels
         const allLabels = container.querySelectorAll('.edgeLabel');
-        allLabels.forEach((label: any) => {
+        allLabels.forEach((label: Element) => {
           const dataIdEl = label.querySelector('[data-id]');
           if (dataIdEl) {
             const rawId = dataIdEl.getAttribute('data-id');
@@ -2832,14 +2843,14 @@ export function useCanvasInteraction({
       // If we moved to another edge, highlight it
       if (relatedCanonicalId) {
         const allPaths = container.querySelectorAll('path.flowchart-link, path.path');
-        allPaths.forEach((path: any) => {
+        allPaths.forEach((path: Element) => {
           if (path.id && normalizeId(path.id) === relatedCanonicalId && !path.classList.contains('flowchart-link-hit-target')) {
             path.classList.add('edge-hover-highlight');
           }
         });
 
         const allLabels = container.querySelectorAll('.edgeLabel');
-        allLabels.forEach((label: any) => {
+        allLabels.forEach((label: Element) => {
           const dataIdEl = label.querySelector('[data-id]');
           if (dataIdEl) {
             const rawId = dataIdEl.getAttribute('data-id');
@@ -2911,7 +2922,7 @@ export function useCanvasInteraction({
     resolveSequenceHighlightTarget,
     openHighlightRecolorRef,
     dragState: null as null,
-    setDragState: (_: any) => { },
+    setDragState: (_: unknown) => { },
     startSequenceConnection,
     inlineInputRef,
     commitEditRef,

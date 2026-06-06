@@ -4,6 +4,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ChevronsDown, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Type, LayoutTemplate, Spline } from "lucide-react";
 import { parseMermaidCurve, updateMermaidCurve } from "./utils";
 
+/** A flowchart shape option that can be inserted or applied to a node. */
+export type ShapeOption = { b?: string[] | null; isText?: boolean; expanded?: string };
+
 export const BASIC_SHAPES = [
   { b: null, isText: true, l: 'Text', i: <text x="12" y="16" fontSize="14" fontFamily="sans-serif" textAnchor="middle" fill="currentColor" fontWeight="bold">T</text> },
   { b: ['[', ']'], l: 'Square', i: <rect x="4" y="4" width="16" height="16" stroke="currentColor" fill="none" strokeWidth="1.5" /> },
@@ -113,7 +116,7 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
       return `${prefix}${i}`;
   };
 
-  const handleAddShape = (shape: {b?: [string, string] | null, isText?: boolean, expanded?: string}) => {
+  const handleAddShape = (shape: ShapeOption) => {
       let newCode = code;
       const newNodeId = getNextNodeId(newCode);
       const label = "New Node";
@@ -233,7 +236,7 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
                   {BASIC_SHAPES.map((shape, i) => (
                       <DropdownMenuItem 
                         key={i}
-                        onClick={() => handleAddShape(shape as any)}
+                        onClick={() => handleAddShape(shape)}
                         className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
                         title={shape.l}
                       >
@@ -252,7 +255,7 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
                   {EXTENDED_SHAPES.map((shape, i) => (
                       <DropdownMenuItem 
                         key={i}
-                        onClick={() => handleAddShape(shape as any)}
+                        onClick={() => handleAddShape(shape)}
                         className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
                         title={shape.l}
                       >

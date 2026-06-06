@@ -8,7 +8,8 @@ import { isEdgeId } from "@/lib/diagrams/utils";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { BASIC_SHAPES, EXTENDED_SHAPES } from "@/lib/diagrams/flowchart";
+import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
+import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 
 interface EditorCanvasProps {
   code: string;
@@ -34,7 +35,7 @@ interface EditorCanvasProps {
     snapTargetPos: { x: number, y: number } | null;
     anchorY: number | null;
   };
-  setConnectionState: (state: any) => void;
+  setConnectionState: (state: React.SetStateAction<ConnectionState>) => void;
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
   hoveredSequenceActorBox: { x: number, y: number, width: number, height: number } | null;
   hoveredSequenceMessageBox: { x: number, y: number, width: number, height: number } | null;
@@ -60,10 +61,10 @@ interface EditorCanvasProps {
   selectedSvgId: string | null;
   selectedNodeId: string | null;
   currentType: string;
-  handleAddNodeFromSelected: (startId: string | null, targetNodeId?: string, shape?: any) => void;
+  handleAddNodeFromSelected: (startId: string | null, targetNodeId?: string, shape?: ShapeOption) => void;
   handleUpdateStyle: (property: string, value: string) => void;
   handleFormatNodeLabel: (format: string, value?: string) => void;
-  handleChangeShape: (shape: any) => void;
+  handleChangeShape: (shape: ShapeOption) => void;
   handleDuplicateNode: () => void;
   handleDeleteNode: () => void;
   onAddSequenceNote: (position: 'left' | 'right' | 'over') => void;
@@ -97,11 +98,11 @@ interface EditorCanvasProps {
   onUpdateEdgeAnimation?: (animate: boolean) => void;
   onDeleteEdge?: () => void;
   shapePicker: { x: number, y: number, startNodeId: string } | null;
-  setShapePicker: (state: any) => void;
+  setShapePicker: (state: React.SetStateAction<ShapePicker | null>) => void;
   handleCodeChange?: (code: string) => void;
   selectedNodeIds?: string[];
-  dragState?: any;
-  setDragState?: (state: any) => void;
+  dragState?: unknown;
+  setDragState?: (state: unknown) => void;
 }
 
 export function EditorCanvas({
@@ -245,8 +246,8 @@ export function EditorCanvas({
     const inverse = 1 / scale;
 
     // 1. Scale-lock transforms
-    const transformElements = container.querySelectorAll('[data-scale-lock]');
-    transformElements.forEach((el: any) => {
+    const transformElements = container.querySelectorAll<HTMLElement>('[data-scale-lock]');
+    transformElements.forEach((el) => {
       const baseTransform = el.getAttribute('data-base-transform') || '';
       el.style.transform = `${baseTransform} scale(${inverse})`.trim();
     });
@@ -257,27 +258,27 @@ export function EditorCanvas({
     // screen size that dwarfs a densely-packed, zoomed-out diagram. e.g. the message endpoint
     // drag bars: at min zoom a constant 44px bar spanned many message rows and dominated.
     const clampedScale = Math.min(1, inverse);
-    const clampedElements = container.querySelectorAll('[data-scale-lock-max1]');
-    clampedElements.forEach((el: any) => {
+    const clampedElements = container.querySelectorAll<HTMLElement>('[data-scale-lock-max1]');
+    clampedElements.forEach((el) => {
       const baseTransform = el.getAttribute('data-base-transform') || '';
       el.style.transform = `${baseTransform} scale(${clampedScale})`.trim();
     });
 
     // 2. Scale-lock borders
-    const borderElements = container.querySelectorAll('[data-scale-lock-border]');
-    borderElements.forEach((el: any) => {
+    const borderElements = container.querySelectorAll<HTMLElement>('[data-scale-lock-border]');
+    borderElements.forEach((el) => {
       el.style.borderWidth = `${1.25 * inverse}px`;
     });
 
     // 3. Scale-lock shadows
-    const shadowElements = container.querySelectorAll('[data-scale-lock-shadow]');
-    shadowElements.forEach((el: any) => {
+    const shadowElements = container.querySelectorAll<HTMLElement>('[data-scale-lock-shadow]');
+    shadowElements.forEach((el) => {
       el.style.boxShadow = `0 0 0 ${2 * inverse}px rgba(99, 102, 241, 0.2)`;
     });
 
     // 4. Scale-lock strokes
-    const strokeElements = container.querySelectorAll('[data-scale-lock-stroke]');
-    strokeElements.forEach((el: any) => {
+    const strokeElements = container.querySelectorAll<SVGElement>('[data-scale-lock-stroke]');
+    strokeElements.forEach((el) => {
       el.style.strokeWidth = `${2 * inverse}px`;
     });
   };
@@ -868,14 +869,14 @@ export function EditorCanvas({
         trackPadPanning={{ disabled: false }}
         limitToBounds={false}
         doubleClick={{ disabled: true }}
-        onInit={(ref: any) => {
+        onInit={(ref) => {
           if (containerRef.current) {
             containerRef.current.style.setProperty('--zoom-scale', String(ref.state.scale));
             containerRef.current.style.setProperty('--zoom-inverse-scale', String(1 / ref.state.scale));
             updateScaleLockedElements(containerRef.current, ref.state.scale);
           }
         }}
-        onTransform={(ref: any, state: any) => {
+        onTransform={(_ref, state) => {
           if (containerRef.current) {
             containerRef.current.style.setProperty('--zoom-scale', String(state.scale));
             containerRef.current.style.setProperty('--zoom-inverse-scale', String(1 / state.scale));
@@ -1813,7 +1814,7 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape as any);
+                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
                       setShapePicker(null);
                     }}
                     onClick={(e) => {
@@ -1841,7 +1842,7 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape as any);
+                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
                       setShapePicker(null);
                     }}
                     onClick={(e) => {

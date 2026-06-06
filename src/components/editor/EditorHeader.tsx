@@ -1,5 +1,6 @@
 import { DiagramDocument } from "@/lib/api/storage";
 import { useTheme } from "next-themes";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -106,26 +107,26 @@ export function EditorHeader({
                 <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === 'dark' ? 'left-4' : 'left-1'}`} />
               </div>
             </DropdownMenuItem>
-            <a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
+            <Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
               <DropdownMenuItem className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Dashboard</span>
               </DropdownMenuItem>
-            </a>
+            </Link>
           </DropdownMenuContent>
         </DropdownMenu>
-        <a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
+        <Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }}>
           <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
             <LayoutTemplate className="w-5 h-5 text-white" />
           </div>
-        </a>
+        </Link>
 
         <span className="font-semibold text-xl tracking-tight mr-6 text-foreground whitespace-nowrap">LiveMaid</span>
 
         <Breadcrumb>
           <BreadcrumbList>
             <BreadcrumbItem>
-              <BreadcrumbLink render={<a href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }} />}>
+              <BreadcrumbLink render={<Link href="/" onClick={(e) => { e.preventDefault(); onNavigate('/', 'Returning to Projects...'); }} />}>
                 Projects
               </BreadcrumbLink>
             </BreadcrumbItem>
