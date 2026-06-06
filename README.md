@@ -182,8 +182,7 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 > so it works on platforms like Railway that inject env vars at container start.
 > `DEMO_MODE` controls everything: the server-side storage path, the write
 > guards, and — passed down as a prop to the client — the demo banner, the
-> disabled write buttons, and the read-only labels. There is no build-time
-> `NEXT_PUBLIC_*` flag to set.
+> disabled write buttons, and the read-only labels.
 
 ## 🛠️ Tech Stack
 
