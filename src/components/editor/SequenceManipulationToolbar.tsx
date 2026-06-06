@@ -94,7 +94,8 @@ export function SequenceManipulationToolbar({
     setParticipantMenuOpen(false);
   }, [selectedNodeId]);
 
-  const btnCls = "pointer-events-auto flex items-center justify-center h-9 rounded-md px-3 gap-1 whitespace-nowrap hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
+  const btnCls =
+    "pointer-events-auto flex items-center justify-center h-9 rounded-md px-3 gap-1 whitespace-nowrap hover:bg-accent hover:text-accent-foreground text-foreground transition-colors";
 
   return (
     <div
@@ -108,7 +109,7 @@ export function SequenceManipulationToolbar({
         transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
         // Transparent padding "shield" so near-miss clicks around the bar are absorbed here
         // (stopPropagation) instead of leaking through to canvas elements behind the toolbar.
-        padding: '12px',
+        padding: "12px",
       }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
@@ -149,7 +150,9 @@ export function SequenceManipulationToolbar({
                   className="absolute left-1/2 top-full z-40 mt-2 w-max -translate-x-1/2 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-xl"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="px-1 pb-1.5 text-base font-semibold text-popover-foreground">Participant Type</div>
+                  <div className="px-1 pb-1.5 text-base font-semibold text-popover-foreground">
+                    Participant Type
+                  </div>
                   <div className="grid grid-cols-4 gap-1.5">
                     {PARTICIPANT_TYPES.map((pt) => {
                       const active = currentParticipantType === pt.key;
@@ -158,12 +161,20 @@ export function SequenceManipulationToolbar({
                           key={pt.key}
                           className={`flex w-16 flex-col items-center gap-1 rounded-lg border p-2 transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${active ? "border-indigo-500 bg-accent ring-1 ring-indigo-500" : "border-border"}`}
                           title={pt.label}
-                          onClick={() => { onChangeParticipantType(pt.key); setParticipantMenuOpen(false); }}
+                          onClick={() => {
+                            onChangeParticipantType(pt.key);
+                            setParticipantMenuOpen(false);
+                          }}
                         >
                           <span className="flex h-8 w-8 items-center justify-center text-foreground">
-                            <ParticipantIcon type={pt.key} className="w-7 h-7 stroke-current stroke-2 fill-none" />
+                            <ParticipantIcon
+                              type={pt.key}
+                              className="w-7 h-7 stroke-current stroke-2 fill-none"
+                            />
                           </span>
-                          <span className="text-[10px] font-medium leading-tight text-center">{pt.label}</span>
+                          <span className="text-[10px] font-medium leading-tight text-center">
+                            {pt.label}
+                          </span>
                         </button>
                       );
                     })}
@@ -204,16 +215,23 @@ export function SequenceManipulationToolbar({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex flex-col gap-1">
-                    <div className="px-3 pb-1 text-base font-semibold text-popover-foreground">Message Type</div>
+                    <div className="px-3 pb-1 text-base font-semibold text-popover-foreground">
+                      Message Type
+                    </div>
                     {MESSAGE_TYPES.map((mt) => {
                       const active = currentMessageOperator === mt.operator;
                       return (
                         <button
                           key={mt.operator}
                           className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-accent ${active ? "bg-accent ring-1 ring-indigo-500" : ""}`}
-                          onClick={() => { onChangeMessageType(mt.operator); setTypeMenuOpen(false); }}
+                          onClick={() => {
+                            onChangeMessageType(mt.operator);
+                            setTypeMenuOpen(false);
+                          }}
                         >
-                          <span className="w-10 shrink-0 text-center font-mono text-base tracking-tighter text-indigo-500">{mt.preview}</span>
+                          <span className="w-10 shrink-0 text-center font-mono text-base tracking-tighter text-indigo-500">
+                            {mt.preview}
+                          </span>
                           <span className="flex-1 whitespace-nowrap">{mt.label}</span>
                         </button>
                       );
@@ -251,22 +269,33 @@ export function SequenceManipulationToolbar({
                   onClick={(e) => e.stopPropagation()}
                 >
                   <div className="flex flex-col gap-1">
-                    <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">Note</div>
+                    <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">
+                      Note
+                    </div>
                     <button
                       className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => { onMoveNote("left"); setMoveMenuOpen(false); }}
+                      onClick={() => {
+                        onMoveNote("left");
+                        setMoveMenuOpen(false);
+                      }}
                     >
                       Move note to the left
                     </button>
                     <button
                       className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => { onMoveNote("right"); setMoveMenuOpen(false); }}
+                      onClick={() => {
+                        onMoveNote("right");
+                        setMoveMenuOpen(false);
+                      }}
                     >
                       Move note to the right
                     </button>
                     <button
                       className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => { onMoveNote("over"); setMoveMenuOpen(false); }}
+                      onClick={() => {
+                        onMoveNote("over");
+                        setMoveMenuOpen(false);
+                      }}
                     >
                       Move note over
                     </button>
@@ -288,7 +317,6 @@ export function SequenceManipulationToolbar({
           <span className="text-sm font-semibold">Delete</span>
         </button>
       </div>
-
     </div>
   );
 }

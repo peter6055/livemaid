@@ -9,6 +9,7 @@ bias / note-avoidance" model.
 The interactive `+` buttons shown on sequence lifelines while hovering and dragging.
 
 Goals:
+
 - Predictable count (one `+` per vertical gap — no "full wall").
 - **Identical placement on every lifeline** (columns must not drift relative to each other).
 - Preserve loop insertion usability (top + bottom of self-loop rows).
@@ -76,6 +77,7 @@ Validate these before changing any sequence `+` / slot code. Use **function-name
 not line numbers (line numbers drift).
 
 ### Guard 1 — `getSequenceAnchorSlots()` (flat-surface invariant)
+
 - Slots must be derived from shared global message rows only; notes must have no effect.
 - First slot clamps to `[globalTop, end]`; others to `[start, end]`.
 - Do not reintroduce per-note avoidance or per-lifeline custom lane sets.
@@ -84,17 +86,20 @@ not line numbers (line numbers drift).
   first message and around self-loop rows (top + bottom).
 
 ### Guard 2 — `getSequenceMessageEntries()` (frontmatter safety)
+
 - Must skip `---`-delimited frontmatter and index only real message lines.
 - **Test**: with a YAML config block present (`theme:`, `fontFamily:`, `themeVariables:`),
   drag-insert a message and confirm it lands in the sequence body, never inside config.
 
 ### Guard 3 — `+` button visual render (`EditorCanvas.tsx`, sequence lifeline overlay)
+
 - Button: `w-6 h-6`, `bg-indigo-600`, `ring-2 ring-white/90`, `Plus` icon; snap target is a
   small green dot. Keep it clearly visible/clickable.
 - **Test**: confirm the `+` stays the same physical size and remains clickable at zoom 0.5x,
   1x, 2x, and 5x (scale-locking must hold).
 
 ### Build / type checks
+
 - `npm run build` passes; TypeScript diagnostics clean for edited files.
 
 ## Files With `+` / Slot Logic (do not move without updating this doc)

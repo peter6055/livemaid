@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   livemaid:
@@ -24,5 +24,4 @@ services:
     environment:
       - NODE_ENV=production
       - DEMO_MODE=true
-      - NEXT_PUBLIC_DEMO_MODE=true
     restart: unless-stopped

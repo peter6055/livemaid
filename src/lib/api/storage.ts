@@ -6,11 +6,11 @@
 // `createFileSystemStorageAdapter()` with the new adapter factory. Every API route and the frontend
 // keep their identical imports — they never reference a concrete backend.
 
-import { createFileSystemStorageAdapter } from './storageFsAdapter';
-import type { DiagramDocument, Folder, StorageAdapter } from './storageTypes';
+import { createFileSystemStorageAdapter } from "./storageFsAdapter";
+import type { DiagramDocument, Folder, StorageAdapter } from "./storageTypes";
 
-export type { DiagramDocument, Folder, VersionHistoryEntry } from './storageTypes';
-export { IS_DEMO_MODE } from './storageTypes';
+export type { DiagramDocument, Folder, VersionHistoryEntry } from "./storageTypes";
+export { IS_DEMO_MODE } from "./storageTypes";
 
 // ── Active backend ────────────────────────────────────────────────────────────
 // To migrate to MongoDB: implement `createMongoStorageAdapter()` (same StorageAdapter interface)

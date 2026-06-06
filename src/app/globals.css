@@ -233,14 +233,16 @@ svg[aria-roledescription="error"],
 .mermaid-container .edgePath .path,
 .mermaid-container .edgePath .arrowheadPath {
   cursor: pointer !important;
-  transition: stroke 0.2s, stroke-width 0.2s;
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s;
 }
 
 /* Direct and synchronized hover highlights for flowchart edges/lines and their labels */
 .mermaid-container path.flowchart-link.edge-hover-highlight,
 .mermaid-container .edgePath .path.edge-hover-highlight,
 .mermaid-container path.flowchart-link:hover,
-.mermaid-container .flowchart-link-hit-target:hover+path.flowchart-link,
+.mermaid-container .flowchart-link-hit-target:hover + path.flowchart-link,
 .mermaid-container .edgePath:hover path.path,
 .mermaid-container .edgePath:hover .path,
 .mermaid-container .edgePaths .edgePath:hover .path {
@@ -352,7 +354,10 @@ svg[aria-roledescription="error"],
   color: #6366f1 !important;
   fill: #6366f1 !important;
   font-weight: 600;
-  transition: color 0.2s, fill 0.2s, font-weight 0.2s;
+  transition:
+    color 0.2s,
+    fill 0.2s,
+    font-weight 0.2s;
 }
 
 /* Hover highlights for nodes / objects - only the hovered node */
@@ -360,7 +365,9 @@ svg[aria-roledescription="error"],
 .mermaid-container .node:hover circle,
 .mermaid-container .node:hover polygon,
 .mermaid-container .node:hover ellipse,
-.mermaid-container .node:hover path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
+.mermaid-container
+  .node:hover
+  path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
   stroke: #6366f1 !important;
   /* Indigo-500 */
   stroke-width: 2.5px !important;
@@ -372,7 +379,9 @@ svg[aria-roledescription="error"],
 .mermaid-container .node polygon,
 .mermaid-container .node ellipse,
 .mermaid-container .node path {
-  transition: stroke 0.2s, stroke-width 0.2s;
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s;
 }
 
 .mermaid-container .actor,

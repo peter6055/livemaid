@@ -11,7 +11,50 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  quality:
+    name: Lint, format & types
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            npm ci && break
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "npm ci failed (attempt $attempt), retrying in 15s..."
+            sleep 15
+          done
+
+      # Blocking: the type checker must stay green.
+      - name: Type check
+        run: npm run typecheck
+
+      # Blocking: the codebase is free of lint errors. ESLint exits non-zero only
+      # on errors (the remaining `react-hooks` / unused-var items are warnings),
+      # so this fails CI the moment a new error is introduced.
+      - name: Lint
+        run: npm run lint
+
+      # Blocking: the whole tree is Prettier-formatted. Run `npm run format`
+      # locally to fix any formatting drift before pushing.
+      - name: Format check
+        run: npm run format:check
+
   validate:
+    name: Build
     runs-on: ubuntu-latest
     permissions:
       contents: read

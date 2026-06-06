@@ -10,12 +10,12 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 ## ✨ Features
 
-* **Live WYSIWYG Editor:** Instantly preview your Mermaid diagrams as you type.
-* **Diagram Management:** Easily create, rename, and delete diagrams from a centralized dashboard.
-* **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
-* **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
-* **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
-* **Demo Mode:** Run a read-only public-facing instance pre-loaded with sample diagrams — changes are never persisted.
+- **Live WYSIWYG Editor:** Instantly preview your Mermaid diagrams as you type.
+- **Diagram Management:** Easily create, rename, and delete diagrams from a centralized dashboard.
+- **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
+- **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
+- **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
+- **Demo Mode:** Run a read-only public-facing instance pre-loaded with sample diagrams — changes are never persisted.
 
 ## 🚀 Getting Started
 
@@ -23,12 +23,13 @@ Follow these instructions to set up the project locally for development.
 
 ### Prerequisites
 
-* Node.js (v18 or higher recommended)
-* npm (or yarn, pnpm, bun)
+- Node.js (v18 or higher recommended)
+- npm (or yarn, pnpm, bun)
 
 ### Installation
 
 1. Ensure you are in the project root directory:
+
    ```bash
    cd livemaid
    ```
@@ -72,7 +73,7 @@ We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
 4. **Squash and Merge**: Merge the PR using the **"Squash and merge"** option. This keeps the `main` history perfectly clean with one commit per epic.
 5. **Delete the Branch**: After merging, delete the feature branch. Do not reuse it. Future changes require branching off `main` again.
 
-*(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor).*
+_(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor)._
 
 ## 🔄 CI/CD Flow
 
@@ -81,22 +82,27 @@ This repository follows the flow:
 **PR Raised → PR Check → Merge → Release → Sandbox Deployment**
 
 ### 1) PR Raised
+
 - Open a pull request targeting `main`.
 
 ### 2) PR Check
+
 - Workflow: `ci/pr-checks` (`.github/workflows/pr-checks.yml`)
 - Trigger: `pull_request` on `main`
 - Action: installs dependencies and runs `npm run build`.
 
 ### 3) Merge
+
 - Merge PR into `main` (recommended: squash and merge).
 
 ### 4) Release
+
 - Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
 - Trigger: `push` to `main`
 - Action: builds and publishes Docker image to GHCR, then creates a GitHub Release (`v1.0.<run_number>`).
 
 ### 5) Sandbox Deployment
+
 - Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
 - Trigger: successful completion of `ci/release` (`workflow_run`)
 - Action: deploys latest release to Railway sandbox service.
@@ -105,11 +111,12 @@ This repository follows the flow:
 
 LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
 
-### Option 1: Manual Docker Compose
+### Manual Docker Compose
 
 1. Create a `docker-compose.yml` file on your server:
+
    ```yaml
-   version: '3.8'
+   version: "3.8"
 
    services:
      livemaid:
@@ -132,11 +139,12 @@ LiveMaid is containerized and available on the GitHub Container Registry. Since 
 
 Your diagrams will be saved permanently in the `./data` folder on your server!
 
-### Option 2: Demo Mode
+### Demo Mode
 
 Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded with sample diagrams. Visitors can freely explore and edit diagrams in-browser, but nothing is ever persisted to disk.
 
 **How it works:**
+
 - Diagrams are read from the `./demo/` folder instead of `./data/`.
 - All write operations (create, save, delete) are silently disabled on both the server and the client.
 - A persistent amber banner is displayed on every page informing users they are in demo mode.
@@ -146,12 +154,15 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 1. Populate the `./demo/` folder with sample diagram JSON files (same format as `./data/`).
 
 2. Run the demo service defined in the included `docker-compose.yml`:
+
    ```bash
    docker-compose up -d livemaid-demo
    ```
+
    This starts the demo instance on port `3001` with `DEMO_MODE=true` and mounts `./demo` as read-only.
 
-   Alternatively, pass the environment variables yourself:
+   Alternatively, pass the environment variable yourself:
+
    ```yaml
    services:
      livemaid-demo:
@@ -163,20 +174,24 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
        environment:
          - NODE_ENV=production
          - DEMO_MODE=true
-         - NEXT_PUBLIC_DEMO_MODE=true
        restart: unless-stopped
    ```
 
-> **Note:** Both `DEMO_MODE` (server-side) and `NEXT_PUBLIC_DEMO_MODE` (client-side) must be set to `"true"` for the full demo experience. `NEXT_PUBLIC_DEMO_MODE` controls the visible banner and disabled UI buttons; `DEMO_MODE` controls the server-side storage path and write guards.
+> **Note:** Only `DEMO_MODE=true` is required. It is read at **runtime** (the
+> dashboard and editor pages opt out of static prerendering via `connection()`),
+> so it works on platforms like Railway that inject env vars at container start.
+> `DEMO_MODE` controls everything: the server-side storage path, the write
+> guards, and — passed down as a prop to the client — the demo banner, the
+> disabled write buttons, and the read-only labels.
 
 ## 🛠️ Tech Stack
 
-* [Next.js](https://nextjs.org/)
-* [React](https://react.dev/)
-* [Mermaid.js](https://mermaid.js.org/)
-* [Monaco Editor](https://microsoft.github.io/monaco-editor/)
-* [Tailwind CSS](https://tailwindcss.com/)
-* [shadcn/ui](https://ui.shadcn.com/)
+- [Next.js](https://nextjs.org/)
+- [React](https://react.dev/)
+- [Mermaid.js](https://mermaid.js.org/)
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/)
+- [Tailwind CSS](https://tailwindcss.com/)
+- [shadcn/ui](https://ui.shadcn.com/)
 
 ## 💖 Support the Community
 

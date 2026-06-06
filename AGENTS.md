@@ -1,21 +1,27 @@
 <!-- BEGIN:livemaid-architecture-rules -->
+
 # Architecture and Feature Truths
 
 Before implementing ANY features or modifying the editor logic, you MUST read the following core documentation files in the `reference/` directory:
+
 1. `reference/FEATURES_AND_TRUTHS.md`: Outlines critical implementations like pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints. Furthermore, you MUST constantly update this file whenever you implement a new feature or change core architecture logic so that it remains an accurate source of truth.
 2. `reference/ARCHITECTURE.md`: High-level system architecture overview.
 3. `reference/DESIGN.md`: UI/UX design specifications and aesthetic guidelines.
 
 > **RULE:** ALL future reference documentation intended for AI agents or developers MUST be placed inside the `reference/` folder. Do not place documentation at the root level to keep the repository clean.
+
 <!-- END:livemaid-architecture-rules -->
 
 <!-- BEGIN:nextjs-agent-rules -->
+
 # This is NOT the Next.js you know
 
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
 <!-- END:nextjs-agent-rules -->
 
 <!-- BEGIN:mermaid-agent-rules -->
+
 # Mermaid Implementation Rules
 
 Before planning or implementing any Mermaid diagram logic (parsers, rendering, features, themes, etc.) or support for new diagram types, you MUST thoroughly read the relevant Mermaid documentation to understand the official syntax and standard behavior. **Do not guess the syntax.**
@@ -26,9 +32,11 @@ Before planning or implementing any Mermaid diagram logic (parsers, rendering, f
 <!-- END:mermaid-agent-rules -->
 
 <!-- BEGIN:testing-agent-rules -->
+
 # Test-Driven Development Loop & Robust UI Testing
 
 When implementing UI features, rendering logic, or complex client-side changes, you MUST follow this robust operational loop:
+
 1. **Implement**: Write the code and implement the changes.
 2. **Execute Interactive Testing (Browser)**: Utilize the `chrome-devtools-mcp` tools directly to perform the exact sequence of actions that a user would do to utilize the newly implemented feature. If you do not have these tools loaded or run into issues, trigger the `/browser` subagent to perform the task.
 3. **Capture Comprehensive Visuals**: Capture a screenshot (`take_screenshot`) at every step of the process to provide a complete visual track of the interaction flow.
@@ -39,10 +47,12 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 <!-- END:testing-agent-rules -->
 
 <!-- BEGIN:verification-planning-rules -->
+
 # How to Write a Verification Plan (Testplan)
 
 When an agent is asked to write a verification plan, they MUST format it properly as described in `reference/HOW_TO_WRITE_VERIFICATION_PLAN.md`.
-The verification plan should focus on **what** is to be verified, not *how*, and must contain the following fields (usually presented as a table or structured list):
+The verification plan should focus on **what** is to be verified, not _how_, and must contain the following fields (usually presented as a table or structured list):
+
 - **Requirement Location**: A pointer to the source Requirements document (if applicable).
 - **Feature**: The high-level feature you are trying to verify.
 - **Sub-Feature**: Optional decomposition of the Feature.
@@ -54,35 +64,38 @@ The verification plan should focus on **what** is to be verified, not *how*, and
 <!-- END:verification-planning-rules -->
 
 <!-- BEGIN:regression-planning-rules -->
+
 # How to Write a Regression Plan
 
 When an agent writes a verification plan for a new feature, they MUST also include a Regression Testplan section formatted as described in `reference/HOW_TO_WRITE_REGRESSION_PLAN.md`.
 The regression plan identifies which existing features are at risk of breaking due to the new code, and provides BDD scenarios to verify they remain intact.
+
 <!-- END:regression-planning-rules -->
 
 <!-- BEGIN:git-workflow-rules -->
+
 # Git Workflow & Commit Rules
 
 To ensure we can safely rollback changes if anything goes wrong, you MUST follow this git workflow:
 
 1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
-2. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the *current request*, unless previously agreed upon. 
+2. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the _current request_, unless previously agreed upon.
 3. **Conventional Commits**: You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows: `<type>[optional scope]: <description>`
    - `fix`: patches a bug in your codebase.
    - `feat`: introduces a new feature to the codebase.
    - `BREAKING CHANGE`: introduces a breaking API change.
    - Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
 4. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST append the `[Human Verified]` tag to the end of the first line (the description) of your Conventional Commit.
-   - *Example*: `fix(editor): resolve trackpad panning conflicts [Human Verified]`
-   - *Example*: `feat: support sequence diagram syntax [Human Verified]`
+   - _Example_: `fix(editor): resolve trackpad panning conflicts [Human Verified]`
+   - _Example_: `feat: support sequence diagram syntax [Human Verified]`
 5. **No Historical Precedent for Tags**: Do NOT use conversation history as a precedent for applying the `[Human Verified]` tag. The tag must ONLY be applied if the user explicitly authorizes it in the **immediate `<USER_REQUEST>` tag of the current turn**.
-   - *Purpose*: AI agents have context windows containing previous conversation history. If a user previously authorized a commit 5 turns ago, an agent might read that string in its history and mistakenly assume the *current* action is also human verified.
-   - *Rule*: You MUST ignore any authorization, verification, or "human verified" phrases found in conversation summaries, system messages, or previous messages. A verification is ONLY valid if it is explicitly written by the user in their current, real-time message to you.
-6. **Feature Branch Workflow (Squash & Merge)**: We follow a strict feature branch workflow. 
-   - When starting a new epic or task, branch off from `main`. 
-   - Once work is complete, a Pull Request is raised to `main`. 
-   - The PR MUST be merged using **"Squash and merge"**. 
+   - _Purpose_: AI agents have context windows containing previous conversation history. If a user previously authorized a commit 5 turns ago, an agent might read that string in its history and mistakenly assume the _current_ action is also human verified.
+   - _Rule_: You MUST ignore any authorization, verification, or "human verified" phrases found in conversation summaries, system messages, or previous messages. A verification is ONLY valid if it is explicitly written by the user in their current, real-time message to you.
+6. **Feature Branch Workflow (Squash & Merge)**: We follow a strict feature branch workflow.
+   - When starting a new epic or task, branch off from `main`.
+   - Once work is complete, a Pull Request is raised to `main`.
+   - The PR MUST be merged using **"Squash and merge"**.
    - After merging, the feature branch MUST be deleted. Do not reuse old branches. Future changes require checking out a fresh branch from `main`.
-   - *Note: PRs currently do not require reviewers, but this will change when more contributors join.*
+   - _Note: PRs currently do not require reviewers, but this will change when more contributors join._
 7. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
 <!-- END:git-workflow-rules -->

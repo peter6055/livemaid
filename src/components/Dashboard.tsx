@@ -1,17 +1,33 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useTheme } from 'next-themes';
-import { DiagramCard, DiagramDocument } from '@/components/DiagramCard';
-import { FolderCard, Folder } from '@/components/FolderCard';
-import { FolderTree } from '@/components/FolderTree';
-import { Button } from '@/components/ui/button';
-import { Plus, LayoutTemplate, Menu, Loader2, Moon, Search, X, Repeat2, FolderPlus, ChevronRight, ArrowDownUp, Home, Sun, Clock, FileText } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
+import { useState, useEffect, useMemo, useRef } from "react";
+import { useTheme } from "next-themes";
+import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
+import { FolderCard, Folder } from "@/components/FolderCard";
+import { FolderTree } from "@/components/FolderTree";
+import { Button } from "@/components/ui/button";
+import {
+  Plus,
+  LayoutTemplate,
+  Menu,
+  Loader2,
+  Moon,
+  Search,
+  X,
+  Repeat2,
+  FolderPlus,
+  ChevronRight,
+  ArrowDownUp,
+  Home,
+  Sun,
+  Clock,
+  FileText,
+} from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
-import { Skeleton } from '@/components/ui/skeleton';
-import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
 import {
   DropdownMenu,
@@ -55,14 +71,16 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
   const [mounted, setMounted] = useState(false);
-  useEffect(() => { setMounted(true); }, []);
-  const isDark = resolvedTheme === 'dark';
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  const isDark = resolvedTheme === "dark";
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderLoading, setFolderLoading] = useState(false);
   const folderSwitchTimer = useRef<NodeJS.Timeout | null>(null);
-  const [sortBy, setSortBy] = useState<'edited' | 'created' | 'name'>('edited');
+  const [sortBy, setSortBy] = useState<"edited" | "created" | "name">("edited");
   // `searchInput` is the raw, instant value bound to the text field; `searchQuery` is the DEBOUNCED
   // value that actually drives filtering. `searchLoading` is true during the debounce window so the
   // grid shows a brief loading state instead of filtering on every keystroke.
@@ -111,7 +129,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // state to avoid SSR/hydration mismatch. If the folder no longer exists, the existing validation
   // effect falls back to root and the URL is cleared by the sync effect below.
   useEffect(() => {
-    const f = new URLSearchParams(window.location.search).get('folder');
+    const f = new URLSearchParams(window.location.search).get("folder");
     if (f) setCurrentFolderId(f);
     didHydrateFolderRef.current = true;
   }, []);
@@ -121,26 +139,26 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   useEffect(() => {
     if (!didHydrateFolderRef.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (currentFolderId) params.set('folder', currentFolderId);
-    else params.delete('folder');
+    if (currentFolderId) params.set("folder", currentFolderId);
+    else params.delete("folder");
     const qs = params.toString();
-    window.history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
   }, [currentFolderId]);
 
   const fetchData = async () => {
     try {
       const startTime = Date.now();
       const [diagRes, folderRes] = await Promise.all([
-        fetch('/api/diagrams'),
-        fetch('/api/folders'),
+        fetch("/api/diagrams"),
+        fetch("/api/folders"),
       ]);
-      if (!diagRes.ok) throw new Error('Failed to fetch');
+      if (!diagRes.ok) throw new Error("Failed to fetch");
       const data = await diagRes.json();
       const folderData = folderRes.ok ? await folderRes.json() : [];
 
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime < 600) {
-        await new Promise(resolve => setTimeout(resolve, 600 - elapsedTime));
+        await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
       }
       setDiagrams(data);
       setFolders(folderData);
@@ -161,12 +179,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     setIsCreateOpen(false);
 
     try {
-      const res = await fetch('/api/diagrams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: createName, type: 'flowchart', folderId: currentFolderId })
+      const res = await fetch("/api/diagrams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: createName, type: "flowchart", folderId: currentFolderId }),
       });
-      if (!res.ok) throw new Error('Failed to create');
+      if (!res.ok) throw new Error("Failed to create");
       const newDoc = await res.json();
       handleNavigate(`/editor/${newDoc.id}`);
     } catch (error) {
@@ -189,9 +207,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const handleDeleteConfirm = async () => {
     setIsDeleteOpen(false);
     try {
-      const res = await fetch(`/api/diagrams/${deleteId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete');
-      setDiagrams(diagrams.filter(d => d.id !== deleteId));
+      const res = await fetch(`/api/diagrams/${deleteId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      setDiagrams(diagrams.filter((d) => d.id !== deleteId));
       toast.success("Diagram deleted");
     } catch (error) {
       toast.error("Failed to delete diagram");
@@ -210,15 +228,17 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
     try {
       const res = await fetch(`/api/diagrams/${renameId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: renameName })
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: renameName }),
       });
-      if (!res.ok) throw new Error('Failed to rename');
+      if (!res.ok) throw new Error("Failed to rename");
 
-      setDiagrams(diagrams.map(d =>
-        d.id === renameId ? { ...d, name: renameName, updatedAt: new Date().toISOString() } : d
-      ));
+      setDiagrams(
+        diagrams.map((d) =>
+          d.id === renameId ? { ...d, name: renameName, updatedAt: new Date().toISOString() } : d,
+        ),
+      );
       toast.success("Diagram renamed");
     } catch (error) {
       toast.error("Failed to rename diagram");
@@ -236,16 +256,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     if (!createFolderName.trim()) return;
     setIsCreateFolderOpen(false);
     try {
-      const res = await fetch('/api/folders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         // Nesting disabled → always create at root. When ALLOW_NESTED_FOLDERS is enabled, new
         // folders are created inside the folder the user is currently viewing.
-        body: JSON.stringify({ name: createFolderName, parentId: ALLOW_NESTED_FOLDERS ? currentFolderId : null }),
+        body: JSON.stringify({
+          name: createFolderName,
+          parentId: ALLOW_NESTED_FOLDERS ? currentFolderId : null,
+        }),
       });
-      if (!res.ok) throw new Error('Failed to create folder');
+      if (!res.ok) throw new Error("Failed to create folder");
       const newFolder = await res.json();
-      setFolders(prev => [...prev, newFolder]);
+      setFolders((prev) => [...prev, newFolder]);
       toast.success("Folder created");
     } catch {
       toast.error("Failed to create folder");
@@ -263,12 +286,14 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     setIsRenameFolderOpen(false);
     try {
       const res = await fetch(`/api/folders/${renameFolderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameFolderName }),
       });
-      if (!res.ok) throw new Error('Failed to rename folder');
-      setFolders(prev => prev.map(f => f.id === renameFolderId ? { ...f, name: renameFolderName } : f));
+      if (!res.ok) throw new Error("Failed to rename folder");
+      setFolders((prev) =>
+        prev.map((f) => (f.id === renameFolderId ? { ...f, name: renameFolderName } : f)),
+      );
       toast.success("Folder renamed");
     } catch {
       toast.error("Failed to rename folder");
@@ -283,8 +308,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const handleDeleteFolderConfirm = async () => {
     setIsDeleteFolderOpen(false);
     try {
-      const res = await fetch(`/api/folders/${deleteFolderId}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error('Failed to delete folder');
+      const res = await fetch(`/api/folders/${deleteFolderId}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete folder");
       // Folder delete reparents contents to the deleted folder's parent — refetch to resync.
       await fetchData();
       toast.success("Folder deleted");
@@ -296,15 +321,15 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const handleMoveFolder = async (id: string, parentId: string | null) => {
     try {
       const res = await fetch(`/api/folders/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentId }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || 'Failed to move folder');
+        throw new Error(err.error || "Failed to move folder");
       }
-      setFolders(prev => prev.map(f => f.id === id ? { ...f, parentId } : f));
+      setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, parentId } : f)));
       toast.success("Folder moved");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to move folder");
@@ -314,13 +339,15 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const handleMoveDiagram = async (id: string, folderId: string | null) => {
     try {
       const res = await fetch(`/api/diagrams/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folderId }),
       });
-      if (!res.ok) throw new Error('Failed to move diagram');
-      setDiagrams(prev => prev.map(d => d.id === id ? { ...d, folderId } : d));
-      const dest = folderId ? (folders.find(f => f.id === folderId)?.name ?? 'folder') : 'Workspace';
+      if (!res.ok) throw new Error("Failed to move diagram");
+      setDiagrams((prev) => prev.map((d) => (d.id === id ? { ...d, folderId } : d)));
+      const dest = folderId
+        ? (folders.find((f) => f.id === folderId)?.name ?? "folder")
+        : "Workspace";
       toast.success(`Moved to ${dest}`);
     } catch {
       toast.error("Failed to move diagram");
@@ -353,7 +380,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
       setSearchQuery(searchInput);
       setSearchLoading(false);
     }, SEARCH_DEBOUNCE_MS);
-    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
   }, [searchInput, searchQuery]);
 
   // Apply (or clear) the search field and its debounced value together. Used by folder navigation
@@ -369,7 +398,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const breadcrumb = useMemo(() => {
     const chain: Folder[] = [];
     let cursor = currentFolderId;
-    const byId = new Map(folders.map(f => [f.id, f]));
+    const byId = new Map(folders.map((f) => [f.id, f]));
     const guard = new Set<string>();
     while (cursor && byId.has(cursor) && !guard.has(cursor)) {
       guard.add(cursor);
@@ -384,16 +413,18 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // so it never fires while folders are still being fetched — otherwise a folder hydrated from the
   // URL (`?folder=`) on a fresh load would be wiped before its folder list arrives.
   useEffect(() => {
-    if (!loading && currentFolderId && !folders.some(f => f.id === currentFolderId)) {
+    if (!loading && currentFolderId && !folders.some((f) => f.id === currentFolderId)) {
       setCurrentFolderId(null);
     }
   }, [folders, currentFolderId, loading]);
 
   // Flattened move-target list (Workspace root + every folder, depth-indented).
   const moveTargets = useMemo(() => {
-    const targets: { id: string | null; name: string; depth: number }[] = [{ id: null, name: 'Workspace (root)', depth: 0 }];
+    const targets: { id: string | null; name: string; depth: number }[] = [
+      { id: null, name: "Workspace (root)", depth: 0 },
+    ];
     const childrenOf = (pid: string | null) =>
-      folders.filter(f => f.parentId === pid).sort((a, b) => a.name.localeCompare(b.name));
+      folders.filter((f) => f.parentId === pid).sort((a, b) => a.name.localeCompare(b.name));
     const walk = (pid: string | null, depth: number) => {
       for (const f of childrenOf(pid)) {
         targets.push({ id: f.id, name: f.name, depth });
@@ -405,8 +436,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   }, [folders]);
 
   const childCountOf = (folderId: string) => {
-    const subFolders = folders.filter(f => f.parentId === folderId).length;
-    const docs = diagrams.filter(d => (d.folderId ?? null) === folderId).length;
+    const subFolders = folders.filter((f) => f.parentId === folderId).length;
+    const docs = diagrams.filter((d) => (d.folderId ?? null) === folderId).length;
     return subFolders + docs;
   };
 
@@ -431,29 +462,34 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   };
 
   // Clean up the folder-switch timer on unmount.
-  useEffect(() => () => { if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
+    },
+    [],
+  );
 
   // Folders shown in the current view. While searching, match by name across ALL folders.
   const visibleFolders = useMemo(() => {
     const list = isSearching
-      ? folders.filter(f => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-      : folders.filter(f => (f.parentId ?? null) === currentFolderId);
+      ? folders.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+      : folders.filter((f) => (f.parentId ?? null) === currentFolderId);
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [folders, currentFolderId, isSearching, searchQuery]);
 
   const filteredDiagrams = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const inScope = isSearching
-      ? diagrams.filter(d => d.name.toLowerCase().includes(q))
-      // Root view ("All Diagrams") lists EVERY diagram regardless of folder; a specific folder
-      // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
-      : currentFolderId === null
+      ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
+      : // Root view ("All Diagrams") lists EVERY diagram regardless of folder; a specific folder
+        // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
+        currentFolderId === null
         ? diagrams
-        : diagrams.filter(d => (d.folderId ?? null) === currentFolderId);
+        : diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
     const sorted = [...inScope];
-    if (sortBy === 'name') {
+    if (sortBy === "name") {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
-    } else if (sortBy === 'created') {
+    } else if (sortBy === "created") {
       sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     } else {
       sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -497,12 +533,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
           setLoadingMore(true);
           if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
           loadMoreTimer.current = setTimeout(() => {
-            setDisplayCount(prev => Math.min(prev + LAZY_BATCH, filteredDiagrams.length));
+            setDisplayCount((prev) => Math.min(prev + LAZY_BATCH, filteredDiagrams.length));
             setLoadingMore(false);
           }, LAZY_DELAY_MS);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0.1 },
     );
 
     observer.observe(sentinel);
@@ -510,10 +546,20 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   }, [displayCount, filteredDiagrams.length, loadingMore, loading, folderLoading, searchLoading]);
 
   // Clean up the lazy-load timer on unmount.
-  useEffect(() => () => { if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
+    },
+    [],
+  );
 
   // Clean up the search debounce timer on unmount.
-  useEffect(() => () => { if (searchTimer.current) clearTimeout(searchTimer.current); }, []);
+  useEffect(
+    () => () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    },
+    [],
+  );
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -526,7 +572,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
       <div className="flex flex-1 min-h-0">
         {/* ---- Left Sidebar ---- */}
-        <aside className={`hidden md:flex w-64 shrink-0 flex-col border-r border-border bg-background/60 sticky ${isDemo ? 'top-[41px] h-[calc(100vh-41px)]' : 'top-0 h-screen'}`}>
+        <aside
+          className={`hidden md:flex w-64 shrink-0 flex-col border-r border-border bg-background/60 sticky ${isDemo ? "top-[41px] h-[calc(100vh-41px)]" : "top-0 h-screen"}`}
+        >
           {/* Brand */}
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
             <div className="bg-[#7a3dff] p-1.5 rounded-lg">
@@ -541,7 +589,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             <div>
               <div className="flex items-center gap-1.5 px-2 mb-2">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent</span>
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recent
+                </span>
               </div>
               {recentDiagrams.length === 0 ? (
                 <p className="px-2 text-xs text-muted-foreground/70">No diagrams yet</p>
@@ -552,8 +602,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       key={d.id}
                       draggable={!isDemo}
                       onDragStart={(e) => {
-                        e.dataTransfer.setData('application/x-livemaid-diagram', d.id);
-                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData("application/x-livemaid-diagram", d.id);
+                        e.dataTransfer.effectAllowed = "move";
                       }}
                       onClick={() => handleNavigate(`/editor/${d.id}`)}
                       title={d.name}
@@ -573,7 +623,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <div className="flex items-center justify-between px-2 mb-2">
                 <div className="flex items-center gap-1.5">
                   <FolderPlus className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Folders</span>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Folders
+                  </span>
                 </div>
                 {!isDemo && (
                   <button
@@ -605,7 +657,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 {mounted ? (
                   <>
                     {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                    {isDark ? 'Dark mode' : 'Light mode'}
+                    {isDark ? "Dark mode" : "Light mode"}
                   </>
                 ) : (
                   <>
@@ -614,8 +666,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   </>
                 )}
               </span>
-              <div className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${mounted && isDark ? 'bg-indigo-500' : 'bg-slate-300'}`}>
-                <div className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${mounted && isDark ? 'left-4' : 'left-1'}`} />
+              <div
+                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${mounted && isDark ? "bg-indigo-500" : "bg-slate-300"}`}
+              >
+                <div
+                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${mounted && isDark ? "left-4" : "left-1"}`}
+                />
               </div>
             </button>
           </div>
@@ -631,11 +687,20 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
                 {!isDemo && (
-                  <DropdownMenuItem onClick={openCreateFolderDialog} className="cursor-pointer gap-2">
+                  <DropdownMenuItem
+                    onClick={openCreateFolderDialog}
+                    className="cursor-pointer gap-2"
+                  >
                     <FolderPlus className="w-4 h-4" /> New Folder
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={(e) => { e.preventDefault(); setTheme(isDark ? "light" : "dark"); }} className="cursor-pointer gap-2">
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setTheme(isDark ? "light" : "dark");
+                  }}
+                  className="cursor-pointer gap-2"
+                >
                   <Moon className="w-4 h-4" /> Toggle Theme
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -650,7 +715,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
               <div className="flex flex-col items-center gap-4">
                 <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-                <p className="text-lg font-medium text-foreground animate-pulse">Loading Workspace...</p>
+                <p className="text-lg font-medium text-foreground animate-pulse">
+                  Loading Workspace...
+                </p>
               </div>
             </div>
           )}
@@ -661,7 +728,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             <div className="mb-6 flex items-center gap-3 rounded-lg border border-indigo-200/50 dark:border-indigo-800/50 bg-gradient-to-r from-indigo-50 to-indigo-100/40 dark:from-indigo-950/30 dark:to-indigo-900/20 px-4 py-2.5">
               <Repeat2 className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
               <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Two-way sync</span> — edit visually or via code; Flowchart &amp; Sequence stay in sync. Other types are code-only.
+                <span className="font-medium text-foreground">Two-way sync</span> — edit visually or
+                via code; Flowchart &amp; Sequence stay in sync. Other types are code-only.
               </p>
             </div>
 
@@ -671,7 +739,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-2 flex-wrap">
                 <button
                   onClick={() => navigateToFolder(null)}
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null ? 'text-foreground font-medium' : ''}`}
+                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null ? "text-foreground font-medium" : ""}`}
                 >
                   <Home className="w-3.5 h-3.5" /> Workspace
                 </button>
@@ -680,7 +748,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     <ChevronRight className="w-3.5 h-3.5 opacity-50" />
                     <button
                       onClick={() => navigateToFolder(f.id)}
-                      className={`rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? 'text-foreground font-medium' : ''}`}
+                      className={`rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""}`}
                     >
                       {f.name}
                     </button>
@@ -690,7 +758,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">
-                  {currentFolderId ? (breadcrumb[breadcrumb.length - 1]?.name ?? 'Your Diagrams') : 'Your Diagrams'}
+                  {currentFolderId
+                    ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
+                    : "Your Diagrams"}
                 </h1>
 
                 <div className="flex flex-wrap gap-3 items-center">
@@ -717,19 +787,44 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
                   {/* Sort dropdown */}
                   <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />}>
+                    <DropdownMenuTrigger
+                      render={<Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />}
+                    >
                       <ArrowDownUp className="w-4 h-4" />
-                      {sortBy === 'edited' ? 'Last edited' : sortBy === 'created' ? 'Date created' : 'Name'}
+                      {sortBy === "edited"
+                        ? "Last edited"
+                        : sortBy === "created"
+                          ? "Date created"
+                          : "Name"}
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem onClick={() => setSortBy('edited')} className="cursor-pointer">Last edited</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSortBy('created')} className="cursor-pointer">Date created</DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setSortBy('name')} className="cursor-pointer">Name</DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setSortBy("edited")}
+                        className="cursor-pointer"
+                      >
+                        Last edited
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setSortBy("created")}
+                        className="cursor-pointer"
+                      >
+                        Date created
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => setSortBy("name")}
+                        className="cursor-pointer"
+                      >
+                        Name
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
 
                   {!isDemo && (
-                    <Button onClick={openCreateFolderDialog} variant="outline" className="h-10 gap-2 whitespace-nowrap">
+                    <Button
+                      onClick={openCreateFolderDialog}
+                      variant="outline"
+                      className="h-10 gap-2 whitespace-nowrap"
+                    >
                       <FolderPlus className="w-4 h-4" />
                       New Folder
                     </Button>
@@ -739,7 +834,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger render={<span className="inline-flex" />}>
-                          <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60">
+                          <Button
+                            disabled
+                            className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60"
+                          >
                             <Plus className="w-5 h-5 mr-2" />
                             New Diagram
                           </Button>
@@ -748,7 +846,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       </Tooltip>
                     </TooltipProvider>
                   ) : (
-                    <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap">
+                    <Button
+                      onClick={openCreateDialog}
+                      className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                    >
                       <Plus className="w-5 h-5 mr-2" />
                       New Diagram
                     </Button>
@@ -758,10 +859,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             </div>
             {/* end header */}
 
-            {(loading || folderLoading || searchLoading) ? (
+            {loading || folderLoading || searchLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {Array.from({ length: 6 }).map((_, i) => (
-                  <Card key={i} className="flex flex-col h-full bg-background border-border shadow-sm">
+                  <Card
+                    key={i}
+                    className="flex flex-col h-full bg-background border-border shadow-sm"
+                  >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between w-full">
                         <Skeleton className="h-6 w-2/3 rounded-md bg-zinc-200/60 dark:bg-zinc-800/60" />
@@ -808,23 +912,28 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   </Card>
                 ))}
               </div>
-            ) : (filteredDiagrams.length === 0 && visibleFolders.length === 0) ? (
+            ) : filteredDiagrams.length === 0 && visibleFolders.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background/50 backdrop-blur-sm">
                 <div className="bg-muted p-4 rounded-full mb-4">
                   <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">{diagrams.length === 0 ? 'No diagrams yet' : 'No diagrams found'}</h3>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {diagrams.length === 0 ? "No diagrams yet" : "No diagrams found"}
+                </h3>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xs text-center">
                   {diagrams.length === 0
-                    ? 'Get started by creating your first diagram. Choose a template above or create from scratch.'
-                    : 'Try a different search term or create a new diagram.'}
+                    ? "Get started by creating your first diagram. Choose a template above or create from scratch."
+                    : "Try a different search term or create a new diagram."}
                 </p>
                 <div className="flex gap-3">
                   {isDemo ? (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger render={<span className="inline-flex" />}>
-                          <Button disabled className="bg-[#7a3dff]/40 text-white rounded-lg px-6 shadow-sm pointer-events-none opacity-60">
+                          <Button
+                            disabled
+                            className="bg-[#7a3dff]/40 text-white rounded-lg px-6 shadow-sm pointer-events-none opacity-60"
+                          >
                             Create Diagram
                           </Button>
                         </TooltipTrigger>
@@ -832,7 +941,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       </Tooltip>
                     </TooltipProvider>
                   ) : (
-                    <Button onClick={openCreateDialog} className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm">
+                    <Button
+                      onClick={openCreateDialog}
+                      className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm"
+                    >
                       Create Diagram
                     </Button>
                   )}
@@ -848,10 +960,11 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 {visibleFolders.length > 0 && (
                   <div className="mb-8">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                      Folders <span className="text-muted-foreground/60">({visibleFolders.length})</span>
+                      Folders{" "}
+                      <span className="text-muted-foreground/60">({visibleFolders.length})</span>
                     </h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {visibleFolders.map(folder => (
+                      {visibleFolders.map((folder) => (
                         <FolderCard
                           key={folder.id}
                           folder={folder}
@@ -874,11 +987,14 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   <div>
                     {visibleFolders.length > 0 && (
                       <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                        Diagrams <span className="text-muted-foreground/60">({filteredDiagrams.length})</span>
+                        Diagrams{" "}
+                        <span className="text-muted-foreground/60">
+                          ({filteredDiagrams.length})
+                        </span>
                       </h2>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {displayedDiagrams.map(diagram => (
+                      {displayedDiagrams.map((diagram) => (
                         <DiagramCard
                           key={diagram.id}
                           diagram={diagram}
@@ -916,12 +1032,16 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               onChange={(e) => setCreateName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">Create</Button>
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">
+              Create
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -938,12 +1058,16 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               onChange={(e) => setRenameName(e.target.value)}
               placeholder="Diagram name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>Cancel</Button>
-            <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">Rename</Button>
+            <Button variant="outline" onClick={() => setIsRenameOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">
+              Rename
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -959,7 +1083,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm} className="bg-red-500 hover:bg-red-600 text-white">
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -978,12 +1105,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               onChange={(e) => setCreateFolderName(e.target.value)}
               placeholder="Folder name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateFolderSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateFolderSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateFolderOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreateFolderSubmit} className="bg-black text-white hover:bg-zinc-800">Create</Button>
+            <Button variant="outline" onClick={() => setIsCreateFolderOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateFolderSubmit}
+              className="bg-black text-white hover:bg-zinc-800"
+            >
+              Create
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1000,12 +1134,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               onChange={(e) => setRenameFolderName(e.target.value)}
               placeholder="Folder name"
               autoFocus
-              onKeyDown={(e) => e.key === 'Enter' && handleRenameFolderSubmit()}
+              onKeyDown={(e) => e.key === "Enter" && handleRenameFolderSubmit()}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRenameFolderOpen(false)}>Cancel</Button>
-            <Button onClick={handleRenameFolderSubmit} className="bg-black text-white hover:bg-zinc-800">Rename</Button>
+            <Button variant="outline" onClick={() => setIsRenameFolderOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleRenameFolderSubmit}
+              className="bg-black text-white hover:bg-zinc-800"
+            >
+              Rename
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1016,18 +1157,21 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this folder?</AlertDialogTitle>
             <AlertDialogDescription>
-              The folder will be deleted. Any diagrams and subfolders inside it will be moved up to the parent location — nothing is lost.
+              The folder will be deleted. Any diagrams and subfolders inside it will be moved up to
+              the parent location — nothing is lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteFolderConfirm} className="bg-red-500 hover:bg-red-600 text-white">
+            <AlertDialogAction
+              onClick={handleDeleteFolderConfirm}
+              className="bg-red-500 hover:bg-red-600 text-white"
+            >
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
     </div>
   );
 }

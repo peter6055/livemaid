@@ -1,0 +1,17 @@
+# Build output / dependencies
+.next/
+out/
+build/
+node_modules/
+coverage/
+
+# Generated / vendored
+next-env.d.ts
+package-lock.json
+
+# Data fixtures (user-generated diagram JSON, not source)
+data/
+demo/
+
+# Misc
+*.log
