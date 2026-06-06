@@ -169,6 +169,8 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 
 > **Note:** Both `DEMO_MODE` (server-side) and `NEXT_PUBLIC_DEMO_MODE` (client-side) must be set to `"true"` for the full demo experience. `NEXT_PUBLIC_DEMO_MODE` controls the visible banner and disabled UI buttons; `DEMO_MODE` controls the server-side storage path and write guards.
 
+> **Docker build note:** `NEXT_PUBLIC_DEMO_MODE` is read by Next.js during `npm run build`, so setting it only as a runtime environment variable is not enough for Docker-based deployments. Pass it as a Docker build argument (for example `--build-arg NEXT_PUBLIC_DEMO_MODE=true`) so the builder stage can embed it in the compiled client bundle.
+
 ## 🛠️ Tech Stack
 
 * [Next.js](https://nextjs.org/)
