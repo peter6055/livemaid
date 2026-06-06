@@ -116,6 +116,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const [isDeleteFolderOpen, setIsDeleteFolderOpen] = useState(false);
   const [deleteFolderId, setDeleteFolderId] = useState("");
 
+  // Move diagram confirmation state
+  const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
+  const [pendingMoveId, setPendingMoveId] = useState("");
+  const [pendingMoveFolderId, setPendingMoveFolderId] = useState<string | null>(null);
+  const [pendingMoveDiagramName, setPendingMoveDiagramName] = useState("");
+  const [pendingMoveTargetName, setPendingMoveTargetName] = useState("");
+
   // True once the initial folder has been hydrated from the URL, so the URL-sync effect below
   // doesn't clear `?folder=` on the very first render (before hydration runs).
   const didHydrateFolderRef = useRef(false);
@@ -352,6 +359,35 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     } catch {
       toast.error("Failed to move diagram");
     }
+  };
+
+  // Open the move-confirmation dialog (non-demo only). Captures the target names so the dialog
+  // can display them before the user confirms.
+  const requestMoveDiagram = (id: string, folderId: string | null) => {
+    const diagramName = diagrams.find((d) => d.id === id)?.name ?? "diagram";
+    const targetName = folderId
+      ? (folders.find((f) => f.id === folderId)?.name ?? "folder")
+      : "Workspace";
+    setPendingMoveId(id);
+    setPendingMoveFolderId(folderId);
+    setPendingMoveDiagramName(diagramName);
+    setPendingMoveTargetName(targetName);
+    setIsMoveConfirmOpen(true);
+  };
+
+  const handleMoveDiagramConfirm = async () => {
+    setIsMoveConfirmOpen(false);
+    await handleMoveDiagram(pendingMoveId, pendingMoveFolderId);
+  };
+
+  // Unified handler for diagram drops onto a folder target (FolderCard / FolderTree).
+  // In demo mode shows an informational toast instead of performing the move.
+  const handleFolderDrop = (diagramId: string, folderId: string | null) => {
+    if (isDemo) {
+      toast.info("Demo mode — this is read only, changes won't be saved");
+      return;
+    }
+    requestMoveDiagram(diagramId, folderId);
   };
 
   // ---- Derived data -------------------------------------------------------
@@ -600,7 +636,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   {recentDiagrams.map((d) => (
                     <button
                       key={d.id}
-                      draggable={!isDemo}
+                      draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData("application/x-livemaid-diagram", d.id);
                         e.dataTransfer.effectAllowed = "move";
@@ -641,7 +677,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 folders={folders}
                 currentFolderId={currentFolderId}
                 onSelect={(id) => navigateToFolder(id)}
-                onDropDiagram={handleMoveDiagram}
+                onDropDiagram={handleFolderDrop}
                 onRename={openRenameFolderDialog}
                 onDelete={openDeleteFolderDialog}
                 isDemo={isDemo}
@@ -976,7 +1012,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           onRename={openRenameFolderDialog}
                           onDelete={openDeleteFolderDialog}
                           onMove={handleMoveFolder}
-                          onDropDiagram={handleMoveDiagram}
+                          onDropDiagram={handleFolderDrop}
                           moveTargets={moveTargets}
                           canMove={ALLOW_NESTED_FOLDERS}
                           isDemo={isDemo}
@@ -1004,7 +1040,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           onRename={openRenameDialog}
                           onDelete={openDeleteDialog}
                           onNavigate={handleNavigate}
-                          onMove={handleMoveDiagram}
+                          onMove={requestMoveDiagram}
                           moveTargets={moveTargets}
                           isDemo={isDemo}
                         />
@@ -1171,6 +1207,27 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               className="bg-red-500 hover:bg-red-600 text-white"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Move Diagram Confirmation Dialog */}
+      <AlertDialog open={isMoveConfirmOpen} onOpenChange={setIsMoveConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Move diagram?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Move &ldquo;{pendingMoveDiagramName}&rdquo; to &ldquo;{pendingMoveTargetName}&rdquo;?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleMoveDiagramConfirm}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              Move
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
