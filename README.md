@@ -111,7 +111,7 @@ This repository follows the flow:
 
 LiveMaid is containerized and available on the GitHub Container Registry. Since it uses local file storage, you can easily deploy it on any server (like Ubuntu) using Docker Compose while retaining your data.
 
-### Option 1: Manual Docker Compose
+### Manual Docker Compose
 
 1. Create a `docker-compose.yml` file on your server:
 
@@ -139,7 +139,7 @@ LiveMaid is containerized and available on the GitHub Container Registry. Since 
 
 Your diagrams will be saved permanently in the `./data` folder on your server!
 
-### Option 2: Demo Mode
+### Demo Mode
 
 Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded with sample diagrams. Visitors can freely explore and edit diagrams in-browser, but nothing is ever persisted to disk.
 
@@ -161,7 +161,7 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 
    This starts the demo instance on port `3001` with `DEMO_MODE=true` and mounts `./demo` as read-only.
 
-   Alternatively, pass the environment variables yourself:
+   Alternatively, pass the environment variable yourself:
 
    ```yaml
    services:
@@ -174,11 +174,16 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
        environment:
          - NODE_ENV=production
          - DEMO_MODE=true
-         - NEXT_PUBLIC_DEMO_MODE=true
        restart: unless-stopped
    ```
 
-> **Note:** Both `DEMO_MODE` (server-side) and `NEXT_PUBLIC_DEMO_MODE` (client-side) must be set to `"true"` for the full demo experience. `NEXT_PUBLIC_DEMO_MODE` controls the visible banner and disabled UI buttons; `DEMO_MODE` controls the server-side storage path and write guards.
+> **Note:** Only `DEMO_MODE=true` is required. It is read at **runtime** (the
+> dashboard and editor pages opt out of static prerendering via `connection()`),
+> so it works on platforms like Railway that inject env vars at container start.
+> `DEMO_MODE` controls everything: the server-side storage path, the write
+> guards, and — passed down as a prop to the client — the demo banner, the
+> disabled write buttons, and the read-only labels. There is no build-time
+> `NEXT_PUBLIC_*` flag to set.
 
 ## 🛠️ Tech Stack
 

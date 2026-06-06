@@ -6,9 +6,11 @@ import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 
 const DEBOUNCE_MS = 1000;
 const VALID_MERMAID_THEMES = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
-const IS_DEMO_MODE = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
 
-export function useEditorState(documentId: string) {
+// `isDemo` is passed in from the (runtime-rendered) editor page rather than read
+// from `process.env.NEXT_PUBLIC_DEMO_MODE`, which would be baked into the client
+// bundle at build time and could not be toggled by a runtime env var.
+export function useEditorState(documentId: string, isDemo: boolean = false) {
   const [doc, setDoc] = useState<DiagramDocument | null>(null);
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -149,7 +151,7 @@ export function useEditorState(documentId: string) {
 
       renderMermaid(newCode, onResetSelection);
 
-      if (IS_DEMO_MODE) return;
+      if (isDemo) return;
 
       // Trigger auto-save
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -157,7 +159,7 @@ export function useEditorState(documentId: string) {
         saveCode(newCode);
       }, DEBOUNCE_MS);
     },
-    [renderMermaid, saveCode],
+    [renderMermaid, saveCode, isDemo],
   );
 
   return {

@@ -122,7 +122,7 @@ export function LiveMaidEditor({
     parseError,
     renderIdRef,
     handleCodeChange,
-  } = useEditorState(documentId);
+  } = useEditorState(documentId, isDemo);
 
   const [isLocked, setIsLocked] = useState(false);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
