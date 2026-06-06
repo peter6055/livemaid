@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { DiagramRegistry } from "@/lib/diagrams/registry";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -97,6 +98,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [createType, setCreateType] = useState("flowchart");
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState("");
@@ -171,6 +173,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
+    setCreateType("flowchart");
     setIsCreateOpen(true);
   };
 
@@ -182,7 +185,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: createName, type: "flowchart", folderId: currentFolderId }),
+        body: JSON.stringify({
+          name: createName,
+          type: createType,
+          code: DiagramRegistry[createType]?.defaultCode,
+          folderId: currentFolderId,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create");
       const newDoc = await res.json();
@@ -1029,7 +1037,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
           <DialogHeader>
             <DialogTitle>Create New Diagram</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 flex flex-col gap-4">
             <Input
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
@@ -1037,6 +1045,29 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Diagram type</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "flowchart", label: "Flowchart" },
+                  { id: "sequence", label: "Sequence" },
+                  { id: "classDiagram", label: "Class" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setCreateType(t.id)}
+                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      createType === t.id
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+                        : "border-border text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
