@@ -116,6 +116,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const [isDeleteFolderOpen, setIsDeleteFolderOpen] = useState(false);
   const [deleteFolderId, setDeleteFolderId] = useState("");
 
+  // Breadcrumb drag-over target (for the move-back-to-folder drop zones in the header breadcrumb).
+  const [breadcrumbDragOverId, setBreadcrumbDragOverId] = useState<string | null>(null);
+
   // Move diagram confirmation state
   const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
   const [pendingMoveId, setPendingMoveId] = useState("");
@@ -778,7 +781,22 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-2 flex-wrap">
                 <button
                   onClick={() => navigateToFolder(null)}
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null ? "text-foreground font-medium" : ""}`}
+                  onDragOver={(e) => {
+                    if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
+                      e.preventDefault();
+                      setBreadcrumbDragOverId("__root__");
+                    }
+                  }}
+                  onDragLeave={() => setBreadcrumbDragOverId(null)}
+                  onDrop={(e) => {
+                    const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
+                    setBreadcrumbDragOverId(null);
+                    if (diagramId) {
+                      e.preventDefault();
+                      handleFolderDrop(diagramId, null);
+                    }
+                  }}
+                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === "__root__" ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
                 >
                   <Home className="w-3.5 h-3.5" /> Workspace
                 </button>
@@ -787,7 +805,22 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     <ChevronRight className="w-3.5 h-3.5 opacity-50" />
                     <button
                       onClick={() => navigateToFolder(f.id)}
-                      className={`rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""}`}
+                      onDragOver={(e) => {
+                        if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
+                          e.preventDefault();
+                          setBreadcrumbDragOverId(f.id);
+                        }
+                      }}
+                      onDragLeave={() => setBreadcrumbDragOverId(null)}
+                      onDrop={(e) => {
+                        const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
+                        setBreadcrumbDragOverId(null);
+                        if (diagramId) {
+                          e.preventDefault();
+                          handleFolderDrop(diagramId, f.id);
+                        }
+                      }}
+                      className={`rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
                     >
                       {f.name}
                     </button>

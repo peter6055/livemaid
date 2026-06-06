@@ -156,7 +156,9 @@ export function DiagramCard({
                               <DropdownMenuItem
                                 key={t.id ?? "root"}
                                 onClick={() =>
-                                  toast.info("Demo mode — this is read only, changes won't be saved")
+                                  toast.info(
+                                    "Demo mode — this is read only, changes won't be saved",
+                                  )
                                 }
                                 className="cursor-pointer"
                                 style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
