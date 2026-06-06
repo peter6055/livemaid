@@ -1,5 +1,6 @@
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { type OnMount, type BeforeMount } from "@monaco-editor/react";
 import { useTheme } from "next-themes";
+import { registerMermaidLanguage } from "@/lib/diagrams/mermaidMonarch";
 
 interface EditorCodePanelProps {
   code: string;
@@ -16,6 +17,11 @@ export function EditorCodePanel({
 }: EditorCodePanelProps) {
   const { theme } = useTheme();
 
+  // Register the custom Mermaid syntax highlighting before the editor mounts.
+  const handleBeforeMount: BeforeMount = (monaco) => {
+    registerMermaidLanguage(monaco);
+  };
+
   return (
     <>
       <div className="h-10 border-b border-border bg-muted/50 flex items-center px-4 shrink-0 justify-between">
@@ -27,10 +33,11 @@ export function EditorCodePanel({
         <div className="flex-grow min-h-0 relative">
           <Editor
             height="100%"
-            defaultLanguage="markdown"
+            defaultLanguage="mermaid"
             theme={theme === "dark" ? "vs-dark" : "light"}
             value={code}
             onChange={(value) => handleCodeChange(value)}
+            beforeMount={handleBeforeMount}
             onMount={handleEditorDidMount}
             options={{
               readOnly: false,

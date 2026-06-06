@@ -1,7 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { Folder as FolderIcon, FolderOpen, ChevronRight, Home } from "lucide-react";
+import {
+  Folder as FolderIcon,
+  FolderOpen,
+  ChevronRight,
+  Home,
+  MoreVertical,
+  Pencil,
+  Trash2,
+} from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { Folder } from "@/components/FolderCard";
 
 interface FolderTreeProps {
@@ -9,6 +24,9 @@ interface FolderTreeProps {
   currentFolderId: string | null;
   onSelect: (id: string | null) => void;
   onDropDiagram: (diagramId: string, folderId: string | null) => void;
+  onRename?: (id: string, name: string) => void;
+  onDelete?: (id: string) => void;
+  isDemo?: boolean;
 }
 
 function TreeNode({
@@ -19,6 +37,9 @@ function TreeNode({
   toggleExpand,
   onSelect,
   onDropDiagram,
+  onRename,
+  onDelete,
+  isDemo,
   depth,
 }: {
   folder: Folder;
@@ -28,6 +49,9 @@ function TreeNode({
   toggleExpand: (id: string) => void;
   onSelect: (id: string | null) => void;
   onDropDiagram: (diagramId: string, folderId: string | null) => void;
+  onRename?: (id: string, name: string) => void;
+  onDelete?: (id: string) => void;
+  isDemo?: boolean;
   depth: number;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -37,6 +61,7 @@ function TreeNode({
   const hasChildren = children.length > 0;
   const isOpen = expanded.has(folder.id);
   const isActive = currentFolderId === folder.id;
+  const showMenu = !isDemo && (onRename || onDelete);
 
   return (
     <div>
@@ -58,7 +83,7 @@ function TreeNode({
           }
         }}
         style={{ paddingLeft: `${0.5 + depth * 0.85}rem` }}
-        className={`group flex items-center gap-1.5 rounded-md py-1.5 pr-2 text-sm cursor-pointer transition-colors ${
+        className={`group flex items-center gap-1.5 rounded-md py-1.5 pr-1 text-sm cursor-pointer transition-colors ${
           isActive
             ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium"
             : "text-foreground/80 hover:bg-accent hover:text-foreground"
@@ -80,7 +105,45 @@ function TreeNode({
         ) : (
           <FolderIcon className="h-4 w-4 shrink-0" />
         )}
-        <span className="truncate">{folder.name}</span>
+        <span className="truncate flex-1">{folder.name}</span>
+        {showMenu && (
+          <div
+            className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <button
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                    aria-label="Folder actions"
+                  />
+                }
+              >
+                <MoreVertical className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                {onRename && (
+                  <DropdownMenuItem
+                    onClick={() => onRename(folder.id, folder.name)}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Pencil className="h-4 w-4" /> Rename
+                  </DropdownMenuItem>
+                )}
+                {onRename && onDelete && <DropdownMenuSeparator />}
+                {onDelete && (
+                  <DropdownMenuItem
+                    onClick={() => onDelete(folder.id)}
+                    className="cursor-pointer gap-2 text-red-500 focus:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
       </div>
       {hasChildren && isOpen && (
         <div>
@@ -94,6 +157,9 @@ function TreeNode({
               toggleExpand={toggleExpand}
               onSelect={onSelect}
               onDropDiagram={onDropDiagram}
+              onRename={onRename}
+              onDelete={onDelete}
+              isDemo={isDemo}
               depth={depth + 1}
             />
           ))}
@@ -103,7 +169,15 @@ function TreeNode({
   );
 }
 
-export function FolderTree({ folders, currentFolderId, onSelect, onDropDiagram }: FolderTreeProps) {
+export function FolderTree({
+  folders,
+  currentFolderId,
+  onSelect,
+  onDropDiagram,
+  onRename,
+  onDelete,
+  isDemo,
+}: FolderTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [rootDragOver, setRootDragOver] = useState(false);
 
@@ -159,6 +233,9 @@ export function FolderTree({ folders, currentFolderId, onSelect, onDropDiagram }
           toggleExpand={toggleExpand}
           onSelect={onSelect}
           onDropDiagram={onDropDiagram}
+          onRename={onRename}
+          onDelete={onDelete}
+          isDemo={isDemo}
           depth={0}
         />
       ))}
