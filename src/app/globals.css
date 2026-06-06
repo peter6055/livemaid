@@ -402,3 +402,16 @@ button,
 .cursor-pointer {
   cursor: pointer !important;
 }
+
+/* Canvas-to-code highlighting (Epic 4.1): when a canvas element is selected,
+   its source line(s) get a transient background band + gutter accent in the
+   Monaco code panel. Works in both light (vs) and dark (vs-dark) themes. */
+.canvas-code-highlight-line {
+  background: rgba(99, 102, 241, 0.16);
+  transition: background 0.15s ease;
+}
+.canvas-code-highlight-gutter {
+  background: #6366f1;
+  width: 3px !important;
+  margin-left: 3px;
+}
