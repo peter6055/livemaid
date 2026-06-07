@@ -776,7 +776,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <Repeat2 className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">Two-way sync</span> — edit visually or
-                via code; Flowchart &amp; Sequence stay in sync. Other types are code-only.
+                via code; Flowchart, Sequence &amp; Class diagrams stay in sync. Other types are
+                code-only.
               </p>
             </div>
 

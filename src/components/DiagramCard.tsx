@@ -86,7 +86,10 @@ export function DiagramCard({
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
   const isSupported =
-    parsedType === "graph" || parsedType === "flowchart" || parsedType === "sequence";
+    parsedType === "graph" ||
+    parsedType === "flowchart" ||
+    parsedType === "sequence" ||
+    parsedType === "classDiagram";
 
   return (
     <Card
