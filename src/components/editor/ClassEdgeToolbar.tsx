@@ -244,21 +244,22 @@ export function ClassEdgeToolbar({
 
           {openPanel === "cardinality" && (
             <div
-              className="absolute left-0 bottom-full z-40 mb-2 w-max rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+              className="absolute left-0 bottom-full z-40 mb-2 w-64 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col gap-2.5">
+              <div className="flex flex-col gap-4">
                 {(["source", "target"] as const).map((end) => {
                   const currentCard = end === "source" ? rel.sourceCard : rel.targetCard;
                   // The custom input is "active" (shows the value) when the current cardinality is
                   // something the user typed rather than one of the presets.
                   const isCustom = currentCard !== "" && !CARDINALITY_PRESETS.includes(currentCard);
                   return (
-                    <div key={end} className="flex flex-col gap-1.5">
+                    <div key={end} className="flex flex-col gap-2">
                       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                         {end === "source" ? `Source · ${rel.source}` : `Target · ${rel.target}`}
                       </span>
-                      <div className="flex flex-wrap items-center gap-1.5">
+                      {/* 4-column grid → the 7 presets + the custom input lay out as two rows. */}
+                      <div className="grid grid-cols-4 gap-2">
                         {CARDINALITY_PRESETS.map((preset) => {
                           const active = currentCard === preset;
                           return (
@@ -270,7 +271,7 @@ export function ClassEdgeToolbar({
                                   ? onSetCardinality(preset, rel.targetCard)
                                   : onSetCardinality(rel.sourceCard, preset)
                               }
-                              className={`flex h-7 min-w-[2.25rem] items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${
+                              className={`flex h-7 items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${
                                 active
                                   ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
                                   : "border-border"
@@ -338,7 +339,7 @@ function CustomCardInput({
   return (
     <input
       value={draft}
-      placeholder="custom…"
+      placeholder="type…"
       spellCheck={false}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
@@ -352,7 +353,8 @@ function CustomCardInput({
           (e.target as HTMLInputElement).blur();
         }
       }}
-      className={`h-7 w-24 rounded-md border bg-background px-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-indigo-500 ${
+      title="Type a custom cardinality"
+      className={`h-7 w-full min-w-0 rounded-md border bg-background px-1.5 text-center font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-indigo-500 ${
         active ? "border-indigo-500 ring-1 ring-indigo-500" : "border-border hover:bg-accent"
       }`}
     />
