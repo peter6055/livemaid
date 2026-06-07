@@ -183,6 +183,11 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+/* Class diagram connection handle (the purple +): grab cursor to signal drag-to-link. */
+.class-connect-btn {
+  cursor: crosshair !important;
+}
+
 /* Sequence participant headers — full-shape hitbox.
    Standard `participant`, `collections`, and `queue` render as solid <rect class="actor">
    elements whose fill already captures clicks. The specialised archetypes — Actor, Boundary,
@@ -259,6 +264,23 @@ svg[aria-roledescription="error"],
 .mermaid-container .edgePath:hover .arrowheadPath {
   stroke: #6366f1 !important;
   fill: #6366f1 !important;
+}
+
+/* Class-diagram relationship edges: pointer cursor + indigo hover highlight (driven by the
+   transparent wide hit-target, which is inserted as the immediately-preceding sibling of the
+   real `path.relation`). Makes the otherwise-thin connector easy to find and click. */
+.mermaid-container path.relation,
+.mermaid-container path.class-relation-hit-target {
+  cursor: pointer !important;
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s;
+}
+
+.mermaid-container path.relation:hover,
+.mermaid-container path.class-relation-hit-target:hover + path.relation {
+  stroke: #6366f1 !important;
+  stroke-width: 2.5px !important;
 }
 
 /* Hover highlights for sequence diagram message connections */

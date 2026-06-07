@@ -64,6 +64,16 @@ import {
   removeClassTitle,
   getClassNotes,
   updateClassNoteByIndex,
+  getNextClassName,
+  addClassRelationship,
+  addClassWithRelationship,
+  appendClassNoteForClass,
+  setClassNoteTarget,
+  classRelationshipFromEdgeDataId,
+  updateClassRelationshipOperator,
+  setClassRelationshipCardinality,
+  setClassRelationshipLabel,
+  deleteClassRelationship,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
@@ -139,6 +149,7 @@ export function LiveMaidEditor({
     parseError,
     renderIdRef,
     handleCodeChange,
+    hasUnsavedChangesRef,
   } = useEditorState(documentId, isDemo);
 
   const [isLocked, setIsLocked] = useState(false);
@@ -242,13 +253,15 @@ export function LiveMaidEditor({
   // close (X button, or a click that is neither the panel nor another class node).
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
 
-  // Inline text editor for a class-diagram TITLE or NOTE (double-click to edit, click outside to
-  // exit). Positioned in viewport space from the element's bounding rect at open time.
+  // Inline text editor for a class-diagram TITLE, NOTE, or relationship LABEL (double-click to
+  // edit, click outside to exit). Positioned in viewport space from the element's bounding rect at
+  // open time. For relationships, `rel` carries the source/target/occurrence used to commit.
   const [classTextEdit, setClassTextEdit] = useState<{
-    kind: "title" | "note";
+    kind: "title" | "note" | "relationship";
     noteIndex: number;
     value: string;
     rect: { left: number; top: number; width: number; height: number };
+    rel?: { source: string; target: string; occurrence: number };
   } | null>(null);
 
   // Clear class-diagram editing state whenever the diagram is not a class diagram.
@@ -272,7 +285,9 @@ export function LiveMaidEditor({
       const els = document.elementsFromPoint(clientX, clientY);
       if (
         els.some((el) =>
-          el.closest("[data-class-property-panel],[data-class-text-editor],.monaco-editor"),
+          el.closest(
+            "[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
+          ),
         )
       ) {
         return;
@@ -319,6 +334,53 @@ export function LiveMaidEditor({
           setClassTextEdit(null);
           setSelectedClassName(name);
         }
+        return;
+      }
+
+      // Edge — double-clicking a connection (or its wide hit-target) inline-edits text. Class
+      // diagrams render TWO kinds of `path.relation`:
+      //   • a UML relationship → `data-id="id_<Src>_<Dst>_<N>"` → edit its `: label`
+      //   • a note↔class attachment → `data-id="edgeNote<N>"` → edit the connected note's text
+      // (`edgeNote<N>` maps 1:1 to note DOM node `…-note<N>`, whose index == `getClassNotes` order).
+      const relEl = els.find(
+        (el) =>
+          el.classList?.contains("relation") || el.classList?.contains("class-relation-hit-target"),
+      );
+      const dataId = relEl?.getAttribute("data-id");
+      if (dataId) {
+        const noteEdge = dataId.match(/^edgeNote(\d+)$/);
+        if (noteEdge) {
+          const idx = parseInt(noteEdge[1], 10);
+          const notes = getClassNotes(code);
+          if (notes[idx]) {
+            // Anchor the editor over the connected note box when we can find it, else the click point.
+            const noteNode = document.querySelector(`g.node[id$="-note${idx}"]`);
+            const r = noteNode?.getBoundingClientRect();
+            setSelectedClassName(null);
+            setClassTextEdit({
+              kind: "note",
+              noteIndex: idx,
+              value: notes[idx].text,
+              rect: r
+                ? { left: r.left, top: r.top, width: r.width, height: r.height }
+                : { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+            });
+          }
+          return;
+        }
+        const rel = classRelationshipFromEdgeDataId(code, dataId);
+        if (rel) {
+          setSelectedClassName(null);
+          setClassTextEdit({
+            kind: "relationship",
+            noteIndex: -1,
+            value: rel.label,
+            // Anchor a small editor box at the double-click point (the relationship line has no
+            // single tidy label box, and the cardinality labels are separate elements).
+            rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+            rel: { source: rel.source, target: rel.target, occurrence: rel.occurrence },
+          });
+        }
       }
     };
 
@@ -346,6 +408,9 @@ export function LiveMaidEditor({
       if (classTextEdit.kind === "title") {
         const trimmed = value.trim();
         newCode = trimmed ? upsertClassTitle(code, trimmed) : removeClassTitle(code);
+      } else if (classTextEdit.kind === "relationship" && classTextEdit.rel) {
+        const { source, target, occurrence } = classTextEdit.rel;
+        newCode = setClassRelationshipLabel(code, source, target, occurrence, value);
       } else {
         newCode = updateClassNoteByIndex(code, classTextEdit.noteIndex, value);
       }
@@ -390,6 +455,84 @@ export function LiveMaidEditor({
     },
     [code, handleCodeChange, selectedClassName, setSelectedClassName],
   );
+
+  // Class-diagram connection drag (the purple +) commit handlers. Each routes through
+  // handleCodeChange so the change is a single undo step and the canvas re-renders normally.
+  const handleAddClassRelationship = useCallback(
+    (source: string, target: string, operator: string) => {
+      handleCodeChange(addClassRelationship(code, source, target, operator));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleCreateClassLinked = useCallback(
+    (source: string, operator: string) => {
+      handleCodeChange(addClassWithRelationship(code, source, getNextClassName(code), operator));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleCreateNoteForClass = useCallback(
+    (source: string) => {
+      handleCodeChange(appendClassNoteForClass(code, source, "This is a sample note"));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleLinkNoteToClass = useCallback(
+    (noteIndex: number, className: string) => {
+      const newCode = setClassNoteTarget(code, noteIndex, className);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // Class-diagram relationship-edge toolbar commit handlers. The selected edge id is
+  // `CLASS_EDGE_id_<Src>_<Dst>_<N>`; we resolve it back to the source relationship line via the
+  // stable data-id, then mutate that line in place (single undo step through handleCodeChange).
+  const handleUpdateClassRelationshipType = useCallback(
+    (operator: string) => {
+      if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      if (!rel) return;
+      const newCode = updateClassRelationshipOperator(
+        code,
+        rel.source,
+        rel.target,
+        rel.occurrence,
+        operator,
+      );
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
+
+  const handleSetClassRelationshipCardinality = useCallback(
+    (sourceCard: string, targetCard: string) => {
+      if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      if (!rel) return;
+      const newCode = setClassRelationshipCardinality(
+        code,
+        rel.source,
+        rel.target,
+        rel.occurrence,
+        sourceCard,
+        targetCard,
+      );
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
+
+  const handleDeleteClassRelationship = useCallback(() => {
+    if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+    const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+    if (!rel) return;
+    const newCode = deleteClassRelationship(code, rel.source, rel.target, rel.occurrence);
+    if (newCode !== code) handleCodeChange(newCode);
+    handleDeselect();
+  }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
@@ -2441,6 +2584,10 @@ export function LiveMaidEditor({
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Only interrupt the exit when there is genuinely unsaved work in flight (the user edited and
+      // the debounced auto-save hasn't been confirmed by the server yet). Once everything is saved
+      // the ref is false and the browser leaves without the "are you sure you want to exit" prompt.
+      if (!hasUnsavedChangesRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -2449,7 +2596,7 @@ export function LiveMaidEditor({
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, []);
+  }, [hasUnsavedChangesRef]);
 
   useEffect(() => {
     const guardState = { __editorGuard: true };
@@ -2998,15 +3145,17 @@ export function LiveMaidEditor({
                           );
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i)
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                        code.match(/autonumber/i)
                           ? "bg-indigo-600"
                           : "bg-slate-200 dark:bg-slate-700"
-                        }`}
+                      }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                          }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                        }`}
                       />
                     </button>
                   </div>
@@ -3067,6 +3216,13 @@ export function LiveMaidEditor({
             selectedClass={selectedClass}
             onApplyClassEdits={handleApplyClassEdits}
             onCloseClassPanel={handleDeselect}
+            onAddClassRelationship={handleAddClassRelationship}
+            onLinkNoteToClass={handleLinkNoteToClass}
+            onCreateClassLinked={handleCreateClassLinked}
+            onCreateNoteForClass={handleCreateNoteForClass}
+            onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
+            onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
+            onDeleteClassRelationship={handleDeleteClassRelationship}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}
@@ -3236,10 +3392,10 @@ export function LiveMaidEditor({
                       style={
                         c === "transparent"
                           ? {
-                            backgroundImage:
-                              "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
-                            backgroundSize: "10px 10px",
-                          }
+                              backgroundImage:
+                                "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
+                              backgroundSize: "10px 10px",
+                            }
                           : undefined
                       }
                     />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Trash2 } from "lucide-react";
+import { X, Trash2, GripVertical } from "lucide-react";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 
 interface ClassPropertyPanelProps {
@@ -180,7 +180,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
   };
 
   const fieldClass =
-    "w-full rounded-md border border-white/10 bg-[#0a0913] px-3 py-2 text-base text-slate-100 outline-none placeholder:text-slate-500 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition-colors";
+    "w-full rounded-md border border-border bg-slate-50 dark:bg-[#0a0913] px-3 py-2 text-base text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/40 transition-colors";
 
   const renderSection = (
     section: MemberSection,
@@ -192,8 +192,8 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
     // Keep the ref array in sync with the rendered rows (drop stale tail entries after deletes).
     inputRefs.current[section].length = rows.length;
     return (
-      <div className={`flex ${last ? "" : "border-b border-white/10"}`}>
-        <div className="w-36 shrink-0 border-r border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm font-medium text-slate-100">
+      <div className={`flex ${last ? "" : "border-b border-border"}`}>
+        <div className="w-36 shrink-0 border-r border-border bg-muted/50 px-3 py-2.5 text-sm font-medium text-foreground">
           {label}
         </div>
         <div className="flex min-w-0 flex-1 flex-col">
@@ -223,7 +223,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
                   setDragRow(null);
                   setDragOverRow(null);
                 }}
-                className={`group flex items-center border-b border-white/10 last:border-b-0 hover:bg-white/[0.04] ${isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
+                className={`group flex items-center border-b border-border last:border-b-0 hover:bg-accent/40 ${isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
                   } ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""}`}
               >
                 <input
@@ -236,7 +236,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
                   onBlur={() => commit()}
                   placeholder={placeholder}
                   spellCheck={false}
-                  className="min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm text-slate-100 outline-none placeholder:text-slate-500"
+                  className="min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
                 />
                 <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
                   <button
@@ -245,7 +245,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
                     onMouseDown={(e) => e.preventDefault()}
                     title="Delete row"
                     aria-label="Delete row"
-                    className="flex h-6 w-6 items-center justify-center rounded text-slate-500 opacity-0 transition-all hover:bg-white/10 hover:text-red-400 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100"
+                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-500 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:hover:text-red-400"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -265,9 +265,9 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
                     }}
                     title="Drag to reorder"
                     aria-label="Drag to reorder"
-                    className="flex h-6 w-5 cursor-grab items-center justify-center active:cursor-grabbing focus-visible:outline-none"
+                    className="flex h-6 w-5 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors active:cursor-grabbing focus-visible:outline-none group-hover:text-indigo-500 dark:group-hover:text-indigo-400"
                   >
-                    <span className="h-2 w-2 rounded-full bg-slate-500/50 transition-colors group-hover:bg-indigo-400 group-focus-within:bg-indigo-500" />
+                    <GripVertical className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -284,16 +284,16 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
       data-class-property-panel
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-96 flex-col gap-4 overflow-y-auto rounded-xl border border-white/10 bg-[#100f1b] p-5 text-slate-100 shadow-xl"
+      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-96 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-base font-semibold text-slate-100">Class Properties</span>
+          <span className="text-base font-semibold text-foreground">Class Properties</span>
         </div>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-400 hover:bg-white/10 hover:text-slate-100"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="Close properties panel"
         >
           <X className="h-5 w-5" />
@@ -301,7 +301,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
       </div>
 
       <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-slate-400">Class name</span>
+        <span className="text-sm font-medium text-muted-foreground">Class name</span>
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -318,7 +318,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
       </label>
 
       <label className="flex flex-col gap-1.5">
-        <span className="text-sm font-medium text-slate-400">Annotation</span>
+        <span className="text-sm font-medium text-muted-foreground">Annotation</span>
         <input
           value={annotation}
           onChange={(e) => {
@@ -332,9 +332,9 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
       </label>
 
       {/* Structured member grid: left column groups by section, right column holds borderless rows. */}
-      <div className="overflow-hidden rounded-lg border border-white/10">
-        <div className="flex border-b border-white/10 bg-white/[0.06] text-sm font-semibold text-slate-400">
-          <div className="w-36 shrink-0 whitespace-nowrap border-r border-white/10 px-3 py-2">
+      <div className="overflow-hidden rounded-lg border border-border">
+        <div className="flex border-b border-border bg-muted/70 text-sm font-semibold text-muted-foreground">
+          <div className="w-36 shrink-0 whitespace-nowrap border-r border-border px-3 py-2">
             Class Property
           </div>
           <div className="flex-1 px-3 py-2">Value</div>
@@ -343,7 +343,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
         {renderSection("methods", "Methods", "+method() void", true)}
       </div>
 
-      <p className="text-xs leading-snug text-slate-400">
+      <p className="text-xs leading-snug text-muted-foreground">
         Click a row to edit. Press <span className="font-mono">Enter</span> to add a row,{" "}
         <span className="font-mono">Backspace</span> on an empty row to remove it. Use{" "}
         <span className="font-mono">+ - # ~</span> for visibility; include{" "}

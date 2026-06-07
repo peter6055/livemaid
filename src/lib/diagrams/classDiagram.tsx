@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Box,
-  Heading,
   StickyNote,
   ChevronsDown,
   ArrowDown,
@@ -339,6 +338,330 @@ export function applyClassEdits(code: string, name: string, edits: ClassEdits): 
 }
 
 /* -------------------------------------------------------------------------- */
+/* Relationships + note linking (drag-to-connect)                              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The eight UML class relationship types Mermaid supports, with their operators. `source op target`
+ * is emitted verbatim, so the picker icon should read left-to-right with the dragged-from class as
+ * the source. Ordered most-common-first.
+ */
+export const CLASS_RELATIONSHIP_TYPES: Array<{ key: string; label: string; operator: string }> = [
+  { key: "association", label: "Association", operator: "-->" },
+  { key: "inheritance", label: "Inheritance", operator: "<|--" },
+  { key: "composition", label: "Composition", operator: "*--" },
+  { key: "aggregation", label: "Aggregation", operator: "o--" },
+  { key: "dependency", label: "Dependency", operator: "..>" },
+  { key: "realization", label: "Realization", operator: "..|>" },
+  { key: "link", label: "Link (solid)", operator: "--" },
+  { key: "dashed", label: "Link (dashed)", operator: ".." },
+];
+
+/** Append a class body line (after trimming trailing whitespace) — the toolbar's add pattern. */
+function appendClassBodyLine(code: string, line: string): string {
+  return code.replace(/\s*$/, "") + `\n${line}`;
+}
+
+/**
+ * Append a relationship `source <operator> target` (with an optional ` : label`) to the diagram.
+ * Both classes may be implicit — Mermaid auto-creates any class referenced only in a relationship.
+ */
+export function addClassRelationship(
+  code: string,
+  source: string,
+  target: string,
+  operator: string,
+  label?: string,
+): string {
+  const labelPart = label && label.trim() ? ` : ${label.trim()}` : "";
+  return appendClassBodyLine(code, `    ${source} ${operator} ${target}${labelPart}`);
+}
+
+/** Create a new (empty) class and immediately relate the source to it. Returns the new code. */
+export function addClassWithRelationship(
+  code: string,
+  source: string,
+  newName: string,
+  operator: string,
+): string {
+  const withClass = appendClassBodyLine(code, `    class ${newName} {\n    }`);
+  return appendClassBodyLine(withClass, `    ${source} ${operator} ${newName}`);
+}
+
+/** Append a class-scoped note (`note for <ClassName> "text"`) for the given class. */
+export function appendClassNoteForClass(code: string, className: string, text: string): string {
+  const escaped = text.replace(/"/g, '\\"');
+  return appendClassBodyLine(code, `    note for ${className} "${escaped}"`);
+}
+
+/**
+ * Re-target the `noteIndex`-th note (source order) so it is attached to `className`
+ * (`note "x"` → `note for ClassName "x"`). The quoted text is preserved verbatim. Returns the code
+ * unchanged when the index is out of range.
+ */
+export function setClassNoteTarget(code: string, noteIndex: number, className: string): string {
+  const notes = getClassNotes(code);
+  const target = notes[noteIndex];
+  if (!target) return code;
+  const lines = code.split("\n");
+  lines[target.lineIndex] = lines[target.lineIndex].replace(
+    CLASS_NOTE_RE,
+    (_m, head: string, body: string, tail: string) => {
+      const indent = head.match(/^\s*/)?.[0] ?? "";
+      return `${indent}note for ${className} "${body}"${tail}`;
+    },
+  );
+  return lines.join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Relationship editing (operator + cardinality) — for the edge toolbar        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A class-relationship operator decomposes into an end marker on each side plus a line style.
+ * Re-composing `leftToken(source) + line + rightToken(target)` reproduces every Mermaid relation
+ * operator (the eight presets are just particular {sourceMarker, lineStyle, targetMarker} tuples),
+ * so the edge toolbar can mutate either end / the line independently and stay perfectly faithful.
+ */
+export type ClassEndMarker = "none" | "arrow" | "triangle" | "diamondFilled" | "diamondHollow";
+export type ClassLineStyle = "solid" | "dashed";
+
+/** End-marker metadata: the token Mermaid uses at the LEFT (source) and RIGHT (target) end. */
+export const CLASS_END_MARKERS: Array<{
+  key: ClassEndMarker;
+  label: string;
+  left: string;
+  right: string;
+}> = [
+  { key: "none", label: "None", left: "", right: "" },
+  { key: "arrow", label: "Arrow", left: "<", right: ">" },
+  { key: "triangle", label: "Triangle", left: "<|", right: "|>" },
+  { key: "diamondFilled", label: "Filled diamond", left: "*", right: "*" },
+  { key: "diamondHollow", label: "Hollow diamond", left: "o", right: "o" },
+];
+
+export interface ClassRelationshipParts {
+  sourceMarker: ClassEndMarker;
+  lineStyle: ClassLineStyle;
+  targetMarker: ClassEndMarker;
+}
+
+const LEFT_TOKEN_TO_MARKER: Array<[string, ClassEndMarker]> = [
+  ["<|", "triangle"],
+  ["<", "arrow"],
+  ["*", "diamondFilled"],
+  ["o", "diamondHollow"],
+];
+const RIGHT_TOKEN_TO_MARKER: Array<[string, ClassEndMarker]> = [
+  ["|>", "triangle"],
+  [">", "arrow"],
+  ["*", "diamondFilled"],
+  ["o", "diamondHollow"],
+];
+
+/** Decompose a relationship operator string (e.g. `<|--`, `..>`, `*--*`) into its parts. */
+export function parseClassRelationshipOperator(operator: string): ClassRelationshipParts {
+  const op = operator.trim();
+  const lineStyle: ClassLineStyle = op.includes("..") ? "dashed" : "solid";
+  const lineToken = lineStyle === "dashed" ? ".." : "--";
+  const lineAt = op.indexOf(lineToken);
+  const leftRaw = lineAt >= 0 ? op.slice(0, lineAt) : "";
+  const rightRaw = lineAt >= 0 ? op.slice(lineAt + lineToken.length) : "";
+  const sourceMarker = LEFT_TOKEN_TO_MARKER.find(([t]) => t === leftRaw)?.[1] ?? "none";
+  const targetMarker = RIGHT_TOKEN_TO_MARKER.find(([t]) => t === rightRaw)?.[1] ?? "none";
+  return { sourceMarker, lineStyle, targetMarker };
+}
+
+/** Re-compose an operator string from its parts. */
+export function buildClassRelationshipOperator(parts: ClassRelationshipParts): string {
+  const left = CLASS_END_MARKERS.find((m) => m.key === parts.sourceMarker)?.left ?? "";
+  const right = CLASS_END_MARKERS.find((m) => m.key === parts.targetMarker)?.right ?? "";
+  const line = parts.lineStyle === "dashed" ? ".." : "--";
+  return `${left}${line}${right}`;
+}
+
+/**
+ * Relationship-line grammar (after stripping indent):
+ *   `Source ["srcCard"] <operator> ["tgtCard"] Target [: label]`
+ * The operator is a maximal run of relation characters; identifiers never contain them, so the
+ * regex naturally rejects `class …`, `note …` and colon-form member lines.
+ */
+const CLASS_REL_LINE_RE =
+  /^([ \t]*)([A-Za-z0-9_~$]+)[ \t]+(?:"([^"]*)"[ \t]+)?([<>|o*.\-]+)[ \t]+(?:"([^"]*)"[ \t]+)?([A-Za-z0-9_~$]+)[ \t]*(?::[ \t]*(.*))?$/;
+
+const CLASS_REL_KEYWORDS =
+  /^(?:class|note|namespace|direction|click|callback|link|style|cssClass)\b/;
+
+export interface ParsedClassRelationship {
+  lineIndex: number;
+  source: string;
+  target: string;
+  operator: string;
+  sourceCard: string; // "" when absent
+  targetCard: string; // "" when absent
+  label: string; // "" when absent
+  occurrence: number; // 1-based among lines sharing the same (source,target) pair
+}
+
+/** Parse a single line as a relationship, or return `null`. */
+function parseClassRelationshipLine(
+  line: string,
+): Omit<ParsedClassRelationship, "lineIndex" | "occurrence"> | null {
+  const trimmed = line.trim();
+  if (!trimmed || CLASS_REL_KEYWORDS.test(trimmed)) return null;
+  const m = line.match(CLASS_REL_LINE_RE);
+  if (!m) return null;
+  const operator = m[4];
+  // Require the operator to actually contain a line token (-- or ..); a bare `<` etc. is not valid.
+  if (!operator.includes("--") && !operator.includes("..")) return null;
+  return {
+    source: m[2],
+    sourceCard: m[3] ?? "",
+    operator,
+    targetCard: m[5] ?? "",
+    target: m[6],
+    label: (m[7] ?? "").trim(),
+  };
+}
+
+/** All relationship lines in source order, each tagged with its per-(source,target) occurrence. */
+export function getClassRelationships(code: string): ParsedClassRelationship[] {
+  const out: ParsedClassRelationship[] = [];
+  const counts = new Map<string, number>();
+  code.split("\n").forEach((line, i) => {
+    const parsed = parseClassRelationshipLine(line);
+    if (!parsed) return;
+    const pairKey = `${parsed.source}\u0000${parsed.target}`;
+    const occurrence = (counts.get(pairKey) ?? 0) + 1;
+    counts.set(pairKey, occurrence);
+    out.push({ lineIndex: i, occurrence, ...parsed });
+  });
+  return out;
+}
+
+/**
+ * Resolve a Mermaid class-edge `data-id` (`id_<Src>_<Dst>_<N>`) to its relationship by computing
+ * each relationship's expected id and matching — this avoids ambiguous `_` splitting when class
+ * names themselves contain underscores.
+ */
+export function classRelationshipFromEdgeDataId(
+  code: string,
+  dataId: string | null | undefined,
+): ParsedClassRelationship | null {
+  if (!dataId) return null;
+  const rels = getClassRelationships(code);
+  return rels.find((r) => `id_${r.source}_${r.target}_${r.occurrence}` === dataId) ?? null;
+}
+
+/** Build the canonical relationship line text (no indent) from its parts. */
+function buildClassRelationshipLine(
+  indent: string,
+  r: {
+    source: string;
+    sourceCard: string;
+    operator: string;
+    targetCard: string;
+    target: string;
+    label: string;
+  },
+): string {
+  const src = r.sourceCard ? `${r.source} "${r.sourceCard}"` : r.source;
+  const tgt = r.targetCard ? `"${r.targetCard}" ${r.target}` : r.target;
+  const label = r.label ? ` : ${r.label}` : "";
+  return `${indent}${src} ${r.operator} ${tgt}${label}`;
+}
+
+/** Locate the relationship matching (source, target, occurrence) and return its line index, or -1. */
+function findClassRelationshipLineIndex(
+  code: string,
+  source: string,
+  target: string,
+  occurrence: number,
+): number {
+  const rel = getClassRelationships(code).find(
+    (r) => r.source === source && r.target === target && r.occurrence === occurrence,
+  );
+  return rel ? rel.lineIndex : -1;
+}
+
+/** Rewrite the matched relationship's operator in place, preserving cardinality + label. */
+export function updateClassRelationshipOperator(
+  code: string,
+  source: string,
+  target: string,
+  occurrence: number,
+  newOperator: string,
+): string {
+  const lines = code.split("\n");
+  const idx = findClassRelationshipLineIndex(code, source, target, occurrence);
+  if (idx < 0) return code;
+  const parsed = parseClassRelationshipLine(lines[idx]);
+  if (!parsed) return code;
+  const indent = lines[idx].match(/^[ \t]*/)?.[0] ?? "    ";
+  lines[idx] = buildClassRelationshipLine(indent, { ...parsed, operator: newOperator });
+  return lines.join("\n");
+}
+
+/**
+ * Set the source/target cardinality of the matched relationship (empty string removes that end's
+ * cardinality). Operator and label are preserved.
+ */
+export function setClassRelationshipCardinality(
+  code: string,
+  source: string,
+  target: string,
+  occurrence: number,
+  sourceCard: string,
+  targetCard: string,
+): string {
+  const lines = code.split("\n");
+  const idx = findClassRelationshipLineIndex(code, source, target, occurrence);
+  if (idx < 0) return code;
+  const parsed = parseClassRelationshipLine(lines[idx]);
+  if (!parsed) return code;
+  const indent = lines[idx].match(/^[ \t]*/)?.[0] ?? "    ";
+  lines[idx] = buildClassRelationshipLine(indent, {
+    ...parsed,
+    sourceCard: sourceCard.trim(),
+    targetCard: targetCard.trim(),
+  });
+  return lines.join("\n");
+}
+
+/** Set the matched relationship's `: label` (empty string removes it). Operator + cardinality kept. */
+export function setClassRelationshipLabel(
+  code: string,
+  source: string,
+  target: string,
+  occurrence: number,
+  label: string,
+): string {
+  const lines = code.split("\n");
+  const idx = findClassRelationshipLineIndex(code, source, target, occurrence);
+  if (idx < 0) return code;
+  const parsed = parseClassRelationshipLine(lines[idx]);
+  if (!parsed) return code;
+  const indent = lines[idx].match(/^[ \t]*/)?.[0] ?? "    ";
+  lines[idx] = buildClassRelationshipLine(indent, { ...parsed, label: label.trim() });
+  return lines.join("\n");
+}
+
+/** Remove the matched relationship line entirely. Returns the code unchanged when not found. */
+export function deleteClassRelationship(
+  code: string,
+  source: string,
+  target: string,
+  occurrence: number,
+): string {
+  const idx = findClassRelationshipLineIndex(code, source, target, occurrence);
+  if (idx < 0) return code;
+  const lines = code.split("\n");
+  lines.splice(idx, 1);
+  return lines.join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
 /* Toolbar                                                                     */
 /* -------------------------------------------------------------------------- */
 
@@ -352,6 +675,7 @@ const DIRECTION_OPTIONS = [
 const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
   const currentDirection = getClassDirection(code);
   const hideEmpty = getHideEmptyMembersBox(code);
+  const hasTitle = !!getClassTitle(code).trim();
 
   const handleAddClass = () => {
     const name = getNextClassName(code);
@@ -359,9 +683,9 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
     setCode(code.replace(/\s*$/, "") + `\n${block}`);
   };
 
-  const handleAddTitle = () => {
-    if (getClassTitle(code).trim()) return; // already has a title
-    setCode(upsertClassTitle(code, "Diagram Title"));
+  // Title is a toggle: ON inserts a default title, OFF removes the frontmatter `title:`.
+  const handleToggleTitle = () => {
+    setCode(hasTitle ? removeClassTitle(code) : upsertClassTitle(code, "Diagram Title"));
   };
 
   const handleAddNote = () => {
@@ -379,14 +703,40 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
         <button
           type="button"
           onClick={() => setCode(setHideEmptyMembersBox(code, !hideEmpty))}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-            }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
           aria-label="Toggle hide empty members box"
           aria-pressed={hideEmpty}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
-              }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className="h-5 w-px bg-border" />
+
+      {/* Title toggle — same inline label + switch styling as Hide Empty Members. */}
+      <div className="flex items-center gap-2 px-2 h-8 select-none">
+        <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
+          Title
+        </span>
+        <button
+          type="button"
+          onClick={handleToggleTitle}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
+          aria-label="Toggle diagram title"
+          aria-pressed={hasTitle}
+        >
+          <span
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
           />
         </button>
       </div>
@@ -403,16 +753,6 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
         >
           <Box className="w-4 h-4" />
           <span className="text-sm font-medium">Class</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
-          onClick={handleAddTitle}
-          title="Add a diagram title"
-        >
-          <Heading className="w-4 h-4" />
-          <span className="text-sm font-medium">Title</span>
         </Button>
         <Button
           variant="ghost"

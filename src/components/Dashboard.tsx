@@ -6,6 +6,7 @@ import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/BrandLogo";
 import {
   Plus,
   LayoutTemplate,
@@ -585,9 +586,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
         >
           {/* Brand */}
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg">
-              <LayoutTemplate className="w-5 h-5 text-white" />
-            </div>
+            <BrandLogo className="w-8 h-8 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </div>
 
@@ -716,9 +715,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-2">
-              <LayoutTemplate className="w-5 h-5 text-white" />
-            </div>
+            <BrandLogo className="w-8 h-8 mr-2 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </nav>
 

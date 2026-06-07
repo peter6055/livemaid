@@ -12,9 +12,12 @@ import {
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
+import { ClassEdgeToolbar } from "./ClassEdgeToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
+import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import { classNameFromSvgId } from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
@@ -88,6 +91,15 @@ interface EditorCanvasProps {
   selectedClass?: ParsedClass | null;
   onApplyClassEdits?: (edits: ClassEdits) => void;
   onCloseClassPanel?: () => void;
+  /** Class-diagram connection drag (the purple +): create relationships / link notes. */
+  onAddClassRelationship?: (source: string, target: string, operator: string) => void;
+  onLinkNoteToClass?: (noteIndex: number, className: string) => void;
+  onCreateClassLinked?: (source: string, operator: string) => void;
+  onCreateNoteForClass?: (source: string) => void;
+  /** Class-diagram relationship-edge toolbar: mutate operator / cardinality / delete. */
+  onUpdateClassRelationshipType?: (operator: string) => void;
+  onSetClassRelationshipCardinality?: (sourceCard: string, targetCard: string) => void;
+  onDeleteClassRelationship?: () => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -180,6 +192,13 @@ export function EditorCanvas({
   selectedClass,
   onApplyClassEdits,
   onCloseClassPanel,
+  onAddClassRelationship,
+  onLinkNoteToClass,
+  onCreateClassLinked,
+  onCreateNoteForClass,
+  onUpdateClassRelationshipType,
+  onSetClassRelationshipCardinality,
+  onDeleteClassRelationship,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -263,6 +282,19 @@ export function EditorCanvas({
     cursorX: number;
     targetSlot: number | null;
   } | null>(null);
+  // Class-diagram connection drag (the purple +). All viewport-space (canvasShellRef-relative),
+  // rendered outside TransformWrapper so pan/zoom never distorts it. `classConnecting` disables
+  // canvas panning for the duration; `classConnect` is the live preview line + snap highlight;
+  // `classConnectMenu` is the drop-point popover (relationship picker / create chip).
+  const [classConnecting, setClassConnecting] = useState(false);
+  const [classConnect, setClassConnect] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    snap: { cx: number; cy: number; w: number; h: number } | null;
+  } | null>(null);
+  const [classConnectMenu, setClassConnectMenu] = useState<ClassConnectMenuState | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
@@ -836,6 +868,149 @@ export function EditorCanvas({
     window.addEventListener("mouseup", onUp);
   };
 
+  // The class currently eligible to start a connection drag: resolved from the single-click
+  // selection's SVG id (NOT the double-click-only property-panel `selectedClass`), so the purple +
+  // appears as soon as a class node is selected.
+  const connectSourceClass = useMemo(
+    () => (currentType === "classDiagram" ? classNameFromSvgId(selectedSvgId) : null),
+    [currentType, selectedSvgId],
+  );
+
+  // The note currently eligible to start a connection drag (the reverse gesture: drag a note onto a
+  // class to attach it). Resolved from the single-click selection's SVG id (`…-note<N>`). The note
+  // index is source-order, matching getClassNotes / setClassNoteTarget.
+  const connectSourceNote = useMemo(() => {
+    if (currentType !== "classDiagram" || !selectedSvgId) return null;
+    const m = selectedSvgId.match(/-note(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }, [currentType, selectedSvgId]);
+
+  // Begin a class-diagram connection drag from the purple +. Fully isolated (own window listeners +
+  // preview SVG outside TransformWrapper), mirroring the sequence endpoint drag. The source is
+  // either a class or a note:
+  //  - class source → DIFFERENT class = relationship picker; note = `note for <source>`; empty / a
+  //    no-drag click = the New Class / New Note chip.
+  //  - note source  → only a class target is valid (`note for <class>`); everything else is a no-op.
+  const startClassConnectDrag = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    source: { kind: "class"; name: string } | { kind: "note"; index: number },
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const shell = canvasShellRef.current;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
+    const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+
+    type Target =
+      | { kind: "class"; name: string; el: Element }
+      | { kind: "note"; noteIndex: number; el: Element }
+      | null;
+    const resolveTarget = (clientX: number, clientY: number): Target => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        const g = el.closest("g.node");
+        if (!g) continue;
+        if (/classId-/.test(g.id)) {
+          const name = classNameFromSvgId(g.id);
+          if (source.kind === "class" && name === source.name) return null; // self → ignore
+          if (name) return { kind: "class", name, el: g };
+        } else if (/-note\d+$/.test(g.id)) {
+          const idx = parseInt(g.id.match(/-note(\d+)$/)?.[1] ?? "0", 10);
+          // A note source can only attach to a CLASS — ignore note targets (incl. itself).
+          if (source.kind === "note") continue;
+          return { kind: "note", noteIndex: idx, el: g };
+        }
+      }
+      return null;
+    };
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    let dragging = false;
+    setClassConnecting(true);
+
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+      }
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      if (tgt) {
+        const r = tgt.el.getBoundingClientRect();
+        snap = {
+          cx: r.left - shellRect.left,
+          cy: r.top - shellRect.top,
+          w: r.width,
+          h: r.height,
+        };
+      }
+      setClassConnect({
+        x1: anchorX,
+        y1: anchorY,
+        x2: ev.clientX - shellRect.left,
+        y2: ev.clientY - shellRect.top,
+        snap,
+      });
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setClassConnect(null);
+      setClassConnecting(false);
+      const tgt = dragging ? resolveTarget(ev.clientX, ev.clientY) : null;
+
+      // Note source: the only meaningful drop is onto a class (attach this note to it). No drag, or
+      // a drop anywhere else, is a silent no-op (notes have no create/relationship flow).
+      if (source.kind === "note") {
+        if (tgt?.kind === "class") onLinkNoteToClass?.(source.index, tgt.name);
+        return;
+      }
+
+      // Class source.
+      const menuX = ev.clientX - shellRect.left;
+      const menuY = ev.clientY - shellRect.top;
+      if (!dragging) {
+        // Plain click on the + (no drag) → open the create chip at the button.
+        setClassConnectMenu({
+          source: source.name,
+          target: null,
+          step: "choose",
+          x: anchorX,
+          y: anchorY,
+        });
+        return;
+      }
+      if (tgt?.kind === "class") {
+        setClassConnectMenu({
+          source: source.name,
+          target: tgt.name,
+          step: "relationship",
+          x: menuX,
+          y: menuY,
+        });
+      } else if (tgt?.kind === "note") {
+        onLinkNoteToClass?.(tgt.noteIndex, source.name);
+      } else {
+        setClassConnectMenu({
+          source: source.name,
+          target: null,
+          step: "choose",
+          x: menuX,
+          y: menuY,
+        });
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   // Begin dragging a participant lifeline HORIZONTALLY to reorder the columns. Direct-drag on the
   // header body (no handle bar) with a 3px intent threshold so a plain click still selects and a
   // double-click still edits — both flow through the existing document-capture / dblclick handlers
@@ -983,12 +1158,15 @@ export function EditorCanvas({
             connectionState.active ||
             !!seqReorder ||
             seqEndpointDragging ||
-            !!seqLifelineReorder,
+            !!seqLifelineReorder ||
+            classConnecting,
           excluded: [
             "seq-connect-btn",
             "seq-msg-reorder-handle",
             "seq-endpoint-handle",
             "seq-actor-reorder-handle",
+            "class-connect-btn",
+            "class-relation-hit-target",
           ],
         }}
         trackPadPanning={{ disabled: false }}
@@ -1080,26 +1258,26 @@ export function EditorCanvas({
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
-                        // Ignore double-clicks that land on a floating toolbar / overlay control so
-                        // they never enter the underlying element's edit mode. This guard lives on the
-                        // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
-                        // Rename button (which calls handleEditClick programmatically while the cursor
-                        // is over the toolbar) still works.
-                        const hitFloatingUi = document
-                          .elementsFromPoint(e.clientX, e.clientY)
-                          .some((el) =>
-                            Boolean(
-                              el.closest?.("[data-scale-lock]") ||
-                              el.closest?.("[data-scale-lock-max1]") ||
-                              el.closest?.("[data-inline-toolbar]") ||
-                              el.closest?.("[data-scale-lock-border]") ||
-                              el.closest?.("[data-scale-lock-shadow]") ||
-                              el.closest?.('[data-slot^="dropdown-menu"]'),
-                            ),
-                          );
-                        if (hitFloatingUi) return;
-                        handleEditClick(e);
-                      }
+                      // Ignore double-clicks that land on a floating toolbar / overlay control so
+                      // they never enter the underlying element's edit mode. This guard lives on the
+                      // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
+                      // Rename button (which calls handleEditClick programmatically while the cursor
+                      // is over the toolbar) still works.
+                      const hitFloatingUi = document
+                        .elementsFromPoint(e.clientX, e.clientY)
+                        .some((el) =>
+                          Boolean(
+                            el.closest?.("[data-scale-lock]") ||
+                            el.closest?.("[data-scale-lock-max1]") ||
+                            el.closest?.("[data-inline-toolbar]") ||
+                            el.closest?.("[data-scale-lock-border]") ||
+                            el.closest?.("[data-scale-lock-shadow]") ||
+                            el.closest?.('[data-slot^="dropdown-menu"]'),
+                          ),
+                        );
+                      if (hitFloatingUi) return;
+                      handleEditClick(e);
+                    }
                     : undefined
                 }
                 onMouseMove={handleMouseMove}
@@ -1345,9 +1523,9 @@ export function EditorCanvas({
                             const anchorX = rootRect
                               ? buttonRect.left - rootRect.left + buttonRect.width / 2
                               : Number(
-                                  e.currentTarget.getAttribute("data-seq-plus-anchor-x") ||
-                                    sequenceLifelineOverlay.x,
-                                );
+                                e.currentTarget.getAttribute("data-seq-plus-anchor-x") ||
+                                sequenceLifelineOverlay.x,
+                              );
                             const anchorMenuY = rootRect
                               ? buttonRect.top - rootRect.top + buttonRect.height / 2
                               : anchorY;
@@ -1620,18 +1798,27 @@ export function EditorCanvas({
                       that would flash the wrong (flowchart) style bar.
                     */}
                     {!isInlineEditing &&
-                      (selectedNodeId && isEdgeId(selectedNodeId) ? (
+                      (selectedNodeId && selectedNodeId.startsWith("CLASS_EDGE_") ? (
+                        <ClassEdgeToolbar
+                          selectedNodeId={selectedNodeId}
+                          code={code}
+                          scale={state.scale}
+                          onUpdateRelationshipType={onUpdateClassRelationshipType || (() => { })}
+                          onSetCardinality={onSetClassRelationshipCardinality || (() => { })}
+                          onDeleteRelationship={onDeleteClassRelationship || (() => { })}
+                        />
+                      ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
                         <EdgeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
                           currentType={currentType}
                           selectedSvgId={selectedSvgId}
                           scale={state.scale}
-                          onUpdateStyle={onUpdateEdgeStyle || (() => {})}
-                          onUpdateColor={onUpdateEdgeColor || (() => {})}
+                          onUpdateStyle={onUpdateEdgeStyle || (() => { })}
+                          onUpdateColor={onUpdateEdgeColor || (() => { })}
                           onUpdateAnimation={onUpdateEdgeAnimation}
                           onEditLabel={(e) => handleEditClick(e)}
-                          onDeleteEdge={onDeleteEdge || (() => {})}
+                          onDeleteEdge={onDeleteEdge || (() => { })}
                         />
                       ) : selectedNodeId &&
                         (selectedNodeId.startsWith("SEQ_ACTOR_") ||
@@ -1705,9 +1892,9 @@ export function EditorCanvas({
                                 startNodeId: selectedNodeId,
                                 startPos: selectionBox
                                   ? {
-                                      x: selectionBox.x + selectionBox.width / 2,
-                                      y: selectionBox.y + selectionBox.height + 4,
-                                    }
+                                    x: selectionBox.x + selectionBox.width / 2,
+                                    y: selectionBox.y + selectionBox.height + 4,
+                                  }
                                   : null,
                                 mousePos: null,
                                 isDragging: false,
@@ -1734,6 +1921,62 @@ export function EditorCanvas({
                             }}
                             className="w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
                             title="Drag to Connect or Click to Add Node"
+                          >
+                            <Plus className="w-3 h-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
+
+                    {/* Class-diagram connection + (purple): drag to relate to another class, link a
+                        note, or drop on empty canvas to create a new class/note. */}
+                    {!isInlineEditing &&
+                      currentType === "classDiagram" &&
+                      connectSourceClass &&
+                      selectionBox &&
+                      !classConnecting && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            className="class-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                            title="Drag to link a class or note"
+                            onMouseDown={(e) =>
+                              startClassConnectDrag(e, { kind: "class", name: connectSourceClass })
+                            }
+                          >
+                            <Plus className="w-3 h-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
+
+                    {/* Class-diagram NOTE connection + (purple): drag the note onto a class to
+                        attach it (`note for <Class>`). */}
+                    {!isInlineEditing &&
+                      currentType === "classDiagram" &&
+                      connectSourceNote !== null &&
+                      selectionBox &&
+                      !classConnecting && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            className="class-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                            title="Drag onto a class to attach this note"
+                            onMouseDown={(e) =>
+                              startClassConnectDrag(e, { kind: "note", index: connectSourceNote })
+                            }
                           >
                             <Plus className="w-3 h-3 pointer-events-none" />
                           </button>
@@ -1817,6 +2060,72 @@ export function EditorCanvas({
             </g>
           )}
         </svg>
+      )}
+
+      {/* Class-diagram connection drag preview — dashed line from the + to the cursor, plus a ring
+          highlighting the snapped class/note. Outside TransformWrapper (viewport/shell coords). */}
+      {classConnect && (
+        <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+          <defs>
+            <marker
+              id="class-connect-arrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+            </marker>
+          </defs>
+          <line
+            x1={classConnect.x1}
+            y1={classConnect.y1}
+            x2={classConnect.x2}
+            y2={classConnect.y2}
+            stroke="#6366f1"
+            strokeDasharray="10,8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            markerEnd="url(#class-connect-arrow)"
+          />
+          {classConnect.snap && (
+            <rect
+              x={classConnect.snap.cx - 3}
+              y={classConnect.snap.cy - 3}
+              width={classConnect.snap.w + 6}
+              height={classConnect.snap.h + 6}
+              rx={6}
+              fill="rgba(99,102,241,0.10)"
+              stroke="#6366f1"
+              strokeWidth={2}
+            />
+          )}
+        </svg>
+      )}
+
+      {/* Class-diagram connection drop menu (relationship picker / create chip). */}
+      {currentType === "classDiagram" && classConnectMenu && (
+        <ClassConnectMenu
+          state={classConnectMenu}
+          onPickRelationship={(operator) => {
+            if (classConnectMenu.target) {
+              onAddClassRelationship?.(classConnectMenu.source, classConnectMenu.target, operator);
+            } else {
+              onCreateClassLinked?.(classConnectMenu.source, operator);
+            }
+            setClassConnectMenu(null);
+          }}
+          onChooseNewClass={() =>
+            setClassConnectMenu({ ...classConnectMenu, step: "relationship" })
+          }
+          onChooseNewNote={() => {
+            onCreateNoteForClass?.(classConnectMenu.source);
+            setClassConnectMenu(null);
+          }}
+          onClose={() => setClassConnectMenu(null)}
+        />
       )}
 
       {/* Sequence message reorder drop zones + drag ghost — rendered at canvasShell level
