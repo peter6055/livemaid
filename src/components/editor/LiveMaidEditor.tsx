@@ -74,6 +74,7 @@ import {
   setClassRelationshipCardinality,
   setClassRelationshipLabel,
   deleteClassRelationship,
+  findClassDefinitionLine,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
@@ -943,8 +944,20 @@ export function LiveMaidEditor({
   // clears the decoration) or when no confident mapping exists. Read-only
   // parsing, so it is safe in demo mode too (AC 4.1.3).
   const highlightRange = useMemo<{ startLine: number; endLine: number } | null>(() => {
-    if (!selectedNodeId) return null;
     const toRange = (line: number) => (line >= 0 ? { startLine: line, endLine: line } : null);
+
+    // Class diagram: a selected class node (property panel) highlights its `class X` definition
+    // line; a selected relationship edge highlights its relationship line. (Class node selection is
+    // tracked via the sticky `selectedClassName`, not `selectedNodeId`.)
+    if (selectedClassName) {
+      return toRange(findClassDefinitionLine(code, selectedClassName));
+    }
+    if (selectedNodeId?.startsWith("CLASS_EDGE_")) {
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      return rel ? toRange(rel.lineIndex) : null;
+    }
+
+    if (!selectedNodeId) return null;
 
     if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const idx = parseInt(selectedNodeId.slice("SEQ_MSG_".length), 10);
@@ -986,6 +999,7 @@ export function LiveMaidEditor({
     return toRange(findFlowchartNodeLine(code, selectedNodeId));
   }, [
     selectedNodeId,
+    selectedClassName,
     code,
     getSequenceMessageEntries,
     getSequenceNoteEntries,
