@@ -18,7 +18,11 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { isEdgeId } from "@/lib/diagrams/utils";
-import { classNameFromSvgId, getNamespaceNames, getClassNamespace } from "@/lib/diagrams/classDiagram";
+import {
+  classNameFromSvgId,
+  getNamespaceNames,
+  getClassNamespace,
+} from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
@@ -1016,13 +1020,10 @@ export function EditorCanvas({
         return;
       }
       if (tgt?.kind === "class") {
-        setClassConnectMenu({
-          source: source.name,
-          target: tgt.name,
-          step: "relationship",
-          x: menuX,
-          y: menuY,
-        });
+        // Dropping onto an existing class creates the connection directly with the default
+        // association operator (`-->`); the user can change the relationship type afterwards via
+        // the edge toolbar. No relationship-type prompt is shown.
+        onAddClassRelationship?.(source.name, tgt.name, "-->");
       } else if (tgt?.kind === "note") {
         onLinkNoteToClass?.(tgt.noteIndex, source.name);
       } else {
@@ -1889,7 +1890,8 @@ export function EditorCanvas({
                             if (connectSourceClass) onMoveClassToNewNamespace?.(connectSourceClass);
                           }}
                           onRemoveFromNamespace={() => {
-                            if (connectSourceClass) onRemoveClassFromNamespace?.(connectSourceClass);
+                            if (connectSourceClass)
+                              onRemoveClassFromNamespace?.(connectSourceClass);
                           }}
                           onDelete={() => {
                             if (connectSourceNote !== null) onDeleteClassNote?.(connectSourceNote);

@@ -409,9 +409,7 @@ export function LiveMaidEditor({
       // Namespace container — double-clicking its title/boundary inline-renames it. The cluster
       // label text equals the namespace name; we validate it against the parsed namespaces so a
       // stray cluster from another diagram type can never be mistaken for one.
-      const clusterGroup = els
-        .map((el) => el.closest("g.cluster"))
-        .find((g): g is Element => !!g);
+      const clusterGroup = els.map((el) => el.closest("g.cluster")).find((g): g is Element => !!g);
       if (clusterGroup) {
         const labelEl = clusterGroup.querySelector(".cluster-label, .nodeLabel, text, tspan, p");
         const nsName = (labelEl?.textContent || "").trim();

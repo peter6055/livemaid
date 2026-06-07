@@ -693,14 +693,17 @@ export function deleteClassByName(code: string, name: string): string {
   const lines = code.split("\n");
   const remove = new Set<number>();
 
-  // Brace block: `class Name { … }` (assume a flat, non-nested member block).
+  // Brace block: `class Name { … }` (assume a flat, non-nested member block). Track brace depth so
+  // a self-contained single-line block (`class Name {}`) stops immediately instead of greedily
+  // consuming following lines (which would eat an enclosing namespace's closing `}`).
   const braceOpenRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{`);
   for (let i = 0; i < lines.length; i += 1) {
     if (braceOpenRe.test(lines[i])) {
       remove.add(i);
-      for (let j = i + 1; j < lines.length; j += 1) {
+      let depth = (lines[i].match(/\{/g)?.length ?? 0) - (lines[i].match(/\}/g)?.length ?? 0);
+      for (let j = i + 1; j < lines.length && depth > 0; j += 1) {
         remove.add(j);
-        if (/^[ \t]*\}/.test(lines[j])) break;
+        depth += (lines[j].match(/\{/g)?.length ?? 0) - (lines[j].match(/\}/g)?.length ?? 0);
       }
     }
   }
@@ -785,8 +788,7 @@ export function getClassNamespaces(code: string): ParsedNamespace[] {
     const name = m[2];
     const classes: string[] = [];
     // The opening line already contributes one `{`; count any extra braces it carries too.
-    let depth =
-      (lines[i].match(/\{/g)?.length ?? 0) - (lines[i].match(/\}/g)?.length ?? 0);
+    let depth = (lines[i].match(/\{/g)?.length ?? 0) - (lines[i].match(/\}/g)?.length ?? 0);
     let endLine = -1;
     for (let j = i + 1; j < lines.length && depth > 0; j += 1) {
       const line = lines[j];
@@ -852,13 +854,16 @@ function removeClassOwnDefinition(code: string, name: string): string {
   const lines = code.split("\n");
   const remove = new Set<number>();
 
+  // Track brace depth so a self-contained single-line block (`class Name {}`) stops immediately
+  // instead of greedily consuming following lines (which would eat an enclosing namespace's `}`).
   const braceOpenRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{`);
   for (let i = 0; i < lines.length; i += 1) {
     if (braceOpenRe.test(lines[i])) {
       remove.add(i);
-      for (let j = i + 1; j < lines.length; j += 1) {
+      let depth = (lines[i].match(/\{/g)?.length ?? 0) - (lines[i].match(/\}/g)?.length ?? 0);
+      for (let j = i + 1; j < lines.length && depth > 0; j += 1) {
         remove.add(j);
-        if (/^[ \t]*\}/.test(lines[j])) break;
+        depth += (lines[j].match(/\{/g)?.length ?? 0) - (lines[j].match(/\}/g)?.length ?? 0);
       }
     }
   }
@@ -911,7 +916,10 @@ export function renameNamespace(code: string, oldName: string, newName: string):
   const next = newName.trim();
   if (!next || next === oldName) return code;
   const esc = escapeForRegex(oldName);
-  return code.replace(new RegExp(`(^[ \\t]*namespace[ \\t]+)${esc}([ \\t]*\\{)`, "m"), `$1${next}$2`);
+  return code.replace(
+    new RegExp(`(^[ \\t]*namespace[ \\t]+)${esc}([ \\t]*\\{)`, "m"),
+    `$1${next}$2`,
+  );
 }
 
 /**
