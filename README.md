@@ -2,7 +2,7 @@
 > This project began as a side project and is not production-grade. You may encounter bugs or incomplete behavior.
 
 <p align="center">
-  <img src="./assets/icon.svg" alt="LiveMaid logo" width="96" height="96" />
+  <img src="./web/icon.svg" alt="LiveMaid logo" width="96" height="96" />
 </p>
 
 <h1 align="center">LiveMaid</h1>
