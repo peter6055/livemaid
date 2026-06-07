@@ -252,7 +252,7 @@ svg[aria-roledescription="error"],
 .mermaid-container path.flowchart-link.edge-hover-highlight,
 .mermaid-container .edgePath .path.edge-hover-highlight,
 .mermaid-container path.flowchart-link:hover,
-.mermaid-container .flowchart-link-hit-target:hover+path.flowchart-link,
+.mermaid-container .flowchart-link-hit-target:hover + path.flowchart-link,
 .mermaid-container .edgePath:hover path.path,
 .mermaid-container .edgePath:hover .path,
 .mermaid-container .edgePaths .edgePath:hover .path {
@@ -392,7 +392,9 @@ svg[aria-roledescription="error"],
 .mermaid-container .node:hover circle,
 .mermaid-container .node:hover polygon,
 .mermaid-container .node:hover ellipse,
-.mermaid-container .node:hover path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
+.mermaid-container
+  .node:hover
+  path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
   stroke: #6366f1 !important;
   /* Indigo-500 */
   stroke-width: 2.5px !important;

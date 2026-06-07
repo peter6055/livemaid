@@ -223,8 +223,9 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
                   setDragRow(null);
                   setDragOverRow(null);
                 }}
-                className={`group flex items-center border-b border-border last:border-b-0 hover:bg-accent/40 ${isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
-                  } ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""}`}
+                className={`group flex items-center border-b border-border last:border-b-0 hover:bg-accent/40 ${
+                  isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
+                } ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""}`}
               >
                 <input
                   ref={(el) => {
