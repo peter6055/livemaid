@@ -25,6 +25,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
+import { ClassTextEditor } from "./ClassTextEditor";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Loader2,
@@ -58,6 +59,11 @@ import {
   classNameFromSvgId,
   parseClassByName,
   applyClassEdits,
+  getClassTitle,
+  upsertClassTitle,
+  removeClassTitle,
+  getClassNotes,
+  updateClassNoteByIndex,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
@@ -231,29 +237,136 @@ export function LiveMaidEditor({
   // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
   // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
   // node after a re-render (which happens for class nodes on every member edit), so deriving the
-  // panel directly from the selection would close it mid-edit. Instead we capture the class name on
-  // selection and keep it until an explicit close (X button, or a click that is neither the panel
-  // nor another class node — see the outside-click listener below).
+  // panel directly from the selection would close it mid-edit. The panel opens ONLY on a
+  // double-click of a class node (see the dblclick listener below) and stays open until an explicit
+  // close (X button, or a click that is neither the panel nor another class node).
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
 
+  // Inline text editor for a class-diagram TITLE or NOTE (double-click to edit, click outside to
+  // exit). Positioned in viewport space from the element's bounding rect at open time.
+  const [classTextEdit, setClassTextEdit] = useState<{
+    kind: "title" | "note";
+    noteIndex: number;
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
+  // Clear class-diagram editing state whenever the diagram is not a class diagram.
   useEffect(() => {
     if (determineDiagramType(code) !== "classDiagram") {
       setSelectedClassName(null);
-      return;
+      setClassTextEdit(null);
     }
-    const name = classNameFromSvgId(selectedSvgId);
-    if (name) setSelectedClassName(name);
-  }, [code, selectedSvgId]);
+  }, [code]);
 
-  // Close the panel when the user clicks anything that is neither the panel itself nor a class node
-  // (empty canvas, the code editor, the toolbar, …). Capture phase so it runs before the canvas
-  // interaction handlers. Clicking another class node is ignored here — the selection effect rebinds.
+  // Double-click routing for class diagrams: a class node opens the property panel; the diagram
+  // title or a note enters inline text-edit mode. The browser does NOT reliably fire a native
+  // `dblclick` here — the first click selects the node and mounts a selection overlay, so the
+  // second click lands on a different target and no `dblclick` is dispatched. So we detect a
+  // double-click by TIMING: two mousedowns at (nearly) the same point within 400 ms.
+  // `elementsFromPoint` then sees through any overlay div to find the real SVG target underneath.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "classDiagram") return;
+
+    const route = (clientX: number, clientY: number) => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest("[data-class-property-panel],[data-class-text-editor],.monaco-editor"),
+        )
+      ) {
+        return;
+      }
+
+      // Title — `text.classDiagramTitleText` (direct child of the svg).
+      const titleEl = els.find((el) => el.classList?.contains("classDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setSelectedClassName(null);
+        setClassTextEdit({
+          kind: "title",
+          noteIndex: -1,
+          value: getClassTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+
+      // Note — rendered as `g.node` with an id ending in `-note<N>`.
+      const noteGroup = els
+        .map((el) => el.closest("g.node"))
+        .find((g): g is Element => !!g && /-note\d+$/.test(g.id));
+      if (noteGroup) {
+        const idx = parseInt(noteGroup.id.match(/-note(\d+)$/)?.[1] ?? "0", 10);
+        const r = noteGroup.getBoundingClientRect();
+        setSelectedClassName(null);
+        setClassTextEdit({
+          kind: "note",
+          noteIndex: idx,
+          value: getClassNotes(code)[idx]?.text ?? "",
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+
+      // Class node — open the property panel.
+      const classGroup = els
+        .map((el) => el.closest("g.node"))
+        .find((g): g is Element => !!g && /classId-/.test(g.id));
+      if (classGroup) {
+        const name = classNameFromSvgId(classGroup.id);
+        if (name) {
+          setClassTextEdit(null);
+          setSelectedClassName(name);
+        }
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0; // reset so a third quick press doesn't re-trigger
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code]);
+
+  const commitClassTextEdit = useCallback(
+    (value: string) => {
+      if (!classTextEdit) return;
+      let newCode = code;
+      if (classTextEdit.kind === "title") {
+        const trimmed = value.trim();
+        newCode = trimmed ? upsertClassTitle(code, trimmed) : removeClassTitle(code);
+      } else {
+        newCode = updateClassNoteByIndex(code, classTextEdit.noteIndex, value);
+      }
+      if (newCode !== code) handleCodeChange(newCode);
+      setClassTextEdit(null);
+    },
+    [code, handleCodeChange, classTextEdit],
+  );
+
+  // Close the panel when the user clicks anything that is neither the panel itself, a class node,
+  // nor the Monaco code editor (empty canvas, the toolbar, …). Capture phase so it runs before the
+  // canvas interaction handlers. Clicking another class node is ignored here. The code editor is
+  // exempt so editing the `class {}` block keeps the panel open and the grid live-updates from the
+  // code (two-way binding).
   useEffect(() => {
     if (!selectedClassName) return;
     const onDown = (e: MouseEvent) => {
       const t = e.target as Element | null;
       if (!t) return;
       if (t.closest("[data-class-property-panel]")) return;
+      if (t.closest(".monaco-editor")) return;
       const node = t.closest("g.node");
       if (node && /classId-/.test(node.id)) return;
       setSelectedClassName(null);
@@ -2738,8 +2851,8 @@ export function LiveMaidEditor({
         {isCodePanelOpen && (
           <>
             <ResizablePanel
-              defaultSize={30}
-              minSize={20}
+              defaultSize={26}
+              minSize={15}
               className="bg-background flex flex-col border-r border-border"
             >
               <EditorCodePanel
@@ -2755,7 +2868,7 @@ export function LiveMaidEditor({
         )}
 
         <ResizablePanel
-          defaultSize={isCodePanelOpen ? 70 : 100}
+          defaultSize={isCodePanelOpen ? 74 : 100}
           className="bg-white relative overflow-hidden text-zinc-900"
         >
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
@@ -2885,17 +2998,15 @@ export function LiveMaidEditor({
                           );
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        code.match(/autonumber/i)
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i)
                           ? "bg-indigo-600"
                           : "bg-slate-200 dark:bg-slate-700"
-                      }`}
+                        }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                          }`}
                       />
                     </button>
                   </div>
@@ -3007,6 +3118,18 @@ export function LiveMaidEditor({
         </ResizablePanel>
       </ResizablePanelGroup>
 
+      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
+      {classTextEdit && (
+        <ClassTextEditor
+          key={`${classTextEdit.kind}-${classTextEdit.noteIndex}`}
+          kind={classTextEdit.kind}
+          initialValue={classTextEdit.value}
+          rect={classTextEdit.rect}
+          onCommit={commitClassTextEdit}
+          onCancel={() => setClassTextEdit(null)}
+        />
+      )}
+
       {/* Create Dialog */}
       <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
         <DialogContent>
@@ -3113,10 +3236,10 @@ export function LiveMaidEditor({
                       style={
                         c === "transparent"
                           ? {
-                              backgroundImage:
-                                "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
-                              backgroundSize: "10px 10px",
-                            }
+                            backgroundImage:
+                              "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
+                            backgroundSize: "10px 10px",
+                          }
                           : undefined
                       }
                     />

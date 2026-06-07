@@ -178,6 +178,11 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+/* Class diagram title — double-click to edit, so show a pointer cursor over it. */
+.mermaid-container text.classDiagramTitleText {
+  cursor: pointer !important;
+}
+
 /* Sequence participant headers — full-shape hitbox.
    Standard `participant`, `collections`, and `queue` render as solid <rect class="actor">
    elements whose fill already captures clicks. The specialised archetypes — Actor, Boundary,
@@ -242,7 +247,7 @@ svg[aria-roledescription="error"],
 .mermaid-container path.flowchart-link.edge-hover-highlight,
 .mermaid-container .edgePath .path.edge-hover-highlight,
 .mermaid-container path.flowchart-link:hover,
-.mermaid-container .flowchart-link-hit-target:hover + path.flowchart-link,
+.mermaid-container .flowchart-link-hit-target:hover+path.flowchart-link,
 .mermaid-container .edgePath:hover path.path,
 .mermaid-container .edgePath:hover .path,
 .mermaid-container .edgePaths .edgePath:hover .path {
@@ -365,9 +370,7 @@ svg[aria-roledescription="error"],
 .mermaid-container .node:hover circle,
 .mermaid-container .node:hover polygon,
 .mermaid-container .node:hover ellipse,
-.mermaid-container
-  .node:hover
-  path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
+.mermaid-container .node:hover path:not(.flowchart-link-hit-target):not(.flowchart-link):not(.path) {
   stroke: #6366f1 !important;
   /* Indigo-500 */
   stroke-width: 2.5px !important;
@@ -410,6 +413,7 @@ button,
   background: rgba(99, 102, 241, 0.16);
   transition: background 0.15s ease;
 }
+
 .canvas-code-highlight-gutter {
   background: #6366f1;
   width: 3px !important;

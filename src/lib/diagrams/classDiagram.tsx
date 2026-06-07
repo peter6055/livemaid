@@ -35,7 +35,6 @@ import {
   Box,
   Heading,
   StickyNote,
-  Settings2,
   ChevronsDown,
   ArrowDown,
   ArrowUp,
@@ -89,6 +88,37 @@ export function removeClassTitle(code: string): string {
   if (!fm) return code;
   const lines = fm.split(/\r?\n/).filter((l) => !/^title:[ \t]*/.test(l));
   return joinClassFrontmatter(lines.join("\n"), body);
+}
+
+// A class-diagram note line: `note "text"` or `note for ClassName "text"` (group 2 = inner text).
+const CLASS_NOTE_RE = /^(\s*note(?:\s+for\s+[^"]+?)?\s+)"((?:[^"\\]|\\.)*)"(\s*)$/;
+
+/** All `note` lines in source order, with their absolute line index and (unescaped) text. */
+export function getClassNotes(code: string): Array<{ lineIndex: number; text: string }> {
+  const out: Array<{ lineIndex: number; text: string }> = [];
+  code.split("\n").forEach((line, i) => {
+    const m = line.match(CLASS_NOTE_RE);
+    if (m) out.push({ lineIndex: i, text: m[2].replace(/\\"/g, '"') });
+  });
+  return out;
+}
+
+/**
+ * Rewrite the quoted text of the `noteIndex`-th note (source order). The note keyword and any
+ * `for <Class>` target are preserved; only the quoted string is replaced. Quotes in the new text
+ * are escaped. Returns the code unchanged when the index is out of range.
+ */
+export function updateClassNoteByIndex(code: string, noteIndex: number, text: string): string {
+  const notes = getClassNotes(code);
+  const target = notes[noteIndex];
+  if (!target) return code;
+  const escaped = text.replace(/"/g, '\\"');
+  const lines = code.split("\n");
+  lines[target.lineIndex] = lines[target.lineIndex].replace(
+    CLASS_NOTE_RE,
+    (_m, head, _t, tail) => `${head}"${escaped}"${tail}`,
+  );
+  return lines.join("\n");
 }
 
 /** Whether the `config.class.hideEmptyMembersBox` flag is currently enabled. */
@@ -220,7 +250,10 @@ export function parseClassByName(code: string, name: string): ParsedClass {
   };
 
   // 1. Brace block: `class Foo { ...body... }`
-  const braceRe = new RegExp(`(?:^|\\n)[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{([\\s\\S]*?)\\}`, "m");
+  const braceRe = new RegExp(
+    `(?:^|\\n)[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{([\\s\\S]*?)\\}`,
+    "m",
+  );
   const bm = code.match(braceRe);
   if (bm) bm[1].split("\n").forEach(classify);
 
@@ -258,9 +291,7 @@ export function applyClassEdits(code: string, name: string, edits: ClassEdits): 
   const existing = parseClassByName(code, name);
   const annotation =
     edits.annotation !== undefined ? stripAnnotationDelims(edits.annotation) : existing.annotation;
-  const attributes = (edits.attributes ?? existing.attributes)
-    .map((a) => a.trim())
-    .filter(Boolean);
+  const attributes = (edits.attributes ?? existing.attributes).map((a) => a.trim()).filter(Boolean);
   const methods = (edits.methods ?? existing.methods).map((m) => m.trim()).filter(Boolean);
 
   const buildBlock = (indent: string) => {
@@ -290,7 +321,10 @@ export function applyClassEdits(code: string, name: string, edits: ClassEdits): 
 
   // Drop colon-form members and a separate annotation line for this class (now in the block).
   result = result.replace(new RegExp(`(?:^|\\n)[ \\t]*${esc}[ \\t]*:[ \\t]*[^\\n]*`, "g"), "");
-  result = result.replace(new RegExp(`(?:^|\\n)[ \\t]*<<[^>]+>>[ \\t]+${esc}[ \\t]*(?=\\n|$)`, "g"), "");
+  result = result.replace(
+    new RegExp(`(?:^|\\n)[ \\t]*<<[^>]+>>[ \\t]+${esc}[ \\t]*(?=\\n|$)`, "g"),
+    "",
+  );
 
   // Class was only referenced (e.g. via a relationship) and never declared — append a block.
   if (!replaced) result = result.replace(/\s*$/, "") + `\n${buildBlock("    ")}`;
@@ -336,6 +370,29 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
 
   return (
     <>
+      {/* Hide-empty-members toggle — identical inline label + switch styling to the sequence
+          diagram's Auto Number toggle, placed in front of the Class button. */}
+      <div className="flex items-center gap-2 px-2 h-8 select-none">
+        <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
+          Hide Empty Members
+        </span>
+        <button
+          type="button"
+          onClick={() => setCode(setHideEmptyMembersBox(code, !hideEmpty))}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+            }`}
+          aria-label="Toggle hide empty members box"
+          aria-pressed={hideEmpty}
+        >
+          <span
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
+              }`}
+          />
+        </button>
+      </div>
+
+      <div className="h-5 w-px bg-border" />
+
       <div className="flex items-center gap-1 rounded-xl bg-background p-0 border-none">
         <Button
           variant="ghost"
@@ -401,58 +458,6 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
                 {currentDirection === d.id && <Check className="w-4 h-4 text-indigo-500" />}
               </DropdownMenuItem>
             ))}
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <div className="h-5 w-px bg-border" />
-
-      {/* Configuration popover (hideEmptyMembersBox toggle). */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
-              title="Diagram configuration"
-            />
-          }
-        >
-          <Settings2 className="w-4 h-4" />
-          <span className="text-sm font-medium">Config</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-64 p-3 bg-background border border-border rounded-xl"
-          sideOffset={10}
-          align="start"
-        >
-          <p className="text-xs font-semibold text-slate-500 px-1 pb-2 uppercase tracking-wider">
-            Configuration
-          </p>
-          <div
-            className="flex items-center justify-between gap-2 px-1 py-1.5 select-none"
-            onClick={(e) => e.preventDefault()}
-          >
-            <span className="text-sm font-medium text-foreground">Hide empty members box</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault();
-                setCode(setHideEmptyMembersBox(code, !hideEmpty));
-              }}
-              className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-              }`}
-              aria-label="Toggle hide empty members box"
-              aria-pressed={hideEmpty}
-            >
-              <span
-                className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                  hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
-                }`}
-              />
-            </button>
           </div>
         </DropdownMenuContent>
       </DropdownMenu>
