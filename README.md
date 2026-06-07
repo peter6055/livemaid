@@ -33,11 +33,11 @@ LiveMaid has two levels of support for Mermaid diagram types:
 
 These diagram types support full two-way interaction — you can click and manipulate elements directly on the canvas, and the code updates automatically. Code changes also re-render the diagram instantly.
 
-| Diagram              | Visual Editing Capabilities                                                                                                                                                                                                                                                                                                                     |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Flowchart**        | Supported                                                                                                                                                                                                                                                                                                                                       |
-| **Sequence Diagram** | Supported                                                                                                                                                                                                                                                                                                                                       |
-| **Class Diagram**    | Supported                                                                                                                                                                                                                                                                                                                                       |
+| Diagram              | Visual Editing Capabilities |
+| -------------------- | --------------------------- |
+| **Flowchart**        | Supported                   |
+| **Sequence Diagram** | Supported                   |
+| **Class Diagram**    | Supported                   |
 
 ### 🔲 Code Only (render + preview)
 
