@@ -1,0 +1,53 @@
+name: ci/pr-title
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate PR title
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+
+    steps:
+      # Because we "Squash and merge", the PR title becomes the commit message on
+      # `main`, so it must follow the Conventional Commits spec just like our
+      # commits do (see AGENTS.md and README.md).
+      - name: Check Conventional Commits compliance
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Allowed types must stay in sync with the Conventional Commits rules
+          # documented in AGENTS.md.
+          types: |
+            feat
+            fix
+            build
+            chore
+            ci
+            docs
+            style
+            refactor
+            perf
+            test
+            revert
+          # The subject (everything after the `type(scope):` prefix) must not be
+          # empty and should read as a concise, imperative summary.
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            didn't match the configured pattern. Please write a concise summary
+            in the imperative mood that does not start with an uppercase
+            character, e.g. "fix: resolve null pointer error in auth module".
