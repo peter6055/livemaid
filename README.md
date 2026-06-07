@@ -1,6 +1,13 @@
-# LiveMaid 🧜‍♀️
+> [!WARNING]
+> This project began as a side project and is not production-grade. You may encounter bugs or incomplete behavior.
 
-**The WYSIWYG Mermaid Editor**
+<p align="center">
+  <img src="./web/icon.svg" alt="LiveMaid logo" width="96" height="96" />
+</p>
+
+<h1 align="center">LiveMaid</h1>
+
+<p align="center"><strong>An open source two way Mermaid diagram WYSIWYG editor</strong></p>
 
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
 
@@ -10,102 +17,32 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 ## ✨ Features
 
-- **Live WYSIWYG Editor:** Instantly preview your Mermaid diagrams as you type.
-- **Diagram Management:** Easily create, rename, and delete diagrams from a centralized dashboard.
-- **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
+- **Live WYSIWYG Editor:** Write Mermaid code and see the rendered diagram update in real time.
+- **Two-Way Visual Editing:** Click nodes, edges, and participants directly on the canvas to rename labels, change shapes/styles, reorder, or delete — all changes write back to the code instantly.
+- **Diagram Management:** Create, rename, and delete diagrams from a centralized dashboard, with folder organization support.
+- **Powered by Monaco:** Enjoy a rich code-editing experience with Mermaid syntax highlighting, powered by the Monaco Editor.
 - **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
-- **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
+- **Modern Stack:** Built on Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
 - **Demo Mode:** Run a read-only public-facing instance pre-loaded with sample diagrams — changes are never persisted.
 
-## 🚀 Getting Started
+## 📊 Supported Diagrams
 
-Follow these instructions to set up the project locally for development.
+LiveMaid has two levels of support for Mermaid diagram types:
 
-### Prerequisites
+### ✅ Two-Way Sync (visual editing + code)
 
-- Node.js (v18 or higher recommended)
-- npm (or yarn, pnpm, bun)
+These diagram types support full two-way interaction — you can click and manipulate elements directly on the canvas, and the code updates automatically. Code changes also re-render the diagram instantly.
 
-### Installation
+| Diagram              | Visual Editing Capabilities                                                                                                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Flowchart**        | Select nodes & edges; rename labels inline; change node shape; update fill/stroke colour; animate edges; change connector style & arrow type; add/edit edge labels; duplicate or delete nodes                                                                                                                     |
+| **Sequence Diagram** | Select participants & messages; rename labels inline; change participant type (participant, actor, boundary, control, entity, database); change message style (solid/dashed, filled/cross arrow); add, move, or delete notes; drag messages to reorder chronologically; drag participants to reorder horizontally |
 
-1. Ensure you are in the project root directory:
+### 🔲 Code Only (render + preview)
 
-   ```bash
-   cd livemaid
-   ```
+All other Mermaid diagram types are fully supported for editing and rendering but do not yet have visual canvas interaction:
 
-2. Install the dependencies:
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   # or
-   bun install
-   ```
-
-### Running the Development Server
-
-Start the local development server:
-
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the dashboard.
-
-The application auto-updates as you edit the files in the `src/` directory.
-
-## 🤝 Contribution Guidelines
-
-We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
-
-1. **Create a Feature Branch**: When starting a new epic or feature, branch off from `main` (e.g., `git checkout -b feature/your-epic-name`).
-2. **Develop & Commit**: Make your changes and use Conventional Commits (e.g., `feat: ...`, `fix: ...`).
-3. **Raise a Pull Request**: Once complete, raise a Pull Request targeting `main`.
-4. **Squash and Merge**: Merge the PR using the **"Squash and merge"** option. This keeps the `main` history perfectly clean with one commit per epic.
-5. **Delete the Branch**: After merging, delete the feature branch. Do not reuse it. Future changes require branching off `main` again.
-
-_(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor)._
-
-## 🔄 CI/CD Flow
-
-This repository follows the flow:
-
-**PR Raised → PR Check → Merge → Release → Sandbox Deployment**
-
-### 1) PR Raised
-
-- Open a pull request targeting `main`.
-
-### 2) PR Check
-
-- Workflow: `ci/pr-checks` (`.github/workflows/pr-checks.yml`)
-- Trigger: `pull_request` on `main`
-- Action: installs dependencies and runs `npm run build`.
-
-### 3) Merge
-
-- Merge PR into `main` (recommended: squash and merge).
-
-### 4) Release
-
-- Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
-- Trigger: `push` to `main`
-- Action: builds and publishes Docker image to GHCR, then creates a GitHub Release (`v1.0.<run_number>`).
-
-### 5) Sandbox Deployment
-
-- Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
-- Trigger: successful completion of `ci/release` (`workflow_run`)
-- Action: deploys latest release to Railway sandbox service.
+Class diagram · State diagram · Entity Relationship · Gantt · Pie chart · Quadrant · Requirement · Gitgraph · Mindmap · Timeline · Sankey · ZenUML · Packet · Architecture · and any other valid Mermaid syntax.
 
 ## 🐳 Deployment (Docker)
 
@@ -192,6 +129,10 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
+
+## 🤝 Contributing
+
+Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, the branch workflow, commit conventions, PR title rules, and the full CI/CD pipeline overview.
 
 ## 💖 Support the Community
 
