@@ -1,4 +1,4 @@
-import { DiagramDocument } from "@/lib/api/storage";
+import { DiagramDocument, Folder } from "@/lib/api/storage";
 import { useTheme } from "next-themes";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
@@ -32,6 +32,7 @@ import {
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
+  folders?: Folder[];
   saving: boolean;
   isDemo?: boolean;
   onNavigate: (url: string, message: string) => void;
@@ -45,6 +46,7 @@ interface EditorHeaderProps {
 
 export function EditorHeader({
   doc,
+  folders = [],
   saving,
   isDemo = false,
   onNavigate,
@@ -59,6 +61,21 @@ export function EditorHeader({
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
+
+  // Build the chain of folders from the workspace root down to the diagram's folder.
+  const folderChain: Folder[] = (() => {
+    const byId = new Map(folders.map((f) => [f.id, f]));
+    const chain: Folder[] = [];
+    const seen = new Set<string>();
+    let cursor = doc?.folderId ?? null;
+    while (cursor && byId.has(cursor) && !seen.has(cursor)) {
+      seen.add(cursor);
+      const folder = byId.get(cursor)!;
+      chain.unshift(folder);
+      cursor = folder.parentId;
+    }
+    return chain;
+  })();
 
   const startEditingName = () => {
     if (isDemo || !onRenameInline) return;
@@ -160,7 +177,7 @@ export function EditorHeader({
               href="/"
               onClick={(e) => {
                 e.preventDefault();
-                onNavigate("/", "Returning to Projects...");
+                onNavigate("/", "Returning to Workspace...");
               }}
             >
               <DropdownMenuItem className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
@@ -174,7 +191,7 @@ export function EditorHeader({
           href="/"
           onClick={(e) => {
             e.preventDefault();
-            onNavigate("/", "Returning to Projects...");
+            onNavigate("/", "Returning to Workspace...");
           }}
         >
           <BrandLogo className="w-9 h-9 mr-3 cursor-pointer rounded-lg transition-opacity hover:opacity-90" />
@@ -193,14 +210,34 @@ export function EditorHeader({
                     href="/"
                     onClick={(e) => {
                       e.preventDefault();
-                      onNavigate("/", "Returning to Projects...");
+                      onNavigate("/", "Returning to Workspace...");
                     }}
                   />
                 }
               >
-                Projects
+                Workspace
               </BreadcrumbLink>
             </BreadcrumbItem>
+            {folderChain.map((folder) => (
+              <span key={folder.id} className="flex items-center gap-1.5">
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink
+                    render={
+                      <Link
+                        href={`/?folder=${folder.id}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          onNavigate(`/?folder=${folder.id}`, "Returning to Workspace...");
+                        }}
+                      />
+                    }
+                  >
+                    {folder.name}
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </span>
+            ))}
             <BreadcrumbSeparator />
             <BreadcrumbItem>
               {isEditingName ? (

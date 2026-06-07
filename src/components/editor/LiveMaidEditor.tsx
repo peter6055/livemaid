@@ -82,7 +82,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
-import type { VersionHistoryEntry } from "@/lib/api/storage";
+import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
 import type { MonacoCodeEditor } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
@@ -152,6 +152,7 @@ export function LiveMaidEditor({
     hasUnsavedChangesRef,
   } = useEditorState(documentId, isDemo);
 
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
@@ -180,6 +181,20 @@ export function LiveMaidEditor({
   const allowBrowserBackRef = useRef(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Load folders so the header breadcrumb can show the diagram's folder path.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/folders")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (!cancelled) setFolders(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     selectedNodeId,
@@ -2644,7 +2659,7 @@ export function LiveMaidEditor({
           </p>
         </div>
         <Button onClick={() => router.push("/")} className="mt-1">
-          Back to Projects
+          Back to Workspace
         </Button>
       </div>
     );
@@ -2675,6 +2690,7 @@ export function LiveMaidEditor({
 
       <EditorHeader
         doc={doc}
+        folders={folders}
         saving={saving}
         isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
