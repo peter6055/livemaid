@@ -968,15 +968,27 @@ export function LiveMaidEditor({
   const highlightRange = useMemo<{ startLine: number; endLine: number } | null>(() => {
     const toRange = (line: number) => (line >= 0 ? { startLine: line, endLine: line } : null);
 
-    // Class diagram: a selected class node (property panel) highlights its `class X` definition
-    // line; a selected relationship edge highlights its relationship line. (Class node selection is
-    // tracked via the sticky `selectedClassName`, not `selectedNodeId`.)
-    if (selectedClassName) {
-      return toRange(findClassDefinitionLine(code, selectedClassName));
-    }
+    // Class diagram: highlight the source line of the selected element.
+    //  - relationship edge (`CLASS_EDGE_…`) → its relationship line.
+    //  - class node → its `class X` definition line. Single-click sets `selectedSvgId`
+    //    (`…classId-<Name>-<n>`); double-click also sets the sticky `selectedClassName`. Resolve
+    //    from EITHER so the highlight works on single-click too.
+    //  - note → its `note "…"` / `note for X "…"` line (resolved from a `…-note<N>` svg id).
     if (selectedNodeId?.startsWith("CLASS_EDGE_")) {
       const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
       return rel ? toRange(rel.lineIndex) : null;
+    }
+    if (determineDiagramType(code) === "classDiagram" && selectedSvgId) {
+      const noteMatch = selectedSvgId.match(/-note(\d+)$/);
+      if (noteMatch) {
+        const note = getClassNotes(code)[parseInt(noteMatch[1], 10)];
+        return note ? toRange(note.lineIndex) : null;
+      }
+      const className = classNameFromSvgId(selectedSvgId);
+      if (className) return toRange(findClassDefinitionLine(code, className));
+    }
+    if (selectedClassName) {
+      return toRange(findClassDefinitionLine(code, selectedClassName));
     }
 
     if (!selectedNodeId) return null;
@@ -1022,6 +1034,7 @@ export function LiveMaidEditor({
   }, [
     selectedNodeId,
     selectedClassName,
+    selectedSvgId,
     code,
     getSequenceMessageEntries,
     getSequenceNoteEntries,
