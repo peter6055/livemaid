@@ -1636,6 +1636,9 @@ export function useCanvasInteraction({
 
   const normalizeId = useCallback(
     (id: string) => {
+      // Class-diagram relationship edge ids are kept verbatim (`CLASS_EDGE_id_<Src>_<Dst>_<N>`);
+      // the trailing `_<N>` must NOT be stripped as a render suffix.
+      if (id.startsWith("CLASS_EDGE_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -1678,7 +1681,19 @@ export function useCanvasInteraction({
     let foundElement: SVGElement | null = null;
     let foundRawSvgId: string | null = null;
 
-    if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
+    // Class-diagram relationship edges: re-resolve by the stable `data-id` (the render id prefix
+    // changes every re-render, but `id_<Src>_<Dst>_<N>` does not). Measure the real `path.relation`
+    // (not the transparent hit-target) so the selection box hugs the visible connector.
+    if (selectedNodeId.startsWith("CLASS_EDGE_")) {
+      const dataId = selectedNodeId.replace("CLASS_EDGE_", "");
+      const path = containerRef.current.querySelector(
+        `path.relation[data-id="${dataId}"]`,
+      ) as SVGElement | null;
+      if (path) {
+        foundElement = path;
+        foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
       const actorDisplayName = resolveSequenceDisplayNameFromActorId(actorId);
 
@@ -2082,6 +2097,24 @@ export function useCanvasInteraction({
           }
           break;
         }
+        // Class-diagram relationship edges. The relation path (and its wide transparent hit-target
+        // clone) carries a stable `data-id`. Only a UML RELATIONSHIP (`id_<Src>_<Dst>_<N>`) is
+        // selectable as an edge → surface it as `CLASS_EDGE_<dataId>` (kept verbatim, not
+        // normalized) so the class edge toolbar can resolve it. A note↔class attachment edge
+        // (`data-id="edgeNote<N>"`) is deliberately NOT selected (it has no relationship type /
+        // cardinality, so the toolbar would render empty); it is still double-clickable to edit the
+        // connected note's text via the LiveMaidEditor router.
+        if (
+          currentNode.classList?.contains("relation") ||
+          currentNode.classList?.contains("class-relation-hit-target")
+        ) {
+          const dataId = currentNode.getAttribute("data-id");
+          if (dataId && dataId.startsWith("id_")) {
+            foundNodeClass = true;
+            nodeId = `CLASS_EDGE_${dataId}`;
+            break;
+          }
+        }
         // Sequence diagram elements: actors. Match both the plain `actor` class (rect headers and
         // the Entity/Database/Queue <g class="actor"> groups) AND `actor-man` (the Actor/Boundary/
         // Control stick-figure <g class="actor-man"> groups, which do NOT carry the bare `actor`
@@ -2212,7 +2245,11 @@ export function useCanvasInteraction({
       }
 
       if (foundNodeClass && currentNode && containerRef.current) {
-        const cleanId = nodeId ? (nodeId.startsWith("SEQ_") ? nodeId : normalizeId(nodeId)) : null;
+        const cleanId = nodeId
+          ? nodeId.startsWith("SEQ_") || nodeId.startsWith("CLASS_EDGE_")
+            ? nodeId
+            : normalizeId(nodeId)
+          : null;
 
         // If it's an edge and we clicked the path itself, check if there is an .edgeLabel in the container for this edge.
         // If so, snap the currentNode to that label so that our selection/text boxes align perfectly on the label text.

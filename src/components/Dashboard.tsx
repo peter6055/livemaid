@@ -6,6 +6,7 @@ import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/BrandLogo";
 import {
   Plus,
   LayoutTemplate,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { DiagramRegistry } from "@/lib/diagrams/registry";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -97,6 +99,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
+  const [createType, setCreateType] = useState("flowchart");
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState("");
@@ -181,6 +184,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
+    setCreateType("flowchart");
     setIsCreateOpen(true);
   };
 
@@ -192,7 +196,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: createName, type: "flowchart", folderId: currentFolderId }),
+        body: JSON.stringify({
+          name: createName,
+          type: createType,
+          code: DiagramRegistry[createType]?.defaultCode,
+          folderId: currentFolderId,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create");
       const newDoc = await res.json();
@@ -616,9 +625,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
         >
           {/* Brand */}
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg">
-              <LayoutTemplate className="w-5 h-5 text-white" />
-            </div>
+            <BrandLogo className="w-8 h-8 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </div>
 
@@ -747,9 +754,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-            <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-2">
-              <LayoutTemplate className="w-5 h-5 text-white" />
-            </div>
+            <BrandLogo className="w-8 h-8 mr-2 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </nav>
 
@@ -771,7 +776,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               <Repeat2 className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
               <p className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">Two-way sync</span> — edit visually or
-                via code; Flowchart &amp; Sequence stay in sync. Other types are code-only.
+                via code; Flowchart, Sequence &amp; Class diagrams stay in sync. Other types are
+                code-only.
               </p>
             </div>
 
@@ -1098,7 +1104,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
           <DialogHeader>
             <DialogTitle>Create New Diagram</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          <div className="py-4 flex flex-col gap-4">
             <Input
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
@@ -1106,6 +1112,29 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Diagram type</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: "flowchart", label: "Flowchart" },
+                  { id: "sequence", label: "Sequence" },
+                  { id: "classDiagram", label: "Class" },
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setCreateType(t.id)}
+                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      createType === t.id
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+                        : "border-border text-muted-foreground hover:bg-accent"
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsCreateOpen(false)}>

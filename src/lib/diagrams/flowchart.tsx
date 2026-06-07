@@ -7,7 +7,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  ChevronsDown,
   ArrowDown,
   ArrowUp,
   ArrowRight,
@@ -16,6 +15,7 @@ import {
   Type,
   LayoutTemplate,
   Spline,
+  Workflow,
 } from "lucide-react";
 import { parseMermaidCurve, updateMermaidCurve } from "./utils";
 
@@ -877,12 +877,13 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
           render={
             <Button
               variant="ghost"
-              size="icon"
-              className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+              size="sm"
+              className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
             />
           }
         >
-          <ChevronsDown className="w-4 h-4" />
+          <Workflow className="w-4 h-4" />
+          <span className="text-sm font-medium">Direction</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1"

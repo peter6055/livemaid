@@ -25,6 +25,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
+import { ClassTextEditor } from "./ClassTextEditor";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Loader2,
@@ -44,6 +45,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import * as htmlToImage from "html-to-image";
 import { Button } from "@/components/ui/button";
@@ -54,6 +65,30 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
+import {
+  classNameFromSvgId,
+  parseClassByName,
+  applyClassEdits,
+  getClassTitle,
+  upsertClassTitle,
+  removeClassTitle,
+  getClassNotes,
+  updateClassNoteByIndex,
+  getNextClassName,
+  addClassRelationship,
+  addClassWithRelationship,
+  appendClassNoteForClass,
+  setClassNoteTarget,
+  classRelationshipFromEdgeDataId,
+  updateClassRelationshipOperator,
+  setClassRelationshipCardinality,
+  setClassRelationshipLabel,
+  deleteClassRelationship,
+  deleteClassByName,
+  deleteClassNoteByIndex,
+  findClassDefinitionLine,
+  type ClassEdits,
+} from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -61,7 +96,7 @@ import { format } from "date-fns";
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
-import type { MonacoCodeEditor } from "@/lib/diagrams/types";
+import type { MonacoCodeEditor, ConfirmOptions } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
 import { DemoBanner } from "@/components/DemoBanner";
@@ -127,6 +162,7 @@ export function LiveMaidEditor({
     parseError,
     renderIdRef,
     handleCodeChange,
+    hasUnsavedChangesRef,
   } = useEditorState(documentId, isDemo);
 
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -156,6 +192,39 @@ export function LiveMaidEditor({
   const [exportFormat, setExportFormat] = useState("PNG");
   const [exportBg, setExportBg] = useState("transparent");
   const allowBrowserBackRef = useRef(false);
+
+  // Promise-based confirmation provider so server-imported diagram plugins can
+  // trigger the UI-library AlertDialog (which they cannot import themselves).
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    confirmLabel: string;
+    destructive: boolean;
+  } | null>(null);
+  const confirmResolverRef = useRef<((value: boolean) => void) | null>(null);
+
+  const resolveConfirm = useCallback((result: boolean) => {
+    setConfirmState((prev) => (prev ? { ...prev, open: false } : prev));
+    const resolve = confirmResolverRef.current;
+    confirmResolverRef.current = null;
+    resolve?.(result);
+  }, []);
+
+  const requestConfirm = useCallback((opts: ConfirmOptions) => {
+    // Settle any in-flight request before opening a new one.
+    confirmResolverRef.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      confirmResolverRef.current = resolve;
+      setConfirmState({
+        open: true,
+        title: opts.title,
+        description: opts.description,
+        confirmLabel: opts.confirmLabel ?? "Confirm",
+        destructive: opts.destructive ?? false,
+      });
+    });
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -234,7 +303,317 @@ export function LiveMaidEditor({
     setSelectionBox(null);
     setTextBox(null);
     setIsInlineEditing(false);
+    setSelectedClassName(null);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
+  // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
+  // node after a re-render (which happens for class nodes on every member edit), so deriving the
+  // panel directly from the selection would close it mid-edit. The panel opens ONLY on a
+  // double-click of a class node (see the dblclick listener below) and stays open until an explicit
+  // close (X button, or a click that is neither the panel nor another class node).
+  const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
+
+  // Inline text editor for a class-diagram TITLE, NOTE, or relationship LABEL (double-click to
+  // edit, click outside to exit). Positioned in viewport space from the element's bounding rect at
+  // open time. For relationships, `rel` carries the source/target/occurrence used to commit.
+  const [classTextEdit, setClassTextEdit] = useState<{
+    kind: "title" | "note" | "relationship";
+    noteIndex: number;
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+    rel?: { source: string; target: string; occurrence: number };
+  } | null>(null);
+
+  // Clear class-diagram editing state whenever the diagram is not a class diagram.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "classDiagram") {
+      setSelectedClassName(null);
+      setClassTextEdit(null);
+    }
+  }, [code]);
+
+  // Double-click routing for class diagrams: a class node opens the property panel; the diagram
+  // title or a note enters inline text-edit mode. The browser does NOT reliably fire a native
+  // `dblclick` here — the first click selects the node and mounts a selection overlay, so the
+  // second click lands on a different target and no `dblclick` is dispatched. So we detect a
+  // double-click by TIMING: two mousedowns at (nearly) the same point within 400 ms.
+  // `elementsFromPoint` then sees through any overlay div to find the real SVG target underneath.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "classDiagram") return;
+
+    const route = (clientX: number, clientY: number) => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest(
+            "[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
+          ),
+        )
+      ) {
+        return;
+      }
+
+      // Title — `text.classDiagramTitleText` (direct child of the svg).
+      const titleEl = els.find((el) => el.classList?.contains("classDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setSelectedClassName(null);
+        setClassTextEdit({
+          kind: "title",
+          noteIndex: -1,
+          value: getClassTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+
+      // Note — rendered as `g.node` with an id ending in `-note<N>`.
+      const noteGroup = els
+        .map((el) => el.closest("g.node"))
+        .find((g): g is Element => !!g && /-note\d+$/.test(g.id));
+      if (noteGroup) {
+        const idx = parseInt(noteGroup.id.match(/-note(\d+)$/)?.[1] ?? "0", 10);
+        const r = noteGroup.getBoundingClientRect();
+        setSelectedClassName(null);
+        setClassTextEdit({
+          kind: "note",
+          noteIndex: idx,
+          value: getClassNotes(code)[idx]?.text ?? "",
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+
+      // Class node — open the property panel.
+      const classGroup = els
+        .map((el) => el.closest("g.node"))
+        .find((g): g is Element => !!g && /classId-/.test(g.id));
+      if (classGroup) {
+        const name = classNameFromSvgId(classGroup.id);
+        if (name) {
+          setClassTextEdit(null);
+          setSelectedClassName(name);
+        }
+        return;
+      }
+
+      // Edge — double-clicking a connection (or its wide hit-target) inline-edits text. Class
+      // diagrams render TWO kinds of `path.relation`:
+      //   • a UML relationship → `data-id="id_<Src>_<Dst>_<N>"` → edit its `: label`
+      //   • a note↔class attachment → `data-id="edgeNote<N>"` → edit the connected note's text
+      // (`edgeNote<N>` maps 1:1 to note DOM node `…-note<N>`, whose index == `getClassNotes` order).
+      const relEl = els.find(
+        (el) =>
+          el.classList?.contains("relation") || el.classList?.contains("class-relation-hit-target"),
+      );
+      const dataId = relEl?.getAttribute("data-id");
+      if (dataId) {
+        const noteEdge = dataId.match(/^edgeNote(\d+)$/);
+        if (noteEdge) {
+          const idx = parseInt(noteEdge[1], 10);
+          const notes = getClassNotes(code);
+          if (notes[idx]) {
+            // Anchor the editor over the connected note box when we can find it, else the click point.
+            const noteNode = document.querySelector(`g.node[id$="-note${idx}"]`);
+            const r = noteNode?.getBoundingClientRect();
+            setSelectedClassName(null);
+            setClassTextEdit({
+              kind: "note",
+              noteIndex: idx,
+              value: notes[idx].text,
+              rect: r
+                ? { left: r.left, top: r.top, width: r.width, height: r.height }
+                : { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+            });
+          }
+          return;
+        }
+        const rel = classRelationshipFromEdgeDataId(code, dataId);
+        if (rel) {
+          setSelectedClassName(null);
+          setClassTextEdit({
+            kind: "relationship",
+            noteIndex: -1,
+            value: rel.label,
+            // Anchor a small editor box at the double-click point (the relationship line has no
+            // single tidy label box, and the cardinality labels are separate elements).
+            rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+            rel: { source: rel.source, target: rel.target, occurrence: rel.occurrence },
+          });
+        }
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0; // reset so a third quick press doesn't re-trigger
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code]);
+
+  const commitClassTextEdit = useCallback(
+    (value: string) => {
+      if (!classTextEdit) return;
+      let newCode = code;
+      if (classTextEdit.kind === "title") {
+        const trimmed = value.trim();
+        newCode = trimmed ? upsertClassTitle(code, trimmed) : removeClassTitle(code);
+      } else if (classTextEdit.kind === "relationship" && classTextEdit.rel) {
+        const { source, target, occurrence } = classTextEdit.rel;
+        newCode = setClassRelationshipLabel(code, source, target, occurrence, value);
+      } else {
+        newCode = updateClassNoteByIndex(code, classTextEdit.noteIndex, value);
+      }
+      if (newCode !== code) handleCodeChange(newCode);
+      setClassTextEdit(null);
+    },
+    [code, handleCodeChange, classTextEdit],
+  );
+
+  // Close the panel when the user clicks anything that is neither the panel itself, a class node,
+  // nor the Monaco code editor (empty canvas, the toolbar, …). Capture phase so it runs before the
+  // canvas interaction handlers. Clicking another class node is ignored here. The code editor is
+  // exempt so editing the `class {}` block keeps the panel open and the grid live-updates from the
+  // code (two-way binding).
+  useEffect(() => {
+    if (!selectedClassName) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t) return;
+      if (t.closest("[data-class-property-panel]")) return;
+      if (t.closest(".monaco-editor")) return;
+      const node = t.closest("g.node");
+      if (node && /classId-/.test(node.id)) return;
+      setSelectedClassName(null);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [selectedClassName]);
+
+  const selectedClass = useMemo(() => {
+    if (!selectedClassName || determineDiagramType(code) !== "classDiagram") return null;
+    return parseClassByName(code, selectedClassName);
+  }, [selectedClassName, code]);
+
+  const handleApplyClassEdits = useCallback(
+    (edits: ClassEdits) => {
+      if (!selectedClassName) return;
+      const newCode = applyClassEdits(code, selectedClassName, edits);
+      if (newCode !== code) handleCodeChange(newCode);
+      const nextName = edits.newName?.trim();
+      if (nextName && nextName !== selectedClassName) setSelectedClassName(nextName);
+    },
+    [code, handleCodeChange, selectedClassName, setSelectedClassName],
+  );
+
+  // Class-diagram connection drag (the purple +) commit handlers. Each routes through
+  // handleCodeChange so the change is a single undo step and the canvas re-renders normally.
+  const handleAddClassRelationship = useCallback(
+    (source: string, target: string, operator: string) => {
+      handleCodeChange(addClassRelationship(code, source, target, operator));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleCreateClassLinked = useCallback(
+    (source: string, operator: string) => {
+      handleCodeChange(addClassWithRelationship(code, source, getNextClassName(code), operator));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleCreateNoteForClass = useCallback(
+    (source: string) => {
+      handleCodeChange(appendClassNoteForClass(code, source, "This is a sample note"));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleLinkNoteToClass = useCallback(
+    (noteIndex: number, className: string) => {
+      const newCode = setClassNoteTarget(code, noteIndex, className);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // Class-diagram relationship-edge toolbar commit handlers. The selected edge id is
+  // `CLASS_EDGE_id_<Src>_<Dst>_<N>`; we resolve it back to the source relationship line via the
+  // stable data-id, then mutate that line in place (single undo step through handleCodeChange).
+  const handleUpdateClassRelationshipType = useCallback(
+    (operator: string) => {
+      if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      if (!rel) return;
+      const newCode = updateClassRelationshipOperator(
+        code,
+        rel.source,
+        rel.target,
+        rel.occurrence,
+        operator,
+      );
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
+
+  const handleSetClassRelationshipCardinality = useCallback(
+    (sourceCard: string, targetCard: string) => {
+      if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      if (!rel) return;
+      const newCode = setClassRelationshipCardinality(
+        code,
+        rel.source,
+        rel.target,
+        rel.occurrence,
+        sourceCard,
+        targetCard,
+      );
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, selectedNodeId],
+  );
+
+  const handleDeleteClassRelationship = useCallback(() => {
+    if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+    const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+    if (!rel) return;
+    const newCode = deleteClassRelationship(code, rel.source, rel.target, rel.occurrence);
+    if (newCode !== code) handleCodeChange(newCode);
+    handleDeselect();
+  }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
+
+  // Class-diagram node toolbar (single-click) delete handlers → route through handleCodeChange.
+  const handleDeleteClassNode = useCallback(
+    (name: string) => {
+      const newCode = deleteClassByName(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+      setSelectedClassName(null);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect, setSelectedClassName],
+  );
+
+  const handleDeleteClassNote = useCallback(
+    (noteIndex: number) => {
+      const newCode = deleteClassNoteByIndex(code, noteIndex);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
@@ -630,8 +1009,32 @@ export function LiveMaidEditor({
   // clears the decoration) or when no confident mapping exists. Read-only
   // parsing, so it is safe in demo mode too (AC 4.1.3).
   const highlightRange = useMemo<{ startLine: number; endLine: number } | null>(() => {
-    if (!selectedNodeId) return null;
     const toRange = (line: number) => (line >= 0 ? { startLine: line, endLine: line } : null);
+
+    // Class diagram: highlight the source line of the selected element.
+    //  - relationship edge (`CLASS_EDGE_…`) → its relationship line.
+    //  - class node → its `class X` definition line. Single-click sets `selectedSvgId`
+    //    (`…classId-<Name>-<n>`); double-click also sets the sticky `selectedClassName`. Resolve
+    //    from EITHER so the highlight works on single-click too.
+    //  - note → its `note "…"` / `note for X "…"` line (resolved from a `…-note<N>` svg id).
+    if (selectedNodeId?.startsWith("CLASS_EDGE_")) {
+      const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
+      return rel ? toRange(rel.lineIndex) : null;
+    }
+    if (determineDiagramType(code) === "classDiagram" && selectedSvgId) {
+      const noteMatch = selectedSvgId.match(/-note(\d+)$/);
+      if (noteMatch) {
+        const note = getClassNotes(code)[parseInt(noteMatch[1], 10)];
+        return note ? toRange(note.lineIndex) : null;
+      }
+      const className = classNameFromSvgId(selectedSvgId);
+      if (className) return toRange(findClassDefinitionLine(code, className));
+    }
+    if (selectedClassName) {
+      return toRange(findClassDefinitionLine(code, selectedClassName));
+    }
+
+    if (!selectedNodeId) return null;
 
     if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const idx = parseInt(selectedNodeId.slice("SEQ_MSG_".length), 10);
@@ -673,6 +1076,8 @@ export function LiveMaidEditor({
     return toRange(findFlowchartNodeLine(code, selectedNodeId));
   }, [
     selectedNodeId,
+    selectedClassName,
+    selectedSvgId,
     code,
     getSequenceMessageEntries,
     getSequenceNoteEntries,
@@ -2286,6 +2691,10 @@ export function LiveMaidEditor({
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Only interrupt the exit when there is genuinely unsaved work in flight (the user edited and
+      // the debounced auto-save hasn't been confirmed by the server yet). Once everything is saved
+      // the ref is false and the browser leaves without the "are you sure you want to exit" prompt.
+      if (!hasUnsavedChangesRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -2294,7 +2703,7 @@ export function LiveMaidEditor({
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, []);
+  }, [hasUnsavedChangesRef]);
 
   useEffect(() => {
     const guardState = { __editorGuard: true };
@@ -2697,8 +3106,8 @@ export function LiveMaidEditor({
         {isCodePanelOpen && (
           <>
             <ResizablePanel
-              defaultSize={30}
-              minSize={20}
+              defaultSize={26}
+              minSize={15}
               className="bg-background flex flex-col border-r border-border"
             >
               <EditorCodePanel
@@ -2714,7 +3123,7 @@ export function LiveMaidEditor({
         )}
 
         <ResizablePanel
-          defaultSize={isCodePanelOpen ? 70 : 100}
+          defaultSize={isCodePanelOpen ? 74 : 100}
           className="bg-white relative overflow-hidden text-zinc-900"
         >
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
@@ -2873,6 +3282,7 @@ export function LiveMaidEditor({
                       setCode={handleCodeChange}
                       editorRef={editorRef}
                       selectedNodeId={selectedNodeId}
+                      requestConfirm={requestConfirm}
                     />
                   ) : null;
                 })()}
@@ -2912,6 +3322,18 @@ export function LiveMaidEditor({
             selectedSvgId={selectedSvgId}
             selectedNodeId={selectedNodeId}
             currentType={currentType}
+            selectedClass={selectedClass}
+            onApplyClassEdits={handleApplyClassEdits}
+            onCloseClassPanel={handleDeselect}
+            onAddClassRelationship={handleAddClassRelationship}
+            onLinkNoteToClass={handleLinkNoteToClass}
+            onCreateClassLinked={handleCreateClassLinked}
+            onCreateNoteForClass={handleCreateNoteForClass}
+            onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
+            onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
+            onDeleteClassRelationship={handleDeleteClassRelationship}
+            onDeleteClassNode={handleDeleteClassNode}
+            onDeleteClassNote={handleDeleteClassNote}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}
@@ -2962,6 +3384,18 @@ export function LiveMaidEditor({
           />
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
+      {classTextEdit && (
+        <ClassTextEditor
+          key={`${classTextEdit.kind}-${classTextEdit.noteIndex}`}
+          kind={classTextEdit.kind}
+          initialValue={classTextEdit.value}
+          rect={classTextEdit.rect}
+          onCommit={commitClassTextEdit}
+          onCancel={() => setClassTextEdit(null)}
+        />
+      )}
 
       {/* Create Dialog */}
       <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
@@ -3122,6 +3556,34 @@ export function LiveMaidEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Shared confirmation dialog driven by `requestConfirm` (used by diagram plugins). */}
+      <AlertDialog
+        open={!!confirmState?.open}
+        onOpenChange={(open) => {
+          if (!open) resolveConfirm(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmState?.title}</AlertDialogTitle>
+            {confirmState?.description ? (
+              <AlertDialogDescription>{confirmState.description}</AlertDialogDescription>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => resolveConfirm(true)}
+              className={
+                confirmState?.destructive ? "bg-red-500 hover:bg-red-600 text-white" : undefined
+              }
+            >
+              {confirmState?.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

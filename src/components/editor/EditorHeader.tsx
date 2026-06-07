@@ -17,10 +17,10 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/BrandLogo";
 import {
   Loader2,
   Menu,
-  LayoutTemplate,
   Download,
   History,
   PlusSquare,
@@ -194,9 +194,7 @@ export function EditorHeader({
             onNavigate("/", "Returning to Workspace...");
           }}
         >
-          <div className="bg-[#7a3dff] p-1.5 rounded-lg mr-3 flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity w-9 h-9">
-            <LayoutTemplate className="w-5 h-5 text-white" />
-          </div>
+          <BrandLogo className="w-9 h-9 mr-3 cursor-pointer rounded-lg transition-opacity hover:opacity-90" />
         </Link>
 
         <span className="font-semibold text-xl tracking-tight mr-6 text-foreground whitespace-nowrap">

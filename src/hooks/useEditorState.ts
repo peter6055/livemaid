@@ -17,6 +17,10 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   const [notFound, setNotFound] = useState(false);
   const [saving, setSaving] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // True from the moment the user edits until the debounced auto-save has been confirmed by the
+  // server. The editor's `beforeunload` guard reads this ref to warn ONLY when there is unsaved
+  // work still in the pipeline, so leaving the page after everything is saved is friction-free.
+  const hasUnsavedChangesRef = useRef(false);
 
   const [svgContent, setSvgContent] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState("default");
@@ -135,8 +139,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
 
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
+        // The server has persisted this code — nothing left to lose on unload.
+        hasUnsavedChangesRef.current = false;
       } catch {
         toast.error("Failed to auto-save");
+        // Keep the dirty flag set so the unload guard still protects the unsaved edit.
       } finally {
         setSaving(false);
       }
@@ -152,6 +159,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
       renderMermaid(newCode, onResetSelection);
 
       if (isDemo) return;
+
+      // Mark as dirty immediately on edit; cleared only once the debounced save succeeds. The
+      // unload guard reads this ref so it warns ONLY while there is genuinely unsaved work in the
+      // pipeline (debounce window + in-flight PUT), never when everything is already persisted.
+      hasUnsavedChangesRef.current = true;
 
       // Trigger auto-save
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -182,6 +194,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     setParseError,
     renderIdRef,
     handleCodeChange,
+    hasUnsavedChangesRef,
   };
 }
 
@@ -226,6 +239,46 @@ function addInteractionHelpersToSvg(svgString: string): string {
         "stroke-width: 16px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important;",
       );
 
+      if (path.parentNode) {
+        path.parentNode.insertBefore(clone, path);
+      }
+    });
+
+    // Class-diagram relationship edges (`path.relation`) get the same wide transparent hit-target
+    // treatment so the thin connector line is easy to click. The clone keeps the stable `data-id`
+    // (`id_<Src>_<Dst>_<N>`) used to resolve the edge back to its source line, but drops the id and
+    // arrow markers so it neither duplicates ids nor paints a second arrowhead.
+    const relationPaths = doc.querySelectorAll("path.relation");
+    relationPaths.forEach((path) => {
+      const clone = path.cloneNode(true) as SVGElement;
+      // Strip the `relation` class so the clone is ONLY `class-relation-hit-target`. Keeping
+      // `relation` would make `path.relation[data-id=…]` (selection re-resolve) and `path.relation`
+      // queries ambiguously match the transparent hit-target instead of the visible line, and the
+      // hover-highlight CSS would target the invisible clone.
+      clone.classList.remove("relation");
+      // Also drop Mermaid's line-pattern classes (`edge-pattern-dashed` / `edge-pattern-dotted`).
+      // They apply `stroke-dasharray` via CSS, which would make the transparent hit-target itself
+      // dashed/dotted — clicks then fall through the GAPS between dashes and the edge becomes nearly
+      // impossible to select (this is the "dashed connection can't be selected" bug). We need a
+      // SOLID continuous stroke for hit-testing regardless of the visible line's pattern.
+      clone.classList.remove("edge-pattern-dashed", "edge-pattern-dotted");
+      clone.classList.add("class-relation-hit-target");
+      const dataId = path.getAttribute("data-id");
+      if (dataId) clone.setAttribute("data-id", dataId);
+      clone.removeAttribute("id");
+      clone.removeAttribute("marker-start");
+      clone.removeAttribute("marker-end");
+      clone.removeAttribute("stroke-dasharray");
+      clone.setAttribute("stroke-width", "50px");
+      clone.setAttribute("stroke", "transparent");
+      clone.setAttribute("fill", "none");
+      clone.setAttribute("opacity", "0.01");
+      clone.setAttribute(
+        "style",
+        // `stroke-dasharray: none` defeats any residual CSS dash so the hit-target is a solid
+        // continuous 50px stroke that is clickable anywhere along its length.
+        "stroke-width: 50px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important; stroke-dasharray: none !important;",
+      );
       if (path.parentNode) {
         path.parentNode.insertBefore(clone, path);
       }
