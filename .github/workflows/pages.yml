@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'web/**'
-      - '.github/workflows/pages.yml'
+      - "web/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
