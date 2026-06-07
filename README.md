@@ -2,6 +2,8 @@
 
 **The WYSIWYG Mermaid Editor**
 
+> ⚠️ **Project status:** LiveMaid is a side project and is not production-ready. You may encounter bugs or incomplete behavior.
+
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
 
 ## 🎯 Purpose
