@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 interface ClassTextEditorProps {
-  /** Whether the target is the diagram title, a note, or a relationship label. */
-  kind: "title" | "note" | "relationship";
+  /** Whether the target is the diagram title, a note, a relationship label, or a namespace name. */
+  kind: "title" | "note" | "relationship" | "namespace";
   /** Initial text to seed the editor with. */
   initialValue: string;
   /** Viewport-space rect (from the SVG element's bounding box) used to position the overlay. */
@@ -90,7 +90,13 @@ export function ClassTextEditor({
         }
       }}
       placeholder={
-        kind === "title" ? "Diagram title" : kind === "relationship" ? "Label" : "Note text"
+        kind === "title"
+          ? "Diagram title"
+          : kind === "relationship"
+            ? "Label"
+            : kind === "namespace"
+              ? "Namespace name"
+              : "Note text"
       }
       style={{
         position: "fixed",
@@ -102,7 +108,7 @@ export function ClassTextEditor({
       className={`z-[60] resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
         kind === "title"
           ? "text-center font-semibold"
-          : kind === "relationship"
+          : kind === "relationship" || kind === "namespace"
             ? "text-center"
             : "text-left"
       }`}

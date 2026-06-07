@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Box,
+  Boxes,
   StickyNote,
   Workflow,
   ArrowDown,
@@ -728,7 +729,8 @@ export function deleteClassByName(code: string, name: string): string {
   });
 
   if (remove.size === 0) return code;
-  return lines.filter((_, i) => !remove.has(i)).join("\n");
+  // Collapse a namespace this delete just emptied (mermaid rejects empty `namespace X { }`).
+  return removeEmptyNamespaces(lines.filter((_, i) => !remove.has(i)).join("\n"));
 }
 
 /** Delete the `noteIndex`-th note (source order). Returns the code unchanged when out of range. */
@@ -739,6 +741,230 @@ export function deleteClassNoteByIndex(code: string, noteIndex: number): string 
   const lines = code.split("\n");
   lines.splice(target.lineIndex, 1);
   return lines.join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Namespaces (container blocks that group classes)                            */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * Mermaid class-diagram namespace syntax (verified against mermaid 11.15):
+ *   namespace <Name> {
+ *       class Foo
+ *       class Bar { +int x }
+ *   }
+ * Only class declarations are allowed inside the braces — relationships, notes and colon-form
+ * members must live at the root `classDiagram` scope (they reference classes by bare name, which
+ * resolves across namespaces). IMPORTANT: an EMPTY namespace (`namespace X { }`) is a PARSE ERROR
+ * in mermaid, so every mutation below collapses any namespace it would otherwise leave empty
+ * (`removeEmptyNamespaces`) to keep the diagram renderable.
+ */
+
+export interface ParsedNamespace {
+  name: string;
+  classes: string[]; // names of the classes declared directly inside the braces
+  startLine: number; // 0-based line of the `namespace Name {` declaration
+  endLine: number; // 0-based line of the matching `}` (-1 when unterminated)
+}
+
+// A namespace declaration line: `namespace Name {`. Names allow word chars plus `.` and `-`.
+const NAMESPACE_OPEN_RE = /^([ \t]*)namespace[ \t]+([A-Za-z0-9_.$-]+)[ \t]*\{/;
+const CLASS_DECL_RE = /^[ \t]*class[ \t]+([A-Za-z0-9_~$]+)/;
+
+/**
+ * Parse every `namespace Name { ... }` block, tracking brace depth so member braces of nested
+ * `class Foo { ... }` declarations don't prematurely close the namespace. Each block lists the
+ * class names declared directly inside it, in source order.
+ */
+export function getClassNamespaces(code: string): ParsedNamespace[] {
+  const lines = code.split("\n");
+  const out: ParsedNamespace[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(NAMESPACE_OPEN_RE);
+    if (!m) continue;
+    const name = m[2];
+    const classes: string[] = [];
+    // The opening line already contributes one `{`; count any extra braces it carries too.
+    let depth =
+      (lines[i].match(/\{/g)?.length ?? 0) - (lines[i].match(/\}/g)?.length ?? 0);
+    let endLine = -1;
+    for (let j = i + 1; j < lines.length && depth > 0; j += 1) {
+      const line = lines[j];
+      if (depth === 1) {
+        const cm = line.match(CLASS_DECL_RE);
+        if (cm) classes.push(cm[1]);
+      }
+      depth += (line.match(/\{/g)?.length ?? 0) - (line.match(/\}/g)?.length ?? 0);
+      if (depth <= 0) {
+        endLine = j;
+        break;
+      }
+    }
+    out.push({ name, classes, startLine: i, endLine });
+    if (endLine >= 0) i = endLine;
+  }
+  return out;
+}
+
+/** All namespace names in source order. */
+export function getNamespaceNames(code: string): string[] {
+  return getClassNamespaces(code).map((n) => n.name);
+}
+
+/** The name of the namespace a class lives in, or `null` when it sits at the root scope. */
+export function getClassNamespace(code: string, className: string): string | null {
+  const ns = getClassNamespaces(code).find((n) => n.classes.includes(className));
+  return ns ? ns.name : null;
+}
+
+/** 0-based line that DECLARES a namespace (`namespace Name {`), or -1. For canvas→code highlight. */
+export function findNamespaceDefinitionLine(code: string, name: string): number {
+  const ns = getClassNamespaces(code).find((n) => n.name === name);
+  return ns ? ns.startLine : -1;
+}
+
+/** Pick the next free `UntitledNamespace` / `UntitledNamespaceN` id given the existing namespaces. */
+export function getNextNamespaceName(code: string): string {
+  const base = "UntitledNamespace";
+  const names = new Set(getNamespaceNames(code));
+  if (!names.has(base)) return base;
+  let i = 1;
+  while (names.has(`${base}${i}`)) i += 1;
+  return `${base}${i}`;
+}
+
+/** Re-serialise a parsed class into the canonical brace form at the given indent. */
+function buildCanonicalClassBlock(parsed: ParsedClass, indent: string): string {
+  const body: string[] = [];
+  if (parsed.annotation) body.push(`${indent}    <<${parsed.annotation}>>`);
+  parsed.attributes.forEach((a) => body.push(`${indent}    ${a}`));
+  parsed.methods.forEach((m) => body.push(`${indent}    ${m}`));
+  return `${indent}class ${parsed.name} {${body.length ? "\n" + body.join("\n") + "\n" + indent : ""}}`;
+}
+
+/**
+ * Remove ONLY a class's own definition lines (brace block / bare decl / colon-form members /
+ * separate annotation line) while leaving its relationships and notes untouched. Used to relocate a
+ * class between scopes without disturbing the rest of the diagram.
+ */
+function removeClassOwnDefinition(code: string, name: string): string {
+  const esc = escapeForRegex(name);
+  const lines = code.split("\n");
+  const remove = new Set<number>();
+
+  const braceOpenRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{`);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (braceOpenRe.test(lines[i])) {
+      remove.add(i);
+      for (let j = i + 1; j < lines.length; j += 1) {
+        remove.add(j);
+        if (/^[ \t]*\}/.test(lines[j])) break;
+      }
+    }
+  }
+
+  const singleDeclRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b.*$`);
+  const colonRe = new RegExp(`^[ \\t]*${esc}[ \\t]*:`);
+  const annRe = new RegExp(`^[ \\t]*<<.+?>>[ \\t]+${esc}[ \\t]*$`);
+  lines.forEach((l, i) => {
+    if (remove.has(i)) return;
+    if (singleDeclRe.test(l) && !l.includes("{")) remove.add(i);
+    else if (colonRe.test(l)) remove.add(i);
+    else if (annRe.test(l)) remove.add(i);
+  });
+
+  if (remove.size === 0) return code;
+  return lines.filter((_, i) => !remove.has(i)).join("\n");
+}
+
+/**
+ * Drop any namespace block that ended up empty. Mermaid rejects `namespace X { }`, so this keeps the
+ * diagram renderable after a delete/move that removed a namespace's last class. Processed bottom-up
+ * so earlier line indices stay valid.
+ */
+export function removeEmptyNamespaces(code: string): string {
+  const empties = getClassNamespaces(code)
+    .filter((n) => n.endLine >= 0 && n.classes.length === 0)
+    .sort((a, b) => b.startLine - a.startLine);
+  if (empties.length === 0) return code;
+  const lines = code.split("\n");
+  for (const n of empties) lines.splice(n.startLine, n.endLine - n.startLine + 1);
+  return lines.join("\n");
+}
+
+/**
+ * Append a new namespace wrapping a fresh default class (Epic 1.1). Mirrors the toolbar's "Add
+ * class" pattern but emits the container block per the PRD:
+ *   namespace UntitledNamespace {
+ *       class UntitledClass
+ *   }
+ */
+export function addNamespace(code: string): string {
+  const ns = getNextNamespaceName(code);
+  const cls = getNextClassName(code);
+  const block = `    namespace ${ns} {\n        class ${cls}\n    }`;
+  return appendClassBodyLine(code, block);
+}
+
+/** Rename a namespace container in place (only the declaration token is rewritten). */
+export function renameNamespace(code: string, oldName: string, newName: string): string {
+  const next = newName.trim();
+  if (!next || next === oldName) return code;
+  const esc = escapeForRegex(oldName);
+  return code.replace(new RegExp(`(^[ \\t]*namespace[ \\t]+)${esc}([ \\t]*\\{)`, "m"), `$1${next}$2`);
+}
+
+/**
+ * Delete a namespace CONTAINER while preserving the classes inside it (Epic 1.3). The
+ * `namespace Name {` / matching `}` lines are stripped and the inner class definitions are
+ * de-indented back down to the root `classDiagram` scope. Relationships and notes are untouched.
+ */
+export function deleteNamespace(code: string, name: string): string {
+  const ns = getClassNamespaces(code).find((n) => n.name === name);
+  if (!ns || ns.endLine < 0) return code;
+  const lines = code.split("\n");
+  const inner = lines.slice(ns.startLine + 1, ns.endLine).map((l) => l.replace(/^ {4}/, ""));
+  return [...lines.slice(0, ns.startLine), ...inner, ...lines.slice(ns.endLine + 1)].join("\n");
+}
+
+/**
+ * Relocate a class into a namespace, out to the root scope, or between namespaces (Epic 2.2). The
+ * class is re-serialised into canonical brace form at the destination; its relationships and notes
+ * stay put (they reference it by bare name). Passing `target = null` moves it to the root level.
+ * Any namespace emptied by the move is collapsed (mermaid forbids empty namespaces).
+ */
+export function moveClassToNamespace(
+  code: string,
+  className: string,
+  target: string | null,
+): string {
+  const parsed = parseClassByName(code, className);
+  let result = removeClassOwnDefinition(code, className);
+
+  if (target === null) {
+    result = appendClassBodyLine(result, buildCanonicalClassBlock(parsed, "    "));
+    return removeEmptyNamespaces(result);
+  }
+
+  const ns = getClassNamespaces(result).find((n) => n.name === target);
+  if (!ns || ns.endLine < 0) return code; // unknown target — no-op
+  const lines = result.split("\n");
+  lines.splice(ns.endLine, 0, buildCanonicalClassBlock(parsed, "        "));
+  result = lines.join("\n");
+  return removeEmptyNamespaces(result);
+}
+
+/**
+ * Create a brand-new namespace and immediately move the given class into it (the "Create new" item
+ * of the class node's "Move to namespace" menu).
+ */
+export function moveClassToNewNamespace(code: string, className: string): string {
+  const ns = getNextNamespaceName(code);
+  const parsed = parseClassByName(code, className);
+  let result = removeClassOwnDefinition(code, className);
+  const block = `    namespace ${ns} {\n${buildCanonicalClassBlock(parsed, "        ")}\n    }`;
+  result = appendClassBodyLine(result, block);
+  return removeEmptyNamespaces(result);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -790,6 +1016,10 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
 
   const handleAddNote = () => {
     setCode(code.replace(/\s*$/, "") + `\n    note "This is a sample note"`);
+  };
+
+  const handleAddNamespace = () => {
+    setCode(addNamespace(code));
   };
 
   return (
@@ -901,6 +1131,16 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         >
           <StickyNote className="w-4 h-4" />
           <span className="text-sm font-medium">Note</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+          onClick={handleAddNamespace}
+          title="Add a namespace container"
+        >
+          <Boxes className="w-4 h-4" />
+          <span className="text-sm font-medium">Namespace</span>
         </Button>
       </div>
     </>

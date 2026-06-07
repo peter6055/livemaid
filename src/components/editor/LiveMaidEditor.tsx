@@ -87,6 +87,13 @@ import {
   deleteClassByName,
   deleteClassNoteByIndex,
   findClassDefinitionLine,
+  getNamespaceNames,
+  getClassNamespace,
+  findNamespaceDefinitionLine,
+  renameNamespace,
+  deleteNamespace,
+  moveClassToNamespace,
+  moveClassToNewNamespace,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
@@ -318,11 +325,12 @@ export function LiveMaidEditor({
   // edit, click outside to exit). Positioned in viewport space from the element's bounding rect at
   // open time. For relationships, `rel` carries the source/target/occurrence used to commit.
   const [classTextEdit, setClassTextEdit] = useState<{
-    kind: "title" | "note" | "relationship";
+    kind: "title" | "note" | "relationship" | "namespace";
     noteIndex: number;
     value: string;
     rect: { left: number; top: number; width: number; height: number };
     rel?: { source: string; target: string; occurrence: number };
+    namespaceName?: string;
   } | null>(null);
 
   // Clear class-diagram editing state whenever the diagram is not a class diagram.
@@ -394,6 +402,30 @@ export function LiveMaidEditor({
         if (name) {
           setClassTextEdit(null);
           setSelectedClassName(name);
+        }
+        return;
+      }
+
+      // Namespace container — double-clicking its title/boundary inline-renames it. The cluster
+      // label text equals the namespace name; we validate it against the parsed namespaces so a
+      // stray cluster from another diagram type can never be mistaken for one.
+      const clusterGroup = els
+        .map((el) => el.closest("g.cluster"))
+        .find((g): g is Element => !!g);
+      if (clusterGroup) {
+        const labelEl = clusterGroup.querySelector(".cluster-label, .nodeLabel, text, tspan, p");
+        const nsName = (labelEl?.textContent || "").trim();
+        if (nsName && getNamespaceNames(code).includes(nsName)) {
+          const anchor = labelEl ?? clusterGroup;
+          const r = anchor.getBoundingClientRect();
+          setSelectedClassName(null);
+          setClassTextEdit({
+            kind: "namespace",
+            noteIndex: -1,
+            value: nsName,
+            namespaceName: nsName,
+            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          });
         }
         return;
       }
@@ -472,6 +504,8 @@ export function LiveMaidEditor({
       } else if (classTextEdit.kind === "relationship" && classTextEdit.rel) {
         const { source, target, occurrence } = classTextEdit.rel;
         newCode = setClassRelationshipLabel(code, source, target, occurrence, value);
+      } else if (classTextEdit.kind === "namespace" && classTextEdit.namespaceName) {
+        newCode = renameNamespace(code, classTextEdit.namespaceName, value);
       } else {
         newCode = updateClassNoteByIndex(code, classTextEdit.noteIndex, value);
       }
@@ -613,6 +647,41 @@ export function LiveMaidEditor({
       handleDeselect();
     },
     [code, handleCodeChange, handleDeselect],
+  );
+
+  // Namespace container toolbar: delete (unwrap, preserving inner classes) + relocate a class
+  // into / out of / between namespaces. Each routes through handleCodeChange (single undo step).
+  const handleDeleteClassNamespace = useCallback(
+    (name: string) => {
+      const newCode = deleteNamespace(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleMoveClassToNamespace = useCallback(
+    (className: string, target: string) => {
+      const newCode = moveClassToNamespace(code, className, target);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleMoveClassToNewNamespace = useCallback(
+    (className: string) => {
+      const newCode = moveClassToNewNamespace(code, className);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleRemoveClassFromNamespace = useCallback(
+    (className: string) => {
+      const newCode = moveClassToNamespace(code, className, null);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
   );
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
@@ -1029,6 +1098,10 @@ export function LiveMaidEditor({
       }
       const className = classNameFromSvgId(selectedSvgId);
       if (className) return toRange(findClassDefinitionLine(code, className));
+      // Namespace container → its `namespace Name {` declaration line.
+      if (selectedNodeId && getNamespaceNames(code).includes(selectedNodeId)) {
+        return toRange(findNamespaceDefinitionLine(code, selectedNodeId));
+      }
     }
     if (selectedClassName) {
       return toRange(findClassDefinitionLine(code, selectedClassName));
@@ -3334,6 +3407,10 @@ export function LiveMaidEditor({
             onDeleteClassRelationship={handleDeleteClassRelationship}
             onDeleteClassNode={handleDeleteClassNode}
             onDeleteClassNote={handleDeleteClassNote}
+            onDeleteClassNamespace={handleDeleteClassNamespace}
+            onMoveClassToNamespace={handleMoveClassToNamespace}
+            onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
+            onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}
