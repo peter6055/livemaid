@@ -752,7 +752,7 @@ const DIRECTION_OPTIONS = [
   { id: "RL", label: "Right to left", icon: <ArrowLeft className="w-4 h-4" /> },
 ];
 
-const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
+const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) => {
   const currentDirection = getClassDirection(code);
   const hideEmpty = getHideEmptyMembersBox(code);
   const hasTitle = !!getClassTitle(code).trim();
@@ -764,18 +764,27 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
   };
 
   // Title is a toggle: ON inserts a default title immediately; OFF asks for confirmation first
-  // (removing the title drops the user-entered title text from the frontmatter). `window.confirm`
-  // is used deliberately — this plugin module is imported SERVER-side by the create-diagram route
-  // to read `defaultCode`, so it must NOT import client-only React hooks / dialog components.
-  const handleToggleTitle = () => {
+  // (removing the title drops the user-entered title text from the frontmatter). The confirmation
+  // uses the injected `requestConfirm` (UI-library AlertDialog rendered by the client editor) —
+  // this plugin module is imported SERVER-side by the create-diagram route to read `defaultCode`,
+  // so it must NOT import client-only dialog components itself. Falls back to `window.confirm`.
+  const handleToggleTitle = async () => {
     if (!hasTitle) {
       setCode(upsertClassTitle(code, "Diagram Title"));
       return;
     }
     const current = getClassTitle(code).trim();
-    const ok = window.confirm(
-      `Remove the diagram title?\n\nThe current title${current ? ` ("${current}")` : ""} will be lost.`,
-    );
+    const description = `Turning off the title removes it from the diagram. The current title${
+      current ? ` ("${current}")` : ""
+    } will be lost.`;
+    const ok = requestConfirm
+      ? await requestConfirm({
+          title: "Remove diagram title?",
+          description,
+          confirmLabel: "Remove title",
+          destructive: true,
+        })
+      : window.confirm(`Remove diagram title?\n\n${description}`);
     if (ok) setCode(removeClassTitle(code));
   };
 

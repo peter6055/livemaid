@@ -45,6 +45,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import * as htmlToImage from "html-to-image";
 import { Button } from "@/components/ui/button";
@@ -86,7 +96,7 @@ import { format } from "date-fns";
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
-import type { MonacoCodeEditor } from "@/lib/diagrams/types";
+import type { MonacoCodeEditor, ConfirmOptions } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
 import { DemoBanner } from "@/components/DemoBanner";
@@ -182,6 +192,39 @@ export function LiveMaidEditor({
   const [exportFormat, setExportFormat] = useState("PNG");
   const [exportBg, setExportBg] = useState("transparent");
   const allowBrowserBackRef = useRef(false);
+
+  // Promise-based confirmation provider so server-imported diagram plugins can
+  // trigger the UI-library AlertDialog (which they cannot import themselves).
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    confirmLabel: string;
+    destructive: boolean;
+  } | null>(null);
+  const confirmResolverRef = useRef<((value: boolean) => void) | null>(null);
+
+  const resolveConfirm = useCallback((result: boolean) => {
+    setConfirmState((prev) => (prev ? { ...prev, open: false } : prev));
+    const resolve = confirmResolverRef.current;
+    confirmResolverRef.current = null;
+    resolve?.(result);
+  }, []);
+
+  const requestConfirm = useCallback((opts: ConfirmOptions) => {
+    // Settle any in-flight request before opening a new one.
+    confirmResolverRef.current?.(false);
+    return new Promise<boolean>((resolve) => {
+      confirmResolverRef.current = resolve;
+      setConfirmState({
+        open: true,
+        title: opts.title,
+        description: opts.description,
+        confirmLabel: opts.confirmLabel ?? "Confirm",
+        destructive: opts.destructive ?? false,
+      });
+    });
+  }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -3239,6 +3282,7 @@ export function LiveMaidEditor({
                       setCode={handleCodeChange}
                       editorRef={editorRef}
                       selectedNodeId={selectedNodeId}
+                      requestConfirm={requestConfirm}
                     />
                   ) : null;
                 })()}
@@ -3512,6 +3556,34 @@ export function LiveMaidEditor({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Shared confirmation dialog driven by `requestConfirm` (used by diagram plugins). */}
+      <AlertDialog
+        open={!!confirmState?.open}
+        onOpenChange={(open) => {
+          if (!open) resolveConfirm(false);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmState?.title}</AlertDialogTitle>
+            {confirmState?.description ? (
+              <AlertDialogDescription>{confirmState.description}</AlertDialogDescription>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => resolveConfirm(true)}
+              className={
+                confirmState?.destructive ? "bg-red-500 hover:bg-red-600 text-white" : undefined
+              }
+            >
+              {confirmState?.confirmLabel}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
