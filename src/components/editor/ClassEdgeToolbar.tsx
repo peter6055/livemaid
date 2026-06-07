@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { Trash2, GitBranch, Hash } from "lucide-react";
 import {
   CLASS_END_MARKERS,
@@ -45,7 +44,6 @@ export function ClassEdgeToolbar({
   // Menu-first UX: the bar shows only the Relationship / Cardinality choices; clicking one opens
   // the corresponding panel as a popover. `null` = no panel open (compact bar only).
   const [openPanel, setOpenPanel] = useState<"relationship" | "cardinality" | null>(null);
-  const [customOpen, setCustomOpen] = useState(false);
 
   // Block native canvas mousedown/dblclick leakage (same rationale as the other inline toolbars).
   useEffect(() => {
@@ -75,7 +73,6 @@ export function ClassEdgeToolbar({
   // Reset transient UI when the selected edge changes.
   useEffect(() => {
     setOpenPanel(null);
-    setCustomOpen(false);
   }, [selectedNodeId]);
 
   const dataId = selectedNodeId?.replace("CLASS_EDGE_", "") ?? null;
@@ -253,6 +250,9 @@ export function ClassEdgeToolbar({
               <div className="flex flex-col gap-2.5">
                 {(["source", "target"] as const).map((end) => {
                   const currentCard = end === "source" ? rel.sourceCard : rel.targetCard;
+                  // The custom input is "active" (shows the value) when the current cardinality is
+                  // something the user typed rather than one of the presets.
+                  const isCustom = currentCard !== "" && !CARDINALITY_PRESETS.includes(currentCard);
                   return (
                     <div key={end} className="flex flex-col gap-1.5">
                       <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -280,19 +280,21 @@ export function ClassEdgeToolbar({
                             </button>
                           );
                         })}
+                        {/* Last option: free-type a custom cardinality (commits on Enter / blur). */}
+                        <CustomCardInput
+                          key={`${selectedNodeId}-${end}`}
+                          value={isCustom ? currentCard : ""}
+                          active={isCustom}
+                          onCommit={(v) =>
+                            end === "source"
+                              ? onSetCardinality(v, rel.targetCard)
+                              : onSetCardinality(rel.sourceCard, v)
+                          }
+                        />
                       </div>
                     </div>
                   );
                 })}
-                <div className="border-t border-border pt-2.5">
-                  <button
-                    type="button"
-                    onClick={() => setCustomOpen(true)}
-                    className="pointer-events-auto flex h-8 w-full items-center justify-center rounded-md border border-border text-sm font-semibold text-foreground transition-colors hover:bg-accent"
-                  >
-                    Custom…
-                  </button>
-                </div>
               </div>
             </div>
           )}
@@ -308,112 +310,51 @@ export function ClassEdgeToolbar({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-
-      {customOpen && (
-        <CardinalityModal
-          source={rel.source}
-          target={rel.target}
-          initialSource={rel.sourceCard}
-          initialTarget={rel.targetCard}
-          onCancel={() => setCustomOpen(false)}
-          onSave={(s, t) => {
-            onSetCardinality(s, t);
-            setCustomOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 }
 
-/** Custom-cardinality dialog, portalled to <body> so the toolbar's `scale()` transform can't shrink it. */
-function CardinalityModal({
-  source,
-  target,
-  initialSource,
-  initialTarget,
-  onCancel,
-  onSave,
+/**
+ * The last cardinality "option" in each row: a free-type input for any value the presets don't
+ * cover (e.g. `2..4`, `0..n`). Maintains its own draft so typing doesn't re-render the whole edge;
+ * commits on Enter / blur and reverts on Escape. Remounted per edge+end via a `key`, so the seeded
+ * value always matches the freshly selected relationship.
+ */
+function CustomCardInput({
+  value,
+  active,
+  onCommit,
 }: {
-  source: string;
-  target: string;
-  initialSource: string;
-  initialTarget: string;
-  onCancel: () => void;
-  onSave: (sourceCard: string, targetCard: string) => void;
+  value: string;
+  active: boolean;
+  onCommit: (value: string) => void;
 }) {
-  const [sourceCard, setSourceCard] = useState(initialSource);
-  const [targetCard, setTargetCard] = useState(initialTarget);
+  const [draft, setDraft] = useState(value);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  const commit = () => {
+    if (draft !== value) onCommit(draft.trim());
+  };
 
-  const inputCls =
-    "h-9 w-full rounded-md border border-border bg-background px-3 font-mono text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-indigo-500";
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
+  return (
+    <input
+      value={draft}
+      placeholder="custom…"
+      spellCheck={false}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          setDraft(value);
+          (e.target as HTMLInputElement).blur();
+        }
       }}
-    >
-      <div className="w-[320px] rounded-xl border border-border bg-background p-4 shadow-2xl">
-        <div className="mb-3 text-base font-semibold text-foreground">Custom cardinality</div>
-        <div className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Source · {source}
-            </span>
-            <input
-              autoFocus
-              className={inputCls}
-              value={sourceCard}
-              placeholder="e.g. 1, 0..1, *"
-              onChange={(e) => setSourceCard(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSave(sourceCard, targetCard);
-              }}
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Target · {target}
-            </span>
-            <input
-              className={inputCls}
-              value={targetCard}
-              placeholder="e.g. 1, 1..*, n"
-              onChange={(e) => setTargetCard(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSave(sourceCard, targetCard);
-              }}
-            />
-          </label>
-        </div>
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="h-9 rounded-md border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:bg-accent"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => onSave(sourceCard, targetCard)}
-            className="h-9 rounded-md bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-700"
-          >
-            Save
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body,
+      className={`h-7 w-24 rounded-md border bg-background px-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-indigo-500 ${
+        active ? "border-indigo-500 ring-1 ring-indigo-500" : "border-border hover:bg-accent"
+      }`}
+    />
   );
 }
