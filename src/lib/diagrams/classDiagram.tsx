@@ -501,7 +501,7 @@ export interface ParsedClassRelationship {
   sourceCard: string; // "" when absent
   targetCard: string; // "" when absent
   label: string; // "" when absent
-  occurrence: number; // 1-based among lines sharing the same (source,target) pair
+  occurrence: number; // GLOBAL 1-based index among ALL relationship lines (matches Mermaid's edge id)
 }
 
 /** Parse a single line as a relationship, or return `null`. */
@@ -525,17 +525,23 @@ function parseClassRelationshipLine(
   };
 }
 
-/** All relationship lines in source order, each tagged with its per-(source,target) occurrence. */
+/**
+ * All relationship lines in source order, each tagged with its GLOBAL 1-based occurrence index.
+ *
+ * Mermaid renders every class relationship edge with `data-id="id_<Src>_<Dst>_<N>"` where `N` is a
+ * GLOBAL counter that increments once per relationship across the WHOLE diagram (NOT per
+ * source/target pair). e.g. `A <--> B`, `A <|-- C`, `A -- D` → `…_1`, `…_2`, `…_3`. We mirror that
+ * here so `classRelationshipFromEdgeDataId` can resolve any edge (the earlier per-pair counter only
+ * matched the first edge of each distinct pair, leaving the rest unselectable).
+ */
 export function getClassRelationships(code: string): ParsedClassRelationship[] {
   const out: ParsedClassRelationship[] = [];
-  const counts = new Map<string, number>();
+  let counter = 0;
   code.split("\n").forEach((line, i) => {
     const parsed = parseClassRelationshipLine(line);
     if (!parsed) return;
-    const pairKey = `${parsed.source}\u0000${parsed.target}`;
-    const occurrence = (counts.get(pairKey) ?? 0) + 1;
-    counts.set(pairKey, occurrence);
-    out.push({ lineIndex: i, occurrence, ...parsed });
+    counter += 1;
+    out.push({ lineIndex: i, occurrence: counter, ...parsed });
   });
   return out;
 }
