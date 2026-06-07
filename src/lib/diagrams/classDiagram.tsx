@@ -763,9 +763,20 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
     setCode(code.replace(/\s*$/, "") + `\n${block}`);
   };
 
-  // Title is a toggle: ON inserts a default title, OFF removes the frontmatter `title:`.
+  // Title is a toggle: ON inserts a default title immediately; OFF asks for confirmation first
+  // (removing the title drops the user-entered title text from the frontmatter). `window.confirm`
+  // is used deliberately — this plugin module is imported SERVER-side by the create-diagram route
+  // to read `defaultCode`, so it must NOT import client-only React hooks / dialog components.
   const handleToggleTitle = () => {
-    setCode(hasTitle ? removeClassTitle(code) : upsertClassTitle(code, "Diagram Title"));
+    if (!hasTitle) {
+      setCode(upsertClassTitle(code, "Diagram Title"));
+      return;
+    }
+    const current = getClassTitle(code).trim();
+    const ok = window.confirm(
+      `Remove the diagram title?\n\nThe current title${current ? ` ("${current}")` : ""} will be lost.`,
+    );
+    if (ok) setCode(removeClassTitle(code));
   };
 
   const handleAddNote = () => {
