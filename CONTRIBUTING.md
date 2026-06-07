@@ -92,7 +92,7 @@ This repository follows the flow:
 - Trigger: `pull_request` on `main`
 - Action: installs dependencies and runs type checking, linting, format check, and build.
 - Workflow: `ci/pr-title` (`.github/workflows/pr-title.yml`)
-- Trigger: `pull_request_target` (opened / edited / synchronize / reopened)
+- Trigger: `pull_request` (opened / edited / synchronize / reopened)
 - Action: validates the PR title follows Conventional Commits via [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request).
 
 ### 3) Merge
