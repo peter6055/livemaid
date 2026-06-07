@@ -1,8 +1,17 @@
 # LiveMaid 🧜‍♀️
 
-**The WYSIWYG Mermaid Editor**
+> [!WARNING]
+> This project began as a side project and is not production-grade. You may encounter bugs or incomplete behavior.
 
-> ⚠️ **Project status:** LiveMaid is a side project and is not production-ready. You may encounter bugs or incomplete behavior.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/da138123-d78c-4cbf-8536-fe3287926ab9" alt="LiveMaid logo" width="96" height="96" />
+</p>
+
+<h1 align="center">LiveMaid</h1>
+
+---
+
+<p align="center"><strong>The WYSIWYG Mermaid Editor</strong></p>
 
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
 
