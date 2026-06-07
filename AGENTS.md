@@ -97,5 +97,10 @@ To ensure we can safely rollback changes if anything goes wrong, you MUST follow
    - The PR MUST be merged using **"Squash and merge"**.
    - After merging, the feature branch MUST be deleted. Do not reuse old branches. Future changes require checking out a fresh branch from `main`.
    - _Note: PRs currently do not require reviewers, but this will change when more contributors join._
-7. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
+7. **Conventional Commit PR Titles**: Because we **squash and merge**, the PR title becomes the commit message on `main`, so the PR title MUST also follow the Conventional Commits specification: `<type>[optional scope]: <description>`.
+   - The allowed types are the same as for commits (`feat`, `fix`, `build`, `chore`, `ci`, `docs`, `style`, `refactor`, `perf`, `test`, `revert`).
+   - Keep the description concise, in the imperative mood, and starting with a lowercase letter (e.g. `feat: implement user profile view (closes #123)`).
+   - Reference related issues/tickets in the description when applicable.
+   - This is enforced automatically by the `ci/pr-title` workflow (`.github/workflows/pr-title.yml`), which uses [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request).
+8. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
 <!-- END:git-workflow-rules -->
