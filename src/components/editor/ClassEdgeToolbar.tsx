@@ -139,177 +139,182 @@ export function ClassEdgeToolbar({
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <div className="flex w-max items-center gap-1 rounded-xl border border-border bg-background px-2 py-1.5 shadow-lg">
-        {/* Source → target context label */}
-        <span className="mr-1 flex items-center gap-1 px-1 font-mono text-sm font-semibold text-muted-foreground">
-          <span className="text-foreground">{rel.source}</span>
-          <span>→</span>
-          <span className="text-foreground">{rel.target}</span>
-        </span>
-        <div className="mx-0.5 h-5 w-px bg-border" />
+      <div className="flex w-max min-w-[16rem] max-w-[22rem] flex-col gap-1 rounded-xl border border-border bg-background px-2 py-1.5 shadow-lg">
+        {/* Row 1 — indicator: source → target. Truncates when the class names are too long. */}
+        <div className="flex min-w-0 items-center gap-1 px-1 font-mono text-sm font-semibold">
+          <span className="truncate text-foreground">{rel.source}</span>
+          <span className="shrink-0 text-muted-foreground">→</span>
+          <span className="truncate text-foreground">{rel.target}</span>
+        </div>
 
-        {/* Relationship menu trigger + popover */}
-        <div className="relative">
-          <button
-            type="button"
-            className={triggerCls(openPanel === "relationship")}
-            title="Edit relationship type"
-            onMouseDownCapture={(e) => {
-              // Toggle on capture-phase mousedown — a transient toolbar reflow can swallow
-              // the native click near the button edge (same rationale as the sequence toolbar).
-              e.stopPropagation();
-              setOpenPanel((p) => (p === "relationship" ? null : "relationship"));
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GitBranch className="h-3.5 w-3.5" />
-            Relationship
-          </button>
+        <div className="h-px w-full bg-border" />
 
-          {openPanel === "relationship" && (
-            <div
-              className="absolute left-0 bottom-full z-40 mb-2 w-max rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+        {/* Row 2 — controls: Relationship / Cardinality / Delete. */}
+        <div className="flex items-center gap-1">
+          {/* Relationship menu trigger + popover */}
+          <div className="relative">
+            <button
+              type="button"
+              className={triggerCls(openPanel === "relationship")}
+              title="Edit relationship type"
+              onMouseDownCapture={(e) => {
+                // Toggle on capture-phase mousedown — a transient toolbar reflow can swallow
+                // the native click near the button edge (same rationale as the sequence toolbar).
+                e.stopPropagation();
+                setOpenPanel((p) => (p === "relationship" ? null : "relationship"));
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col gap-2.5">
-                {/* Line style segmented control */}
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Line
-                  </span>
-                  {(["solid", "dashed"] as ClassLineStyle[]).map((ls) => (
-                    <button
-                      key={ls}
-                      type="button"
-                      title={ls === "solid" ? "Solid line" : "Dashed line"}
-                      onClick={() => setLineStyle(ls)}
-                      className={`flex h-7 w-11 items-center justify-center rounded-md border transition-colors hover:bg-accent ${
-                        parts.lineStyle === ls
-                          ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
-                          : "border-border"
-                      }`}
-                    >
-                      <svg width="24" height="2" viewBox="0 0 24 2" aria-hidden="true">
-                        <line
-                          x1="1"
-                          y1="1"
-                          x2="23"
-                          y2="1"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeDasharray={ls === "dashed" ? "4 3" : undefined}
-                        />
-                      </svg>
-                    </button>
-                  ))}
-                </div>
+              <GitBranch className="h-3.5 w-3.5" />
+              Relationship
+            </button>
 
-                {/* Per-end marker selectors — always visible so any relationship type can be
+            {openPanel === "relationship" && (
+              <div
+                className="absolute left-0 bottom-full z-40 mb-2 w-max rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex flex-col gap-2.5">
+                  {/* Line style segmented control */}
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Line
+                    </span>
+                    {(["solid", "dashed"] as ClassLineStyle[]).map((ls) => (
+                      <button
+                        key={ls}
+                        type="button"
+                        title={ls === "solid" ? "Solid line" : "Dashed line"}
+                        onClick={() => setLineStyle(ls)}
+                        className={`flex h-7 w-11 items-center justify-center rounded-md border transition-colors hover:bg-accent ${
+                          parts.lineStyle === ls
+                            ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
+                            : "border-border"
+                        }`}
+                      >
+                        <svg width="24" height="2" viewBox="0 0 24 2" aria-hidden="true">
+                          <line
+                            x1="1"
+                            y1="1"
+                            x2="23"
+                            y2="1"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeDasharray={ls === "dashed" ? "4 3" : undefined}
+                          />
+                        </svg>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Per-end marker selectors — always visible so any relationship type can be
                     composed directly from the two ends + line style (the preset grid is gone). */}
-                <div className="flex flex-col gap-2 border-t border-border pt-2.5">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Source end
-                    </span>
-                    {renderMarkerRow("source")}
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Target end
-                    </span>
-                    {renderMarkerRow("target")}
+                  <div className="flex flex-col gap-2 border-t border-border pt-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Source end
+                      </span>
+                      {renderMarkerRow("source")}
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Target end
+                      </span>
+                      {renderMarkerRow("target")}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* Cardinality menu trigger + popover */}
-        <div className="relative">
-          <button
-            type="button"
-            className={triggerCls(openPanel === "cardinality")}
-            title="Edit cardinality"
-            onMouseDownCapture={(e) => {
-              e.stopPropagation();
-              setOpenPanel((p) => (p === "cardinality" ? null : "cardinality"));
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Hash className="h-3.5 w-3.5" />
-            Cardinality
-          </button>
-
-          {openPanel === "cardinality" && (
-            <div
-              className="absolute left-0 bottom-full z-40 mb-2 w-64 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+          {/* Cardinality menu trigger + popover */}
+          <div className="relative">
+            <button
+              type="button"
+              className={triggerCls(openPanel === "cardinality")}
+              title="Edit cardinality"
+              onMouseDownCapture={(e) => {
+                e.stopPropagation();
+                setOpenPanel((p) => (p === "cardinality" ? null : "cardinality"));
+              }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex flex-col gap-4">
-                {(["source", "target"] as const).map((end) => {
-                  const currentCard = end === "source" ? rel.sourceCard : rel.targetCard;
-                  // The custom input is "active" (shows the value) when the current cardinality is
-                  // something the user typed rather than one of the presets.
-                  const isCustom = currentCard !== "" && !CARDINALITY_PRESETS.includes(currentCard);
-                  return (
-                    <div key={end} className="flex flex-col gap-2">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                        {end === "source" ? `Source · ${rel.source}` : `Target · ${rel.target}`}
-                      </span>
-                      {/* 4-column grid → the 7 presets + the custom input lay out as two rows. */}
-                      <div className="grid grid-cols-4 gap-2">
-                        {CARDINALITY_PRESETS.map((preset) => {
-                          const active = currentCard === preset;
-                          return (
-                            <button
-                              key={preset || "none"}
-                              type="button"
-                              onClick={() =>
-                                end === "source"
-                                  ? onSetCardinality(preset, rel.targetCard)
-                                  : onSetCardinality(rel.sourceCard, preset)
-                              }
-                              className={`flex h-7 items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${
-                                active
-                                  ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
-                                  : "border-border"
-                              }`}
-                            >
-                              {preset === "" ? "—" : preset}
-                            </button>
-                          );
-                        })}
-                        {/* Last option: free-type a custom cardinality (commits on Enter / blur). */}
-                        <CustomCardInput
-                          key={`${selectedNodeId}-${end}`}
-                          value={isCustom ? currentCard : ""}
-                          active={isCustom}
-                          onCommit={(v) =>
-                            end === "source"
-                              ? onSetCardinality(v, rel.targetCard)
-                              : onSetCardinality(rel.sourceCard, v)
-                          }
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
+              <Hash className="h-3.5 w-3.5" />
+              Cardinality
+            </button>
 
-        <div className="mx-0.5 h-5 w-px bg-border" />
-        <button
-          type="button"
-          className={`${btnCls} hover:bg-red-500/10 hover:text-red-500`}
-          title="Delete relationship"
-          onClick={onDeleteRelationship}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+            {openPanel === "cardinality" && (
+              <div
+                className="absolute left-0 bottom-full z-40 mb-2 w-64 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex flex-col gap-4">
+                  {(["source", "target"] as const).map((end) => {
+                    const currentCard = end === "source" ? rel.sourceCard : rel.targetCard;
+                    // The custom input is "active" (shows the value) when the current cardinality is
+                    // something the user typed rather than one of the presets.
+                    const isCustom =
+                      currentCard !== "" && !CARDINALITY_PRESETS.includes(currentCard);
+                    return (
+                      <div key={end} className="flex flex-col gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          {end === "source" ? `Source · ${rel.source}` : `Target · ${rel.target}`}
+                        </span>
+                        {/* 4-column grid → the 7 presets + the custom input lay out as two rows. */}
+                        <div className="grid grid-cols-4 gap-2">
+                          {CARDINALITY_PRESETS.map((preset) => {
+                            const active = currentCard === preset;
+                            return (
+                              <button
+                                key={preset || "none"}
+                                type="button"
+                                onClick={() =>
+                                  end === "source"
+                                    ? onSetCardinality(preset, rel.targetCard)
+                                    : onSetCardinality(rel.sourceCard, preset)
+                                }
+                                className={`flex h-7 items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${
+                                  active
+                                    ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
+                                    : "border-border"
+                                }`}
+                              >
+                                {preset === "" ? "—" : preset}
+                              </button>
+                            );
+                          })}
+                          {/* Last option: free-type a custom cardinality (commits on Enter / blur). */}
+                          <CustomCardInput
+                            key={`${selectedNodeId}-${end}`}
+                            value={isCustom ? currentCard : ""}
+                            active={isCustom}
+                            onCommit={(v) =>
+                              end === "source"
+                                ? onSetCardinality(v, rel.targetCard)
+                                : onSetCardinality(rel.sourceCard, v)
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mx-0.5 h-5 w-px bg-border" />
+          <button
+            type="button"
+            className={`${btnCls} hover:bg-red-500/10 hover:text-red-500`}
+            title="Delete relationship"
+            onClick={onDeleteRelationship}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
