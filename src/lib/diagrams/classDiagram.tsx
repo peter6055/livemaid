@@ -715,6 +715,44 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
 
   return (
     <>
+      {/* Layout direction — placed FIRST (right after the global font "T" control) per the
+          requested toolbar ordering. Mirrors the flowchart direction control. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+            />
+          }
+        >
+          <Workflow className="w-4 h-4" />
+          <span className="text-sm font-medium">Direction</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1"
+          sideOffset={10}
+          align="start"
+        >
+          <div className="flex flex-col">
+            {DIRECTION_OPTIONS.map((d) => (
+              <DropdownMenuItem
+                key={d.id}
+                onClick={() => setCode(setClassDirection(code, d.id))}
+                className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent"
+              >
+                {d.icon}
+                <span className="flex-1 text-sm font-medium">{d.label}</span>
+                {currentDirection === d.id && <Check className="w-4 h-4 text-indigo-500" />}
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <div className="h-5 w-px bg-border" />
+
       {/* Hide-empty-members toggle — identical inline label + switch styling to the sequence
           diagram's Auto Number toggle, placed in front of the Class button. */}
       <div className="flex items-center gap-2 px-2 h-8 select-none">
@@ -786,43 +824,6 @@ const ClassDiagramToolbar = ({ code, setCode }: EditorContext) => {
           <span className="text-sm font-medium">Note</span>
         </Button>
       </div>
-
-      <div className="h-5 w-px bg-border" />
-
-      {/* Layout direction — mirrors the flowchart direction control. */}
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
-            />
-          }
-        >
-          <Workflow className="w-4 h-4" />
-          <span className="text-sm font-medium">Direction</span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1"
-          sideOffset={10}
-          align="start"
-        >
-          <div className="flex flex-col">
-            {DIRECTION_OPTIONS.map((d) => (
-              <DropdownMenuItem
-                key={d.id}
-                onClick={() => setCode(setClassDirection(code, d.id))}
-                className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent"
-              >
-                {d.icon}
-                <span className="flex-1 text-sm font-medium">{d.label}</span>
-                {currentDirection === d.id && <Check className="w-4 h-4 text-indigo-500" />}
-              </DropdownMenuItem>
-            ))}
-          </div>
-        </DropdownMenuContent>
-      </DropdownMenu>
     </>
   );
 };
