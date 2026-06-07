@@ -1,13 +1,11 @@
 > [!WARNING]
 > This project began as a side project and is not production-grade. You may encounter bugs or incomplete behavior.
 
-
 <p align="center">
   <img src="./assets/icon.svg" alt="LiveMaid logo" width="96" height="96" />
 </p>
 
 <h1 align="center">LiveMaid</h1>
-
 
 <p align="center"><strong>An open source two way Mermaid diagram WYSIWYG editor</strong></p>
 
@@ -19,12 +17,32 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 ## ✨ Features
 
-- **Live WYSIWYG Editor:** Instantly preview your Mermaid diagrams as you type.
-- **Diagram Management:** Easily create, rename, and delete diagrams from a centralized dashboard.
-- **Powered by Monaco:** Enjoy a rich coding experience with the integrated Monaco Editor.
+- **Live WYSIWYG Editor:** Write Mermaid code and see the rendered diagram update in real time.
+- **Two-Way Visual Editing:** Click nodes, edges, and participants directly on the canvas to rename labels, change shapes/styles, reorder, or delete — all changes write back to the code instantly.
+- **Diagram Management:** Create, rename, and delete diagrams from a centralized dashboard, with folder organization support.
+- **Powered by Monaco:** Enjoy a rich code-editing experience with Mermaid syntax highlighting, powered by the Monaco Editor.
 - **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
-- **Modern Stack:** Built on top of Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
+- **Modern Stack:** Built on Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
 - **Demo Mode:** Run a read-only public-facing instance pre-loaded with sample diagrams — changes are never persisted.
+
+## 📊 Supported Diagrams
+
+LiveMaid has two levels of support for Mermaid diagram types:
+
+### ✅ Two-Way Sync (visual editing + code)
+
+These diagram types support full two-way interaction — you can click and manipulate elements directly on the canvas, and the code updates automatically. Code changes also re-render the diagram instantly.
+
+| Diagram              | Visual Editing Capabilities                                                                                                                                                                                                                                                                                       |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Flowchart**        | Select nodes & edges; rename labels inline; change node shape; update fill/stroke colour; animate edges; change connector style & arrow type; add/edit edge labels; duplicate or delete nodes                                                                                                                     |
+| **Sequence Diagram** | Select participants & messages; rename labels inline; change participant type (participant, actor, boundary, control, entity, database); change message style (solid/dashed, filled/cross arrow); add, move, or delete notes; drag messages to reorder chronologically; drag participants to reorder horizontally |
+
+### 🔲 Code Only (render + preview)
+
+All other Mermaid diagram types are fully supported for editing and rendering but do not yet have visual canvas interaction:
+
+Class diagram · State diagram · Entity Relationship · Gantt · Pie chart · Quadrant · Requirement · Gitgraph · Mindmap · Timeline · Sankey · ZenUML · Packet · Architecture · and any other valid Mermaid syntax.
 
 ## 🐳 Deployment (Docker)
 
