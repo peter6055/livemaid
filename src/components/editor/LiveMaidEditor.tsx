@@ -74,6 +74,8 @@ import {
   setClassRelationshipCardinality,
   setClassRelationshipLabel,
   deleteClassRelationship,
+  deleteClassByName,
+  deleteClassNoteByIndex,
   findClassDefinitionLine,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
@@ -549,6 +551,26 @@ export function LiveMaidEditor({
     if (newCode !== code) handleCodeChange(newCode);
     handleDeselect();
   }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
+
+  // Class-diagram node toolbar (single-click) delete handlers → route through handleCodeChange.
+  const handleDeleteClassNode = useCallback(
+    (name: string) => {
+      const newCode = deleteClassByName(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+      setSelectedClassName(null);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect, setSelectedClassName],
+  );
+
+  const handleDeleteClassNote = useCallback(
+    (noteIndex: number) => {
+      const newCode = deleteClassNoteByIndex(code, noteIndex);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
     if (!value) return null;
@@ -3253,6 +3275,8 @@ export function LiveMaidEditor({
             onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
             onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
             onDeleteClassRelationship={handleDeleteClassRelationship}
+            onDeleteClassNode={handleDeleteClassNode}
+            onDeleteClassNote={handleDeleteClassNote}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}

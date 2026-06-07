@@ -682,6 +682,65 @@ export function deleteClassRelationship(
   return lines.join("\n");
 }
 
+/**
+ * Delete a class entirely: its brace block / single-line decl, colon-form member lines, separate
+ * annotation line, any relationship lines referencing it, and any `note for <Class>` attached to
+ * it. Returns the code unchanged when the class isn't found.
+ */
+export function deleteClassByName(code: string, name: string): string {
+  const esc = escapeForRegex(name);
+  const lines = code.split("\n");
+  const remove = new Set<number>();
+
+  // Brace block: `class Name { … }` (assume a flat, non-nested member block).
+  const braceOpenRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b[^\\n{]*\\{`);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (braceOpenRe.test(lines[i])) {
+      remove.add(i);
+      for (let j = i + 1; j < lines.length; j += 1) {
+        remove.add(j);
+        if (/^[ \t]*\}/.test(lines[j])) break;
+      }
+    }
+  }
+
+  // Single-line decl (`class Name` / `class Name:Alias`), colon-form members (`Name : +x`), and a
+  // separate annotation line (`<<x>> Name`).
+  const singleDeclRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b.*$`);
+  const colonRe = new RegExp(`^[ \\t]*${esc}[ \\t]*:`);
+  const annRe = new RegExp(`^[ \\t]*<<.+?>>[ \\t]+${esc}[ \\t]*$`);
+  lines.forEach((l, i) => {
+    if (remove.has(i)) return;
+    if (singleDeclRe.test(l) && !l.includes("{")) remove.add(i);
+    else if (colonRe.test(l)) remove.add(i);
+    else if (annRe.test(l)) remove.add(i);
+  });
+
+  // Relationship lines referencing the class as source or target.
+  getClassRelationships(code).forEach((r) => {
+    if (r.source === name || r.target === name) remove.add(r.lineIndex);
+  });
+
+  // Notes attached to the class (`note for Name "…"`).
+  lines.forEach((l, i) => {
+    const m = l.match(/^[ \t]*note[ \t]+for[ \t]+(\S+)[ \t]+"/);
+    if (m && m[1] === name) remove.add(i);
+  });
+
+  if (remove.size === 0) return code;
+  return lines.filter((_, i) => !remove.has(i)).join("\n");
+}
+
+/** Delete the `noteIndex`-th note (source order). Returns the code unchanged when out of range. */
+export function deleteClassNoteByIndex(code: string, noteIndex: number): string {
+  const notes = getClassNotes(code);
+  const target = notes[noteIndex];
+  if (!target) return code;
+  const lines = code.split("\n");
+  lines.splice(target.lineIndex, 1);
+  return lines.join("\n");
+}
+
 /* -------------------------------------------------------------------------- */
 /* Toolbar                                                                     */
 /* -------------------------------------------------------------------------- */

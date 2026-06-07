@@ -13,6 +13,7 @@ import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { ClassEdgeToolbar } from "./ClassEdgeToolbar";
+import { ClassNodeToolbar } from "./ClassNodeToolbar";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
@@ -100,6 +101,9 @@ interface EditorCanvasProps {
   onUpdateClassRelationshipType?: (operator: string) => void;
   onSetClassRelationshipCardinality?: (sourceCard: string, targetCard: string) => void;
   onDeleteClassRelationship?: () => void;
+  /** Class-diagram node toolbar (single-click): delete a class / note. */
+  onDeleteClassNode?: (name: string) => void;
+  onDeleteClassNote?: (noteIndex: number) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -199,6 +203,8 @@ export function EditorCanvas({
   onUpdateClassRelationshipType,
   onSetClassRelationshipCardinality,
   onDeleteClassRelationship,
+  onDeleteClassNode,
+  onDeleteClassNote,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -1835,6 +1841,16 @@ export function EditorCanvas({
                           onChangeParticipantType={onChangeSequenceParticipantType}
                           currentParticipantType={currentSequenceParticipantType}
                           onDeleteNode={handleDeleteNode}
+                        />
+                      ) : currentType === "classDiagram" &&
+                        (connectSourceClass || connectSourceNote !== null) ? (
+                        <ClassNodeToolbar
+                          kind={connectSourceNote !== null ? "note" : "class"}
+                          scale={state.scale}
+                          onDelete={() => {
+                            if (connectSourceNote !== null) onDeleteClassNote?.(connectSourceNote);
+                            else if (connectSourceClass) onDeleteClassNode?.(connectSourceClass);
+                          }}
                         />
                       ) : currentType === "sequence" || currentType === "classDiagram" ? null : (
                         <NodeManipulationToolbar
