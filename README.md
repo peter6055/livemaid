@@ -35,15 +35,13 @@ These diagram types support full two-way interaction — you can click and manip
 
 | Diagram              | Visual Editing Capabilities                                                                                                                                                                                                                                                                                                                     |
 | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Flowchart**        | Select nodes & edges; rename labels inline; change node shape; update fill/stroke colour; animate edges; change connector style & arrow type; add/edit edge labels; duplicate or delete nodes                                                                                                                                                   |
-| **Sequence Diagram** | Select participants & messages; rename labels inline; change participant type (participant, actor, boundary, control, entity, database); change message style (solid/dashed, filled/cross arrow); add, move, or delete notes; drag messages to reorder chronologically; drag participants to reorder horizontally                               |
-| **Class Diagram**    | Add classes & notes; edit class name, annotation, attributes & methods in a property panel; drag to reorder members; edit relationships (line style, arrow/triangle/diamond end markers, cardinality, labels); edit the diagram title & notes inline; toggle hide-empty-members; change layout direction; delete classes, notes & relationships |
+| **Flowchart**        | Supported                                                                                                                                                                                                                                                                                                                                       |
+| **Sequence Diagram** | Supported                                                                                                                                                                                                                                                                                                                                       |
+| **Class Diagram**    | Supported                                                                                                                                                                                                                                                                                                                                       |
 
 ### 🔲 Code Only (render + preview)
 
-All other Mermaid diagram types are fully supported for editing and rendering but do not yet have visual canvas interaction:
-
-State diagram · Entity Relationship · Gantt · Pie chart · Quadrant · Requirement · Gitgraph · Mindmap · Timeline · Sankey · ZenUML · Packet · Architecture · and any other valid Mermaid syntax.
+All other Mermaid diagram types are fully supported for editing and rendering but do not yet have visual canvas interaction
 
 ## 🐳 Deployment (Docker)
 
