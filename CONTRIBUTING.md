@@ -13,11 +13,10 @@ Thank you for your interest in contributing! This document covers everything you
 - [🔄 CI/CD Flow](#-cicd-flow)
   - [1) PR Raised](#1-pr-raised)
   - [2) PR Check](#2-pr-check)
-  - [3) PR Preview Environment (Railway)](#3-pr-preview-environment-railway)
-  - [4) Merge](#4-merge)
-  - [5) Release](#5-release)
+  - [3) Merge](#3-merge)
+  - [4) Release](#4-release)
     - [Automatic versioning from the PR title](#automatic-versioning-from-the-pr-title)
-  - [6) Sandbox Deployment](#6-sandbox-deployment)
+  - [5) Sandbox Deployment](#5-sandbox-deployment)
 
 ## 🚀 Getting Started
 
@@ -89,8 +88,6 @@ This repository follows the pipeline below — from raising a PR through to the 
 flowchart TD
     A([PR raised → main]) --> B[ci/pr-checks<br/>typecheck · lint · format · build]
     A --> C[ci/pr-title<br/>validate Conventional Commit title]
-    A --> P[cd/railway-pr<br/>deploy ephemeral pr-N environment]
-    P -. on PR close/merge .-> Q[cd/railway-pr<br/>tear down pr-N environment]
     B --> D{All checks green?}
     C --> D
     D -->|No| A
@@ -120,27 +117,11 @@ Every PR must pass the following required checks before it can be merged:
 
 > 💡 Run `npm run prepush` locally before pushing to run all four checks (typecheck, lint, format check, build) and catch failures early.
 
-### 3) PR Preview Environment (Railway)
-
-- Workflow: `cd/railway-pr` (`.github/workflows/railway-deploy-pr.yml`)
-- Trigger: `pull_request` (opened / synchronize / reopened / closed)
-- Action: spins up an ephemeral Railway environment named `pr-<number>` (duplicating the base environment's config and variables), deploys the branch to it, and posts the preview URL as a sticky comment on the PR. The environment is re-deployed on every push and **destroyed automatically when the PR is closed or merged**.
-
-| Aspect            | Behaviour                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------- |
-| Enabled           | Opt-in: only runs when `vars.RAILWAY_PR_PREVIEWS` is `true`; otherwise both jobs skip. |
-| Environment       | `pr-<number>`, duplicated from `vars.RAILWAY_BASE_ENVIRONMENT` (default `production`). |
-| Created / updated | On `opened`, `reopened`, and every `synchronize` (push).                               |
-| Destroyed         | On `closed` (covers both merge and discard).                                           |
-| Forked PRs        | Skipped — repository secrets are not exposed to PRs from forks.                        |
-
-> ⚙️ Disabled by default. To enable, set repository variable `RAILWAY_PR_PREVIEWS` to `true` and provide secrets `RAILWAY_API_TOKEN` (account/workspace token, needed to create & delete environments) and `RAILWAY_PROJECT_ID`; optional variables `RAILWAY_SERVICE` (defaults to the repo name) and `RAILWAY_BASE_ENVIRONMENT` (defaults to `production`).
-
-### 4) Merge
+### 3) Merge
 
 - Merge PR into `main` (squash and merge).
 
-### 5) Release
+### 4) Release
 
 - Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
 - Trigger: `push` to `main`
@@ -174,7 +155,7 @@ flowchart LR
 
 The new version is computed from the latest existing `vX.Y.Z` git tag (defaulting to `v0.0.0` when none exist), so releases stay continuous across merges.
 
-### 6) Sandbox Deployment
+### 5) Sandbox Deployment
 
 - Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
 - Trigger: successful completion of `ci/release` (`workflow_run`)
