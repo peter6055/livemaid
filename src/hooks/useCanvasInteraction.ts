@@ -1605,21 +1605,21 @@ export function useCanvasInteraction({
         messageYsFromLines.length > 0
           ? messageYsFromLines
           : (
-            Array.from(
-              containerRef.current.querySelectorAll(".messageText"),
-            ) as SVGGraphicsElement[]
-          )
-            .map((m) => {
-              const rect = m.getBoundingClientRect();
-              return (
-                (rect.top -
-                  containerRect.top +
-                  containerRef.current!.scrollTop +
-                  rect.height / 2) /
-                scale
-              );
-            })
-            .filter((y) => Number.isFinite(y));
+              Array.from(
+                containerRef.current.querySelectorAll(".messageText"),
+              ) as SVGGraphicsElement[]
+            )
+              .map((m) => {
+                const rect = m.getBoundingClientRect();
+                return (
+                  (rect.top -
+                    containerRect.top +
+                    containerRef.current!.scrollTop +
+                    rect.height / 2) /
+                  scale
+                );
+              })
+              .filter((y) => Number.isFinite(y));
 
       if (baseYs.length === 0) return 0;
 
@@ -2191,10 +2191,10 @@ export function useCanvasInteraction({
           const normalizedClickedLabel = normalizeSequenceLabel(actorDisplayName);
           const labelMatchCount = actorDisplayName
             ? getSequenceParticipantEntries().filter(
-              (entry) =>
-                normalizeSequenceLabel(entry.alias) === normalizedClickedLabel ||
-                normalizeSequenceLabel(entry.id) === normalizedClickedLabel,
-            ).length
+                (entry) =>
+                  normalizeSequenceLabel(entry.alias) === normalizedClickedLabel ||
+                  normalizeSequenceLabel(entry.id) === normalizedClickedLabel,
+              ).length
             : 0;
           const labelIsAmbiguous = labelMatchCount > 1;
 
@@ -2780,8 +2780,8 @@ export function useCanvasInteraction({
         } else {
           const innerText = result?.rawSvgId
             ? document.querySelector(
-              `#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`,
-            )
+                `#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`,
+              )
             : null;
           if (innerText && innerText.textContent) {
             currentText = innerText.textContent.trim();
@@ -2976,13 +2976,13 @@ export function useCanvasInteraction({
         const overFloatingUi =
           typeof document !== "undefined" && document.elementsFromPoint
             ? document
-              .elementsFromPoint(e.clientX, e.clientY)
-              .some(
-                (el) =>
-                  el.closest?.("[data-inline-toolbar]") ||
-                  el.closest?.("[data-scale-lock]") ||
-                  el.closest?.("[data-scale-lock-border]"),
-              )
+                .elementsFromPoint(e.clientX, e.clientY)
+                .some(
+                  (el) =>
+                    el.closest?.("[data-inline-toolbar]") ||
+                    el.closest?.("[data-scale-lock]") ||
+                    el.closest?.("[data-scale-lock-border]"),
+                )
             : false;
         if (overFloatingUi) {
           setHoveredSequenceActorBox(null);
@@ -3592,7 +3592,7 @@ export function useCanvasInteraction({
     selectedNodeId,
     setSelectedNodeId,
     selectedNodeIds: [] as string[],
-    setSelectedNodeIds: (_: string[]) => { },
+    setSelectedNodeIds: (_: string[]) => {},
     selectedSvgId,
     setSelectedSvgId,
     selectionBox,
@@ -3616,7 +3616,7 @@ export function useCanvasInteraction({
     resolveSequenceHighlightTarget,
     openHighlightRecolorRef,
     dragState: null as null,
-    setDragState: (_: unknown) => { },
+    setDragState: (_: unknown) => {},
     startSequenceConnection,
     inlineInputRef,
     commitEditRef,

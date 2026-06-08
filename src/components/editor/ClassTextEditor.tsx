@@ -115,12 +115,13 @@ export function ClassTextEditor({
         width,
         height,
       }}
-      className={`z-[60] resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${kind === "title"
+      className={`z-[60] resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
+        kind === "title"
           ? "text-center font-semibold"
           : kind === "relationship" || kind === "namespace"
             ? "text-center"
             : "text-left"
-        }`}
+      }`}
     />
   );
 }

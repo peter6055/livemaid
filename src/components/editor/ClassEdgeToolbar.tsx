@@ -92,7 +92,8 @@ export function ClassEdgeToolbar({
     "pointer-events-auto flex items-center justify-center h-8 rounded-md px-2.5 gap-1.5 whitespace-nowrap text-foreground transition-colors hover:bg-accent hover:text-accent-foreground";
   // Menu trigger: highlighted (filled) while its panel is open so the active choice is obvious.
   const triggerCls = (active: boolean) =>
-    `pointer-events-auto flex items-center gap-1.5 h-8 rounded-md px-3 text-sm font-semibold transition-colors ${active ? "bg-indigo-600 text-white shadow-sm" : "text-foreground hover:bg-accent"
+    `pointer-events-auto flex items-center gap-1.5 h-8 rounded-md px-3 text-sm font-semibold transition-colors ${
+      active ? "bg-indigo-600 text-white shadow-sm" : "text-foreground hover:bg-accent"
     }`;
 
   const renderMarkerRow = (end: "source" | "target") => {
@@ -109,8 +110,9 @@ export function ClassEdgeToolbar({
               onClick={() =>
                 applyParts(end === "source" ? { sourceMarker: m.key } : { targetMarker: m.key })
               }
-              className={`flex h-8 w-8 items-center justify-center rounded-md border font-mono text-base transition-colors hover:bg-accent ${active ? "border-indigo-500 bg-accent ring-1 ring-indigo-500" : "border-border"
-                }`}
+              className={`flex h-8 w-8 items-center justify-center rounded-md border font-mono text-base transition-colors hover:bg-accent ${
+                active ? "border-indigo-500 bg-accent ring-1 ring-indigo-500" : "border-border"
+              }`}
             >
               {MARKER_GLYPH[m.key][end === "source" ? "left" : "right"]}
             </button>
@@ -184,10 +186,11 @@ export function ClassEdgeToolbar({
                         type="button"
                         title={ls === "solid" ? "Solid line" : "Dashed line"}
                         onClick={() => setLineStyle(ls)}
-                        className={`flex h-7 w-11 items-center justify-center rounded-md border transition-colors hover:bg-accent ${parts.lineStyle === ls
+                        className={`flex h-7 w-11 items-center justify-center rounded-md border transition-colors hover:bg-accent ${
+                          parts.lineStyle === ls
                             ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
                             : "border-border"
-                          }`}
+                        }`}
                       >
                         <svg width="24" height="2" viewBox="0 0 24 2" aria-hidden="true">
                           <line
@@ -272,10 +275,11 @@ export function ClassEdgeToolbar({
                                     ? onSetCardinality(preset, rel.targetCard)
                                     : onSetCardinality(rel.sourceCard, preset)
                                 }
-                                className={`flex h-7 items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${active
+                                className={`flex h-7 items-center justify-center rounded-md border px-2 font-mono text-sm transition-colors hover:bg-accent ${
+                                  active
                                     ? "border-indigo-500 bg-accent ring-1 ring-indigo-500"
                                     : "border-border"
-                                  }`}
+                                }`}
                               >
                                 {preset === "" ? "—" : preset}
                               </button>
@@ -355,8 +359,9 @@ function CustomCardInput({
         }
       }}
       title="Type a custom cardinality"
-      className={`h-7 w-full min-w-0 rounded-md border bg-background px-1.5 text-center font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-indigo-500 ${active ? "border-indigo-500 ring-1 ring-indigo-500" : "border-border hover:bg-accent"
-        }`}
+      className={`h-7 w-full min-w-0 rounded-md border bg-background px-1.5 text-center font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground/60 focus-visible:ring-1 focus-visible:ring-indigo-500 ${
+        active ? "border-indigo-500 ring-1 ring-indigo-500" : "border-border hover:bg-accent"
+      }`}
     />
   );
 }

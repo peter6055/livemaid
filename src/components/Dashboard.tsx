@@ -529,8 +529,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     const inScope = isSearching
       ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
       : // Root view ("All Diagrams") lists EVERY diagram regardless of folder; a specific folder
-      // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
-      currentFolderId === null
+        // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
+        currentFolderId === null
         ? diagrams
         : diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
     const sorted = [...inScope];
@@ -1114,10 +1114,11 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     key={t.id}
                     type="button"
                     onClick={() => setCreateType(t.id)}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${createType === t.id
+                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                      createType === t.id
                         ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
                         : "border-border text-muted-foreground hover:bg-accent"
-                      }`}
+                    }`}
                   >
                     {t.label}
                   </button>
