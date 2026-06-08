@@ -13,10 +13,11 @@ Thank you for your interest in contributing! This document covers everything you
 - [🔄 CI/CD Flow](#-cicd-flow)
   - [1) PR Raised](#1-pr-raised)
   - [2) PR Check](#2-pr-check)
-  - [3) Merge](#3-merge)
-  - [4) Release](#4-release)
+  - [3) PR Preview Environment (Railway)](#3-pr-preview-environment-railway)
+  - [4) Merge](#4-merge)
+  - [5) Release](#5-release)
     - [Automatic versioning from the PR title](#automatic-versioning-from-the-pr-title)
-  - [5) Sandbox Deployment](#5-sandbox-deployment)
+  - [6) Sandbox Deployment](#6-sandbox-deployment)
 
 ## 🚀 Getting Started
 
@@ -88,6 +89,8 @@ This repository follows the pipeline below — from raising a PR through to the 
 flowchart TD
     A([PR raised → main]) --> B[ci/pr-checks<br/>typecheck · lint · format · build]
     A --> C[ci/pr-title<br/>validate Conventional Commit title]
+    A --> P[Railway bot<br/>ephemeral PR preview environment]
+    P -. on PR close/merge .-> Q[Railway bot<br/>tear down preview environment]
     B --> D{All checks green?}
     C --> D
     D -->|No| A
@@ -117,11 +120,19 @@ Every PR must pass the following required checks before it can be merged:
 
 > 💡 Run `npm run prepush` locally before pushing to run all four checks (typecheck, lint, format check, build) and catch failures early.
 
-### 3) Merge
+### 3) PR Preview Environment (Railway)
+
+- Handled by: the **Railway GitHub bot** (Railway's native PR Environments), not a workflow in this repo.
+- Trigger: opening / updating a pull request.
+- Action: Railway automatically spins up an ephemeral preview environment for the PR, redeploys it on each push, and **destroys it when the PR is closed or merged**. The bot posts the preview URL and deployment status directly on the PR.
+
+> ℹ️ Because this is managed by Railway's GitHub integration, there is nothing to maintain in `.github/workflows/`. Enable or disable it from the Railway project settings (PR environments).
+
+### 4) Merge
 
 - Merge PR into `main` (squash and merge).
 
-### 4) Release
+### 5) Release
 
 - Workflow: `ci/release` (`.github/workflows/docker-publish.yml`)
 - Trigger: `push` to `main`
@@ -155,7 +166,7 @@ flowchart LR
 
 The new version is computed from the latest existing `vX.Y.Z` git tag (defaulting to `v0.0.0` when none exist), so releases stay continuous across merges.
 
-### 5) Sandbox Deployment
+### 6) Sandbox Deployment
 
 - Workflow: `cd/railway-sandbox` (`.github/workflows/railway-deploy-sandbox.yml`)
 - Trigger: successful completion of `ci/release` (`workflow_run`)
