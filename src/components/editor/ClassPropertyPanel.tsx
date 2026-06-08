@@ -351,7 +351,7 @@ export function ClassPropertyPanel({
       data-class-property-panel
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-96 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
+      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-[34rem] max-w-[calc(100vw-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

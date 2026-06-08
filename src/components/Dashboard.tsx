@@ -15,7 +15,6 @@ import {
   Moon,
   Search,
   X,
-  Repeat2,
   FolderPlus,
   ChevronRight,
   ArrowDownUp,
@@ -771,16 +770,6 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
           {/* Main Content */}
           <div className="w-full max-w-7xl mx-auto px-6 md:px-10 py-8 flex-grow">
-            {/* Two-way sync info — compact inline banner */}
-            <div className="mb-6 flex items-center gap-3 rounded-lg border border-indigo-200/50 dark:border-indigo-800/50 bg-gradient-to-r from-indigo-50 to-indigo-100/40 dark:from-indigo-950/30 dark:to-indigo-900/20 px-4 py-2.5">
-              <Repeat2 className="w-4 h-4 shrink-0 text-indigo-600 dark:text-indigo-400" />
-              <p className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Two-way sync</span> — edit visually or
-                via code; Flowchart, Sequence &amp; Class diagrams stay in sync. Other types are
-                code-only.
-              </p>
-            </div>
-
             {/* Header: breadcrumb + title on top, controls in a full-width wrapping row below */}
             <div className="mb-6">
               {/* Breadcrumb navigation */}
@@ -1119,6 +1108,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   { id: "flowchart", label: "Flowchart" },
                   { id: "sequence", label: "Sequence" },
                   { id: "classDiagram", label: "Class" },
+                  { id: "erDiagram", label: "ER" },
                 ].map((t) => (
                   <button
                     key={t.id}

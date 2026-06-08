@@ -52,6 +52,7 @@ These diagram types support full two-way interaction — you can click and manip
 | **Flowchart**        | Supported                   |
 | **Sequence Diagram** | Supported                   |
 | **Class Diagram**    | Supported                   |
+| **ER Diagram**       | Supported                   |
 
 ### 🔲 Code Only (render + preview)
 

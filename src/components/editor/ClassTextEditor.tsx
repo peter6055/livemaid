@@ -13,6 +13,12 @@ interface ClassTextEditorProps {
   onCommit: (value: string) => void;
   /** Abandon the edit without committing (called on Escape). */
   onCancel: () => void;
+  /**
+   * Optional live-change callback fired on every keystroke (used by the ER relationship-label
+   * editor for real-time per-keystroke code sync). The class diagram does not pass this, so its
+   * behaviour is unchanged (commit on blur/Enter only).
+   */
+  onLiveChange?: (value: string) => void;
 }
 
 /**
@@ -27,6 +33,7 @@ export function ClassTextEditor({
   rect,
   onCommit,
   onCancel,
+  onLiveChange,
 }: ClassTextEditorProps) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const committedRef = useRef(false);
@@ -77,7 +84,10 @@ export function ClassTextEditor({
       data-class-text-editor
       value={value}
       spellCheck={false}
-      onChange={(e) => setValue(e.target.value)}
+      onChange={(e) => {
+        setValue(e.target.value);
+        onLiveChange?.(e.target.value);
+      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {

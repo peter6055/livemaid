@@ -220,7 +220,7 @@ export function FolderTree({
         } ${rootDragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
       >
         <Home className="h-4 w-4 shrink-0" />
-        <span className="truncate">All Diagrams</span>
+        <span className="truncate">Workspace</span>
       </div>
 
       {roots.map((folder) => (

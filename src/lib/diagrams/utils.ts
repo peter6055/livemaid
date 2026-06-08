@@ -41,6 +41,45 @@ export function determineDiagramType(sourceCode: string): string {
   return "flowchart";
 }
 
+/**
+ * Human-friendly display name for a diagram type id (the value returned by
+ * `determineDiagramType`, e.g. `erDiagram` → "ER Diagram", `classDiagram` → "Class Diagram").
+ * Falls back to splitting camelCase and title-casing for unmapped types.
+ */
+export function diagramTypeLabel(type: string): string {
+  const KNOWN: Record<string, string> = {
+    flowchart: "Flowchart",
+    graph: "Flowchart",
+    sequence: "Sequence Diagram",
+    sequenceDiagram: "Sequence Diagram",
+    classDiagram: "Class Diagram",
+    erDiagram: "ER Diagram",
+    stateDiagram: "State Diagram",
+    "stateDiagram-v2": "State Diagram",
+    gantt: "Gantt Chart",
+    pie: "Pie Chart",
+    journey: "User Journey",
+    mindmap: "Mindmap",
+    gitGraph: "Git Graph",
+    timeline: "Timeline",
+    quadrantChart: "Quadrant Chart",
+    requirementDiagram: "Requirement Diagram",
+    sankey: "Sankey Diagram",
+    "sankey-beta": "Sankey Diagram",
+    xychart: "XY Chart",
+    "xychart-beta": "XY Chart",
+    block: "Block Diagram",
+    "block-beta": "Block Diagram",
+    C4Context: "C4 Diagram",
+  };
+  if (KNOWN[type]) return KNOWN[type];
+  const spaced = type
+    .replace(/[-_]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
 export function updateMermaidConfigProperty(code: string, property: string, value: string): string {
   // Capture ONLY the indented children of `config:` (group 2), not everything up to the
   // closing `---`. This prevents trailing top-level frontmatter keys such as `title:` (added
