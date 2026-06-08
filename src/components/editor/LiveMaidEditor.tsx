@@ -243,7 +243,7 @@ export function LiveMaidEditor({
       .then((data) => {
         if (!cancelled) setFolders(Array.isArray(data) ? data : []);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       cancelled = true;
     };
@@ -320,6 +320,16 @@ export function LiveMaidEditor({
   // double-click of a class node (see the dblclick listener below) and stays open until an explicit
   // close (X button, or a click that is neither the panel nor another class node).
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
+
+  // Tracks whether the class property panel currently holds invalid attribute/method rows. Kept in
+  // a ref (not state) so the outside-click deselect listener reads the latest value without
+  // re-subscribing, and so it never triggers a re-render of the editor on every keystroke.
+  const classPanelHasErrorsRef = useRef(false);
+  // Stable identity so the panel's validity effects don't re-fire (and its unmount reset doesn't
+  // misfire) on every parent render.
+  const handleClassPanelValidityChange = useCallback((hasErrors: boolean) => {
+    classPanelHasErrorsRef.current = hasErrors;
+  }, []);
 
   // Inline text editor for a class-diagram TITLE, NOTE, or relationship LABEL (double-click to
   // edit, click outside to exit). Positioned in viewport space from the element's bounding rect at
@@ -527,6 +537,9 @@ export function LiveMaidEditor({
       if (t.closest(".monaco-editor")) return;
       const node = t.closest("g.node");
       if (node && /classId-/.test(node.id)) return;
+      // Validation guard: while the property panel holds invalid attribute/method rows, an
+      // outside click must NOT close it (mirrors the panel's own X-button guard).
+      if (classPanelHasErrorsRef.current) return;
       setSelectedClassName(null);
     };
     document.addEventListener("mousedown", onDown, true);
@@ -3324,17 +3337,15 @@ export function LiveMaidEditor({
                           );
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        code.match(/autonumber/i)
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i)
                           ? "bg-indigo-600"
                           : "bg-slate-200 dark:bg-slate-700"
-                      }`}
+                        }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                          }`}
                       />
                     </button>
                   </div>
@@ -3396,6 +3407,7 @@ export function LiveMaidEditor({
             selectedClass={selectedClass}
             onApplyClassEdits={handleApplyClassEdits}
             onCloseClassPanel={handleDeselect}
+            onClassPanelValidityChange={handleClassPanelValidityChange}
             onAddClassRelationship={handleAddClassRelationship}
             onLinkNoteToClass={handleLinkNoteToClass}
             onCreateClassLinked={handleCreateClassLinked}
@@ -3578,10 +3590,10 @@ export function LiveMaidEditor({
                       style={
                         c === "transparent"
                           ? {
-                              backgroundImage:
-                                "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
-                              backgroundSize: "10px 10px",
-                            }
+                            backgroundImage:
+                              "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
+                            backgroundSize: "10px 10px",
+                          }
                           : undefined
                       }
                     />

@@ -294,6 +294,49 @@ export interface ClassEdits {
   newName?: string;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Member validation (Property Panel) — attributes and methods are validated   */
+/* by SEPARATE rule sets because Mermaid distinguishes the two purely by the    */
+/* presence of parentheses (`()` ⇒ method, otherwise attribute).                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Validate a single ATTRIBUTE row from the class property panel. Returns a human-readable error
+ * string when invalid, or `null` when valid. An empty / whitespace-only row is valid — it is just a
+ * blank placeholder that is filtered out on commit.
+ *
+ * Rules (verified against mermaid 11): an attribute MUST NOT contain parentheses (Mermaid would
+ * silently reclassify it as a method), and MUST NOT contain `{`/`}` (the class-block delimiters,
+ * which are a hard parse error inside a member line).
+ */
+export function validateClassAttribute(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (/[()]/.test(t)) return "Attributes can't contain parentheses — add it as a method instead.";
+  if (/[{}]/.test(t)) return "Attributes can't contain { or } characters.";
+  return null;
+}
+
+/**
+ * Validate a single METHOD row. Returns a human-readable error string when invalid, or `null` when
+ * valid (an empty / whitespace-only row is valid — a blank placeholder filtered out on commit).
+ *
+ * Rules (verified against mermaid 11): a method MUST include parentheses (Mermaid only treats a
+ * member with `()` as a method; otherwise it renders as an attribute), the parentheses must be
+ * balanced and the opener must precede the closer (`+has)paren` is a hard parse error), and it MUST
+ * NOT contain `{`/`}`.
+ */
+export function validateClassMethod(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  if (/[{}]/.test(t)) return "Methods can't contain { or } characters.";
+  const open = (t.match(/\(/g) ?? []).length;
+  const close = (t.match(/\)/g) ?? []).length;
+  if (open === 0 || close === 0) return "Methods must include parentheses, e.g. doThing().";
+  if (open !== close || t.indexOf("(") > t.indexOf(")")) return "Unbalanced parentheses.";
+  return null;
+}
+
 /**
  * Apply Property-Panel edits to a class, re-serialising it into the canonical brace form and
  * removing now-redundant colon-form member lines / separate annotation lines for that class.
@@ -450,12 +493,12 @@ export const CLASS_END_MARKERS: Array<{
   left: string;
   right: string;
 }> = [
-  { key: "none", label: "None", left: "", right: "" },
-  { key: "arrow", label: "Arrow", left: "<", right: ">" },
-  { key: "triangle", label: "Triangle", left: "<|", right: "|>" },
-  { key: "diamondFilled", label: "Filled diamond", left: "*", right: "*" },
-  { key: "diamondHollow", label: "Hollow diamond", left: "o", right: "o" },
-];
+    { key: "none", label: "None", left: "", right: "" },
+    { key: "arrow", label: "Arrow", left: "<", right: ">" },
+    { key: "triangle", label: "Triangle", left: "<|", right: "|>" },
+    { key: "diamondFilled", label: "Filled diamond", left: "*", right: "*" },
+    { key: "diamondHollow", label: "Hollow diamond", left: "o", right: "o" },
+  ];
 
 export interface ClassRelationshipParts {
   sourceMarker: ClassEndMarker;
@@ -1008,16 +1051,15 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       return;
     }
     const current = getClassTitle(code).trim();
-    const description = `Turning off the title removes it from the diagram. The current title${
-      current ? ` ("${current}")` : ""
-    } will be lost.`;
+    const description = `Turning off the title removes it from the diagram. The current title${current ? ` ("${current}")` : ""
+      } will be lost.`;
     const ok = requestConfirm
       ? await requestConfirm({
-          title: "Remove diagram title?",
-          description,
-          confirmLabel: "Remove title",
-          destructive: true,
-        })
+        title: "Remove diagram title?",
+        description,
+        confirmLabel: "Remove title",
+        destructive: true,
+      })
       : window.confirm(`Remove diagram title?\n\n${description}`);
     if (ok) setCode(removeClassTitle(code));
   };
@@ -1079,16 +1121,14 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={() => setCode(setHideEmptyMembersBox(code, !hideEmpty))}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-            hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-          }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+            }`}
           aria-label="Toggle hide empty members box"
           aria-pressed={hideEmpty}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-              hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
-            }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
+              }`}
           />
         </button>
       </div>
@@ -1103,16 +1143,14 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={handleToggleTitle}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-          }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+            }`}
           aria-label="Toggle diagram title"
           aria-pressed={hasTitle}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
-            }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+              }`}
           />
         </button>
       </div>

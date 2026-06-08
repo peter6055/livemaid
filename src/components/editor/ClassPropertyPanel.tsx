@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Trash2, GripVertical } from "lucide-react";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
+import { validateClassAttribute, validateClassMethod } from "@/lib/diagrams/classDiagram";
 
 interface ClassPropertyPanelProps {
   /** The parsed class currently selected on the canvas, or null when no class is selected. */
@@ -11,9 +12,18 @@ interface ClassPropertyPanelProps {
   onApply: (edits: ClassEdits) => void;
   /** Close the panel (deselects the class). */
   onClose: () => void;
+  /**
+   * Report whether the panel currently holds invalid attribute/method rows. The parent uses this to
+   * block deselection (closing the panel) while validation is failing.
+   */
+  onValidityChange?: (hasErrors: boolean) => void;
 }
 
 type MemberSection = "attributes" | "methods";
+
+/** Per-section validator — attributes and methods are validated by SEPARATE rule sets. */
+const validateRow = (section: MemberSection, value: string): string | null =>
+  section === "attributes" ? validateClassAttribute(value) : validateClassMethod(value);
 
 /**
  * Contextual right-sidebar property panel for editing a UML class (the PRD's "better approach":
@@ -31,7 +41,12 @@ type MemberSection = "attributes" | "methods";
  *  - When the selection switches to a different class, or the code changes externally while no
  *    field is focused, the local state re-seeds from props (keeps code ↔ panel in sync).
  */
-export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPropertyPanelProps) {
+export function ClassPropertyPanel({
+  selectedClass,
+  onApply,
+  onClose,
+  onValidityChange,
+}: ClassPropertyPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -56,12 +71,24 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
 
   const className = selectedClass?.name ?? null;
 
-  // Seed/re-seed local state from props when the selected class changes, or when the code changes
-  // externally while the panel is not focused (avoid clobbering in-progress typing).
+  // Per-section validation (attributes and methods use SEPARATE rule sets). Index-aligned with the
+  // rendered rows so each invalid row can surface its own inline error.
+  const attributeErrors = attributes.map((row) => validateRow("attributes", row));
+  const methodErrors = methods.map((row) => validateRow("methods", row));
+  const hasErrors = attributeErrors.some(Boolean) || methodErrors.some(Boolean);
+
+  // Seed/re-seed local state from props. When the SELECTED CLASS changes identity, always re-seed
+  // (the previous class's local edits/errors no longer apply). For an external code change to the
+  // SAME class, suppress the re-seed while the panel is focused (don't clobber in-progress typing)
+  // or while there are local validation errors (a debounced commit landing mid-fix must never
+  // silently discard the invalid row the user is correcting).
+  const prevClassNameRef = useRef<string | null>(null);
   useEffect(() => {
     if (!selectedClass) return;
+    const classChanged = prevClassNameRef.current !== className;
     const panelHasFocus = !!rootRef.current?.contains(document.activeElement);
-    if (panelHasFocus) return;
+    if (!classChanged && (panelHasFocus || hasErrors)) return;
+    prevClassNameRef.current = className;
     setName(selectedClass.name);
     setAnnotation(selectedClass.annotation);
     setAttributes(selectedClass.attributes.length ? selectedClass.attributes : [""]);
@@ -89,9 +116,19 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
     pendingFocus.current = null;
   }, [focusTick]);
 
+  // Report validity upward so the parent can block deselection (closing the panel) while invalid.
+  // Reset to valid on unmount so a stale error state can never permanently wedge the deselect guard.
+  useEffect(() => {
+    onValidityChange?.(hasErrors);
+  }, [hasErrors, onValidityChange]);
+  useEffect(() => () => onValidityChange?.(false), [onValidityChange]);
+
   if (!selectedClass) return null;
 
-  const cleanRows = (rows: string[]) => rows.map((s) => s.trim()).filter(Boolean);
+  // Drop blank rows AND rows that fail their section's validator so invalid text never reaches the
+  // Mermaid code (which would break rendering); the invalid rows stay in the panel until fixed.
+  const cleanRows = (section: MemberSection, rows: string[]) =>
+    rows.map((s) => s.trim()).filter((s) => s && !validateRow(section, s));
 
   const commit = (override?: {
     annotation?: string;
@@ -100,8 +137,8 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
   }) => {
     onApply({
       annotation: override?.annotation ?? annotation,
-      attributes: cleanRows(override?.attributes ?? attributes),
-      methods: cleanRows(override?.methods ?? methods),
+      attributes: cleanRows("attributes", override?.attributes ?? attributes),
+      methods: cleanRows("methods", override?.methods ?? methods),
     });
   };
 
@@ -116,8 +153,8 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
     onApply({
       newName: trimmed,
       annotation,
-      attributes: cleanRows(attributes),
-      methods: cleanRows(methods),
+      attributes: cleanRows("attributes", attributes),
+      methods: cleanRows("methods", methods),
     });
   };
 
@@ -189,6 +226,7 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
     last = false,
   ) => {
     const rows = getRows(section);
+    const errors = section === "attributes" ? attributeErrors : methodErrors;
     // Keep the ref array in sync with the rendered rows (drop stale tail entries after deletes).
     inputRefs.current[section].length = rows.length;
     return (
@@ -203,80 +241,105 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
               dragOverRow.index === i &&
               dragRow?.section === section &&
               dragRow.from !== i;
+            const rowError = errors[i];
             return (
               <div
                 // Index keys are intentional: row focus is managed explicitly via inputRefs.
                 key={`${section}-${i}`}
-                data-member-row
-                onDragOver={(e) => {
-                  if (!dragRow || dragRow.section !== section) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (dragOverRow?.section !== section || dragOverRow.index !== i) {
-                    setDragOverRow({ section, index: i });
-                  }
-                }}
-                onDrop={(e) => {
-                  if (!dragRow || dragRow.section !== section) return;
-                  e.preventDefault();
-                  reorderRows(section, dragRow.from, i);
-                  setDragRow(null);
-                  setDragOverRow(null);
-                }}
-                className={`group flex items-center border-b border-border last:border-b-0 hover:bg-accent/40 ${
-                  isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
-                } ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""}`}
+                className="border-b border-border last:border-b-0"
               >
-                <input
-                  ref={(el) => {
-                    inputRefs.current[section][i] = el;
+                <div
+                  data-member-row
+                  onDragOver={(e) => {
+                    if (!dragRow || dragRow.section !== section) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOverRow?.section !== section || dragOverRow.index !== i) {
+                      setDragOverRow({ section, index: i });
+                    }
                   }}
-                  value={row}
-                  onChange={(e) => handleRowChange(section, i, e.target.value)}
-                  onKeyDown={(e) => handleRowKeyDown(section, i, e)}
-                  onBlur={() => commit()}
-                  placeholder={placeholder}
-                  spellCheck={false}
-                  className="min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm text-foreground outline-none placeholder:text-muted-foreground/60"
-                />
-                <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
-                  <button
-                    type="button"
-                    onClick={() => deleteRow(section, i)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    title="Delete row"
-                    aria-label="Delete row"
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-500 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:hover:text-red-400"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      setDragRow({ section, from: i });
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", String(i));
-                      const rowEl = (e.currentTarget as HTMLElement).closest("[data-member-row]");
-                      if (rowEl) e.dataTransfer.setDragImage(rowEl as Element, 20, 16);
+                  onDrop={(e) => {
+                    if (!dragRow || dragRow.section !== section) return;
+                    e.preventDefault();
+                    reorderRows(section, dragRow.from, i);
+                    setDragRow(null);
+                    setDragOverRow(null);
+                  }}
+                  className={`group flex items-center hover:bg-accent/40 ${isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
+                    } ${rowError ? "bg-red-500/5 ring-1 ring-inset ring-red-500/50" : ""} ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""
+                    }`}
+                >
+                  <input
+                    ref={(el) => {
+                      inputRefs.current[section][i] = el;
                     }}
-                    onDragEnd={() => {
-                      setDragRow(null);
-                      setDragOverRow(null);
-                    }}
-                    title="Drag to reorder"
-                    aria-label="Drag to reorder"
-                    className="flex h-6 w-5 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors active:cursor-grabbing focus-visible:outline-none group-hover:text-indigo-500 dark:group-hover:text-indigo-400"
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </button>
+                    value={row}
+                    onChange={(e) => handleRowChange(section, i, e.target.value)}
+                    onKeyDown={(e) => handleRowKeyDown(section, i, e)}
+                    onBlur={() => commit()}
+                    placeholder={placeholder}
+                    spellCheck={false}
+                    aria-invalid={!!rowError}
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground/60 ${rowError ? "text-red-600 dark:text-red-400" : "text-foreground"
+                      }`}
+                  />
+                  <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(section, i)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      title="Delete row"
+                      aria-label="Delete row"
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-500 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        setDragRow({ section, from: i });
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", String(i));
+                        const rowEl = (e.currentTarget as HTMLElement).closest("[data-member-row]");
+                        if (rowEl) e.dataTransfer.setDragImage(rowEl as Element, 20, 16);
+                      }}
+                      onDragEnd={() => {
+                        setDragRow(null);
+                        setDragOverRow(null);
+                      }}
+                      title="Drag to reorder"
+                      aria-label="Drag to reorder"
+                      className="flex h-6 w-5 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors active:cursor-grabbing focus-visible:outline-none group-hover:text-indigo-500 dark:group-hover:text-indigo-400"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
+                {rowError && (
+                  <p className="px-3 pb-1.5 text-xs leading-snug text-red-600 dark:text-red-400">
+                    {rowError}
+                  </p>
+                )}
               </div>
             );
           })}
         </div>
       </div>
     );
+  };
+  // Closing is blocked while any row is invalid — focus the first offending row instead so the user
+  // is taken straight to what needs fixing. The parent ALSO blocks outside-click deselection via the
+  // reported `onValidityChange`, so this guards the explicit (X button) close path symmetrically.
+  const handleCloseAttempt = () => {
+    if (hasErrors) {
+      const section: MemberSection = attributeErrors.some(Boolean) ? "attributes" : "methods";
+      const errs = section === "attributes" ? attributeErrors : methodErrors;
+      const idx = errs.findIndex(Boolean);
+      inputRefs.current[section]?.[idx]?.focus();
+      return;
+    }
+    onClose();
   };
 
   return (
@@ -293,13 +356,24 @@ export function ClassPropertyPanel({ selectedClass, onApply, onClose }: ClassPro
         </div>
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleCloseAttempt}
           className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
           aria-label="Close properties panel"
         >
           <X className="h-5 w-5" />
         </button>
       </div>
+
+      {hasErrors && (
+        <p
+          role="alert"
+          className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs leading-snug text-red-600 dark:text-red-400"
+        >
+          Fix the highlighted attribute/method{" "}
+          {attributeErrors.some(Boolean) && methodErrors.some(Boolean) ? "rows" : "row"} before
+          closing this panel.
+        </p>
+      )}
 
       <label className="flex flex-col gap-1.5">
         <span className="text-sm font-medium text-muted-foreground">Class name</span>

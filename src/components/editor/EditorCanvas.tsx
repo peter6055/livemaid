@@ -96,6 +96,8 @@ interface EditorCanvasProps {
   selectedClass?: ParsedClass | null;
   onApplyClassEdits?: (edits: ClassEdits) => void;
   onCloseClassPanel?: () => void;
+  /** Class-diagram property panel: report whether it holds invalid attribute/method rows. */
+  onClassPanelValidityChange?: (hasErrors: boolean) => void;
   /** Class-diagram connection drag (the purple +): create relationships / link notes. */
   onAddClassRelationship?: (source: string, target: string, operator: string) => void;
   onLinkNoteToClass?: (noteIndex: number, className: string) => void;
@@ -205,6 +207,7 @@ export function EditorCanvas({
   selectedClass,
   onApplyClassEdits,
   onCloseClassPanel,
+  onClassPanelValidityChange,
   onAddClassRelationship,
   onLinkNoteToClass,
   onCreateClassLinked,
@@ -1287,26 +1290,26 @@ export function EditorCanvas({
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
-                        // Ignore double-clicks that land on a floating toolbar / overlay control so
-                        // they never enter the underlying element's edit mode. This guard lives on the
-                        // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
-                        // Rename button (which calls handleEditClick programmatically while the cursor
-                        // is over the toolbar) still works.
-                        const hitFloatingUi = document
-                          .elementsFromPoint(e.clientX, e.clientY)
-                          .some((el) =>
-                            Boolean(
-                              el.closest?.("[data-scale-lock]") ||
-                              el.closest?.("[data-scale-lock-max1]") ||
-                              el.closest?.("[data-inline-toolbar]") ||
-                              el.closest?.("[data-scale-lock-border]") ||
-                              el.closest?.("[data-scale-lock-shadow]") ||
-                              el.closest?.('[data-slot^="dropdown-menu"]'),
-                            ),
-                          );
-                        if (hitFloatingUi) return;
-                        handleEditClick(e);
-                      }
+                      // Ignore double-clicks that land on a floating toolbar / overlay control so
+                      // they never enter the underlying element's edit mode. This guard lives on the
+                      // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
+                      // Rename button (which calls handleEditClick programmatically while the cursor
+                      // is over the toolbar) still works.
+                      const hitFloatingUi = document
+                        .elementsFromPoint(e.clientX, e.clientY)
+                        .some((el) =>
+                          Boolean(
+                            el.closest?.("[data-scale-lock]") ||
+                            el.closest?.("[data-scale-lock-max1]") ||
+                            el.closest?.("[data-inline-toolbar]") ||
+                            el.closest?.("[data-scale-lock-border]") ||
+                            el.closest?.("[data-scale-lock-shadow]") ||
+                            el.closest?.('[data-slot^="dropdown-menu"]'),
+                          ),
+                        );
+                      if (hitFloatingUi) return;
+                      handleEditClick(e);
+                    }
                     : undefined
                 }
                 onMouseMove={handleMouseMove}
@@ -1552,9 +1555,9 @@ export function EditorCanvas({
                             const anchorX = rootRect
                               ? buttonRect.left - rootRect.left + buttonRect.width / 2
                               : Number(
-                                  e.currentTarget.getAttribute("data-seq-plus-anchor-x") ||
-                                    sequenceLifelineOverlay.x,
-                                );
+                                e.currentTarget.getAttribute("data-seq-plus-anchor-x") ||
+                                sequenceLifelineOverlay.x,
+                              );
                             const anchorMenuY = rootRect
                               ? buttonRect.top - rootRect.top + buttonRect.height / 2
                               : anchorY;
@@ -1832,9 +1835,9 @@ export function EditorCanvas({
                           selectedNodeId={selectedNodeId}
                           code={code}
                           scale={state.scale}
-                          onUpdateRelationshipType={onUpdateClassRelationshipType || (() => {})}
-                          onSetCardinality={onSetClassRelationshipCardinality || (() => {})}
-                          onDeleteRelationship={onDeleteClassRelationship || (() => {})}
+                          onUpdateRelationshipType={onUpdateClassRelationshipType || (() => { })}
+                          onSetCardinality={onSetClassRelationshipCardinality || (() => { })}
+                          onDeleteRelationship={onDeleteClassRelationship || (() => { })}
                         />
                       ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
                         <EdgeManipulationToolbar
@@ -1843,11 +1846,11 @@ export function EditorCanvas({
                           currentType={currentType}
                           selectedSvgId={selectedSvgId}
                           scale={state.scale}
-                          onUpdateStyle={onUpdateEdgeStyle || (() => {})}
-                          onUpdateColor={onUpdateEdgeColor || (() => {})}
+                          onUpdateStyle={onUpdateEdgeStyle || (() => { })}
+                          onUpdateColor={onUpdateEdgeColor || (() => { })}
                           onUpdateAnimation={onUpdateEdgeAnimation}
                           onEditLabel={(e) => handleEditClick(e)}
-                          onDeleteEdge={onDeleteEdge || (() => {})}
+                          onDeleteEdge={onDeleteEdge || (() => { })}
                         />
                       ) : selectedNodeId &&
                         (selectedNodeId.startsWith("SEQ_ACTOR_") ||
@@ -1956,9 +1959,9 @@ export function EditorCanvas({
                                 startNodeId: selectedNodeId,
                                 startPos: selectionBox
                                   ? {
-                                      x: selectionBox.x + selectionBox.width / 2,
-                                      y: selectionBox.y + selectionBox.height + 4,
-                                    }
+                                    x: selectionBox.x + selectionBox.width / 2,
+                                    y: selectionBox.y + selectionBox.height + 4,
+                                  }
                                   : null,
                                 mousePos: null,
                                 isDragging: false,
@@ -2067,6 +2070,7 @@ export function EditorCanvas({
           selectedClass={selectedClass}
           onApply={(edits) => onApplyClassEdits?.(edits)}
           onClose={() => onCloseClassPanel?.()}
+          onValidityChange={onClassPanelValidityChange}
         />
       )}
 
