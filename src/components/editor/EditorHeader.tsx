@@ -57,7 +57,10 @@ export function EditorHeader({
   onExport,
   onVersionHistory,
 }: EditorHeaderProps) {
-  const { theme, setTheme } = useTheme();
+  // `resolvedTheme` (NOT `theme`): `theme` is the literal setting ("system") on a fresh load, so it
+  // doesn't reflect the actual dark/light in effect. Use the resolved value so the toggle's state
+  // and action stay correct even before the user has explicitly picked a theme.
+  const { resolvedTheme, setTheme } = useTheme();
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -157,7 +160,7 @@ export function EditorHeader({
             <DropdownMenuItem
               onClick={(e) => {
                 e.preventDefault();
-                setTheme(theme === "dark" ? "light" : "dark");
+                setTheme(resolvedTheme === "dark" ? "light" : "dark");
               }}
               className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full"
             >
@@ -166,10 +169,10 @@ export function EditorHeader({
                 <span>Dark Mode</span>
               </span>
               <div
-                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${theme === "dark" ? "bg-indigo-500" : "bg-slate-300"}`}
+                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${resolvedTheme === "dark" ? "bg-indigo-500" : "bg-slate-300"}`}
               >
                 <div
-                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${theme === "dark" ? "left-4" : "left-1"}`}
+                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${resolvedTheme === "dark" ? "left-4" : "left-1"}`}
                 />
               </div>
             </DropdownMenuItem>
