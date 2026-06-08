@@ -14,6 +14,9 @@ import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
 import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { ClassEdgeToolbar } from "./ClassEdgeToolbar";
 import { ClassNodeToolbar } from "./ClassNodeToolbar";
+import { ErNodeToolbar } from "./ErNodeToolbar";
+import { ErEdgeToolbar } from "./ErEdgeToolbar";
+import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
@@ -24,6 +27,8 @@ import {
   getClassNamespace,
 } from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
+import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
+import type { ParsedEntity, EntityEdits } from "@/lib/diagrams/erDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -115,6 +120,26 @@ interface EditorCanvasProps {
   onMoveClassToNamespace?: (className: string, target: string) => void;
   onMoveClassToNewNamespace?: (className: string) => void;
   onRemoveClassFromNamespace?: (className: string) => void;
+  /** ER-diagram property panel: the parsed entity currently selected (null otherwise). */
+  selectedEntity?: ParsedEntity | null;
+  onApplyEntityEdits?: (edits: EntityEdits) => void;
+  onCloseEntityPanel?: () => void;
+  onEntityPanelValidityChange?: (hasErrors: boolean) => void;
+  /** ER-diagram node toolbar (single-click): duplicate / style / delete the entity. */
+  onDuplicateEntity?: (name: string) => void;
+  onDeleteEntity?: (name: string) => void;
+  onSetEntityStyle?: (name: string, patch: Record<string, string>) => void;
+  onResetEntityStyle?: (name: string) => void;
+  /** The selected entity's current `style` property map (for the style popover's active states). */
+  currentEntityStyle?: Record<string, string>;
+  /** ER-diagram relationship edge toolbar: mutate operator (cardinality/line), delete, edit label. */
+  onUpdateErRelationshipOperator?: (operator: string) => void;
+  onDeleteErRelationship?: () => void;
+  onEditErEdgeLabel?: () => void;
+  /** ER-diagram drag-to-connect: create a relationship between two entities (US1). */
+  onAddErRelationship?: (source: string, target: string) => void;
+  /** ER-diagram drag-to-connect onto empty canvas: create a NEW entity linked to the source. */
+  onCreateErEntityLinked?: (source: string) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -221,6 +246,20 @@ export function EditorCanvas({
   onMoveClassToNamespace,
   onMoveClassToNewNamespace,
   onRemoveClassFromNamespace,
+  selectedEntity,
+  onApplyEntityEdits,
+  onCloseEntityPanel,
+  onEntityPanelValidityChange,
+  onDuplicateEntity,
+  onDeleteEntity,
+  onSetEntityStyle,
+  onResetEntityStyle,
+  currentEntityStyle,
+  onUpdateErRelationshipOperator,
+  onDeleteErRelationship,
+  onEditErEdgeLabel,
+  onAddErRelationship,
+  onCreateErEntityLinked,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -317,6 +356,16 @@ export function EditorCanvas({
     snap: { cx: number; cy: number; w: number; h: number } | null;
   } | null>(null);
   const [classConnectMenu, setClassConnectMenu] = useState<ClassConnectMenuState | null>(null);
+  // ER drag-to-connect state (US1): the live preview line + snap highlight while dragging the
+  // purple + from a selected entity toward a target entity. Mirrors the class connect drag.
+  const [erConnecting, setErConnecting] = useState(false);
+  const [erConnect, setErConnect] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    snap: { cx: number; cy: number; w: number; h: number } | null;
+  } | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
@@ -920,6 +969,90 @@ export function EditorCanvas({
       : null;
   }, [currentType, selectedSvgId, selectedNodeId, code]);
 
+  // The ER entity currently eligible for the single-click node toolbar (Duplicate / Style / Delete).
+  // Resolved from the single-click selection's SVG id (`…-entity-<Name>-<idx>`), which survives
+  // dashed entity names (e.g. `LINE-ITEM`).
+  const connectSourceEntity = useMemo(
+    () => (currentType === "erDiagram" ? entityNameFromSvgId(selectedSvgId) : null),
+    [currentType, selectedSvgId],
+  );
+
+  // Begin an ER drag-to-connect from the purple + (US1). Fully isolated (own window listeners +
+  // preview SVG outside TransformWrapper), mirroring the class connect drag. Dropping onto a
+  // DIFFERENT entity creates a default relationship (`source ||--|| target : ""`); dropping on
+  // EMPTY canvas creates a NEW entity linked to the source; a no-drag click / drop on the source
+  // itself is a silent no-op.
+  const startErConnectDrag = (e: React.MouseEvent<HTMLButtonElement>, sourceName: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const shell = canvasShellRef.current;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
+    const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+
+    const resolveTarget = (
+      clientX: number,
+      clientY: number,
+    ): { name: string; el: Element } | null => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        const g = el.closest("g.node");
+        if (!g || !/-entity-.+-\d+$/.test(g.id)) continue;
+        const name = entityNameFromSvgId(g.id);
+        if (!name || name === sourceName) return null; // self → ignore
+        return { name, el: g };
+      }
+      return null;
+    };
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    let dragging = false;
+    setErConnecting(true);
+
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+      }
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      if (tgt) {
+        const r = tgt.el.getBoundingClientRect();
+        snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+      }
+      setErConnect({
+        x1: anchorX,
+        y1: anchorY,
+        x2: ev.clientX - shellRect.left,
+        y2: ev.clientY - shellRect.top,
+        snap,
+      });
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setErConnect(null);
+      setErConnecting(false);
+      if (!dragging) return; // a plain click on the + (no drag) is a no-op
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      if (tgt) {
+        onAddErRelationship?.(sourceName, tgt.name);
+      } else {
+        // Dropped on empty canvas → create a NEW entity linked to the source.
+        onCreateErEntityLinked?.(sourceName);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   // Begin a class-diagram connection drag from the purple +. Fully isolated (own window listeners +
   // preview SVG outside TransformWrapper), mirroring the sequence endpoint drag. The source is
   // either a class or a note:
@@ -1191,7 +1324,8 @@ export function EditorCanvas({
             !!seqReorder ||
             seqEndpointDragging ||
             !!seqLifelineReorder ||
-            classConnecting,
+            classConnecting ||
+            erConnecting,
           excluded: [
             "seq-connect-btn",
             "seq-msg-reorder-handle",
@@ -1199,6 +1333,8 @@ export function EditorCanvas({
             "seq-actor-reorder-handle",
             "class-connect-btn",
             "class-relation-hit-target",
+            "er-connect-btn",
+            "er-relation-hit-target",
           ],
         }}
         trackPadPanning={{ disabled: false }}
@@ -1839,6 +1975,15 @@ export function EditorCanvas({
                           onSetCardinality={onSetClassRelationshipCardinality || (() => {})}
                           onDeleteRelationship={onDeleteClassRelationship || (() => {})}
                         />
+                      ) : selectedNodeId && selectedNodeId.startsWith("ER_EDGE_") ? (
+                        <ErEdgeToolbar
+                          selectedNodeId={selectedNodeId}
+                          code={code}
+                          scale={state.scale}
+                          onUpdateOperator={onUpdateErRelationshipOperator || (() => {})}
+                          onEditLabel={() => onEditErEdgeLabel?.()}
+                          onDeleteRelationship={onDeleteErRelationship || (() => {})}
+                        />
                       ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
                         <EdgeManipulationToolbar
                           code={code}
@@ -1903,7 +2048,18 @@ export function EditorCanvas({
                             else if (connectSourceClass) onDeleteClassNode?.(connectSourceClass);
                           }}
                         />
-                      ) : currentType === "sequence" || currentType === "classDiagram" ? null : (
+                      ) : currentType === "erDiagram" && connectSourceEntity ? (
+                        <ErNodeToolbar
+                          scale={state.scale}
+                          currentStyle={currentEntityStyle ?? {}}
+                          onDuplicate={() => onDuplicateEntity?.(connectSourceEntity)}
+                          onDelete={() => onDeleteEntity?.(connectSourceEntity)}
+                          onSetStyle={(patch) => onSetEntityStyle?.(connectSourceEntity, patch)}
+                          onResetStyle={() => onResetEntityStyle?.(connectSourceEntity)}
+                        />
+                      ) : currentType === "sequence" ||
+                        currentType === "classDiagram" ||
+                        currentType === "erDiagram" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -1937,6 +2093,7 @@ export function EditorCanvas({
                     {!isInlineEditing &&
                       currentType !== "sequence" &&
                       currentType !== "classDiagram" &&
+                      currentType !== "erDiagram" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -2049,6 +2206,32 @@ export function EditorCanvas({
                           </button>
                         </div>
                       )}
+
+                    {/* ER-diagram connection + (purple): drag from a selected entity onto another
+                        entity to create a relationship (US1 drag-to-connect). */}
+                    {!isInlineEditing &&
+                      currentType === "erDiagram" &&
+                      connectSourceEntity &&
+                      selectionBox &&
+                      !erConnecting && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            className="er-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                            title="Drag onto another entity to relate, or onto empty canvas to create a linked entity"
+                            onMouseDown={(e) => startErConnectDrag(e, connectSourceEntity)}
+                          >
+                            <Plus className="w-3 h-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
                   </div>
                 )}
               </div>
@@ -2071,6 +2254,16 @@ export function EditorCanvas({
           onApply={(edits) => onApplyClassEdits?.(edits)}
           onClose={() => onCloseClassPanel?.()}
           onValidityChange={onClassPanelValidityChange}
+        />
+      )}
+
+      {/* ER-diagram property panel — same viewport-level right-sidebar pattern as the class panel. */}
+      {currentType === "erDiagram" && selectedEntity && (
+        <ErPropertyPanel
+          selectedEntity={selectedEntity}
+          onApply={(edits) => onApplyEntityEdits?.(edits)}
+          onClose={() => onCloseEntityPanel?.()}
+          onValidityChange={onEntityPanelValidityChange}
         />
       )}
 
@@ -2164,6 +2357,49 @@ export function EditorCanvas({
               y={classConnect.snap.cy - 3}
               width={classConnect.snap.w + 6}
               height={classConnect.snap.h + 6}
+              rx={6}
+              fill="rgba(99,102,241,0.10)"
+              stroke="#6366f1"
+              strokeWidth={2}
+            />
+          )}
+        </svg>
+      )}
+
+      {/* ER-diagram drag-to-connect preview line + snap highlight (US1), rendered outside the
+          TransformWrapper at shell level so pan/zoom never distorts its coordinates. */}
+      {erConnect && (
+        <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+          <defs>
+            <marker
+              id="er-connect-arrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+            </marker>
+          </defs>
+          <line
+            x1={erConnect.x1}
+            y1={erConnect.y1}
+            x2={erConnect.x2}
+            y2={erConnect.y2}
+            stroke="#6366f1"
+            strokeDasharray="10,8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            markerEnd="url(#er-connect-arrow)"
+          />
+          {erConnect.snap && (
+            <rect
+              x={erConnect.snap.cx - 3}
+              y={erConnect.snap.cy - 3}
+              width={erConnect.snap.w + 6}
+              height={erConnect.snap.h + 6}
               rx={6}
               fill="rgba(99,102,241,0.10)"
               stroke="#6366f1"

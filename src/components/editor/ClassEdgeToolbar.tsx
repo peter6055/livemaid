@@ -171,7 +171,7 @@ export function ClassEdgeToolbar({
 
             {openPanel === "relationship" && (
               <div
-                className="absolute left-0 bottom-full z-40 mb-2 w-max rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+                className="absolute left-0 bottom-full z-40 mb-12 w-max rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex flex-col gap-2.5">
@@ -247,7 +247,7 @@ export function ClassEdgeToolbar({
 
             {openPanel === "cardinality" && (
               <div
-                className="absolute left-0 bottom-full z-40 mb-2 w-64 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
+                className="absolute left-0 bottom-full z-40 mb-12 w-64 rounded-xl border border-border bg-popover p-2.5 text-popover-foreground shadow-xl"
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="flex flex-col gap-4">

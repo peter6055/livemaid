@@ -284,6 +284,39 @@ function addInteractionHelpersToSvg(svgString: string): string {
       }
     });
 
+    // ER-diagram relationship edges (`path.relationshipLine`) get the same wide transparent
+    // hit-target treatment. The clone keeps the stable `data-id` (`id_<srcSvgId>_<dstSvgId>_<N>`)
+    // used to resolve the edge back to its source line, but drops the id and arrow markers so it
+    // neither duplicates ids nor paints a second crow's-foot.
+    const erRelationPaths = doc.querySelectorAll("path.relationshipLine");
+    erRelationPaths.forEach((path) => {
+      const clone = path.cloneNode(true) as SVGElement;
+      // Strip `relationshipLine` so the clone is ONLY `er-relation-hit-target` (keeps
+      // `path.relationshipLine[data-id=…]` selection re-resolve + hover CSS unambiguous).
+      clone.classList.remove("relationshipLine");
+      // Drop Mermaid's line-pattern classes so the transparent hit-target is a SOLID continuous
+      // stroke (otherwise clicks fall through the gaps of a dashed/non-identifying relationship).
+      clone.classList.remove("edge-pattern-dashed", "edge-pattern-dotted");
+      clone.classList.add("er-relation-hit-target");
+      const dataId = path.getAttribute("data-id");
+      if (dataId) clone.setAttribute("data-id", dataId);
+      clone.removeAttribute("id");
+      clone.removeAttribute("marker-start");
+      clone.removeAttribute("marker-end");
+      clone.removeAttribute("stroke-dasharray");
+      clone.setAttribute("stroke-width", "50px");
+      clone.setAttribute("stroke", "transparent");
+      clone.setAttribute("fill", "none");
+      clone.setAttribute("opacity", "0.01");
+      clone.setAttribute(
+        "style",
+        "stroke-width: 50px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important; stroke-dasharray: none !important;",
+      );
+      if (path.parentNode) {
+        path.parentNode.insertBefore(clone, path);
+      }
+    });
+
     const serializer = new XMLSerializer();
     return serializer.serializeToString(doc);
   } catch (error) {

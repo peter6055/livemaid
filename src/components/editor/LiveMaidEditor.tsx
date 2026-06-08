@@ -96,6 +96,27 @@ import {
   moveClassToNewNamespace,
   type ClassEdits,
 } from "@/lib/diagrams/classDiagram";
+import {
+  entityNameFromSvgId,
+  parseEntityByName,
+  applyEntityEdits,
+  duplicateEntity,
+  deleteEntity,
+  getEntityStyle,
+  setEntityStyle,
+  removeEntityStyle,
+  findEntityDefinitionLine,
+  getErTitle,
+  upsertErTitle,
+  removeErTitle,
+  addErRelationship,
+  addEntityWithRelationship,
+  updateErRelationshipOperator,
+  setErRelationshipLabel,
+  deleteErRelationship,
+  erRelationshipFromEdgeDataId,
+  type EntityEdits,
+} from "@/lib/diagrams/erDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -174,6 +195,12 @@ export function LiveMaidEditor({
 
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isLocked, setIsLocked] = useState(false);
+  // Mirror `isLocked` in a ref so the document-level double-click routers (registered once with a
+  // `[code]` dep) can read the latest lock state without re-subscribing. When the diagram is locked
+  // the canvas is read-only: double-click-to-edit (labels, titles, notes) and the property panels
+  // must NOT open.
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
     isNavigating: boolean;
@@ -321,6 +348,32 @@ export function LiveMaidEditor({
   // close (X button, or a click that is neither the panel nor another class node).
   const [selectedClassName, setSelectedClassName] = useState<string | null>(null);
 
+  // ER-diagram property panel state. `selectedEntityName` is sticky for the same reason as
+  // `selectedClassName`: the interaction hook clears the canvas selection on every re-render it
+  // can't re-resolve (which happens for entity nodes on each attribute edit), so the panel is
+  // driven by this double-click-set state, not the live selection.
+  const [selectedEntityName, setSelectedEntityName] = useState<string | null>(null);
+  const entityPanelHasErrorsRef = useRef(false);
+  const handleEntityPanelValidityChange = useCallback((hasErrors: boolean) => {
+    entityPanelHasErrorsRef.current = hasErrors;
+  }, []);
+
+  // ER-diagram inline TITLE editor (double-click the diagram title to edit, click outside to exit).
+  // Mirrors the class-diagram title editing flow and reuses the shared `ClassTextEditor` overlay.
+  const [erTitleEdit, setErTitleEdit] = useState<{
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
+  // ER-diagram inline relationship LABEL editor (US4). Double-click an edge / its label (or the edge
+  // toolbar pencil) to edit the `: "label"` inline; commits live per-keystroke (debounced) AND on
+  // Enter / blur. `lineIndex` is the relationship's source line, resolved at open time.
+  const [erEdgeLabelEdit, setErEdgeLabelEdit] = useState<{
+    lineIndex: number;
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
   // Tracks whether the class property panel currently holds invalid attribute/method rows. Kept in
   // a ref (not state) so the outside-click deselect listener reads the latest value without
   // re-subscribing, and so it never triggers a re-render of the editor on every keystroke.
@@ -349,6 +402,11 @@ export function LiveMaidEditor({
       setSelectedClassName(null);
       setClassTextEdit(null);
     }
+    if (determineDiagramType(code) !== "erDiagram") {
+      setSelectedEntityName(null);
+      setErTitleEdit(null);
+      setErEdgeLabelEdit(null);
+    }
   }, [code]);
 
   // Double-click routing for class diagrams: a class node opens the property panel; the diagram
@@ -361,6 +419,8 @@ export function LiveMaidEditor({
     if (determineDiagramType(code) !== "classDiagram") return;
 
     const route = (clientX: number, clientY: number) => {
+      // In lock mode the canvas is read-only — no double-click-to-edit / property panel.
+      if (isLockedRef.current) return;
       const els = document.elementsFromPoint(clientX, clientY);
       if (
         els.some((el) =>
@@ -501,6 +561,116 @@ export function LiveMaidEditor({
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
   }, [code]);
+
+  // Open the ER relationship-label inline editor (US4) at a viewport point. The shared
+  // `ClassTextEditor` centers itself on the given rect (a small box at the click / edge point — the
+  // relationship line has no single tidy label box, mirroring the class relationship label edit).
+  const openErEdgeLabelEditor = useCallback(
+    (lineIndex: number, label: string, clientX: number, clientY: number) => {
+      setErEdgeLabelEdit({
+        lineIndex,
+        value: label,
+        rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+      });
+    },
+    [],
+  );
+
+  // Double-click routing for ER diagrams: an entity node opens its property panel. Detected by the
+  // same TIMING technique as the class router (the first click mounts the selection overlay, so the
+  // browser never dispatches a native `dblclick` on the second click). `elementsFromPoint` sees
+  // through the overlay to the underlying `g.node` whose id ends in `-entity-<Name>-<idx>`.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "erDiagram") return;
+
+    const route = (clientX: number, clientY: number) => {
+      // In lock mode the canvas is read-only — no double-click-to-edit / entity property panel.
+      if (isLockedRef.current) return;
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest(
+            "[data-er-property-panel],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
+          ),
+        )
+      ) {
+        return;
+      }
+      // Diagram title — `text.erDiagramTitleText`. Double-click to inline-edit (same as the class
+      // diagram title). Opens the shared `ClassTextEditor` seeded from the frontmatter `title:`.
+      const titleEl = els.find((el) => el.classList?.contains("erDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setErTitleEdit({
+          value: getErTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+      // Relationship edge / its label (US4) — double-click to inline-edit the `: "label"`. Detect
+      // the relationship path (or its wide hit-target), or the `.edgeLabel` container, then resolve
+      // its stable `data-id` to the source line via the trailing `_<N>` index.
+      const edgeEl = els.find(
+        (el) =>
+          el.classList?.contains("relationshipLine") ||
+          el.classList?.contains("er-relation-hit-target"),
+      );
+      const labelEl = els.map((el) => el.closest(".edgeLabel")).find((g): g is Element => !!g);
+      const edgeDataId =
+        edgeEl?.getAttribute("data-id") ??
+        labelEl?.querySelector("[data-id]")?.getAttribute("data-id") ??
+        null;
+      if (edgeDataId) {
+        const rel = erRelationshipFromEdgeDataId(code, edgeDataId);
+        if (rel) {
+          openErEdgeLabelEditor(rel.lineIndex, rel.label, clientX, clientY);
+          return;
+        }
+      }
+      const entityGroup = els
+        .map((el) => el.closest("g.node"))
+        .find((g): g is Element => !!g && /-entity-.+-\d+$/.test(g.id));
+      if (entityGroup) {
+        const name = entityNameFromSvgId(entityGroup.id);
+        if (name) setSelectedEntityName(name);
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0;
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code, openErEdgeLabelEditor]);
+
+  // Close the ER property panel on a click that is neither the panel, an entity node, nor the
+  // Monaco editor (the code editor is exempt so editing the `{ }` block keeps the panel open and the
+  // grid live-updates). Blocked while the panel holds invalid attribute rows.
+  useEffect(() => {
+    if (!selectedEntityName) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (!t) return;
+      if (t.closest("[data-er-property-panel]")) return;
+      if (t.closest(".monaco-editor")) return;
+      const node = t.closest("g.node");
+      if (node && /-entity-.+-\d+$/.test(node.id)) return;
+      if (entityPanelHasErrorsRef.current) return;
+      setSelectedEntityName(null);
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [selectedEntityName]);
 
   const commitClassTextEdit = useCallback(
     (value: string) => {
@@ -693,6 +863,177 @@ export function LiveMaidEditor({
       if (newCode !== code) handleCodeChange(newCode);
     },
     [code, handleCodeChange],
+  );
+
+  /* ----------------------------- ER diagram wiring ---------------------------- */
+
+  // The parsed entity backing the ER property panel (sticky double-click selection).
+  const selectedEntity = useMemo(() => {
+    if (!selectedEntityName || determineDiagramType(code) !== "erDiagram") return null;
+    return parseEntityByName(code, selectedEntityName);
+  }, [selectedEntityName, code]);
+
+  // The single-clicked entity's current `style` properties — feeds the node toolbar's style popover
+  // active states. Resolved from the selection's SVG id (single-click), which the property panel
+  // selection (double-click) does not require.
+  const currentEntityStyle = useMemo(() => {
+    if (determineDiagramType(code) !== "erDiagram") return {};
+    const name = entityNameFromSvgId(selectedSvgId);
+    return name ? getEntityStyle(code, name) : {};
+  }, [code, selectedSvgId]);
+
+  const handleApplyEntityEdits = useCallback(
+    (edits: EntityEdits) => {
+      if (!selectedEntityName) return;
+      const newCode = applyEntityEdits(code, selectedEntityName, edits);
+      if (newCode !== code) handleCodeChange(newCode);
+      const nextName = edits.newName?.trim();
+      if (nextName && nextName !== selectedEntityName) setSelectedEntityName(nextName);
+    },
+    [code, handleCodeChange, selectedEntityName],
+  );
+
+  const handleDuplicateEntity = useCallback(
+    (name: string) => {
+      handleCodeChange(duplicateEntity(code, name));
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleDeleteEntity = useCallback(
+    (name: string) => {
+      const newCode = deleteEntity(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+      if (selectedEntityName === name) setSelectedEntityName(null);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect, selectedEntityName],
+  );
+
+  const handleSetEntityStyle = useCallback(
+    (name: string, patch: Record<string, string>) => {
+      const newCode = setEntityStyle(code, name, patch);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleResetEntityStyle = useCallback(
+    (name: string) => {
+      const newCode = removeEntityStyle(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleCloseEntityPanel = useCallback(() => {
+    setSelectedEntityName(null);
+  }, []);
+
+  // Commit the inline ER title edit: an empty value removes the title (drops the frontmatter line),
+  // otherwise it upserts `title:`. Routes through handleCodeChange so it is a single undo step.
+  const commitErTitleEdit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      const newCode = trimmed ? upsertErTitle(code, trimmed) : removeErTitle(code);
+      if (newCode !== code) handleCodeChange(newCode);
+      setErTitleEdit(null);
+    },
+    [code, handleCodeChange],
+  );
+
+  /* ----------------------- ER relationship edge wiring ---------------------- */
+
+  // Resolve the selected ER edge (`ER_EDGE_id_<src>_<dst>_<N>`) back to its parsed relationship.
+  const resolveSelectedErEdge = useCallback(() => {
+    if (!selectedNodeId?.startsWith("ER_EDGE_")) return null;
+    return erRelationshipFromEdgeDataId(code, selectedNodeId.replace("ER_EDGE_", ""));
+  }, [code, selectedNodeId]);
+
+  // US2/US3 — rewrite the relationship operator (cardinality + line style) on the selected edge.
+  const handleUpdateErRelationshipOperator = useCallback(
+    (operator: string) => {
+      const rel = resolveSelectedErEdge();
+      if (!rel) return;
+      const newCode = updateErRelationshipOperator(code, rel.lineIndex, operator);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange, resolveSelectedErEdge],
+  );
+
+  // US2 — delete the selected relationship edge (entities are preserved).
+  const handleDeleteErRelationship = useCallback(() => {
+    const rel = resolveSelectedErEdge();
+    if (!rel) return;
+    const newCode = deleteErRelationship(code, rel.lineIndex);
+    if (newCode !== code) handleCodeChange(newCode);
+    handleDeselect();
+  }, [code, handleCodeChange, handleDeselect, resolveSelectedErEdge]);
+
+  // US1 — create a relationship between two entities (drag-to-connect). Default operator `||--||`
+  // with an empty quoted label (`ENTITY_A ||--|| ENTITY_B : ""`).
+  const handleAddErRelationship = useCallback(
+    (source: string, target: string) => {
+      handleCodeChange(addErRelationship(code, source, target, "||--||", ""));
+    },
+    [code, handleCodeChange],
+  );
+
+  // US1 — drag-to-connect onto EMPTY canvas: create a new (auto-named) entity linked to the source
+  // with the default operator. Single undo step.
+  const handleCreateErEntityLinked = useCallback(
+    (source: string) => {
+      handleCodeChange(addEntityWithRelationship(code, source, "||--||", "").code);
+    },
+    [code, handleCodeChange],
+  );
+
+  // US4 — open the label editor from the edge toolbar pencil. Positions the editor over the
+  // selected edge's label (or its path center) by resolving the edge's DOM via the stable data-id.
+  const handleEditErEdgeLabel = useCallback(() => {
+    const rel = resolveSelectedErEdge();
+    if (!rel || !selectedNodeId) return;
+    const dataId = selectedNodeId.replace("ER_EDGE_", "");
+    const container = document.querySelector(".mermaid-container");
+    // Prefer the rendered edge-label box; fall back to the relationship path's bounding box.
+    const labelEl = Array.from(container?.querySelectorAll(".edgeLabel") ?? []).find(
+      (el) => el.querySelector("[data-id]")?.getAttribute("data-id") === dataId,
+    );
+    const pathEl = container?.querySelector(`path.relationshipLine[data-id="${dataId}"]`) ?? null;
+    let rect = (labelEl ?? pathEl)?.getBoundingClientRect() ?? null;
+    if (rect && rect.width === 0 && rect.height === 0)
+      rect = pathEl?.getBoundingClientRect() ?? rect;
+    const r = rect ?? new DOMRect(0, 0, 0, 0);
+    openErEdgeLabelEditor(rel.lineIndex, rel.label, r.left + r.width / 2, r.top + r.height / 2);
+  }, [resolveSelectedErEdge, selectedNodeId, openErEdgeLabelEditor]);
+
+  // US4 — live per-keystroke sync (debounced) so the code mirrors typing without re-rendering the
+  // canvas on every keystroke (which would risk focus loss). The final value also commits on
+  // Enter / blur via `commitErEdgeLabelEdit`.
+  const erLabelDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleErEdgeLabelLiveChange = useCallback(
+    (value: string) => {
+      if (!erEdgeLabelEdit) return;
+      const lineIndex = erEdgeLabelEdit.lineIndex;
+      if (erLabelDebounceRef.current) clearTimeout(erLabelDebounceRef.current);
+      erLabelDebounceRef.current = setTimeout(() => {
+        const newCode = setErRelationshipLabel(code, lineIndex, value);
+        if (newCode !== code) handleCodeChange(newCode);
+      }, 250);
+    },
+    [code, handleCodeChange, erEdgeLabelEdit],
+  );
+
+  const commitErEdgeLabelEdit = useCallback(
+    (value: string) => {
+      if (erLabelDebounceRef.current) clearTimeout(erLabelDebounceRef.current);
+      if (erEdgeLabelEdit) {
+        const newCode = setErRelationshipLabel(code, erEdgeLabelEdit.lineIndex, value);
+        if (newCode !== code) handleCodeChange(newCode);
+      }
+      setErEdgeLabelEdit(null);
+    },
+    [code, handleCodeChange, erEdgeLabelEdit],
   );
 
   const toMermaidColorToken = useCallback((value: string | null | undefined): string | null => {
@@ -1101,6 +1442,11 @@ export function LiveMaidEditor({
       const rel = classRelationshipFromEdgeDataId(code, selectedNodeId.replace("CLASS_EDGE_", ""));
       return rel ? toRange(rel.lineIndex) : null;
     }
+    // ER relationship edge → its source line.
+    if (selectedNodeId?.startsWith("ER_EDGE_")) {
+      const rel = erRelationshipFromEdgeDataId(code, selectedNodeId.replace("ER_EDGE_", ""));
+      return rel ? toRange(rel.lineIndex) : null;
+    }
     if (determineDiagramType(code) === "classDiagram" && selectedSvgId) {
       const noteMatch = selectedSvgId.match(/-note(\d+)$/);
       if (noteMatch) {
@@ -1116,6 +1462,16 @@ export function LiveMaidEditor({
     }
     if (selectedClassName) {
       return toRange(findClassDefinitionLine(code, selectedClassName));
+    }
+
+    // ER diagram: highlight the selected entity's definition line. Single-click sets `selectedSvgId`
+    // (`…-entity-<Name>-<idx>`); double-click also sets the sticky `selectedEntityName`.
+    if (determineDiagramType(code) === "erDiagram" && selectedSvgId) {
+      const entityName = entityNameFromSvgId(selectedSvgId);
+      if (entityName) return toRange(findEntityDefinitionLine(code, entityName));
+    }
+    if (selectedEntityName) {
+      return toRange(findEntityDefinitionLine(code, selectedEntityName));
     }
 
     if (!selectedNodeId) return null;
@@ -1162,6 +1518,7 @@ export function LiveMaidEditor({
     selectedNodeId,
     selectedClassName,
     selectedSvgId,
+    selectedEntityName,
     code,
     getSequenceMessageEntries,
     getSequenceNoteEntries,
@@ -3423,6 +3780,20 @@ export function LiveMaidEditor({
             onMoveClassToNamespace={handleMoveClassToNamespace}
             onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
             onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
+            selectedEntity={selectedEntity}
+            onApplyEntityEdits={handleApplyEntityEdits}
+            onCloseEntityPanel={handleCloseEntityPanel}
+            onEntityPanelValidityChange={handleEntityPanelValidityChange}
+            onDuplicateEntity={handleDuplicateEntity}
+            onDeleteEntity={handleDeleteEntity}
+            onSetEntityStyle={handleSetEntityStyle}
+            onResetEntityStyle={handleResetEntityStyle}
+            currentEntityStyle={currentEntityStyle}
+            onUpdateErRelationshipOperator={handleUpdateErRelationshipOperator}
+            onDeleteErRelationship={handleDeleteErRelationship}
+            onEditErEdgeLabel={handleEditErEdgeLabel}
+            onAddErRelationship={handleAddErRelationship}
+            onCreateErEntityLinked={handleCreateErEntityLinked}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}
@@ -3483,6 +3854,32 @@ export function LiveMaidEditor({
           rect={classTextEdit.rect}
           onCommit={commitClassTextEdit}
           onCancel={() => setClassTextEdit(null)}
+        />
+      )}
+
+      {/* ER-diagram title inline editor (double-click the title to edit, click outside to exit).
+          Reuses the shared ClassTextEditor overlay (kind="title"). */}
+      {erTitleEdit && (
+        <ClassTextEditor
+          kind="title"
+          initialValue={erTitleEdit.value}
+          rect={erTitleEdit.rect}
+          onCommit={commitErTitleEdit}
+          onCancel={() => setErTitleEdit(null)}
+        />
+      )}
+
+      {/* ER-diagram relationship LABEL inline editor (US4) — double-click an edge / its label or
+          click the edge toolbar pencil. Commits live per-keystroke (debounced) AND on Enter/blur. */}
+      {erEdgeLabelEdit && (
+        <ClassTextEditor
+          key={`er-edge-${erEdgeLabelEdit.lineIndex}`}
+          kind="relationship"
+          initialValue={erEdgeLabelEdit.value}
+          rect={erEdgeLabelEdit.rect}
+          onCommit={commitErEdgeLabelEdit}
+          onCancel={() => setErEdgeLabelEdit(null)}
+          onLiveChange={handleErEdgeLabelLiveChange}
         />
       )}
 
