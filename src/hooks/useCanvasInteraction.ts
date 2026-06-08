@@ -1605,21 +1605,21 @@ export function useCanvasInteraction({
         messageYsFromLines.length > 0
           ? messageYsFromLines
           : (
-              Array.from(
-                containerRef.current.querySelectorAll(".messageText"),
-              ) as SVGGraphicsElement[]
-            )
-              .map((m) => {
-                const rect = m.getBoundingClientRect();
-                return (
-                  (rect.top -
-                    containerRect.top +
-                    containerRef.current!.scrollTop +
-                    rect.height / 2) /
-                  scale
-                );
-              })
-              .filter((y) => Number.isFinite(y));
+            Array.from(
+              containerRef.current.querySelectorAll(".messageText"),
+            ) as SVGGraphicsElement[]
+          )
+            .map((m) => {
+              const rect = m.getBoundingClientRect();
+              return (
+                (rect.top -
+                  containerRect.top +
+                  containerRef.current!.scrollTop +
+                  rect.height / 2) /
+                scale
+              );
+            })
+            .filter((y) => Number.isFinite(y));
 
       if (baseYs.length === 0) return 0;
 
@@ -1639,6 +1639,8 @@ export function useCanvasInteraction({
       // Class-diagram relationship edge ids are kept verbatim (`CLASS_EDGE_id_<Src>_<Dst>_<N>`);
       // the trailing `_<N>` must NOT be stripped as a render suffix.
       if (id.startsWith("CLASS_EDGE_")) return id;
+      // ER-diagram relationship edge ids are kept verbatim too (`ER_EDGE_id_<src>_<dst>_<N>`).
+      if (id.startsWith("ER_EDGE_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -1688,6 +1690,17 @@ export function useCanvasInteraction({
       const dataId = selectedNodeId.replace("CLASS_EDGE_", "");
       const path = containerRef.current.querySelector(
         `path.relation[data-id="${dataId}"]`,
+      ) as SVGElement | null;
+      if (path) {
+        foundElement = path;
+        foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("ER_EDGE_")) {
+      // ER relationship edges: re-resolve by the stable `data-id`; measure the real
+      // `path.relationshipLine` (not the transparent hit-target) so the box hugs the visible line.
+      const dataId = selectedNodeId.replace("ER_EDGE_", "");
+      const path = containerRef.current.querySelector(
+        `path.relationshipLine[data-id="${dataId}"]`,
       ) as SVGElement | null;
       if (path) {
         foundElement = path;
@@ -2115,6 +2128,21 @@ export function useCanvasInteraction({
             break;
           }
         }
+        // ER-diagram relationship edges. Mermaid renders each as `path.relationshipLine` with a
+        // stable `data-id="id_<srcSvgId>_<dstSvgId>_<N>"` (and we clone a wide transparent
+        // `er-relation-hit-target`). Surface it as `ER_EDGE_<dataId>` (kept verbatim, not
+        // normalized) so the ER edge toolbar can resolve it via the trailing `_<N>` index.
+        if (
+          currentNode.classList?.contains("relationshipLine") ||
+          currentNode.classList?.contains("er-relation-hit-target")
+        ) {
+          const dataId = currentNode.getAttribute("data-id");
+          if (dataId && dataId.startsWith("id_")) {
+            foundNodeClass = true;
+            nodeId = `ER_EDGE_${dataId}`;
+            break;
+          }
+        }
         // Sequence diagram elements: actors. Match both the plain `actor` class (rect headers and
         // the Entity/Database/Queue <g class="actor"> groups) AND `actor-man` (the Actor/Boundary/
         // Control stick-figure <g class="actor-man"> groups, which do NOT carry the bare `actor`
@@ -2163,10 +2191,10 @@ export function useCanvasInteraction({
           const normalizedClickedLabel = normalizeSequenceLabel(actorDisplayName);
           const labelMatchCount = actorDisplayName
             ? getSequenceParticipantEntries().filter(
-                (entry) =>
-                  normalizeSequenceLabel(entry.alias) === normalizedClickedLabel ||
-                  normalizeSequenceLabel(entry.id) === normalizedClickedLabel,
-              ).length
+              (entry) =>
+                normalizeSequenceLabel(entry.alias) === normalizedClickedLabel ||
+                normalizeSequenceLabel(entry.id) === normalizedClickedLabel,
+            ).length
             : 0;
           const labelIsAmbiguous = labelMatchCount > 1;
 
@@ -2246,7 +2274,9 @@ export function useCanvasInteraction({
 
       if (foundNodeClass && currentNode && containerRef.current) {
         const cleanId = nodeId
-          ? nodeId.startsWith("SEQ_") || nodeId.startsWith("CLASS_EDGE_")
+          ? nodeId.startsWith("SEQ_") ||
+            nodeId.startsWith("CLASS_EDGE_") ||
+            nodeId.startsWith("ER_EDGE_")
             ? nodeId
             : normalizeId(nodeId)
           : null;
@@ -2750,8 +2780,8 @@ export function useCanvasInteraction({
         } else {
           const innerText = result?.rawSvgId
             ? document.querySelector(
-                `#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`,
-              )
+              `#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`,
+            )
             : null;
           if (innerText && innerText.textContent) {
             currentText = innerText.textContent.trim();
@@ -2946,13 +2976,13 @@ export function useCanvasInteraction({
         const overFloatingUi =
           typeof document !== "undefined" && document.elementsFromPoint
             ? document
-                .elementsFromPoint(e.clientX, e.clientY)
-                .some(
-                  (el) =>
-                    el.closest?.("[data-inline-toolbar]") ||
-                    el.closest?.("[data-scale-lock]") ||
-                    el.closest?.("[data-scale-lock-border]"),
-                )
+              .elementsFromPoint(e.clientX, e.clientY)
+              .some(
+                (el) =>
+                  el.closest?.("[data-inline-toolbar]") ||
+                  el.closest?.("[data-scale-lock]") ||
+                  el.closest?.("[data-scale-lock-border]"),
+              )
             : false;
         if (overFloatingUi) {
           setHoveredSequenceActorBox(null);
@@ -3562,7 +3592,7 @@ export function useCanvasInteraction({
     selectedNodeId,
     setSelectedNodeId,
     selectedNodeIds: [] as string[],
-    setSelectedNodeIds: (_: string[]) => {},
+    setSelectedNodeIds: (_: string[]) => { },
     selectedSvgId,
     setSelectedSvgId,
     selectionBox,
@@ -3586,7 +3616,7 @@ export function useCanvasInteraction({
     resolveSequenceHighlightTarget,
     openHighlightRecolorRef,
     dragState: null as null,
-    setDragState: (_: unknown) => {},
+    setDragState: (_: unknown) => { },
     startSequenceConnection,
     inlineInputRef,
     commitEditRef,

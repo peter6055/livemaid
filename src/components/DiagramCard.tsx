@@ -15,7 +15,7 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useState } from "react";
 import mermaid from "mermaid";
-import { determineDiagramType } from "@/lib/diagrams/utils";
+import { determineDiagramType, diagramTypeLabel } from "@/lib/diagrams/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -235,7 +235,7 @@ export function DiagramCard({
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">
           <GitCommitVertical className="h-3 w-3" />
-          <span className="capitalize">{parsedType}</span>
+          <span>{diagramTypeLabel(parsedType)}</span>
           {isSupported && (
             <div className="flex items-center gap-0.5 bg-indigo-500/10 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded">
               <Repeat2 className="h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" />

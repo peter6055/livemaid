@@ -83,11 +83,10 @@ function TreeNode({
           }
         }}
         style={{ paddingLeft: `${0.5 + depth * 0.85}rem` }}
-        className={`group flex items-center gap-1.5 rounded-md py-1.5 pr-1 text-sm cursor-pointer transition-colors ${
-          isActive
+        className={`group flex items-center gap-1.5 rounded-md py-1.5 pr-1 text-sm cursor-pointer transition-colors ${isActive
             ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium"
             : "text-foreground/80 hover:bg-accent hover:text-foreground"
-        } ${dragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+          } ${dragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
       >
         <button
           onClick={(e) => {
@@ -213,14 +212,13 @@ export function FolderTree({
             onDropDiagram(diagramId, null);
           }
         }}
-        className={`flex items-center gap-1.5 rounded-md py-1.5 pl-2 pr-2 text-sm cursor-pointer transition-colors ${
-          currentFolderId === null
+        className={`flex items-center gap-1.5 rounded-md py-1.5 pl-2 pr-2 text-sm cursor-pointer transition-colors ${currentFolderId === null
             ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium"
             : "text-foreground/80 hover:bg-accent hover:text-foreground"
-        } ${rootDragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+          } ${rootDragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
       >
         <Home className="h-4 w-4 shrink-0" />
-        <span className="truncate">All Diagrams</span>
+        <span className="truncate">Workspace</span>
       </div>
 
       {roots.map((folder) => (

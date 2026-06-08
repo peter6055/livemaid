@@ -265,11 +265,9 @@ export function ClassPropertyPanel({
                     setDragRow(null);
                     setDragOverRow(null);
                   }}
-                  className={`group flex items-center hover:bg-accent/40 ${
-                    isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
-                  } ${rowError ? "bg-red-500/5 ring-1 ring-inset ring-red-500/50" : ""} ${
-                    dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""
-                  }`}
+                  className={`group flex items-center hover:bg-accent/40 ${isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
+                    } ${rowError ? "bg-red-500/5 ring-1 ring-inset ring-red-500/50" : ""} ${dragRow?.section === section && dragRow.from === i ? "opacity-40" : ""
+                    }`}
                 >
                   <input
                     ref={(el) => {
@@ -282,9 +280,8 @@ export function ClassPropertyPanel({
                     placeholder={placeholder}
                     spellCheck={false}
                     aria-invalid={!!rowError}
-                    className={`min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground/60 ${
-                      rowError ? "text-red-600 dark:text-red-400" : "text-foreground"
-                    }`}
+                    className={`min-w-0 flex-1 bg-transparent px-3 py-2 font-mono text-sm outline-none placeholder:text-muted-foreground/60 ${rowError ? "text-red-600 dark:text-red-400" : "text-foreground"
+                      }`}
                   />
                   <div className="flex shrink-0 items-center gap-0.5 pr-1.5">
                     <button
@@ -351,7 +348,7 @@ export function ClassPropertyPanel({
       data-class-property-panel
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-96 flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
+      className="absolute top-20 right-3 z-30 flex max-h-[82vh] w-[34rem] max-w-[calc(100vw-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
