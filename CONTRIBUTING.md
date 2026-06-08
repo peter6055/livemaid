@@ -128,12 +128,13 @@ Every PR must pass the following required checks before it can be merged:
 
 | Aspect            | Behaviour                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------- |
+| Enabled           | Opt-in: only runs when `vars.RAILWAY_PR_PREVIEWS` is `true`; otherwise both jobs skip. |
 | Environment       | `pr-<number>`, duplicated from `vars.RAILWAY_BASE_ENVIRONMENT` (default `production`). |
 | Created / updated | On `opened`, `reopened`, and every `synchronize` (push).                               |
 | Destroyed         | On `closed` (covers both merge and discard).                                           |
 | Forked PRs        | Skipped — repository secrets are not exposed to PRs from forks.                        |
 
-> ⚙️ Requires the following repository configuration: secrets `RAILWAY_API_TOKEN` (account/workspace token, needed to create & delete environments) and `RAILWAY_PROJECT_ID`; optional variables `RAILWAY_SERVICE` (defaults to the repo name) and `RAILWAY_BASE_ENVIRONMENT` (defaults to `production`).
+> ⚙️ Disabled by default. To enable, set repository variable `RAILWAY_PR_PREVIEWS` to `true` and provide secrets `RAILWAY_API_TOKEN` (account/workspace token, needed to create & delete environments) and `RAILWAY_PROJECT_ID`; optional variables `RAILWAY_SERVICE` (defaults to the repo name) and `RAILWAY_BASE_ENVIRONMENT` (defaults to `production`).
 
 ### 4) Merge
 
