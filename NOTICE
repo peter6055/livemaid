@@ -1,0 +1,25 @@
+LiveMaid
+Copyright (c) 2026 Peter Liu
+
+This project is licensed under the LiveMaid Source Available License 1.0
+(LSAL-1.0). It is source-available software, not OSI open-source software.
+
+Key restrictions summary:
+- Personal, educational, research, and non-commercial use is permitted.
+- Internal organizational use is permitted where the Software is not offered
+  as a hosted service to third parties and is not redistributed as a
+  commercial product.
+- Private modifications are permitted without any obligation to upstream them.
+- Prior written approval from the Licensor is required before: offering the
+  Software as a hosted/managed service (including SaaS); operating a competing
+  hosted service; redistributing, selling, or sublicensing the Software for
+  external customers; or building and distributing a commercial product from
+  the Software or substantial portions of it.
+- The name "LiveMaid" may not be used to endorse or promote derived products
+  without prior written permission.
+
+Third-party components included in this repository remain under their
+respective original licenses. See THIRD_PARTY_NOTICES.md for details.
+
+For commercial license requests, see COMMERCIAL_LICENSE.md or open an issue at:
+  https://github.com/peter6055/livemaid/issues

@@ -1,0 +1,109 @@
+LiveMaid Source Available License 1.0 (LSAL-1.0)
+
+Copyright (c) 2026 Peter Liu
+
+Permission is hereby granted to any person obtaining a copy of this software
+and associated documentation files (the "Software") to use, copy, modify, and
+run the Software, subject to the conditions and restrictions below.
+
+1. Allowed Uses
+
+   a) Personal, educational, research, and non-commercial use.
+   b) Internal organizational use, including internal business use, provided
+      the Software is not offered to third parties as a hosted or managed
+      service and is not redistributed as part of a commercial product for
+      external customers.
+   c) Private modifications are permitted. You are not required to make private
+      modifications available to anyone.
+
+2. Restricted Uses (Require Prior Written Approval from Licensor)
+
+   The following uses require prior written approval from the Licensor before
+   use. To request approval, see Section 10.
+
+   a) Offering the Software, or a modified version of it, as a hosted or
+      managed service to third parties (including SaaS, PaaS, API-as-a-service,
+      or similar offerings).
+   b) Operating a hosted service that competes with the Software or any hosted
+      service provided by the Licensor, based on the Software or substantial
+      portions of it.
+   c) Redistributing, sublicensing, selling, licensing, or otherwise
+      commercializing the Software or derivatives as part of a product or
+      service for external customers.
+   d) Building and distributing a commercial product from the Software or
+      substantial portions of it.
+
+3. Contributions and Upstreaming
+
+   a) You are not required to submit private modifications to the Licensor or
+      any upstream project.
+   b) If you choose to contribute changes back to this project, contributions
+      must be submitted via Pull Request to the official repository on its
+      default branch ("main") and are subject to the repository's contribution
+      guidelines (see CONTRIBUTING.md).
+
+4. Attribution and Notices
+
+   a) You must retain this license text and all copyright notices in any source
+      distributions or copies of the Software.
+   b) If you redistribute permitted copies of the Software, you must include
+      the NOTICE file unmodified.
+
+5. Trademark and Non-Endorsement
+
+   a) This license does not grant permission to use the trade names, trademarks,
+      service marks, logos, or product names of the Licensor or the project
+      ("LiveMaid"), except as reasonably required for accurate attribution in
+      notices or documentation.
+   b) You may not use the name "LiveMaid" or the Licensor's name to endorse or
+      promote products or services derived from this Software without prior
+      written permission from the Licensor.
+
+6. Third-Party Components
+
+   a) The Software may include or depend on third-party components licensed
+      under separate terms.
+   b) Third-party components remain under their own respective licenses, and
+      those licenses govern your use of those components.
+   c) In the event of any conflict between this license and the license of a
+      third-party component for that component, the third-party license terms
+      prevail for that component.
+   d) See THIRD_PARTY_NOTICES.md for information about third-party components
+      included in this repository.
+
+7. Termination
+
+   a) Any use of the Software outside the permissions granted by this license,
+      or breach of any term of this license, automatically terminates your
+      rights under this license without notice.
+   b) Upon termination, you must immediately cease all use, copying,
+      modification, distribution, and offering of the Software not otherwise
+      permitted by applicable law.
+   c) Rights terminated under this section may be reinstated only by explicit
+      written permission from the Licensor.
+
+8. No Warranty
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. THE LICENSOR MAKES
+   NO REPRESENTATION THAT THE SOFTWARE WILL BE ERROR-FREE OR UNINTERRUPTED.
+
+9. Limitation of Liability
+
+   IN NO EVENT SHALL THE LICENSOR OR COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+   OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE
+   USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING BUT NOT LIMITED TO DIRECT,
+   INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES, EVEN IF
+   ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+10. Commercial Approval Path
+
+   To request approval for any use listed in Section 2, open an issue in the
+   official repository:
+
+     https://github.com/peter6055/livemaid/issues
+
+   See COMMERCIAL_LICENSE.md for details on what information to include in your
+   request.
