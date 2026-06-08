@@ -18,7 +18,11 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { isEdgeId } from "@/lib/diagrams/utils";
-import { classNameFromSvgId } from "@/lib/diagrams/classDiagram";
+import {
+  classNameFromSvgId,
+  getNamespaceNames,
+  getClassNamespace,
+} from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
@@ -92,6 +96,8 @@ interface EditorCanvasProps {
   selectedClass?: ParsedClass | null;
   onApplyClassEdits?: (edits: ClassEdits) => void;
   onCloseClassPanel?: () => void;
+  /** Class-diagram property panel: report whether it holds invalid attribute/method rows. */
+  onClassPanelValidityChange?: (hasErrors: boolean) => void;
   /** Class-diagram connection drag (the purple +): create relationships / link notes. */
   onAddClassRelationship?: (source: string, target: string, operator: string) => void;
   onLinkNoteToClass?: (noteIndex: number, className: string) => void;
@@ -104,6 +110,11 @@ interface EditorCanvasProps {
   /** Class-diagram node toolbar (single-click): delete a class / note. */
   onDeleteClassNode?: (name: string) => void;
   onDeleteClassNote?: (noteIndex: number) => void;
+  /** Class-diagram namespace containers: delete (unwrap) + relocate classes between namespaces. */
+  onDeleteClassNamespace?: (name: string) => void;
+  onMoveClassToNamespace?: (className: string, target: string) => void;
+  onMoveClassToNewNamespace?: (className: string) => void;
+  onRemoveClassFromNamespace?: (className: string) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -196,6 +207,7 @@ export function EditorCanvas({
   selectedClass,
   onApplyClassEdits,
   onCloseClassPanel,
+  onClassPanelValidityChange,
   onAddClassRelationship,
   onLinkNoteToClass,
   onCreateClassLinked,
@@ -205,6 +217,10 @@ export function EditorCanvas({
   onDeleteClassRelationship,
   onDeleteClassNode,
   onDeleteClassNote,
+  onDeleteClassNamespace,
+  onMoveClassToNamespace,
+  onMoveClassToNewNamespace,
+  onRemoveClassFromNamespace,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -891,6 +907,19 @@ export function EditorCanvas({
     return m ? parseInt(m[1], 10) : null;
   }, [currentType, selectedSvgId]);
 
+  // The namespace container currently selected (a single-clicked `g.cluster`). Resolved by checking
+  // the cleaned selection id (`selectedNodeId`, which the interaction hook strips down to the bare
+  // namespace name) against the namespaces actually present in the code. A class / note selection
+  // takes precedence (their inner nodes sit on top of the cluster).
+  const connectSourceNamespace = useMemo(() => {
+    if (currentType !== "classDiagram" || !selectedSvgId) return null;
+    if (classNameFromSvgId(selectedSvgId)) return null;
+    if (/-note\d+$/.test(selectedSvgId)) return null;
+    return selectedNodeId && getNamespaceNames(code).includes(selectedNodeId)
+      ? selectedNodeId
+      : null;
+  }, [currentType, selectedSvgId, selectedNodeId, code]);
+
   // Begin a class-diagram connection drag from the purple +. Fully isolated (own window listeners +
   // preview SVG outside TransformWrapper), mirroring the sequence endpoint drag. The source is
   // either a class or a note:
@@ -994,13 +1023,10 @@ export function EditorCanvas({
         return;
       }
       if (tgt?.kind === "class") {
-        setClassConnectMenu({
-          source: source.name,
-          target: tgt.name,
-          step: "relationship",
-          x: menuX,
-          y: menuY,
-        });
+        // Dropping onto an existing class creates the connection directly with the default
+        // association operator (`-->`); the user can change the relationship type afterwards via
+        // the edge toolbar. No relationship-type prompt is shown.
+        onAddClassRelationship?.(source.name, tgt.name, "-->");
       } else if (tgt?.kind === "note") {
         onLinkNoteToClass?.(tgt.noteIndex, source.name);
       } else {
@@ -1843,12 +1869,37 @@ export function EditorCanvas({
                           onDeleteNode={handleDeleteNode}
                         />
                       ) : currentType === "classDiagram" &&
-                        (connectSourceClass || connectSourceNote !== null) ? (
+                        (connectSourceClass ||
+                          connectSourceNote !== null ||
+                          connectSourceNamespace) ? (
                         <ClassNodeToolbar
-                          kind={connectSourceNote !== null ? "note" : "class"}
+                          kind={
+                            connectSourceNote !== null
+                              ? "note"
+                              : connectSourceNamespace
+                                ? "namespace"
+                                : "class"
+                          }
                           scale={state.scale}
+                          namespaces={getNamespaceNames(code)}
+                          currentNamespace={
+                            connectSourceClass ? getClassNamespace(code, connectSourceClass) : null
+                          }
+                          onMoveToNamespace={(target) => {
+                            if (connectSourceClass)
+                              onMoveClassToNamespace?.(connectSourceClass, target);
+                          }}
+                          onMoveToNewNamespace={() => {
+                            if (connectSourceClass) onMoveClassToNewNamespace?.(connectSourceClass);
+                          }}
+                          onRemoveFromNamespace={() => {
+                            if (connectSourceClass)
+                              onRemoveClassFromNamespace?.(connectSourceClass);
+                          }}
                           onDelete={() => {
                             if (connectSourceNote !== null) onDeleteClassNote?.(connectSourceNote);
+                            else if (connectSourceNamespace)
+                              onDeleteClassNamespace?.(connectSourceNamespace);
                             else if (connectSourceClass) onDeleteClassNode?.(connectSourceClass);
                           }}
                         />
@@ -2019,6 +2070,7 @@ export function EditorCanvas({
           selectedClass={selectedClass}
           onApply={(edits) => onApplyClassEdits?.(edits)}
           onClose={() => onCloseClassPanel?.()}
+          onValidityChange={onClassPanelValidityChange}
         />
       )}
 

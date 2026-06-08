@@ -21,7 +21,11 @@ export function EditorCodePanel({
   parseError,
   highlightRange = null,
 }: EditorCodePanelProps) {
-  const { theme } = useTheme();
+  // `resolvedTheme` (NOT `theme`): with `defaultTheme="system"` + `enableSystem`, `theme` is the
+  // literal setting ("system") on a fresh load, so `theme === "dark"` is false even when the OS is
+  // dark — which left the Monaco editor stuck on the light theme. `resolvedTheme` collapses
+  // "system" down to the concrete "dark"/"light" actually in effect.
+  const { resolvedTheme } = useTheme();
 
   const editorRef = useRef<MonacoStandaloneEditor | null>(null);
   const monacoRef = useRef<Monaco | null>(null);
@@ -88,7 +92,7 @@ export function EditorCodePanel({
           <Editor
             height="100%"
             defaultLanguage="mermaid"
-            theme={theme === "dark" ? "vs-dark" : "light"}
+            theme={resolvedTheme === "dark" ? "vs-dark" : "light"}
             value={code}
             onChange={(value) => handleCodeChange(value)}
             beforeMount={handleBeforeMount}

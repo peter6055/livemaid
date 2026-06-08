@@ -10,7 +10,89 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Determine the next SemVer version from the squashed merge commit.
+  #
+  # Because we "Squash and merge", the PR title (already validated by
+  # `ci/pr-title` to be a Conventional Commit) becomes the HEAD commit message
+  # on `main`. Its `type` tells us how to bump the version:
+  #
+  #   feat                -> minor   (x.Y.0)
+  #   fix | perf          -> patch   (x.y.Z)
+  #   <type>! / BREAKING  -> major   (X.0.0)
+  #   docs | chore | ...  -> no release
+  # ---------------------------------------------------------------------------
+  version:
+    name: Determine version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.semver.outputs.release }}
+      version: ${{ steps.semver.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Need full history + tags to find the latest release tag.
+          fetch-depth: 0
+
+      - name: Compute next SemVer from merge commit
+        id: semver
+        run: |
+          set -euo pipefail
+
+          SUBJECT="$(git log -1 --pretty=%s)"
+          BODY="$(git log -1 --pretty=%b)"
+          echo "Merge commit subject: $SUBJECT"
+
+          # Latest semver tag (vX.Y.Z); default to v0.0.0 when none exist yet.
+          LATEST_TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+          fi
+          echo "Latest tag: $LATEST_TAG"
+
+          CURRENT="${LATEST_TAG#v}"
+          MAJOR="${CURRENT%%.*}"
+          REST="${CURRENT#*.}"
+          MINOR="${REST%%.*}"
+          PATCH="${REST##*.}"
+
+          # Decide the bump based on the Conventional Commit type.
+          BUMP="none"
+          if printf '%s' "$SUBJECT" | grep -qE '^[a-z]+(\([^)]+\))?!:' \
+            || printf '%s' "$BODY" | grep -q 'BREAKING CHANGE'; then
+            BUMP="major"
+          elif printf '%s' "$SUBJECT" | grep -qE '^feat(\([^)]+\))?:'; then
+            BUMP="minor"
+          elif printf '%s' "$SUBJECT" | grep -qE '^(fix|perf)(\([^)]+\))?:'; then
+            BUMP="patch"
+          fi
+          echo "Bump: $BUMP"
+
+          case "$BUMP" in
+            major)
+              MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor)
+              MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch)
+              PATCH=$((PATCH + 1)) ;;
+            none)
+              echo "No release-worthy change detected; skipping release."
+              echo "release=false" >> "$GITHUB_OUTPUT"
+              exit 0 ;;
+          esac
+
+          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "Next version: $NEW_VERSION"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
   build-publish-release:
+    name: Build, publish & release
+    needs: version
+    if: needs.version.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -34,7 +116,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value=v1.0.${{ github.run_number }}
+            type=raw,value=${{ needs.version.outputs.version }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -46,7 +128,7 @@ jobs:
 
       - name: Save Docker image as tar
         run: |
-          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v1.0.${{ github.run_number }}"
+          IMAGE_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.version.outputs.version }}"
           # Convert tag to lowercase as Docker requires lowercase image references
           IMAGE_TAG=$(echo "$IMAGE_TAG" | tr '[:upper:]' '[:lower:]')
 
@@ -59,7 +141,7 @@ jobs:
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Release v1.0.${{ github.run_number }}
+          tag_name: ${{ needs.version.outputs.version }}
+          name: Release ${{ needs.version.outputs.version }}
           generate_release_notes: true
           files: livemaid-image.tar.gz

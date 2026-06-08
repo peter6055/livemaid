@@ -11,6 +11,20 @@
 
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
 
+## 📑 Table of Contents
+
+- [🎯 Purpose](#-purpose)
+- [✨ Features](#-features)
+- [📊 Supported Diagrams](#-supported-diagrams)
+  - [✅ Two-Way Sync (visual editing + code)](#-two-way-sync-visual-editing--code)
+  - [🔲 Code Only (render + preview)](#-code-only-render--preview)
+- [🐳 Deployment (Docker)](#-deployment-docker)
+  - [Manual Docker Compose](#manual-docker-compose)
+  - [Demo Mode](#demo-mode)
+- [🛠️ Tech Stack](#️-tech-stack)
+- [🤝 Contributing](#-contributing)
+- [💖 Support the Community](#-support-the-community)
+
 ## 🎯 Purpose
 
 Writing Mermaid code can sometimes be tedious without immediate visual feedback. The purpose of LiveMaid is to provide a local, fast, and intuitive environment where you can write Mermaid syntax and instantly see the rendered diagrams. It acts as a personal diagram management dashboard, allowing you to organize all your charts, flowcharts, and sequence diagrams in one place without relying on external cloud services.
