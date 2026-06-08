@@ -32,14 +32,15 @@ Follow these instructions to set up the project locally for development.
 
 Ensure you are in the project root directory:
 
-   ```bash
-   cd livemaid
-   ```
+```bash
+cd livemaid
+```
 
 Install the dependencies:
-   ```bash
-   npm install
-   ```
+
+```bash
+npm install
+```
 
 ### Running the Development Server
 
@@ -109,14 +110,13 @@ flowchart TD
 
 Every PR must pass the following required checks before it can be merged:
 
-| Check                              | Workflow / Job                          | What it enforces                                                                                                          |
-| ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| **Type check**                     | `ci/pr-checks` → _Lint, format & types_ | TypeScript compiles with no type errors.                                                                                 |
-| **Lint**                           | `ci/pr-checks` → _Lint, format & types_ | ESLint reports no errors.                                                                                                |
-| **Format check**                   | `ci/pr-checks` → _Lint, format & types_ | The tree is Prettier-formatted (run `npm run format` to fix drift).                                                      |
-| **Build**                          | `ci/pr-checks` → _Build_                | The production build succeeds.                                                                                           |
+| Check                              | Workflow / Job                          | What it enforces                                                                                                                           |
+| ---------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Type check**                     | `ci/pr-checks` → _Lint, format & types_ | TypeScript compiles with no type errors.                                                                                                   |
+| **Lint**                           | `ci/pr-checks` → _Lint, format & types_ | ESLint reports no errors.                                                                                                                  |
+| **Format check**                   | `ci/pr-checks` → _Lint, format & types_ | The tree is Prettier-formatted (run `npm run format` to fix drift).                                                                        |
+| **Build**                          | `ci/pr-checks` → _Build_                | The production build succeeds.                                                                                                             |
 | **PR title (Conventional Commit)** | `ci/pr-title`                           | PR title follows Conventional Commits via [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request). |
-
 
 > 💡 Run `npm run prepush` locally before pushing to run all four checks (typecheck, lint, format check, build) and catch failures early.
 
@@ -126,12 +126,12 @@ Every PR must pass the following required checks before it can be merged:
 - Trigger: `pull_request` (opened / synchronize / reopened / closed)
 - Action: spins up an ephemeral Railway environment named `pr-<number>` (duplicating the base environment's config and variables), deploys the branch to it, and posts the preview URL as a sticky comment on the PR. The environment is re-deployed on every push and **destroyed automatically when the PR is closed or merged**.
 
-| Aspect          | Behaviour                                                                                     |
-| --------------- | --------------------------------------------------------------------------------------------- |
-| Environment     | `pr-<number>`, duplicated from `vars.RAILWAY_BASE_ENVIRONMENT` (default `production`).         |
-| Created / updated | On `opened`, `reopened`, and every `synchronize` (push).                                     |
-| Destroyed       | On `closed` (covers both merge and discard).                                                  |
-| Forked PRs      | Skipped — repository secrets are not exposed to PRs from forks.                               |
+| Aspect            | Behaviour                                                                              |
+| ----------------- | -------------------------------------------------------------------------------------- |
+| Environment       | `pr-<number>`, duplicated from `vars.RAILWAY_BASE_ENVIRONMENT` (default `production`). |
+| Created / updated | On `opened`, `reopened`, and every `synchronize` (push).                               |
+| Destroyed         | On `closed` (covers both merge and discard).                                           |
+| Forked PRs        | Skipped — repository secrets are not exposed to PRs from forks.                        |
 
 > ⚙️ Requires the following repository configuration: secrets `RAILWAY_API_TOKEN` (account/workspace token, needed to create & delete environments) and `RAILWAY_PROJECT_ID`; optional variables `RAILWAY_SERVICE` (defaults to the repo name) and `RAILWAY_BASE_ENVIRONMENT` (defaults to `production`).
 
@@ -149,12 +149,12 @@ Every PR must pass the following required checks before it can be merged:
 
 Because we **squash and merge**, the PR title — already validated by `ci/pr-title` to be a Conventional Commit — becomes the single commit message on `main`. The `ci/release` workflow reads that commit's `type` and bumps the version accordingly, then tags, releases, and generates a changelog automatically. No manual version bumping required.
 
-| PR title prefix                                                | SemVer bump        | Example: `1.4.2` → |
-| -------------------------------------------------------------- | ------------------ | ------------------ |
-| `fix:`, `perf:`                                                | **patch**          | `1.4.3`            |
-| `feat:`                                                        | **minor**          | `1.5.0`            |
-| `feat!:` / `<type>!:` / `BREAKING CHANGE`                      | **major**          | `2.0.0`            |
-| `docs:`, `chore:`, `ci:`, `style:`, `refactor:`, `test:`, `build:`, `revert:` | **none** (no release) | `1.4.2`         |
+| PR title prefix                                                               | SemVer bump           | Example: `1.4.2` → |
+| ----------------------------------------------------------------------------- | --------------------- | ------------------ |
+| `fix:`, `perf:`                                                               | **patch**             | `1.4.3`            |
+| `feat:`                                                                       | **minor**             | `1.5.0`            |
+| `feat!:` / `<type>!:` / `BREAKING CHANGE`                                     | **major**             | `2.0.0`            |
+| `docs:`, `chore:`, `ci:`, `style:`, `refactor:`, `test:`, `build:`, `revert:` | **none** (no release) | `1.4.2`            |
 
 ```mermaid
 flowchart LR

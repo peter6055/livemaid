@@ -493,12 +493,12 @@ export const CLASS_END_MARKERS: Array<{
   left: string;
   right: string;
 }> = [
-    { key: "none", label: "None", left: "", right: "" },
-    { key: "arrow", label: "Arrow", left: "<", right: ">" },
-    { key: "triangle", label: "Triangle", left: "<|", right: "|>" },
-    { key: "diamondFilled", label: "Filled diamond", left: "*", right: "*" },
-    { key: "diamondHollow", label: "Hollow diamond", left: "o", right: "o" },
-  ];
+  { key: "none", label: "None", left: "", right: "" },
+  { key: "arrow", label: "Arrow", left: "<", right: ">" },
+  { key: "triangle", label: "Triangle", left: "<|", right: "|>" },
+  { key: "diamondFilled", label: "Filled diamond", left: "*", right: "*" },
+  { key: "diamondHollow", label: "Hollow diamond", left: "o", right: "o" },
+];
 
 export interface ClassRelationshipParts {
   sourceMarker: ClassEndMarker;
@@ -1051,15 +1051,16 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       return;
     }
     const current = getClassTitle(code).trim();
-    const description = `Turning off the title removes it from the diagram. The current title${current ? ` ("${current}")` : ""
-      } will be lost.`;
+    const description = `Turning off the title removes it from the diagram. The current title${
+      current ? ` ("${current}")` : ""
+    } will be lost.`;
     const ok = requestConfirm
       ? await requestConfirm({
-        title: "Remove diagram title?",
-        description,
-        confirmLabel: "Remove title",
-        destructive: true,
-      })
+          title: "Remove diagram title?",
+          description,
+          confirmLabel: "Remove title",
+          destructive: true,
+        })
       : window.confirm(`Remove diagram title?\n\n${description}`);
     if (ok) setCode(removeClassTitle(code));
   };
@@ -1121,14 +1122,16 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={() => setCode(setHideEmptyMembersBox(code, !hideEmpty))}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-            }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hideEmpty ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
           aria-label="Toggle hide empty members box"
           aria-pressed={hideEmpty}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
-              }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hideEmpty ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
           />
         </button>
       </div>
@@ -1143,14 +1146,16 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={handleToggleTitle}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-            }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
           aria-label="Toggle diagram title"
           aria-pressed={hasTitle}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
-              }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
           />
         </button>
       </div>
