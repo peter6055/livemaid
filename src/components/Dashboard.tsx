@@ -836,7 +836,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               </nav>
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate min-w-0 max-w-full lg:max-w-md">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate w-full min-w-0 lg:max-w-md">
                   {currentFolderId
                     ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
                     : "Your Diagrams"}
