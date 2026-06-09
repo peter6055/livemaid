@@ -1,0 +1,13 @@
+{
+    "id": "cls7DemoClassX1",
+    "name": "E-Commerce Domain Model - CLASS",
+    "createdAt": "2026-06-08T12:00:00.000Z",
+    "updatedAt": "2026-06-08T12:00:00.000Z",
+    "deletedAt": null,
+    "code": "---\nconfig:\n  theme: forest\n---\nclassDiagram\n    direction LR\n    class Customer {\n        +String id\n        +String name\n        +String email\n        +register() void\n        +login() bool\n    }\n    class Order {\n        +String id\n        +Date createdAt\n        +OrderStatus status\n        +Money total\n        +addItem(item) void\n        +checkout() void\n    }\n    class OrderItem {\n        +String productId\n        +int quantity\n        +Money unitPrice\n        +subtotal() Money\n    }\n    class Product {\n        +String id\n        +String title\n        +Money price\n        +int stock\n    }\n    class Payment {\n        +String id\n        +Money amount\n        +PaymentMethod method\n        +PaymentStatus status\n        +authorize() bool\n        +capture() void\n    }\n    class Address {\n        +String street\n        +String city\n        +String country\n        +String postalCode\n    }\n    class OrderStatus {\n        <<enumeration>>\n        PENDING\n        PAID\n        SHIPPED\n        DELIVERED\n        CANCELLED\n    }\n    Customer \"1\" --> \"*\" Order : places\n    Customer \"1\" --> \"*\" Address : has\n    Order \"1\" *-- \"*\" OrderItem : contains\n    OrderItem \"*\" --> \"1\" Product : refersTo\n    Order \"1\" --> \"1\" Payment : paidBy\n    Order ..> OrderStatus : uses\n",
+    "type": "classDiagram",
+    "subPages": [],
+    "comments": [],
+    "versionHistory": [],
+    "folderId": "demo-folder-design"
+}
