@@ -827,7 +827,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           handleFolderDrop(diagramId, f.id);
                         }
                       }}
-                      className={`rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+                      className={`max-w-[160px] truncate rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
                     >
                       {f.name}
                     </button>
@@ -836,7 +836,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               </nav>
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate lg:min-w-0">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate w-full min-w-0 lg:max-w-md">
                   {currentFolderId
                     ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
                     : "Your Diagrams"}
