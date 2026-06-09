@@ -1641,6 +1641,8 @@ export function useCanvasInteraction({
       if (id.startsWith("CLASS_EDGE_")) return id;
       // ER-diagram relationship edge ids are kept verbatim too (`ER_EDGE_id_<src>_<dst>_<N>`).
       if (id.startsWith("ER_EDGE_")) return id;
+      // State-diagram transition edge ids are kept verbatim too (`STATE_EDGE_edge<N>`).
+      if (id.startsWith("STATE_EDGE_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -1701,6 +1703,17 @@ export function useCanvasInteraction({
       const dataId = selectedNodeId.replace("ER_EDGE_", "");
       const path = containerRef.current.querySelector(
         `path.relationshipLine[data-id="${dataId}"]`,
+      ) as SVGElement | null;
+      if (path) {
+        foundElement = path;
+        foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("STATE_EDGE_")) {
+      // State transitions: re-resolve by the stable `data-id` (`edge<N>`); measure the real
+      // `path.transition` (not the transparent hit-target) so the box hugs the visible line.
+      const dataId = selectedNodeId.replace("STATE_EDGE_", "");
+      const path = containerRef.current.querySelector(
+        `path.transition[data-id="${dataId}"]`,
       ) as SVGElement | null;
       if (path) {
         foundElement = path;
@@ -2072,7 +2085,11 @@ export function useCanvasInteraction({
       let nodeId = null;
 
       while (currentNode && currentNode.tagName !== "svg") {
-        if (currentNode.classList?.contains("node") || currentNode.classList?.contains("cluster")) {
+        if (
+          currentNode.classList?.contains("node") ||
+          currentNode.classList?.contains("cluster") ||
+          currentNode.classList?.contains("statediagram-cluster")
+        ) {
           foundNodeClass = true;
           nodeId = currentNode.id;
           break;
@@ -2140,6 +2157,26 @@ export function useCanvasInteraction({
           if (dataId && dataId.startsWith("id_")) {
             foundNodeClass = true;
             nodeId = `ER_EDGE_${dataId}`;
+            break;
+          }
+        }
+        // State-diagram transitions. Mermaid renders each as `path.transition` with a code-order
+        // `data-id="edge<N>"` (and we clone a wide transparent `state-transition-hit-target`). Note-
+        // edges carry a `note-edge` class and a `<src>-<src>----note-<N>` data-id and are NOT
+        // selectable. Surface a real transition as `STATE_EDGE_<dataId>` (kept verbatim) so the state
+        // edge toolbar can resolve it via the `edge<N>` index.
+        if (
+          currentNode.classList?.contains("transition") ||
+          currentNode.classList?.contains("state-transition-hit-target")
+        ) {
+          const dataId = currentNode.getAttribute("data-id");
+          if (
+            dataId &&
+            /^edge\d+$/.test(dataId) &&
+            !currentNode.classList?.contains("note-edge")
+          ) {
+            foundNodeClass = true;
+            nodeId = `STATE_EDGE_${dataId}`;
             break;
           }
         }
@@ -2276,7 +2313,8 @@ export function useCanvasInteraction({
         const cleanId = nodeId
           ? nodeId.startsWith("SEQ_") ||
             nodeId.startsWith("CLASS_EDGE_") ||
-            nodeId.startsWith("ER_EDGE_")
+            nodeId.startsWith("ER_EDGE_") ||
+            nodeId.startsWith("STATE_EDGE_")
             ? nodeId
             : normalizeId(nodeId)
           : null;

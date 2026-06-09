@@ -15,6 +15,8 @@ import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { ClassEdgeToolbar } from "./ClassEdgeToolbar";
 import { ClassNodeToolbar } from "./ClassNodeToolbar";
 import { ErNodeToolbar } from "./ErNodeToolbar";
+import { StateNodeToolbar } from "./StateNodeToolbar";
+import { StateEdgeToolbar } from "./StateEdgeToolbar";
 import { ErEdgeToolbar } from "./ErEdgeToolbar";
 import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
@@ -29,6 +31,7 @@ import {
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
 import type { ParsedEntity, EntityEdits } from "@/lib/diagrams/erDiagram";
+import { stateNameFromSvgId, isCompositeState, isSpecialStateNode } from "@/lib/diagrams/stateDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -140,6 +143,16 @@ interface EditorCanvasProps {
   onAddErRelationship?: (source: string, target: string) => void;
   /** ER-diagram drag-to-connect onto empty canvas: create a NEW entity linked to the source. */
   onCreateErEntityLinked?: (source: string) => void;
+  /** State-diagram node toolbar (single-click): delete a state / composite, delete a note, rename. */
+  onDeleteStateNode?: (id: string) => void;
+  onDeleteStateNote?: (noteIndex: number) => void;
+  onRenameStateNode?: () => void;
+  /** State-diagram transition edge toolbar: delete the transition / edit its label. */
+  onDeleteStateTransition?: () => void;
+  onEditStateEdgeLabel?: () => void;
+  /** State-diagram drag-to-connect: create a transition, or a new linked state on empty canvas. */
+  onAddStateTransition?: (source: string, target: string) => void;
+  onCreateStateLinked?: (source: string) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -260,6 +273,13 @@ export function EditorCanvas({
   onEditErEdgeLabel,
   onAddErRelationship,
   onCreateErEntityLinked,
+  onDeleteStateNode,
+  onDeleteStateNote,
+  onRenameStateNode,
+  onDeleteStateTransition,
+  onEditStateEdgeLabel,
+  onAddStateTransition,
+  onCreateStateLinked,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -360,6 +380,16 @@ export function EditorCanvas({
   // purple + from a selected entity toward a target entity. Mirrors the class connect drag.
   const [erConnecting, setErConnecting] = useState(false);
   const [erConnect, setErConnect] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    snap: { cx: number; cy: number; w: number; h: number } | null;
+  } | null>(null);
+  // State drag-to-connect state: the live preview line + snap highlight while dragging the purple +
+  // from a selected state toward a target state. Mirrors the ER/class connect drag.
+  const [stateConnecting, setStateConnecting] = useState(false);
+  const [stateConnect, setStateConnect] = useState<{
     x1: number;
     y1: number;
     x2: number;
@@ -977,6 +1007,33 @@ export function EditorCanvas({
     [currentType, selectedSvgId],
   );
 
+  // State-diagram single-click selection → the floating node toolbar (Rename / Delete). A NOTE
+  // (svg id `…----note-<N>`) takes precedence over the state branch; otherwise the selected element
+  // is a state or a composite container (resolved from `…-state-<Name>-<idx>`). `[*]` pseudo-states
+  // resolve to null, so they get no toolbar.
+  const connectSourceStateNote = useMemo(() => {
+    if (currentType !== "stateDiagram" || !selectedSvgId) return null;
+    const m = selectedSvgId.match(/----note-(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }, [currentType, selectedSvgId]);
+
+  const connectSourceState = useMemo(() => {
+    if (currentType !== "stateDiagram" || !selectedSvgId) return null;
+    if (/----note-\d+$/.test(selectedSvgId)) return null;
+    return stateNameFromSvgId(selectedSvgId);
+  }, [currentType, selectedSvgId]);
+
+  const connectSourceStateIsComposite = useMemo(
+    () => (connectSourceState ? isCompositeState(code, connectSourceState) : false),
+    [connectSourceState, code],
+  );
+
+  // Choice / fork / join are shape-only (no editable label) — the toolbar omits Rename for them.
+  const connectSourceStateIsSpecial = useMemo(
+    () => (connectSourceState ? isSpecialStateNode(code, connectSourceState) : false),
+    [connectSourceState, code],
+  );
+
   // Begin an ER drag-to-connect from the purple + (US1). Fully isolated (own window listeners +
   // preview SVG outside TransformWrapper), mirroring the class connect drag. Dropping onto a
   // DIFFERENT entity creates a default relationship (`source ||--|| target : ""`); dropping on
@@ -1046,6 +1103,87 @@ export function EditorCanvas({
       } else {
         // Dropped on empty canvas → create a NEW entity linked to the source.
         onCreateErEntityLinked?.(sourceName);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Begin a state-diagram drag-to-connect from the purple +. Fully isolated (own window listeners +
+  // preview SVG outside TransformWrapper), mirroring the ER connect drag. Dropping onto a DIFFERENT
+  // state (regular OR composite) creates a transition `source --> target`; dropping on EMPTY canvas
+  // creates a NEW state linked to the source; a no-drag click / drop on the source itself is a no-op.
+  const startStateConnectDrag = (e: React.MouseEvent<HTMLButtonElement>, sourceId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const shell = canvasShellRef.current;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
+    const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+
+    const resolveTarget = (
+      clientX: number,
+      clientY: number,
+    ): { id: string; el: Element } | null => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        // A composite container (cluster) is a valid target too.
+        const cluster = el.closest("g.statediagram-cluster");
+        if (cluster) {
+          const id = stateNameFromSvgId(cluster.id);
+          if (!id || id === sourceId) return null;
+          return { id, el: cluster };
+        }
+        const g = el.closest("g.node");
+        if (!g || !/-state-.+-\d+$/.test(g.id) || /----note-\d+$/.test(g.id)) continue;
+        const id = stateNameFromSvgId(g.id);
+        if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
+        return { id, el: g };
+      }
+      return null;
+    };
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    let dragging = false;
+    setStateConnecting(true);
+
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+      }
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      if (tgt) {
+        const r = tgt.el.getBoundingClientRect();
+        snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+      }
+      setStateConnect({
+        x1: anchorX,
+        y1: anchorY,
+        x2: ev.clientX - shellRect.left,
+        y2: ev.clientY - shellRect.top,
+        snap,
+      });
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setStateConnect(null);
+      setStateConnecting(false);
+      if (!dragging) return; // a plain click on the + (no drag) is a no-op
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      if (tgt) {
+        onAddStateTransition?.(sourceId, tgt.id);
+      } else {
+        onCreateStateLinked?.(sourceId);
       }
     };
 
@@ -1325,7 +1463,8 @@ export function EditorCanvas({
             seqEndpointDragging ||
             !!seqLifelineReorder ||
             classConnecting ||
-            erConnecting,
+            erConnecting ||
+            stateConnecting,
           excluded: [
             "seq-connect-btn",
             "seq-msg-reorder-handle",
@@ -1335,6 +1474,8 @@ export function EditorCanvas({
             "class-relation-hit-target",
             "er-connect-btn",
             "er-relation-hit-target",
+            "state-connect-btn",
+            "state-transition-hit-target",
           ],
         }}
         trackPadPanning={{ disabled: false }}
@@ -1984,6 +2125,14 @@ export function EditorCanvas({
                           onEditLabel={() => onEditErEdgeLabel?.()}
                           onDeleteRelationship={onDeleteErRelationship || (() => {})}
                         />
+                      ) : selectedNodeId && selectedNodeId.startsWith("STATE_EDGE_") ? (
+                        <StateEdgeToolbar
+                          selectedNodeId={selectedNodeId}
+                          code={code}
+                          scale={state.scale}
+                          onEditLabel={() => onEditStateEdgeLabel?.()}
+                          onDeleteTransition={() => onDeleteStateTransition?.()}
+                        />
                       ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
                         <EdgeManipulationToolbar
                           code={code}
@@ -2057,9 +2206,34 @@ export function EditorCanvas({
                           onSetStyle={(patch) => onSetEntityStyle?.(connectSourceEntity, patch)}
                           onResetStyle={() => onResetEntityStyle?.(connectSourceEntity)}
                         />
+                      ) : currentType === "stateDiagram" &&
+                        (connectSourceState || connectSourceStateNote !== null) ? (
+                        <StateNodeToolbar
+                          kind={
+                            connectSourceStateNote !== null
+                              ? "note"
+                              : connectSourceStateIsComposite
+                                ? "composite"
+                                : "state"
+                          }
+                          scale={state.scale}
+                          onRename={
+                            // Notes + states/composites are all renamable; choice/fork/join are
+                            // shape-only (omit Rename for them).
+                            onRenameStateNode && !connectSourceStateIsSpecial
+                              ? () => onRenameStateNode()
+                              : undefined
+                          }
+                          onDelete={() => {
+                            if (connectSourceStateNote !== null)
+                              onDeleteStateNote?.(connectSourceStateNote);
+                            else if (connectSourceState) onDeleteStateNode?.(connectSourceState);
+                          }}
+                        />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||
-                        currentType === "erDiagram" ? null : (
+                        currentType === "erDiagram" ||
+                        currentType === "stateDiagram" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -2094,6 +2268,7 @@ export function EditorCanvas({
                       currentType !== "sequence" &&
                       currentType !== "classDiagram" &&
                       currentType !== "erDiagram" &&
+                      currentType !== "stateDiagram" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -2227,6 +2402,32 @@ export function EditorCanvas({
                             className="er-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
                             title="Drag onto another entity to relate, or onto empty canvas to create a linked entity"
                             onMouseDown={(e) => startErConnectDrag(e, connectSourceEntity)}
+                          >
+                            <Plus className="w-3 h-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
+
+                    {/* State-diagram connection + (purple): drag from a selected state onto another
+                        state to create a transition, or onto empty canvas to create a linked state. */}
+                    {!isInlineEditing &&
+                      currentType === "stateDiagram" &&
+                      connectSourceState &&
+                      selectionBox &&
+                      !stateConnecting && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            className="state-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                            title="Drag onto another state to add a transition, or onto empty canvas to create a linked state"
+                            onMouseDown={(e) => startStateConnectDrag(e, connectSourceState)}
                           >
                             <Plus className="w-3 h-3 pointer-events-none" />
                           </button>
@@ -2400,6 +2601,49 @@ export function EditorCanvas({
               y={erConnect.snap.cy - 3}
               width={erConnect.snap.w + 6}
               height={erConnect.snap.h + 6}
+              rx={6}
+              fill="rgba(99,102,241,0.10)"
+              stroke="#6366f1"
+              strokeWidth={2}
+            />
+          )}
+        </svg>
+      )}
+
+      {/* State-diagram drag-to-connect preview line + snap highlight, rendered outside the
+          TransformWrapper at shell level so pan/zoom never distorts its coordinates. */}
+      {stateConnect && (
+        <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+          <defs>
+            <marker
+              id="state-connect-arrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+            </marker>
+          </defs>
+          <line
+            x1={stateConnect.x1}
+            y1={stateConnect.y1}
+            x2={stateConnect.x2}
+            y2={stateConnect.y2}
+            stroke="#6366f1"
+            strokeDasharray="10,8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            markerEnd="url(#state-connect-arrow)"
+          />
+          {stateConnect.snap && (
+            <rect
+              x={stateConnect.snap.cx - 3}
+              y={stateConnect.snap.cy - 3}
+              width={stateConnect.snap.w + 6}
+              height={stateConnect.snap.h + 6}
               rx={6}
               fill="rgba(99,102,241,0.10)"
               stroke="#6366f1"

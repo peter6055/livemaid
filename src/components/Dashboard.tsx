@@ -1177,6 +1177,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   { id: "sequence", label: "Sequence" },
                   { id: "classDiagram", label: "Class" },
                   { id: "erDiagram", label: "ER" },
+                  { id: "stateDiagram", label: "State" },
                 ].map((t) => (
                   <button
                     key={t.id}
