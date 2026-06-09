@@ -1,9 +1,13 @@
 # Contributing to LiveMaid
 
-Thank you for your interest in contributing! This document covers everything you need to get the project running locally, understand the workflow, and submit a pull request.
+Thank you for your interest in contributing! This document covers everything you need to get the project running locally, understand the workflow, submit a pull request, and understand the project's licensing and contribution policy.
 
 ## Table of Contents
 
+- [📜 Licensing & Contribution Policy](#-licensing--contribution-policy)
+  - [Private Modifications](#private-modifications)
+  - [Contributing Back Upstream](#contributing-back-upstream)
+  - [Licensing of Contributions](#licensing-of-contributions)
 - [🚀 Getting Started](#-getting-started)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
@@ -18,6 +22,30 @@ Thank you for your interest in contributing! This document covers everything you
   - [5) Release](#5-release)
     - [Automatic versioning from the PR title](#automatic-versioning-from-the-pr-title)
   - [6) Sandbox Deployment](#6-sandbox-deployment)
+
+## 📜 Licensing & Contribution Policy
+
+LiveMaid is distributed under the [LiveMaid Source Available License 1.0 (LSAL-1.0)](LICENSE). It is **source-available** software, not OSI open-source software. Please read the LICENSE file before contributing.
+
+### Private Modifications
+
+You are **free to make private or internal modifications** to LiveMaid without any obligation to upstream or share those changes. The license explicitly allows private modifications. You do not need to open a PR for changes you keep private.
+
+### Contributing Back Upstream
+
+Contributing back to this project is **optional but very welcome**. If you choose to contribute:
+
+- Submit changes via **Pull Request (PR) to this repository**, targeting the `main` branch.
+- PRs are subject to the contribution workflow and CI checks described below.
+- By submitting a PR you confirm that you have the right to contribute the code under the project's license (see [Licensing of Contributions](#licensing-of-contributions) below).
+
+### Licensing of Contributions
+
+By submitting a Pull Request, you confirm that:
+
+- You have the right to contribute the submitted code.
+- Your contribution may be distributed under the [LSAL-1.0](LICENSE) license governing this repository.
+- You are not required to assign copyright — you retain ownership of your contribution — but you grant the project the right to use it under LSAL-1.0.
 
 ## 🚀 Getting Started
 
