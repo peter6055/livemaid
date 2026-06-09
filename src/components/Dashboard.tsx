@@ -836,13 +836,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               </nav>
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate lg:min-w-0">
                   {currentFolderId
                     ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
                     : "Your Diagrams"}
                 </h1>
 
-                <div className="flex flex-col gap-3 w-full lg:w-auto">
+                <div className="flex flex-col gap-3 w-full lg:flex-1 lg:min-w-0">
                   {/* Row 1: filters — how existing diagrams are displayed (search / sort / view). */}
                   <div className="flex flex-wrap gap-3 items-center">
                     <div className="relative flex-1 min-w-[200px]">
