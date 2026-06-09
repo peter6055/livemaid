@@ -2170,11 +2170,7 @@ export function useCanvasInteraction({
           currentNode.classList?.contains("state-transition-hit-target")
         ) {
           const dataId = currentNode.getAttribute("data-id");
-          if (
-            dataId &&
-            /^edge\d+$/.test(dataId) &&
-            !currentNode.classList?.contains("note-edge")
-          ) {
+          if (dataId && /^edge\d+$/.test(dataId) && !currentNode.classList?.contains("note-edge")) {
             foundNodeClass = true;
             nodeId = `STATE_EDGE_${dataId}`;
             break;

@@ -31,7 +31,11 @@ import {
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
 import type { ParsedEntity, EntityEdits } from "@/lib/diagrams/erDiagram";
-import { stateNameFromSvgId, isCompositeState, isSpecialStateNode } from "@/lib/diagrams/stateDiagram";
+import {
+  stateNameFromSvgId,
+  isCompositeState,
+  isSpecialStateNode,
+} from "@/lib/diagrams/stateDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";

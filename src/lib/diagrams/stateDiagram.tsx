@@ -307,7 +307,11 @@ export function addComposite(code: string): string {
  * a lexical error). For the toolbox (no explicit target), the note attaches to the first existing
  * state id; if the diagram has no states yet, a `state_N` is created first so the note has a target.
  */
-export function addNote(code: string, position: "left" | "right" = "right", stateId?: string): string {
+export function addNote(
+  code: string,
+  position: "left" | "right" = "right",
+  stateId?: string,
+): string {
   let working = code;
   let target = stateId;
   if (!target) {
@@ -357,7 +361,9 @@ function canonicalStateOperand(raw: string): string {
  */
 export function getStateLabel(code: string, id: string): string {
   const esc = escapeForRegex(id);
-  const asM = code.match(new RegExp(`^[ \\t]*state[ \\t]+"([^"]*)"[ \\t]+as[ \\t]+${esc}[ \\t]*$`, "m"));
+  const asM = code.match(
+    new RegExp(`^[ \\t]*state[ \\t]+"([^"]*)"[ \\t]+as[ \\t]+${esc}[ \\t]*$`, "m"),
+  );
   if (asM) return asM[1].replace(/#quot;/g, '"').trim();
   for (const line of code.split("\n")) {
     const t = line.trim();
@@ -676,7 +682,12 @@ export function stateTransitionFromEdgeDataId(
   if (!m) return null;
   const entry = getStateEdgeOrder(code)[parseInt(m[1], 10)];
   if (!entry || entry.kind !== "transition") return null;
-  return { lineIndex: entry.lineIndex, source: entry.source, target: entry.target, label: entry.label };
+  return {
+    lineIndex: entry.lineIndex,
+    source: entry.source,
+    target: entry.target,
+    label: entry.label,
+  };
 }
 
 /** Append a transition `source --> target [: label]`. */
@@ -737,17 +748,61 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
 
   // The shape toolbox (Story 2) — each button drops the correct semantic UML node with an
   // algorithmic id and the baseline syntax. Mirrors the ER "Entity" button chrome.
-  const toolboxItems: Array<{ key: string; label: string; icon: React.ReactNode; run: () => void }> =
-    [
-      { key: "state", label: "State", icon: <Square className="w-4 h-4" />, run: () => setCode(addState(code)) },
-      { key: "start", label: "Start", icon: <Circle className="w-4 h-4" />, run: () => setCode(addStartTransition(code)) },
-      { key: "end", label: "End", icon: <CircleDot className="w-4 h-4" />, run: () => setCode(addEndTransition(code)) },
-      { key: "choice", label: "Choice", icon: <Diamond className="w-4 h-4" />, run: () => setCode(addChoice(code)) },
-      { key: "fork", label: "Fork", icon: <Split className="w-4 h-4" />, run: () => setCode(addFork(code)) },
-      { key: "join", label: "Join", icon: <Merge className="w-4 h-4" />, run: () => setCode(addJoin(code)) },
-      { key: "composite", label: "Composite", icon: <Boxes className="w-4 h-4" />, run: () => setCode(addComposite(code)) },
-      { key: "note", label: "Note", icon: <StickyNote className="w-4 h-4" />, run: () => setCode(addNote(code)) },
-    ];
+  const toolboxItems: Array<{
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    run: () => void;
+  }> = [
+    {
+      key: "state",
+      label: "State",
+      icon: <Square className="w-4 h-4" />,
+      run: () => setCode(addState(code)),
+    },
+    {
+      key: "start",
+      label: "Start",
+      icon: <Circle className="w-4 h-4" />,
+      run: () => setCode(addStartTransition(code)),
+    },
+    {
+      key: "end",
+      label: "End",
+      icon: <CircleDot className="w-4 h-4" />,
+      run: () => setCode(addEndTransition(code)),
+    },
+    {
+      key: "choice",
+      label: "Choice",
+      icon: <Diamond className="w-4 h-4" />,
+      run: () => setCode(addChoice(code)),
+    },
+    {
+      key: "fork",
+      label: "Fork",
+      icon: <Split className="w-4 h-4" />,
+      run: () => setCode(addFork(code)),
+    },
+    {
+      key: "join",
+      label: "Join",
+      icon: <Merge className="w-4 h-4" />,
+      run: () => setCode(addJoin(code)),
+    },
+    {
+      key: "composite",
+      label: "Composite",
+      icon: <Boxes className="w-4 h-4" />,
+      run: () => setCode(addComposite(code)),
+    },
+    {
+      key: "note",
+      label: "Note",
+      icon: <StickyNote className="w-4 h-4" />,
+      run: () => setCode(addNote(code)),
+    },
+  ];
 
   // Title is a toggle (same UX as the class/ER diagrams): ON inserts a default title immediately;
   // OFF asks for confirmation first (removing the title would drop the user-entered title text). The

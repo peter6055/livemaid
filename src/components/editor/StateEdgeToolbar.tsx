@@ -43,7 +43,10 @@ export function StateEdgeToolbar({
     };
   }, []);
 
-  const rel = stateTransitionFromEdgeDataId(code, selectedNodeId?.replace("STATE_EDGE_", "") ?? null);
+  const rel = stateTransitionFromEdgeDataId(
+    code,
+    selectedNodeId?.replace("STATE_EDGE_", "") ?? null,
+  );
   // If the transition can no longer be resolved (e.g. it was just deleted) render nothing.
   if (!rel) return null;
 

@@ -771,8 +771,7 @@ export function LiveMaidEditor({
       const stateGroup = els
         .map((el) => el.closest("g.node"))
         .find(
-          (g): g is Element =>
-            !!g && /-state-.+-\d+$/.test(g.id) && !/----note-\d+$/.test(g.id),
+          (g): g is Element => !!g && /-state-.+-\d+$/.test(g.id) && !/----note-\d+$/.test(g.id),
         );
       if (stateGroup) {
         const id = stateNameFromSvgId(stateGroup.id);
@@ -898,7 +897,13 @@ export function LiveMaidEditor({
     }
     const id = stateNameFromSvgId(selectedSvgId);
     if (!id || isSpecialStateNode(code, id)) return;
-    setStateTextEdit({ kind: "state", id, noteIndex: -1, value: getStateLabel(code, id) || id, rect });
+    setStateTextEdit({
+      kind: "state",
+      id,
+      noteIndex: -1,
+      value: getStateLabel(code, id) || id,
+      rect,
+    });
   }, [selectedSvgId, code]);
 
   // ---- State-diagram transitions (edges) ----
