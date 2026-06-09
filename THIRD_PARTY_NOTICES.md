@@ -18,9 +18,9 @@ The table below lists third-party components used directly in this repository.
 Maintainers: please keep this list up to date as dependencies are added or
 updated.
 
-| Component | Source | Version | License | Copyright |
-|-----------|--------|---------|---------|-----------|
-| _(none listed yet — see `package.json` and `package-lock.json` for npm dependencies)_ | | | | |
+| Component                                                                             | Source | Version | License | Copyright |
+| ------------------------------------------------------------------------------------- | ------ | ------- | ------- | --------- |
+| _(none listed yet — see `package.json` and `package-lock.json` for npm dependencies)_ |        |         |         |           |
 
 ### How to add an entry
 
