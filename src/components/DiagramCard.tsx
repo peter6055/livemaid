@@ -46,6 +46,7 @@ export function DiagramCard({
   onMove,
   moveTargets,
   isDemo = false,
+  view = "grid",
 }: {
   diagram: DiagramDocument;
   onRename: (id: string, name: string) => void;
@@ -54,6 +55,7 @@ export function DiagramCard({
   onMove?: (id: string, folderId: string | null) => void;
   moveTargets?: { id: string | null; name: string; depth: number }[];
   isDemo?: boolean;
+  view?: "grid" | "list";
 }) {
   const [svgContent, setSvgContent] = useState<string>("");
   const [isCompiling, setIsCompiling] = useState<boolean>(true);
@@ -89,169 +91,217 @@ export function DiagramCard({
     parsedType === "graph" ||
     parsedType === "flowchart" ||
     parsedType === "sequence" ||
-    parsedType === "classDiagram";
+    parsedType === "classDiagram" ||
+    parsedType === "erDiagram";
 
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  // Action buttons (edit / move / delete) shared between the grid card and the list row.
+  const actions = isDemo ? (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground/40 pointer-events-none"
+            disabled
+          >
+            <FileEdit className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Read-only in demo mode</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-red-300/50 pointer-events-none"
+            disabled
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Read-only in demo mode</TooltipContent>
+      </Tooltip>
+      {onMove && moveTargets && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              />
+            }
+          >
+            <MoreVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                <FolderInput className="h-4 w-4" /> Move to
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                {moveTargets
+                  .filter((t) => t.id !== (diagram.folderId ?? null))
+                  .map((t) => (
+                    <DropdownMenuItem
+                      key={t.id ?? "root"}
+                      onClick={() =>
+                        toast.info("Demo mode — this is read only, changes won't be saved")
+                      }
+                      className="cursor-pointer overflow-hidden"
+                      style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                    >
+                      <span className="truncate">{t.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </TooltipProvider>
+  ) : (
+    <>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+        onClick={() => onRename(diagram.id, diagram.name)}
+      >
+        <FileEdit className="h-4 w-4" />
+      </Button>
+      {onMove && moveTargets && (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+              />
+            }
+          >
+            <MoreVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                <FolderInput className="h-4 w-4" /> Move to
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                {moveTargets
+                  .filter((t) => t.id !== (diagram.folderId ?? null))
+                  .map((t) => (
+                    <DropdownMenuItem
+                      key={t.id ?? "root"}
+                      onClick={() => onMove(diagram.id, t.id)}
+                      className="cursor-pointer overflow-hidden"
+                      style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                    >
+                      <span className="truncate">{t.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10"
+        onClick={() => onDelete(diagram.id)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </>
+  );
+
+  // Type label + two-way / code-only capability badge, shared between layouts.
+  const typeBadge = (
+    <>
+      <GitCommitVertical className="h-3 w-3" />
+      <span>{diagramTypeLabel(parsedType)}</span>
+      {isSupported && (
+        <div className="flex items-center gap-0.5 bg-indigo-500/10 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded">
+          <Repeat2 className="h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" />
+          <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
+            2-way
+          </span>
+        </div>
+      )}
+      {!isSupported && (
+        <div className="flex items-center gap-0.5 bg-slate-500/10 dark:bg-slate-400/10 px-1.5 py-0.5 rounded">
+          <Code2 className="h-2.5 w-2.5 text-slate-600 dark:text-slate-400" />
+          <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300">
+            Code Only
+          </span>
+        </div>
+      )}
+    </>
+  );
+
+  const editedLabel = `Edited ${formatDistanceToNow(new Date(diagram.updatedAt), {
+    addSuffix: true,
+  })}`;
+
+  // ---- List view: a compact horizontal row -------------------------------
+  if (view === "list") {
+    return (
+      <Card
+        draggable={!!onMove}
+        onDragStart={handleDragStart}
+        onClick={() => onNavigate(`/editor/${diagram.id}`)}
+        className="flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+          <GitCommitVertical className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{diagram.name}</p>
+          <div className="mt-0.5 flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+            {typeBadge}
+          </div>
+        </div>
+        <div className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
+          <Clock className="h-3 w-3 mr-1" />
+          {editedLabel}
+        </div>
+        <div
+          className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {actions}
+        </div>
+      </Card>
+    );
+  }
+
+  // ---- Grid view (default): the full preview card ------------------------
   return (
     <Card
       draggable={!!onMove}
-      onDragStart={(e) => {
-        e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
-        e.dataTransfer.effectAllowed = "move";
-      }}
+      onDragStart={handleDragStart}
       className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 min-h-8 w-full overflow-hidden">
-          <CardTitle className="text-lg font-medium text-foreground truncate flex-1">
+          <CardTitle className="text-lg font-medium text-foreground truncate flex-1 min-w-0">
             {diagram.name}
           </CardTitle>
           <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-            {isDemo ? (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground/40 pointer-events-none"
-                      disabled
-                    >
-                      <FileEdit className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Read-only in demo mode</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger render={<span className="inline-flex cursor-not-allowed" />}>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-red-300/50 pointer-events-none"
-                      disabled
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Read-only in demo mode</TooltipContent>
-                </Tooltip>
-                {onMove && moveTargets && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-                        />
-                      }
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                          <FolderInput className="h-4 w-4" /> Move to
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                          {moveTargets
-                            .filter((t) => t.id !== (diagram.folderId ?? null))
-                            .map((t) => (
-                              <DropdownMenuItem
-                                key={t.id ?? "root"}
-                                onClick={() =>
-                                  toast.info(
-                                    "Demo mode — this is read only, changes won't be saved",
-                                  )
-                                }
-                                className="cursor-pointer"
-                                style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
-                              >
-                                {t.name}
-                              </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-              </TooltipProvider>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-                  onClick={() => onRename(diagram.id, diagram.name)}
-                >
-                  <FileEdit className="h-4 w-4" />
-                </Button>
-                {onMove && moveTargets && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-                        />
-                      }
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                          <FolderInput className="h-4 w-4" /> Move to
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                          {moveTargets
-                            .filter((t) => t.id !== (diagram.folderId ?? null))
-                            .map((t) => (
-                              <DropdownMenuItem
-                                key={t.id ?? "root"}
-                                onClick={() => onMove(diagram.id, t.id)}
-                                className="cursor-pointer"
-                                style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
-                              >
-                                {t.name}
-                              </DropdownMenuItem>
-                            ))}
-                        </DropdownMenuSubContent>
-                      </DropdownMenuSub>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                  onClick={() => onDelete(diagram.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </>
-            )}
+            {actions}
           </div>
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">
-          <GitCommitVertical className="h-3 w-3" />
-          <span>{diagramTypeLabel(parsedType)}</span>
-          {isSupported && (
-            <div className="flex items-center gap-0.5 bg-indigo-500/10 dark:bg-indigo-400/10 px-1.5 py-0.5 rounded">
-              <Repeat2 className="h-2.5 w-2.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="text-[10px] font-medium text-indigo-700 dark:text-indigo-300">
-                2-way
-              </span>
-            </div>
-          )}
-          {!isSupported && (
-            <div className="flex items-center gap-0.5 bg-slate-500/10 dark:bg-slate-400/10 px-1.5 py-0.5 rounded">
-              <Code2 className="h-2.5 w-2.5 text-slate-600 dark:text-slate-400" />
-              <span className="text-[10px] font-medium text-slate-700 dark:text-slate-300">
-                Code Only
-              </span>
-            </div>
-          )}
+          {typeBadge}
         </div>
       </CardHeader>
       <CardContent className="flex-grow">

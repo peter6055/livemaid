@@ -22,6 +22,8 @@ import {
   Sun,
   Clock,
   FileText,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -82,6 +84,17 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const [folderLoading, setFolderLoading] = useState(false);
   const folderSwitchTimer = useRef<NodeJS.Timeout | null>(null);
   const [sortBy, setSortBy] = useState<"edited" | "created" | "name">("edited");
+  // File-viewer layout: "grid" (preview cards) or "list" (compact rows). Persisted to localStorage
+  // so the user's preference survives reloads. Hydrated in an effect (client-only) to avoid an
+  // SSR/hydration mismatch — the server always renders the default "grid".
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  useEffect(() => {
+    const saved = window.localStorage.getItem("livemaid:viewMode");
+    if (saved === "list" || saved === "grid") setViewMode(saved);
+  }, []);
+  useEffect(() => {
+    window.localStorage.setItem("livemaid:viewMode", viewMode);
+  }, [viewMode]);
   // `searchInput` is the raw, instant value bound to the text field; `searchQuery` is the DEBOUNCED
   // value that actually drives filtering. `searchLoading` is true during the debounce window so the
   // grid shows a brief loading state instead of filtering on every keystroke.
@@ -528,11 +541,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     const q = searchQuery.trim().toLowerCase();
     const inScope = isSearching
       ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
-      : // Root view ("All Diagrams") lists EVERY diagram regardless of folder; a specific folder
-        // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
-        currentFolderId === null
-        ? diagrams
-        : diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
+      : // The workspace behaves like a file-explorer root: it shows the folders plus only the
+        // diagrams that live directly at this level (unfiled at root, or owned by the current
+        // folder). Diagrams moved into a folder leave the root view and surface inside that folder.
+        diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
     const sorted = [...inScope];
     if (sortBy === "name") {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
@@ -823,104 +835,146 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 ))}
               </nav>
 
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate lg:min-w-0">
                   {currentFolderId
                     ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
                     : "Your Diagrams"}
                 </h1>
 
-                <div className="flex flex-wrap gap-3 items-center">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                    <Input
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      placeholder="Search diagrams"
-                      className="pl-9 pr-9 h-10"
-                    />
-                    {searchLoading ? (
-                      <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
-                    ) : searchInput ? (
+                <div className="flex flex-col gap-3 w-full lg:flex-1 lg:min-w-0">
+                  {/* Row 1: filters — how existing diagrams are displayed (search / sort / view). */}
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      <Input
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search diagrams"
+                        className="pl-9 pr-9 h-10"
+                      />
+                      {searchLoading ? (
+                        <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
+                      ) : searchInput ? (
+                        <button
+                          onClick={resetSearch}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label="Clear search"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {/* Sort dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />
+                        }
+                      >
+                        <ArrowDownUp className="w-4 h-4" />
+                        {sortBy === "edited"
+                          ? "Last edited"
+                          : sortBy === "created"
+                            ? "Date created"
+                            : "Name"}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("edited")}
+                          className="cursor-pointer"
+                        >
+                          Last edited
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("created")}
+                          className="cursor-pointer"
+                        >
+                          Date created
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("name")}
+                          className="cursor-pointer"
+                        >
+                          Name
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* View toggle: switch the file viewer between grid and list layouts. */}
+                    <div className="flex h-10 items-center rounded-md border border-border p-0.5">
                       <button
-                        onClick={resetSearch}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Clear search"
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        aria-label="Grid view"
+                        aria-pressed={viewMode === "grid"}
+                        title="Grid view"
+                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                          viewMode === "grid"
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
                       >
-                        <X className="w-4 h-4" />
+                        <LayoutGrid className="w-4 h-4" />
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("list")}
+                        aria-label="List view"
+                        aria-pressed={viewMode === "list"}
+                        title="List view"
+                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                          viewMode === "list"
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <List className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                  {/* end Row 1 */}
 
-                  {/* Sort dropdown */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />}
-                    >
-                      <ArrowDownUp className="w-4 h-4" />
-                      {sortBy === "edited"
-                        ? "Last edited"
-                        : sortBy === "created"
-                          ? "Date created"
-                          : "Name"}
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("edited")}
-                        className="cursor-pointer"
+                  {/* Row 2: actions — create new content (folder / diagram), primary CTA anchored right. */}
+                  <div className="flex flex-wrap gap-3 items-center justify-end">
+                    {!isDemo && (
+                      <Button
+                        onClick={openCreateFolderDialog}
+                        variant="outline"
+                        className="h-10 gap-2 whitespace-nowrap"
                       >
-                        Last edited
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("created")}
-                        className="cursor-pointer"
-                      >
-                        Date created
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("name")}
-                        className="cursor-pointer"
-                      >
-                        Name
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <FolderPlus className="w-4 h-4" />
+                        New Folder
+                      </Button>
+                    )}
 
-                  {!isDemo && (
-                    <Button
-                      onClick={openCreateFolderDialog}
-                      variant="outline"
-                      className="h-10 gap-2 whitespace-nowrap"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                      New Folder
-                    </Button>
-                  )}
-
-                  {isDemo ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger render={<span className="inline-flex" />}>
-                          <Button
-                            disabled
-                            className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60"
-                          >
-                            <Plus className="w-5 h-5 mr-2" />
-                            New Diagram
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Read-only in demo mode</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <Button
-                      onClick={openCreateDialog}
-                      className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
-                    >
-                      <Plus className="w-5 h-5 mr-2" />
-                      New Diagram
-                    </Button>
-                  )}
+                    {isDemo ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="inline-flex" />}>
+                            <Button
+                              disabled
+                              className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
+                            >
+                              <Plus className="w-5 h-5 mr-2" />
+                              New Diagram
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Read-only in demo mode</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Button
+                        onClick={openCreateDialog}
+                        className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                      >
+                        <Plus className="w-5 h-5 mr-2" />
+                        New Diagram
+                      </Button>
+                    )}
+                  </div>
+                  {/* end Row 2 */}
                 </div>
               </div>
             </div>
@@ -1030,7 +1084,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       Folders{" "}
                       <span className="text-muted-foreground/60">({visibleFolders.length})</span>
                     </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div
+                      className={
+                        viewMode === "list"
+                          ? "flex flex-col gap-2"
+                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                      }
+                    >
                       {visibleFolders.map((folder) => (
                         <FolderCard
                           key={folder.id}
@@ -1044,6 +1104,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           moveTargets={moveTargets}
                           canMove={ALLOW_NESTED_FOLDERS}
                           isDemo={isDemo}
+                          view={viewMode}
                         />
                       ))}
                     </div>
@@ -1060,7 +1121,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                         </span>
                       </h2>
                     )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div
+                      className={
+                        viewMode === "list"
+                          ? "flex flex-col gap-2"
+                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                      }
+                    >
                       {displayedDiagrams.map((diagram) => (
                         <DiagramCard
                           key={diagram.id}
@@ -1071,6 +1138,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           onMove={requestMoveDiagram}
                           moveTargets={moveTargets}
                           isDemo={isDemo}
+                          view={viewMode}
                         />
                       ))}
                     </div>

@@ -41,6 +41,7 @@ export function FolderCard({
   moveTargets,
   canMove = true,
   isDemo = false,
+  view = "grid",
 }: {
   folder: Folder;
   childCount: number;
@@ -52,27 +53,119 @@ export function FolderCard({
   moveTargets: { id: string | null; name: string; depth: number }[];
   canMove?: boolean;
   isDemo?: boolean;
+  view?: "grid" | "list";
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
+  const dropProps = {
+    onDragOver: (e: React.DragEvent) => {
+      if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
+        e.preventDefault();
+        setIsDragOver(true);
+      }
+    },
+    onDragLeave: () => setIsDragOver(false),
+    onDrop: (e: React.DragEvent) => {
+      const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
+      setIsDragOver(false);
+      if (diagramId) {
+        e.preventDefault();
+        onDropDiagram(diagramId, folder.id);
+      }
+    },
+  };
+
+  // Three-dot actions menu, shared between the grid card and the list row.
+  const menu = !isDemo && (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
+          />
+        }
+      >
+        <MoreVertical className="h-4 w-4" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onClick={() => onOpen(folder.id)} className="cursor-pointer gap-2">
+          <FolderOpen className="h-4 w-4" /> Open
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => onRename(folder.id, folder.name)}
+          className="cursor-pointer gap-2"
+        >
+          <Pencil className="h-4 w-4" /> Rename
+        </DropdownMenuItem>
+        {canMove && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+              <FolderInput className="h-4 w-4" /> Move to
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+              {moveTargets
+                .filter((t) => t.id !== folder.id && t.id !== folder.parentId)
+                .map((t) => (
+                  <DropdownMenuItem
+                    key={t.id ?? "root"}
+                    onClick={() => onMove(folder.id, t.id)}
+                    className="cursor-pointer overflow-hidden"
+                    style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                  >
+                    <span className="truncate">{t.name}</span>
+                  </DropdownMenuItem>
+                ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => onDelete(folder.id)}
+          className="cursor-pointer gap-2 text-red-500 focus:text-red-500"
+        >
+          <Trash2 className="h-4 w-4" /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const countLabel =
+    childCount === 0 ? "Empty" : `${childCount} item${childCount === 1 ? "" : "s"}`;
+
+  // ---- List view: a compact horizontal row -------------------------------
+  if (view === "list") {
+    return (
+      <Card
+        onClick={() => onOpen(folder.id)}
+        {...dropProps}
+        className={`group flex flex-row items-center gap-4 px-4 py-3 cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-md ${
+          isDragOver ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/5" : ""
+        }`}
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
+          <FolderIcon className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">{folder.name}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{countLabel}</p>
+        </div>
+        <div
+          className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {menu}
+        </div>
+      </Card>
+    );
+  }
+
+  // ---- Grid view (default) ----------------------------------------------
   return (
     <Card
       onClick={() => onOpen(folder.id)}
-      onDragOver={(e) => {
-        if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
-          e.preventDefault();
-          setIsDragOver(true);
-        }
-      }}
-      onDragLeave={() => setIsDragOver(false)}
-      onDrop={(e) => {
-        const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
-        setIsDragOver(false);
-        if (diagramId) {
-          e.preventDefault();
-          onDropDiagram(diagramId, folder.id);
-        }
-      }}
+      {...dropProps}
       className={`group relative flex flex-col items-center justify-center text-center gap-3 p-6 h-full min-h-[140px] cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 ${
         isDragOver ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/5" : ""
       }`}
@@ -83,58 +176,7 @@ export function FolderCard({
           className="absolute top-2 right-2 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
-                />
-              }
-            >
-              <MoreVertical className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem onClick={() => onOpen(folder.id)} className="cursor-pointer gap-2">
-                <FolderOpen className="h-4 w-4" /> Open
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => onRename(folder.id, folder.name)}
-                className="cursor-pointer gap-2"
-              >
-                <Pencil className="h-4 w-4" /> Rename
-              </DropdownMenuItem>
-              {canMove && (
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                    <FolderInput className="h-4 w-4" /> Move to
-                  </DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                    {moveTargets
-                      .filter((t) => t.id !== folder.id && t.id !== folder.parentId)
-                      .map((t) => (
-                        <DropdownMenuItem
-                          key={t.id ?? "root"}
-                          onClick={() => onMove(folder.id, t.id)}
-                          className="cursor-pointer"
-                          style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
-                        >
-                          {t.name}
-                        </DropdownMenuItem>
-                      ))}
-                  </DropdownMenuSubContent>
-                </DropdownMenuSub>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => onDelete(folder.id)}
-                className="cursor-pointer gap-2 text-red-500 focus:text-red-500"
-              >
-                <Trash2 className="h-4 w-4" /> Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {menu}
         </div>
       )}
 
@@ -144,9 +186,7 @@ export function FolderCard({
       </div>
       <div className="min-w-0 w-full">
         <p className="truncate text-base font-medium text-foreground">{folder.name}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {childCount === 0 ? "Empty" : `${childCount} item${childCount === 1 ? "" : "s"}`}
-        </p>
+        <p className="text-xs text-muted-foreground mt-0.5">{countLabel}</p>
       </div>
     </Card>
   );
