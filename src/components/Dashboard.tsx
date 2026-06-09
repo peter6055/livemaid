@@ -955,7 +955,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           <TooltipTrigger render={<span className="inline-flex" />}>
                             <Button
                               disabled
-                              className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60"
+                              className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
                             >
                               <Plus className="w-5 h-5 mr-2" />
                               New Diagram
@@ -967,7 +967,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     ) : (
                       <Button
                         onClick={openCreateDialog}
-                        className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                        className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
                       >
                         <Plus className="w-5 h-5 mr-2" />
                         New Diagram
