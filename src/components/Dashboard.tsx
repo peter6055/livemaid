@@ -22,6 +22,8 @@ import {
   Sun,
   Clock,
   FileText,
+  LayoutGrid,
+  List,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -82,6 +84,17 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const [folderLoading, setFolderLoading] = useState(false);
   const folderSwitchTimer = useRef<NodeJS.Timeout | null>(null);
   const [sortBy, setSortBy] = useState<"edited" | "created" | "name">("edited");
+  // File-viewer layout: "grid" (preview cards) or "list" (compact rows). Persisted to localStorage
+  // so the user's preference survives reloads. Hydrated in an effect (client-only) to avoid an
+  // SSR/hydration mismatch — the server always renders the default "grid".
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  useEffect(() => {
+    const saved = window.localStorage.getItem("livemaid:viewMode");
+    if (saved === "list" || saved === "grid") setViewMode(saved);
+  }, []);
+  useEffect(() => {
+    window.localStorage.setItem("livemaid:viewMode", viewMode);
+  }, [viewMode]);
   // `searchInput` is the raw, instant value bound to the text field; `searchQuery` is the DEBOUNCED
   // value that actually drives filtering. `searchLoading` is true during the debounce window so the
   // grid shows a brief loading state instead of filtering on every keystroke.
@@ -528,11 +541,10 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     const q = searchQuery.trim().toLowerCase();
     const inScope = isSearching
       ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
-      : // Root view ("All Diagrams") lists EVERY diagram regardless of folder; a specific folder
-        // scopes to just its own diagrams. This matches the "All Diagrams" sidebar label.
-        currentFolderId === null
-        ? diagrams
-        : diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
+      : // The workspace behaves like a file-explorer root: it shows the folders plus only the
+        // diagrams that live directly at this level (unfiled at root, or owned by the current
+        // folder). Diagrams moved into a folder leave the root view and surface inside that folder.
+        diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
     const sorted = [...inScope];
     if (sortBy === "name") {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
@@ -886,6 +898,38 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     </DropdownMenuContent>
                   </DropdownMenu>
 
+                  {/* View toggle: switch the file viewer between grid and list layouts. */}
+                  <div className="flex h-10 items-center rounded-md border border-border p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("grid")}
+                      aria-label="Grid view"
+                      aria-pressed={viewMode === "grid"}
+                      title="Grid view"
+                      className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                        viewMode === "grid"
+                          ? "bg-accent text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <LayoutGrid className="w-4 h-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setViewMode("list")}
+                      aria-label="List view"
+                      aria-pressed={viewMode === "list"}
+                      title="List view"
+                      className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                        viewMode === "list"
+                          ? "bg-accent text-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
+
                   {!isDemo && (
                     <Button
                       onClick={openCreateFolderDialog}
@@ -1030,7 +1074,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       Folders{" "}
                       <span className="text-muted-foreground/60">({visibleFolders.length})</span>
                     </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div
+                      className={
+                        viewMode === "list"
+                          ? "flex flex-col gap-2"
+                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                      }
+                    >
                       {visibleFolders.map((folder) => (
                         <FolderCard
                           key={folder.id}
@@ -1044,6 +1094,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           moveTargets={moveTargets}
                           canMove={ALLOW_NESTED_FOLDERS}
                           isDemo={isDemo}
+                          view={viewMode}
                         />
                       ))}
                     </div>
@@ -1060,7 +1111,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                         </span>
                       </h2>
                     )}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div
+                      className={
+                        viewMode === "list"
+                          ? "flex flex-col gap-2"
+                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                      }
+                    >
                       {displayedDiagrams.map((diagram) => (
                         <DiagramCard
                           key={diagram.id}
@@ -1071,6 +1128,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                           onMove={requestMoveDiagram}
                           moveTargets={moveTargets}
                           isDemo={isDemo}
+                          view={viewMode}
                         />
                       ))}
                     </div>
