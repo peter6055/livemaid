@@ -111,10 +111,10 @@ export function FolderCard({
                   <DropdownMenuItem
                     key={t.id ?? "root"}
                     onClick={() => onMove(folder.id, t.id)}
-                    className="cursor-pointer"
+                    className="cursor-pointer overflow-hidden"
                     style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
                   >
-                    {t.name}
+                    <span className="truncate">{t.name}</span>
                   </DropdownMenuItem>
                 ))}
             </DropdownMenuSubContent>

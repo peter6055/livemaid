@@ -155,10 +155,10 @@ export function DiagramCard({
                       onClick={() =>
                         toast.info("Demo mode — this is read only, changes won't be saved")
                       }
-                      className="cursor-pointer"
+                      className="cursor-pointer overflow-hidden"
                       style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
                     >
-                      {t.name}
+                      <span className="truncate">{t.name}</span>
                     </DropdownMenuItem>
                   ))}
               </DropdownMenuSubContent>
@@ -202,10 +202,10 @@ export function DiagramCard({
                     <DropdownMenuItem
                       key={t.id ?? "root"}
                       onClick={() => onMove(diagram.id, t.id)}
-                      className="cursor-pointer"
+                      className="cursor-pointer overflow-hidden"
                       style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
                     >
-                      {t.name}
+                      <span className="truncate">{t.name}</span>
                     </DropdownMenuItem>
                   ))}
               </DropdownMenuSubContent>
@@ -293,7 +293,7 @@ export function DiagramCard({
     >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 min-h-8 w-full overflow-hidden">
-          <CardTitle className="text-lg font-medium text-foreground truncate flex-1">
+          <CardTitle className="text-lg font-medium text-foreground truncate flex-1 min-w-0">
             {diagram.name}
           </CardTitle>
           <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
