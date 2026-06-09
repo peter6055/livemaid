@@ -835,136 +835,146 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 ))}
               </nav>
 
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate">
                   {currentFolderId
                     ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
                     : "Your Diagrams"}
                 </h1>
 
-                <div className="flex flex-wrap gap-3 items-center">
-                  <div className="relative flex-1 min-w-[200px]">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                    <Input
-                      value={searchInput}
-                      onChange={(e) => setSearchInput(e.target.value)}
-                      placeholder="Search diagrams"
-                      className="pl-9 pr-9 h-10"
-                    />
-                    {searchLoading ? (
-                      <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
-                    ) : searchInput ? (
+                <div className="flex flex-col gap-3 w-full lg:w-auto">
+                  {/* Row 1: filters — how existing diagrams are displayed (search / sort / view). */}
+                  <div className="flex flex-wrap gap-3 items-center">
+                    <div className="relative flex-1 min-w-[200px]">
+                      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                      <Input
+                        value={searchInput}
+                        onChange={(e) => setSearchInput(e.target.value)}
+                        placeholder="Search diagrams"
+                        className="pl-9 pr-9 h-10"
+                      />
+                      {searchLoading ? (
+                        <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
+                      ) : searchInput ? (
+                        <button
+                          onClick={resetSearch}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                          aria-label="Clear search"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {/* Sort dropdown */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />
+                        }
+                      >
+                        <ArrowDownUp className="w-4 h-4" />
+                        {sortBy === "edited"
+                          ? "Last edited"
+                          : sortBy === "created"
+                            ? "Date created"
+                            : "Name"}
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("edited")}
+                          className="cursor-pointer"
+                        >
+                          Last edited
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("created")}
+                          className="cursor-pointer"
+                        >
+                          Date created
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => setSortBy("name")}
+                          className="cursor-pointer"
+                        >
+                          Name
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* View toggle: switch the file viewer between grid and list layouts. */}
+                    <div className="flex h-10 items-center rounded-md border border-border p-0.5">
                       <button
-                        onClick={resetSearch}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                        aria-label="Clear search"
+                        type="button"
+                        onClick={() => setViewMode("grid")}
+                        aria-label="Grid view"
+                        aria-pressed={viewMode === "grid"}
+                        title="Grid view"
+                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                          viewMode === "grid"
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
                       >
-                        <X className="w-4 h-4" />
+                        <LayoutGrid className="w-4 h-4" />
                       </button>
-                    ) : null}
+                      <button
+                        type="button"
+                        onClick={() => setViewMode("list")}
+                        aria-label="List view"
+                        aria-pressed={viewMode === "list"}
+                        title="List view"
+                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                          viewMode === "list"
+                            ? "bg-accent text-foreground"
+                            : "text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <List className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
+                  {/* end Row 1 */}
 
-                  {/* Sort dropdown */}
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />}
-                    >
-                      <ArrowDownUp className="w-4 h-4" />
-                      {sortBy === "edited"
-                        ? "Last edited"
-                        : sortBy === "created"
-                          ? "Date created"
-                          : "Name"}
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-40">
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("edited")}
-                        className="cursor-pointer"
+                  {/* Row 2: actions — create new content (folder / diagram), primary CTA anchored right. */}
+                  <div className="flex flex-wrap gap-3 items-center justify-end">
+                    {!isDemo && (
+                      <Button
+                        onClick={openCreateFolderDialog}
+                        variant="outline"
+                        className="h-10 gap-2 whitespace-nowrap"
                       >
-                        Last edited
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("created")}
-                        className="cursor-pointer"
-                      >
-                        Date created
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => setSortBy("name")}
-                        className="cursor-pointer"
-                      >
-                        Name
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        <FolderPlus className="w-4 h-4" />
+                        New Folder
+                      </Button>
+                    )}
 
-                  {/* View toggle: switch the file viewer between grid and list layouts. */}
-                  <div className="flex h-10 items-center rounded-md border border-border p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("grid")}
-                      aria-label="Grid view"
-                      aria-pressed={viewMode === "grid"}
-                      title="Grid view"
-                      className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
-                        viewMode === "grid"
-                          ? "bg-accent text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <LayoutGrid className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setViewMode("list")}
-                      aria-label="List view"
-                      aria-pressed={viewMode === "list"}
-                      title="List view"
-                      className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
-                        viewMode === "list"
-                          ? "bg-accent text-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      <List className="w-4 h-4" />
-                    </button>
+                    {isDemo ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger render={<span className="inline-flex" />}>
+                            <Button
+                              disabled
+                              className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60"
+                            >
+                              <Plus className="w-5 h-5 mr-2" />
+                              New Diagram
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Read-only in demo mode</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Button
+                        onClick={openCreateDialog}
+                        className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                      >
+                        <Plus className="w-5 h-5 mr-2" />
+                        New Diagram
+                      </Button>
+                    )}
                   </div>
-
-                  {!isDemo && (
-                    <Button
-                      onClick={openCreateFolderDialog}
-                      variant="outline"
-                      className="h-10 gap-2 whitespace-nowrap"
-                    >
-                      <FolderPlus className="w-4 h-4" />
-                      New Folder
-                    </Button>
-                  )}
-
-                  {isDemo ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger render={<span className="inline-flex" />}>
-                          <Button
-                            disabled
-                            className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-base font-medium whitespace-nowrap pointer-events-none opacity-60"
-                          >
-                            <Plus className="w-5 h-5 mr-2" />
-                            New Diagram
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>Read-only in demo mode</TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  ) : (
-                    <Button
-                      onClick={openCreateDialog}
-                      className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-base font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
-                    >
-                      <Plus className="w-5 h-5 mr-2" />
-                      New Diagram
-                    </Button>
-                  )}
+                  {/* end Row 2 */}
                 </div>
               </div>
             </div>
