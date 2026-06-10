@@ -1022,6 +1022,54 @@ export function addStateWithTransition(code: string, source: string): { code: st
   return { code: appendStateLine(code, `    ${source} --> ${id}`), id };
 }
 
+/**
+ * The semantic shapes that can be created at the end of a drag-to-connect gesture (the drop-point
+ * "what shape?" menu). Each maps to a transition target so `source --> <new shape>` is created in a
+ * single edit. `end` is the `[*]` terminal (no new named node — just a transition to the final
+ * pseudo-state). `note`/`start` are intentionally excluded: a note is not a transition target and a
+ * start pseudo-state can only be a source.
+ */
+export type StateShapeKind = "state" | "choice" | "fork" | "join" | "composite" | "end";
+
+/**
+ * Create the requested shape (if any) AND a transition into it from `source`, in one edit. Used by
+ * the drag-to-connect drop-point menu. Returns the new id (`[*]` for `end`) + updated code.
+ */
+export function addShapeWithTransition(
+  code: string,
+  source: string,
+  kind: StateShapeKind,
+): { code: string; id: string } {
+  switch (kind) {
+    case "end":
+      return { code: appendStateLine(code, `    ${source} --> [*]`), id: "[*]" };
+    case "choice": {
+      const id = getNextStateId(code, "choice");
+      const withNode = appendStateLine(code, `    state ${id} <<choice>>`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
+    }
+    case "fork": {
+      const id = getNextStateId(code, "fork");
+      const withNode = appendStateLine(code, `    state ${id} <<fork>>`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
+    }
+    case "join": {
+      const id = getNextStateId(code, "join");
+      const withNode = appendStateLine(code, `    state ${id} <<join>>`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
+    }
+    case "composite": {
+      const pid = getNextStateId(code, "parent");
+      const inner = getNextStateId(code, "inner");
+      const withNode = appendStateLine(code, `    state ${pid} {\n        [*] --> ${inner}\n    }`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${pid}`), id: pid };
+    }
+    case "state":
+    default:
+      return addStateWithTransition(code, source);
+  }
+}
+
 /** Rewrite the `: label` of the transition at `lineIndex` (empty label clears it). Indent preserved. */
 export function setStateTransitionLabel(code: string, lineIndex: number, label: string): string {
   const lines = code.split("\n");
@@ -1218,12 +1266,12 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
             <Button
               variant="ghost"
               size="sm"
-              className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+              className="h-9 shrink-0 rounded-md px-3.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
             />
           }
         >
-          <Plus className="w-4 h-4" />
-          <span className="text-sm font-medium">Shape</span>
+          <Plus className="w-[18px] h-[18px]" />
+          <span className="text-[15px] font-medium">Shape</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-56 p-3 bg-background border-border rounded-xl"

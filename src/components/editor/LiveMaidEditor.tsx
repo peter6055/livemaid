@@ -132,7 +132,7 @@ import {
   findStateDefinitionLine,
   stateTransitionFromEdgeDataId,
   addTransition,
-  addStateWithTransition,
+  addShapeWithTransition,
   setStateTransitionLabel,
   deleteStateTransition,
   setStateStyle,
@@ -143,6 +143,7 @@ import {
   moveStateToNewComposite,
   addConcurrencyDivider,
 } from "@/lib/diagrams/stateDiagram";
+import type { StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -1011,10 +1012,11 @@ export function LiveMaidEditor({
     [code, handleCodeChange],
   );
 
-  // Drag-to-connect onto EMPTY canvas: create a new (auto-named) state and transition to it.
-  const handleCreateStateLinked = useCallback(
-    (source: string) => {
-      handleCodeChange(addStateWithTransition(code, source).code);
+  // Drag-to-connect onto EMPTY canvas: create the shape chosen in the drop-point menu and a
+  // transition to it from `source` (a single undo step).
+  const handleCreateStateShapeLinked = useCallback(
+    (source: string, kind: StateShapeKind) => {
+      handleCodeChange(addShapeWithTransition(code, source, kind).code);
     },
     [code, handleCodeChange],
   );
@@ -4185,7 +4187,7 @@ export function LiveMaidEditor({
             onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
             onDeleteStateTransition={handleDeleteStateTransition}
             onAddStateTransition={handleAddStateTransition}
-            onCreateStateLinked={handleCreateStateLinked}
+            onCreateStateShapeLinked={handleCreateStateShapeLinked}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}

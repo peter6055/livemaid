@@ -40,6 +40,8 @@ import {
   getStateParentComposite,
   getStateNotes,
 } from "@/lib/diagrams/stateDiagram";
+import type { StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -170,9 +172,10 @@ interface EditorCanvasProps {
   onAddStateConcurrencyDivider?: (compositeId: string) => void;
   /** State-diagram transition edge toolbar: delete the transition. */
   onDeleteStateTransition?: () => void;
-  /** State-diagram drag-to-connect: create a transition, or a new linked state on empty canvas. */
+  /** State-diagram drag-to-connect: create a transition, or a new linked shape on empty canvas. */
   onAddStateTransition?: (source: string, target: string) => void;
-  onCreateStateLinked?: (source: string) => void;
+  /** Drop-on-empty-canvas: create the chosen shape and link `source --> <shape>` in one edit. */
+  onCreateStateShapeLinked?: (source: string, kind: StateShapeKind) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -306,7 +309,7 @@ export function EditorCanvas({
   onAddStateConcurrencyDivider,
   onDeleteStateTransition,
   onAddStateTransition,
-  onCreateStateLinked,
+  onCreateStateShapeLinked,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -423,6 +426,8 @@ export function EditorCanvas({
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
   } | null>(null);
+  // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
+  const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
@@ -1247,7 +1252,12 @@ export function EditorCanvas({
       if (tgt) {
         onAddStateTransition?.(sourceId, tgt.id);
       } else {
-        onCreateStateLinked?.(sourceId);
+        // Dropped on empty canvas → ask which shape to create (then link source --> shape).
+        setStateConnectMenu({
+          source: sourceId,
+          x: ev.clientX - shellRect.left,
+          y: ev.clientY - shellRect.top,
+        });
       }
     };
 
@@ -2541,7 +2551,7 @@ export function EditorCanvas({
                         >
                           <button
                             className="state-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
-                            title="Drag onto another state to add a transition, or onto empty canvas to create a linked state"
+                            title="Drag onto another state to add a transition, or onto empty canvas to choose a shape to create"
                             onMouseDown={(e) => startStateConnectDrag(e, connectSourceState)}
                           >
                             <Plus className="w-3 h-3 pointer-events-none" />
@@ -2791,6 +2801,18 @@ export function EditorCanvas({
             setClassConnectMenu(null);
           }}
           onClose={() => setClassConnectMenu(null)}
+        />
+      )}
+
+      {/* State-diagram connection drop menu (pick which shape to create on empty canvas). */}
+      {currentType === "stateDiagram" && stateConnectMenu && (
+        <StateConnectMenu
+          state={stateConnectMenu}
+          onPick={(kind) => {
+            onCreateStateShapeLinked?.(stateConnectMenu.source, kind);
+            setStateConnectMenu(null);
+          }}
+          onClose={() => setStateConnectMenu(null)}
         />
       )}
 
