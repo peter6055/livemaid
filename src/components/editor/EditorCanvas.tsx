@@ -226,6 +226,46 @@ interface EditorCanvasProps {
   setDragState?: (state: unknown) => void;
 }
 
+/**
+ * Given a target node's bounding box (shell-relative `cx`/`cy`/`w`/`h`) and a cursor point (also
+ * shell-relative), return the nearest perimeter "anchor" — the midpoint of whichever edge
+ * (Top / Bottom / Left / Right) is closest to the cursor. Used purely as a VISUAL docking
+ * affordance for connect-drag previews: the dashed preview line snaps its endpoint to this anchor
+ * and a dot is drawn there. It never affects serialization — drops always resolve to the target
+ * node identity (`source --> target`), since Mermaid owns all edge layout and has no anchor-side
+ * syntax.
+ */
+function nearestPerimeterAnchor(
+  box: { cx: number; cy: number; w: number; h: number },
+  cursorX: number,
+  cursorY: number,
+): { x: number; y: number } {
+  const left = box.cx;
+  const right = box.cx + box.w;
+  const top = box.cy;
+  const bottom = box.cy + box.h;
+  const midX = box.cx + box.w / 2;
+  const midY = box.cy + box.h / 2;
+  const anchors = [
+    { x: midX, y: top }, // Top
+    { x: midX, y: bottom }, // Bottom
+    { x: left, y: midY }, // Left
+    { x: right, y: midY }, // Right
+  ];
+  let best = anchors[0];
+  let bestDist = Infinity;
+  for (const a of anchors) {
+    const dx = a.x - cursorX;
+    const dy = a.y - cursorY;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = a;
+    }
+  }
+  return best;
+}
+
 export function EditorCanvas({
   code,
   parseError,
@@ -406,6 +446,7 @@ export function EditorCanvas({
     x2: number;
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
   } | null>(null);
   const [classConnectMenu, setClassConnectMenu] = useState<ClassConnectMenuState | null>(null);
   // ER drag-to-connect state (US1): the live preview line + snap highlight while dragging the
@@ -417,6 +458,7 @@ export function EditorCanvas({
     x2: number;
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
   } | null>(null);
   // State drag-to-connect state: the live preview line + snap highlight while dragging the purple +
   // from a selected state toward a target state. Mirrors the ER/class connect drag.
@@ -427,6 +469,7 @@ export function EditorCanvas({
     x2: number;
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
   } | null>(null);
   // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
   const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
@@ -1149,16 +1192,21 @@ export function EditorCanvas({
       }
       const tgt = resolveTarget(ev.clientX, ev.clientY);
       let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
         snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
       setErConnect({
         x1: anchorX,
         y1: anchorY,
-        x2: ev.clientX - shellRect.left,
-        y2: ev.clientY - shellRect.top,
+        x2: anchor ? anchor.x : cursorX,
+        y2: anchor ? anchor.y : cursorY,
         snap,
+        anchor,
       });
     };
 
@@ -1231,16 +1279,21 @@ export function EditorCanvas({
       }
       const tgt = resolveTarget(ev.clientX, ev.clientY);
       let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
         snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
       setStateConnect({
         x1: anchorX,
         y1: anchorY,
-        x2: ev.clientX - shellRect.left,
-        y2: ev.clientY - shellRect.top,
+        x2: anchor ? anchor.x : cursorX,
+        y2: anchor ? anchor.y : cursorY,
         snap,
+        anchor,
       });
     };
 
@@ -1323,6 +1376,9 @@ export function EditorCanvas({
       }
       const tgt = resolveTarget(ev.clientX, ev.clientY);
       let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
         snap = {
@@ -1331,13 +1387,15 @@ export function EditorCanvas({
           w: r.width,
           h: r.height,
         };
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
       setClassConnect({
         x1: anchorX,
         y1: anchorY,
-        x2: ev.clientX - shellRect.left,
-        y2: ev.clientY - shellRect.top,
+        x2: anchor ? anchor.x : cursorX,
+        y2: anchor ? anchor.y : cursorY,
         snap,
+        anchor,
       });
     };
 
@@ -2691,6 +2749,11 @@ export function EditorCanvas({
               strokeWidth={2}
             />
           )}
+          {classConnect.anchor && (
+            <g transform={`translate(${classConnect.anchor.x}, ${classConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
+          )}
         </svg>
       )}
 
@@ -2734,6 +2797,11 @@ export function EditorCanvas({
               strokeWidth={2}
             />
           )}
+          {erConnect.anchor && (
+            <g transform={`translate(${erConnect.anchor.x}, ${erConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
+          )}
         </svg>
       )}
 
@@ -2776,6 +2844,11 @@ export function EditorCanvas({
               stroke="#6366f1"
               strokeWidth={2}
             />
+          )}
+          {stateConnect.anchor && (
+            <g transform={`translate(${stateConnect.anchor.x}, ${stateConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
           )}
         </svg>
       )}
