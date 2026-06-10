@@ -4336,16 +4336,6 @@ export function LiveMaidEditor({
           }
           initialValue={stateTextEdit.value}
           rect={stateTextEdit.rect}
-          notePosition={
-            stateTextEdit.kind === "note"
-              ? (getStateNotes(code)[stateTextEdit.noteIndex]?.position ?? "right")
-              : undefined
-          }
-          onNotePositionChange={
-            stateTextEdit.kind === "note"
-              ? (position) => handleFlipStateNote(stateTextEdit.noteIndex, position)
-              : undefined
-          }
           onCommit={commitStateTextEdit}
           onCancel={() => setStateTextEdit(null)}
         />

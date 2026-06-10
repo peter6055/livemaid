@@ -19,15 +19,6 @@ interface ClassTextEditorProps {
    * behaviour is unchanged (commit on blur/Enter only).
    */
   onLiveChange?: (value: string) => void;
-  /**
-   * State-diagram NOTES only: the note's current side. When provided together with
-   * `onNotePositionChange` (and `kind === "note"`), a small Left/Right segmented toggle floats above
-   * the editor so the user can pick the annotation side without leaving the inline editor. Other
-   * diagrams (class/ER) never pass these, so their behaviour is unchanged.
-   */
-  notePosition?: "left" | "right";
-  /** Switch the note's side (left/right) live while the editor stays open. */
-  onNotePositionChange?: (position: "left" | "right") => void;
 }
 
 /**
@@ -43,8 +34,6 @@ export function ClassTextEditor({
   onCommit,
   onCancel,
   onLiveChange,
-  notePosition,
-  onNotePositionChange,
 }: ClassTextEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -53,9 +42,6 @@ export function ClassTextEditor({
   // Keep the latest value reachable from the document listener closure (registered once on mount).
   const valueRef = useRef(initialValue);
   valueRef.current = value;
-
-  // Only the state-diagram note editor opts into the side toggle.
-  const showSideToggle = kind === "note" && notePosition != null && !!onNotePositionChange;
 
   useEffect(() => {
     const el = ref.current;
@@ -80,8 +66,7 @@ export function ClassTextEditor({
   // Commit on any mousedown outside the editor (capture phase). A plain `blur` is unreliable here:
   // the canvas's pan handler calls preventDefault on mousedown, which suppresses the default
   // focus-change, so the textarea never blurs when clicking empty canvas. This listener guarantees
-  // "click outside to exit" regardless of what the click target does. The containment check uses the
-  // wrapper so clicks on the side toggle (a sibling of the textarea) don't count as "outside".
+  // "click outside to exit" regardless of what the click target does.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) commit();
@@ -108,39 +93,6 @@ export function ClassTextEditor({
       }}
       className="z-[60]"
     >
-      {showSideToggle && (
-        <div
-          className="absolute bottom-full left-0 mb-1 flex items-center gap-0.5 rounded-md border-2 border-indigo-500 bg-white p-0.5 shadow-lg"
-          onMouseDown={(e) => {
-            // Keep textarea focus and don't let the canvas start a pan / the outside-click fire.
-            e.preventDefault();
-            e.stopPropagation();
-          }}
-        >
-          {(["left", "right"] as const).map((side) => (
-            <button
-              key={side}
-              type="button"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onNotePositionChange?.(side);
-                ref.current?.focus();
-              }}
-              className={`rounded px-2 py-0.5 text-xs font-medium capitalize transition-colors ${
-                notePosition === side
-                  ? "bg-indigo-500 text-white"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
-            >
-              {side}
-            </button>
-          ))}
-        </div>
-      )}
       <textarea
         ref={ref}
         value={value}
