@@ -53,6 +53,7 @@ These diagram types support full two-way interaction — you can click and manip
 | **Sequence Diagram** | Supported                   |
 | **Class Diagram**    | Supported                   |
 | **ER Diagram**       | Supported                   |
+| **State Diagram**    | Supported                   |
 
 ### 🔲 Code Only (render + preview)
 

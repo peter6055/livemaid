@@ -61,6 +61,7 @@ import {
   Merge,
   Boxes,
   StickyNote,
+  Plus,
 } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
@@ -419,6 +420,64 @@ export function isSpecialStateNode(code: string, id: string): boolean {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Per-node styling (Story 7 — color / fill / border customizer)               */
+/* -------------------------------------------------------------------------- */
+
+// A `style <id> k:v,k:v` override line. `style <id> fill:#..,stroke:#..,stroke-width:..px,color:#..`
+// is VERIFIED valid on simple, composite, AND choice/fork/join nodes (mermaid 11.15 — see §22), so a
+// per-node override matches the PRD directly with no `classDef` fallback needed.
+const STATE_STYLE_LINE_RE = (id: string) =>
+  new RegExp(`^([ \\t]*)style[ \\t]+${escapeForRegex(id)}[ \\t]+(.*)$`, "m");
+
+/** Parse a state's `style <id> k:v,k:v` line into a property map (empty when no style line exists). */
+export function getStateStyle(code: string, id: string): Record<string, string> {
+  const m = code.match(STATE_STYLE_LINE_RE(id));
+  if (!m) return {};
+  const props: Record<string, string> = {};
+  m[2].split(",").forEach((pair) => {
+    const idx = pair.indexOf(":");
+    if (idx > 0) {
+      const key = pair.slice(0, idx).trim();
+      const val = pair.slice(idx + 1).trim();
+      if (key) props[key] = val;
+    }
+  });
+  return props;
+}
+
+/** Serialise a property map back into a `k:v,k:v` style-argument string. */
+function serializeStateStyleProps(props: Record<string, string>): string {
+  return Object.entries(props)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => `${k}:${v}`)
+    .join(",");
+}
+
+/**
+ * Merge `patch` into the state's `style <id> ...` line (upserting the line). Passing a property value
+ * of "" removes that single property; when no properties remain the whole line is removed. The style
+ * override is localised to this id and never leaks to other nodes (mirrors the ER style customizer).
+ */
+export function setStateStyle(code: string, id: string, patch: Record<string, string>): string {
+  const merged = { ...getStateStyle(code, id), ...patch };
+  Object.keys(merged).forEach((k) => {
+    if (merged[k] === "" || merged[k] === undefined) delete merged[k];
+  });
+  const without = removeStateStyle(code, id);
+  const serialized = serializeStateStyleProps(merged);
+  if (!serialized) return without;
+  return appendStateLine(without, `    style ${id} ${serialized}`);
+}
+
+/** Remove the state's `style <id> ...` line entirely (revert to the active theme). */
+export function removeStateStyle(code: string, id: string): string {
+  return code
+    .split("\n")
+    .filter((line) => !STATE_STYLE_LINE_RE(id).test(line))
+    .join("\n");
+}
+
+/* -------------------------------------------------------------------------- */
 /* Notes (Story 5/7 — annotations; state notes are LEFT/RIGHT only)            */
 /* -------------------------------------------------------------------------- */
 
@@ -576,7 +635,261 @@ export function deleteStateById(code: string, id: string): string {
     .filter((l): l is string => l !== null)
     .join("\n");
 
+  // Repair any composite emptied or concurrency region left dangling by the cascade (both crash the
+  // renderer) — the same auto-collapse rule the move helpers use.
+  return collapseEmptyComposites(result.replace(/\n{3,}/g, "\n\n"));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Composite nesting (Story 6 — "Move into composite" menu + concurrency `--`) */
+/* -------------------------------------------------------------------------- */
+
+export interface StateComposite {
+  name: string;
+  startLine: number; // 0-based line of the `state Name {` opener
+  endLine: number; // 0-based line of the matching `}`
+}
+
+/**
+ * Parse every composite `state Name { ... }` block — nested composites included — by scanning forward
+ * from each opener and tracking brace depth (the same technique `deleteStateById` uses). State
+ * diagrams only ever brace composite blocks, so depth tracking is unambiguous. Results are returned
+ * in source order; a nested composite appears as its own independent entry.
+ */
+export function getStateComposites(code: string): StateComposite[] {
+  const lines = code.split("\n");
+  const out: StateComposite[] = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = lines[i].match(/^[ \t]*state[ \t]+([^\s{]+)[ \t]*\{/);
+    if (!m) continue;
+    let depth = 0;
+    for (let j = i; j < lines.length; j += 1) {
+      depth += (lines[j].match(/\{/g)?.length ?? 0) - (lines[j].match(/\}/g)?.length ?? 0);
+      if (depth <= 0) {
+        out.push({ name: m[1], startLine: i, endLine: j });
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** All composite container names in source order. */
+export function getCompositeNames(code: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const c of getStateComposites(code)) {
+    if (!seen.has(c.name)) {
+      seen.add(c.name);
+      out.push(c.name);
+    }
+  }
+  return out;
+}
+
+/**
+ * The name of the composite that DIRECTLY contains `id`'s declaration (the innermost one), or `null`
+ * when the state sits at the root scope. Resolved from the state's declaration line so a state that
+ * only appears inside a composite via a seeded child still reports its parent.
+ */
+export function getStateParentComposite(code: string, id: string): string | null {
+  const declLine = findStateDefinitionLine(code, id);
+  if (declLine < 0) return null;
+  const containing = getStateComposites(code)
+    .filter((c) => declLine > c.startLine && declLine < c.endLine)
+    .sort((a, b) => b.startLine - a.startLine); // innermost first
+  return containing.length ? containing[0].name : null;
+}
+
+/** Re-base a captured block of lines onto `baseIndent` (preserving relative indentation). */
+function reindentStateBlock(blockLines: string[], baseIndent: string): string[] {
+  const indents = blockLines
+    .filter((l) => l.trim())
+    .map((l) => l.match(/^[ \t]*/)?.[0].length ?? 0);
+  const min = indents.length ? Math.min(...indents) : 0;
+  return blockLines.map((l) => (l.trim() ? baseIndent + l.slice(min) : l));
+}
+
+/**
+ * Remove a state's OWN declaration line(s) from the code — its described / choice-fork-join / bare /
+ * colon-form line, OR (when `id` is itself a composite) its whole brace-balanced block. Transitions,
+ * notes, and `style` lines that REFERENCE the state are left untouched (they resolve it by bare name
+ * across composite boundaries — verified). Returns the stripped code plus the captured declaration
+ * lines (raw, with their original indentation), or `null` decl when the state had no standalone
+ * declaration (it only appears inside transitions).
+ */
+function removeStateOwnDeclaration(
+  code: string,
+  id: string,
+): { code: string; decl: string[] | null } {
+  const esc = escapeForRegex(id);
+  const lines = code.split("\n");
+  const remove = new Set<number>();
+  const captured: string[] = [];
+
+  // Composite block `state id { ... }` — capture + remove the whole brace-balanced body.
+  const compRe = new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*\\{`);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!compRe.test(lines[i])) continue;
+    let depth = 0;
+    for (let j = i; j < lines.length; j += 1) {
+      depth += (lines[j].match(/\{/g)?.length ?? 0) - (lines[j].match(/\}/g)?.length ?? 0);
+      remove.add(j);
+      captured.push(lines[j]);
+      if (depth <= 0) break;
+    }
+    break;
+  }
+
+  if (captured.length === 0) {
+    // Single-line declarations (described / special / bare / colon form).
+    const declRes = [
+      new RegExp(`^[ \\t]*state[ \\t]+"[^"]*"[ \\t]+as[ \\t]+${esc}[ \\t]*$`),
+      new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*<<(?:choice|fork|join)>>[ \\t]*$`, "i"),
+      new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*$`),
+      new RegExp(`^[ \\t]*${esc}[ \\t]*:`),
+      new RegExp(`^[ \\t]*${esc}[ \\t]*$`),
+    ];
+    for (let i = 0; i < lines.length; i += 1) {
+      const t = lines[i].trim();
+      if (t.includes(STATE_ARROW) || /^note\b/i.test(t) || /^style\b/i.test(t)) continue;
+      if (declRes.some((re) => re.test(lines[i]))) {
+        remove.add(i);
+        captured.push(lines[i]);
+        break; // a state has at most one standalone declaration line
+      }
+    }
+  }
+
+  const stripped = lines.filter((_, i) => !remove.has(i)).join("\n");
+  return { code: stripped, decl: captured.length ? captured : null };
+}
+
+/** True when a composite's body has no renderable content (only blanks / comments / `--` / direction). */
+function isCompositeBodyEmpty(code: string, c: StateComposite): boolean {
+  const lines = code.split("\n");
+  for (let i = c.startLine + 1; i < c.endLine; i += 1) {
+    const t = lines[i].trim();
+    if (!t || t.startsWith("%%") || t === "--" || t === "{" || t === "}") continue;
+    if (/^direction\b/i.test(t)) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Locate one direct-level concurrency divider (`--`) that borders an EMPTY parallel region, returning
+ * its line index (or -1). A `--` with renderable content on only ONE side CRASHES the renderer ("No
+ * such shape: divider"), so any move/delete that empties a region must drop the now-dangling divider.
+ * Only DIRECT-level dividers of each composite are considered (a nested composite's own `--` belongs
+ * to it); nested blocks count as content for the region that holds them.
+ */
+function findDanglingDividerLine(code: string): number {
+  const lines = code.split("\n");
+  for (const c of getStateComposites(code)) {
+    const dividerIdx: number[] = [];
+    const segmentHasContent: boolean[] = [];
+    let depth = 0;
+    let hasContent = false;
+    for (let i = c.startLine + 1; i < c.endLine; i += 1) {
+      const t = lines[i].trim();
+      if (depth === 0 && t === "--") {
+        segmentHasContent.push(hasContent);
+        dividerIdx.push(i);
+        hasContent = false;
+        continue;
+      }
+      if (depth > 0) {
+        hasContent = true; // inside a nested block → content for the current region
+      } else if (t && !t.startsWith("%%") && t !== "{" && t !== "}" && !/^direction\b/i.test(t)) {
+        hasContent = true;
+      }
+      depth += (t.match(/\{/g)?.length ?? 0) - (t.match(/\}/g)?.length ?? 0);
+      if (depth < 0) depth = 0;
+    }
+    segmentHasContent.push(hasContent);
+    if (dividerIdx.length === 0) continue;
+    const emptySeg = segmentHasContent.findIndex((has) => !has);
+    if (emptySeg < 0) continue;
+    // Drop the divider that borders the empty region (the one after it, else the one before it).
+    return emptySeg < dividerIdx.length ? dividerIdx[emptySeg] : dividerIdx[emptySeg - 1];
+  }
+  return -1;
+}
+
+/**
+ * Collapse every composite a mutation may have emptied AND prune any concurrency divider left bordering
+ * an empty region. An EMPTY composite `state P { }` PARSES but CRASHES the renderer ("No such shape:
+ * roundedWithTitle"), and a `--` with content on only one side CRASHES too ("No such shape: divider"),
+ * so — exactly like the ER/namespace empty-container rule — any move/delete must repair both. Runs to a
+ * fixpoint so a dangling divider is pruned, then an emptied inner composite collapses before its parent.
+ */
+export function collapseEmptyComposites(code: string): string {
+  let result = code;
+  for (;;) {
+    const danglingDivider = findDanglingDividerLine(result);
+    if (danglingDivider >= 0) {
+      const lines = result.split("\n");
+      lines.splice(danglingDivider, 1);
+      result = lines.join("\n");
+      continue;
+    }
+    const empty = getStateComposites(result).find((c) => isCompositeBodyEmpty(result, c));
+    if (!empty) break;
+    const lines = result.split("\n");
+    lines.splice(empty.startLine, empty.endLine - empty.startLine + 1);
+    result = lines.join("\n");
+  }
   return result.replace(/\n{3,}/g, "\n\n");
+}
+
+/**
+ * Relocate a state INTO a composite, OUT to the root scope (`target = null`), or BETWEEN composites.
+ * Only the state's own declaration moves; its transitions / notes / styles stay put (they reference it
+ * by bare name, which resolves across composite boundaries). A state that had no standalone
+ * declaration is re-declared as a bare `id` line at the destination. Any composite emptied by the move
+ * is auto-collapsed (mermaid forbids empty composites).
+ */
+export function moveStateIntoComposite(code: string, id: string, target: string | null): string {
+  if (isCompositeState(code, target ?? "") && target === id) return code; // can't nest into self
+  const { code: without, decl } = removeStateOwnDeclaration(code, id);
+
+  if (target === null) {
+    const block = decl ? reindentStateBlock(decl, "    ") : [`    ${id}`];
+    return collapseEmptyComposites(appendStateLine(without, block.join("\n")));
+  }
+
+  const comp = getStateComposites(without).find((c) => c.name === target);
+  if (!comp) return code; // unknown / vanished target — no-op
+  const lines = without.split("\n");
+  const baseIndent = (lines[comp.startLine].match(/^[ \t]*/)?.[0] ?? "") + "    ";
+  const block = decl ? reindentStateBlock(decl, baseIndent) : [`${baseIndent}${id}`];
+  lines.splice(comp.endLine, 0, ...block);
+  return collapseEmptyComposites(lines.join("\n"));
+}
+
+/** Create a brand-new composite and immediately move the given state into it ("Create new" menu item). */
+export function moveStateToNewComposite(code: string, id: string): string {
+  const pid = getNextStateId(code, "parent");
+  const { code: without, decl } = removeStateOwnDeclaration(code, id);
+  const inner = decl ? reindentStateBlock(decl, "        ") : [`        ${id}`];
+  const block = [`    state ${pid} {`, ...inner, `    }`].join("\n");
+  return collapseEmptyComposites(appendStateLine(without, block));
+}
+
+/**
+ * Insert a concurrency divider (`--`) inside a composite, opening a new parallel region. A `--` with
+ * content on only ONE side CRASHES the renderer ("No such shape: divider" — verified), so the new
+ * region is seeded with a fresh `[*] --> inner_N` child (mirroring `addComposite`'s seed rule).
+ */
+export function addConcurrencyDivider(code: string, compositeId: string): string {
+  const comp = getStateComposites(code).find((c) => c.name === compositeId);
+  if (!comp) return code;
+  const lines = code.split("\n");
+  const baseIndent = (lines[comp.startLine].match(/^[ \t]*/)?.[0] ?? "") + "    ";
+  const inner = getNextStateId(code, "inner");
+  lines.splice(comp.endLine, 0, `${baseIndent}--`, `${baseIndent}[*] --> ${inner}`);
+  return lines.join("\n");
 }
 
 /* -------------------------------------------------------------------------- */
@@ -591,6 +904,7 @@ export function findStateDefinitionLine(code: string, id: string): number {
     new RegExp(`^[ \\t]*state[ \\t]+"[^"]*"[ \\t]+as[ \\t]+${esc}[ \\t]*$`),
     new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*(?:<<|\\{|$)`),
     new RegExp(`^[ \\t]*${esc}[ \\t]*:`),
+    new RegExp(`^[ \\t]*${esc}[ \\t]*$`), // bare standalone id line (its own declaration)
   ];
   for (let i = 0; i < lines.length; i += 1) {
     if (declRes.some((re) => re.test(lines[i]))) return i;
@@ -895,22 +1209,42 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
 
       <div className="h-5 w-px bg-border" />
 
-      {/* Shape toolbox (Story 2). */}
-      <div className="flex items-center gap-1 rounded-xl bg-background p-0 border-none">
-        {toolboxItems.map((item) => (
-          <Button
-            key={item.key}
-            variant="ghost"
-            size="sm"
-            className="h-8 px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-1.5"
-            onClick={item.run}
-            title={`Add ${item.label.toLowerCase()}`}
-          >
-            {item.icon}
-            <span className="text-sm font-medium">{item.label}</span>
-          </Button>
-        ))}
-      </div>
+      {/* Shape toolbox (Story 2) — collapsed into a single "Shape" palette so the toolbar stays
+          compact (mirrors the flowchart Shape dropdown). Each tile drops the correct semantic UML
+          node via the existing add* helpers. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+            />
+          }
+        >
+          <Plus className="w-4 h-4" />
+          <span className="text-sm font-medium">Shape</span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="w-56 p-3 bg-background border-border rounded-xl"
+          sideOffset={10}
+          align="start"
+        >
+          <div className="grid grid-cols-4 gap-2">
+            {toolboxItems.map((item) => (
+              <DropdownMenuItem
+                key={item.key}
+                onClick={item.run}
+                title={`Add ${item.label.toLowerCase()}`}
+                className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent cursor-pointer focus:bg-accent"
+              >
+                {item.icon}
+                <span className="text-[10px] font-medium leading-none">{item.label}</span>
+              </DropdownMenuItem>
+            ))}
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </>
   );
 };

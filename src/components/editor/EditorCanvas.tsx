@@ -35,6 +35,10 @@ import {
   stateNameFromSvgId,
   isCompositeState,
   isSpecialStateNode,
+  getStateStyle,
+  getCompositeNames,
+  getStateParentComposite,
+  getStateNotes,
 } from "@/lib/diagrams/stateDiagram";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
@@ -151,9 +155,21 @@ interface EditorCanvasProps {
   onDeleteStateNode?: (id: string) => void;
   onDeleteStateNote?: (noteIndex: number) => void;
   onRenameStateNode?: () => void;
-  /** State-diagram transition edge toolbar: delete the transition / edit its label. */
+  /** State-diagram node styling (Phase 4): localized `style <id> …` overrides. */
+  onSetStateStyle?: (id: string, patch: Record<string, string>) => void;
+  onResetStateStyle?: (id: string) => void;
+  /** State-diagram quick-annotation (Phase 4): attach a note to the selected state / composite. */
+  onAddStateNote?: (id: string) => void;
+  /** State-diagram note flip (Phase 4): toggle a note between left / right. */
+  onFlipStateNote?: (noteIndex: number, position: "left" | "right") => void;
+  /** State-diagram composite nesting (Phase 5): relocate a state into / between / out of composites. */
+  onMoveStateIntoComposite?: (id: string, target: string) => void;
+  onMoveStateToNewComposite?: (id: string) => void;
+  onMoveStateToRoot?: (id: string) => void;
+  /** State-diagram concurrency divider (Phase 5): open a parallel region inside a composite. */
+  onAddStateConcurrencyDivider?: (compositeId: string) => void;
+  /** State-diagram transition edge toolbar: delete the transition. */
   onDeleteStateTransition?: () => void;
-  onEditStateEdgeLabel?: () => void;
   /** State-diagram drag-to-connect: create a transition, or a new linked state on empty canvas. */
   onAddStateTransition?: (source: string, target: string) => void;
   onCreateStateLinked?: (source: string) => void;
@@ -280,8 +296,15 @@ export function EditorCanvas({
   onDeleteStateNode,
   onDeleteStateNote,
   onRenameStateNode,
+  onSetStateStyle,
+  onResetStateStyle,
+  onAddStateNote,
+  onFlipStateNote,
+  onMoveStateIntoComposite,
+  onMoveStateToNewComposite,
+  onMoveStateToRoot,
+  onAddStateConcurrencyDivider,
   onDeleteStateTransition,
-  onEditStateEdgeLabel,
   onAddStateTransition,
   onCreateStateLinked,
   handleUpdateStyle,
@@ -1015,8 +1038,23 @@ export function EditorCanvas({
   // (svg id `…----note-<N>`) takes precedence over the state branch; otherwise the selected element
   // is a state or a composite container (resolved from `…-state-<Name>-<idx>`). `[*]` pseudo-states
   // resolve to null, so they get no toolbar.
+  //
+  // The `----note-<N>` suffix is mermaid's edge counter (transitions + notes interleaved), NOT the
+  // source-order note index that `getStateNotes` / `deleteStateNoteByIndex` / `setStateNotePosition`
+  // expect. Notes render in source order, so we resolve the index by the selected note's DOM position
+  // among `g.statediagram-note` (the same technique the double-click rename router uses), falling back
+  // to the parsed counter only if the DOM lookup is unavailable.
   const connectSourceStateNote = useMemo(() => {
     if (currentType !== "stateDiagram" || !selectedSvgId) return null;
+    if (!/----note-\d+$/.test(selectedSvgId)) return null;
+    if (typeof document !== "undefined") {
+      const container = document.querySelector(".mermaid-container");
+      if (container) {
+        const notes = Array.from(container.querySelectorAll("g.statediagram-note"));
+        const idx = notes.findIndex((n) => n.id === selectedSvgId);
+        if (idx >= 0) return idx;
+      }
+    }
     const m = selectedSvgId.match(/----note-(\d+)$/);
     return m ? parseInt(m[1], 10) : null;
   }, [currentType, selectedSvgId]);
@@ -1037,6 +1075,28 @@ export function EditorCanvas({
     () => (connectSourceState ? isSpecialStateNode(code, connectSourceState) : false),
     [connectSourceState, code],
   );
+
+  // The selected state's current `style …` override map (drives the style popover's active states).
+  const connectSourceStateStyle = useMemo(
+    () => (connectSourceState ? getStateStyle(code, connectSourceState) : {}),
+    [connectSourceState, code],
+  );
+
+  // All composite names (move-into targets) and the composite the selected state currently lives in.
+  const stateCompositeNames = useMemo(
+    () => (currentType === "stateDiagram" ? getCompositeNames(code) : []),
+    [currentType, code],
+  );
+  const connectSourceStateParent = useMemo(
+    () => (connectSourceState ? getStateParentComposite(code, connectSourceState) : null),
+    [connectSourceState, code],
+  );
+
+  // The selected note's current side (left/right) for the flip button's label.
+  const connectSourceStateNotePosition = useMemo(() => {
+    if (connectSourceStateNote === null) return undefined;
+    return getStateNotes(code)[connectSourceStateNote]?.position;
+  }, [connectSourceStateNote, code]);
 
   // Begin an ER drag-to-connect from the purple + (US1). Fully isolated (own window listeners +
   // preview SVG outside TransformWrapper), mirroring the class connect drag. Dropping onto a
@@ -2134,7 +2194,6 @@ export function EditorCanvas({
                           selectedNodeId={selectedNodeId}
                           code={code}
                           scale={state.scale}
-                          onEditLabel={() => onEditStateEdgeLabel?.()}
                           onDeleteTransition={() => onDeleteStateTransition?.()}
                         />
                       ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
@@ -2233,6 +2292,58 @@ export function EditorCanvas({
                               onDeleteStateNote?.(connectSourceStateNote);
                             else if (connectSourceState) onDeleteStateNode?.(connectSourceState);
                           }}
+                          currentStyle={connectSourceStateStyle}
+                          onSetStyle={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? (patch) => onSetStateStyle?.(connectSourceState, patch)
+                              : undefined
+                          }
+                          onResetStyle={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onResetStateStyle?.(connectSourceState)
+                              : undefined
+                          }
+                          onAddNote={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onAddStateNote?.(connectSourceState)
+                              : undefined
+                          }
+                          notePosition={connectSourceStateNotePosition}
+                          onFlipNote={
+                            connectSourceStateNote !== null
+                              ? () =>
+                                  onFlipStateNote?.(
+                                    connectSourceStateNote,
+                                    connectSourceStateNotePosition === "left" ? "right" : "left",
+                                  )
+                              : undefined
+                          }
+                          composites={
+                            connectSourceStateIsComposite
+                              ? stateCompositeNames.filter((n) => n !== connectSourceState)
+                              : stateCompositeNames
+                          }
+                          currentComposite={connectSourceStateParent}
+                          onMoveIntoComposite={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? (target) => onMoveStateIntoComposite?.(connectSourceState, target)
+                              : undefined
+                          }
+                          onMoveToNewComposite={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onMoveStateToNewComposite?.(connectSourceState)
+                              : undefined
+                          }
+                          onMoveToRoot={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onMoveStateToRoot?.(connectSourceState)
+                              : undefined
+                          }
+                          onAddConcurrencyDivider={
+                            connectSourceState && connectSourceStateIsComposite
+                              ? () => onAddStateConcurrencyDivider?.(connectSourceState)
+                              : undefined
+                          }
                         />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||

@@ -135,6 +135,13 @@ import {
   addStateWithTransition,
   setStateTransitionLabel,
   deleteStateTransition,
+  setStateStyle,
+  removeStateStyle,
+  addNoteForState,
+  setStateNotePosition,
+  moveStateIntoComposite,
+  moveStateToNewComposite,
+  addConcurrencyDivider,
 } from "@/lib/diagrams/stateDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
@@ -874,6 +881,79 @@ export function LiveMaidEditor({
     [code, handleCodeChange, handleDeselect],
   );
 
+  // State-diagram node styling (Phase 4): write / clear a localized `style <id> …` override.
+  const handleSetStateStyle = useCallback(
+    (id: string, patch: Record<string, string>) => {
+      const newCode = setStateStyle(code, id, patch);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleResetStateStyle = useCallback(
+    (id: string) => {
+      const newCode = removeStateStyle(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // State-diagram quick-annotation (Phase 4): attach a `note right of <id>` to the selected node.
+  const handleAddStateNote = useCallback(
+    (id: string) => {
+      const newCode = addNoteForState(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // State-diagram note flip (Phase 4): toggle a note between left / right.
+  const handleFlipStateNote = useCallback(
+    (noteIndex: number, position: "left" | "right") => {
+      const newCode = setStateNotePosition(code, noteIndex, position);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // State-diagram composite nesting (Phase 5): relocate a state into / between / out of composites.
+  const handleMoveStateIntoComposite = useCallback(
+    (id: string, target: string) => {
+      const newCode = moveStateIntoComposite(code, id, target);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleMoveStateToNewComposite = useCallback(
+    (id: string) => {
+      const newCode = moveStateToNewComposite(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleMoveStateToRoot = useCallback(
+    (id: string) => {
+      const newCode = moveStateIntoComposite(code, id, null);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  // State-diagram concurrency divider (Phase 5): open a parallel region inside a composite.
+  const handleAddStateConcurrencyDivider = useCallback(
+    (compositeId: string) => {
+      const newCode = addConcurrencyDivider(code, compositeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
   // Open the inline label editor from the StateNodeToolbar's Rename pencil. Resolves the selected
   // element (state / composite / note) from its SVG id and positions the editor over it — the same
   // result as a double-click, just triggered from the toolbar.
@@ -938,31 +1018,6 @@ export function LiveMaidEditor({
     },
     [code, handleCodeChange],
   );
-
-  // Open the transition-label editor from the edge toolbar pencil. Positions the editor over the
-  // selected transition's rendered path (resolved via the stable `edge<N>` data-id).
-  const handleEditStateEdgeLabel = useCallback(() => {
-    const rel = resolveSelectedStateEdge();
-    if (!rel || !selectedNodeId) return;
-    const dataId = selectedNodeId.replace("STATE_EDGE_", "");
-    const container = document.querySelector(".mermaid-container");
-    const pathEl = container?.querySelector(`path.transition[data-id="${dataId}"]`) ?? null;
-    const labelEl = Array.from(container?.querySelectorAll(".edgeLabel") ?? []).find(
-      (el) => el.querySelector("[data-id]")?.getAttribute("data-id") === dataId,
-    );
-    const anchor = (labelEl ?? pathEl) as Element | null;
-    const r = anchor?.getBoundingClientRect();
-    const cx = r ? r.left + r.width / 2 : 0;
-    const cy = r ? r.top + r.height / 2 : 0;
-    setStateTextEdit({
-      kind: "edge",
-      id: "",
-      noteIndex: -1,
-      lineIndex: rel.lineIndex,
-      value: rel.label,
-      rect: { left: cx - 60, top: cy - 14, width: 120, height: 28 },
-    });
-  }, [resolveSelectedStateEdge, selectedNodeId]);
 
   // Close the ER property panel on a click that is neither the panel, an entity node, nor the
   // Monaco editor (the code editor is exempt so editing the `{ }` block keeps the panel open and the
@@ -4120,8 +4175,15 @@ export function LiveMaidEditor({
             onDeleteStateNode={handleDeleteStateNode}
             onDeleteStateNote={handleDeleteStateNote}
             onRenameStateNode={handleRenameStateFromToolbar}
+            onSetStateStyle={handleSetStateStyle}
+            onResetStateStyle={handleResetStateStyle}
+            onAddStateNote={handleAddStateNote}
+            onFlipStateNote={handleFlipStateNote}
+            onMoveStateIntoComposite={handleMoveStateIntoComposite}
+            onMoveStateToNewComposite={handleMoveStateToNewComposite}
+            onMoveStateToRoot={handleMoveStateToRoot}
+            onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
             onDeleteStateTransition={handleDeleteStateTransition}
-            onEditStateEdgeLabel={handleEditStateEdgeLabel}
             onAddStateTransition={handleAddStateTransition}
             onCreateStateLinked={handleCreateStateLinked}
             handleUpdateStyle={handleUpdateStyle}
