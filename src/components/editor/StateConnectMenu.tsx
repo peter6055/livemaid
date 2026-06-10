@@ -17,6 +17,10 @@ interface StateConnectMenuProps {
   /** Picked a shape → create it and link `source --> <shape>`. */
   onPick: (kind: StateShapeKind) => void;
   onClose: () => void;
+  /** A root-level Start (`[*] -->`) already exists — disable the Start tile (BUG-STATE-004). */
+  hasStart?: boolean;
+  /** A root-level End (`--> [*]`) already exists — disable the End tile (BUG-STATE-004). */
+  hasEnd?: boolean;
 }
 
 const SHAPES: Array<{ kind: StateShapeKind; label: string; icon: React.ReactNode }> = [
@@ -37,7 +41,13 @@ const SHAPES: Array<{ kind: StateShapeKind; label: string; icon: React.ReactNode
  * outside the TransformWrapper at canvasShell level (viewport coords), theme-aware (light/dark) to
  * match the Shape toolbox tiles. Closes on outside click or Escape.
  */
-export function StateConnectMenu({ state, onPick, onClose }: StateConnectMenuProps) {
+export function StateConnectMenu({
+  state,
+  onPick,
+  onClose,
+  hasStart,
+  hasEnd,
+}: StateConnectMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -76,18 +86,26 @@ export function StateConnectMenu({ state, onPick, onClose }: StateConnectMenuPro
         Connect <span className="font-mono text-foreground">{state.source}</span> to…
       </p>
       <div className="grid grid-cols-3 gap-2 p-2 pt-0">
-        {SHAPES.map((s) => (
-          <button
-            key={s.kind}
-            type="button"
-            onClick={() => onPick(s.kind)}
-            title={`Create ${s.label.toLowerCase()}`}
-            className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent"
-          >
-            {s.icon}
-            <span className="text-[10px] font-medium leading-none">{s.label}</span>
-          </button>
-        ))}
+        {SHAPES.map((s) => {
+          const disabled = (s.kind === "start" && !!hasStart) || (s.kind === "end" && !!hasEnd);
+          return (
+            <button
+              key={s.kind}
+              type="button"
+              disabled={disabled}
+              onClick={() => onPick(s.kind)}
+              title={
+                disabled
+                  ? `Only one ${s.label.toLowerCase()} node is allowed`
+                  : `Create ${s.label.toLowerCase()}`
+              }
+              className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-background"
+            >
+              {s.icon}
+              <span className="text-[10px] font-medium leading-none">{s.label}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

@@ -39,6 +39,8 @@ import {
   getCompositeNames,
   getStateParentComposite,
   getStateNotes,
+  hasStartState,
+  hasEndState,
 } from "@/lib/diagrams/stateDiagram";
 import type { StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
@@ -2808,6 +2810,8 @@ export function EditorCanvas({
       {currentType === "stateDiagram" && stateConnectMenu && (
         <StateConnectMenu
           state={stateConnectMenu}
+          hasStart={hasStartState(code)}
+          hasEnd={hasEndState(code)}
           onPick={(kind) => {
             onCreateStateShapeLinked?.(stateConnectMenu.source, kind);
             setStateConnectMenu(null);

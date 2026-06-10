@@ -265,14 +265,70 @@ export function addState(code: string, id?: string): string {
   return appendStateLine(code, `    state "State Name" as ${sid}`);
 }
 
-/** Add a start transition `[*] --> state_N` (creates `state_N` as a first state). */
+/**
+ * Whether the diagram already has a ROOT-level start pseudo-state (`[*] --> X` at brace-depth 0).
+ * Composite-internal `[*] --> inner` starts are scoped to their own composite (each composite has
+ * its own entry pseudo-state and the seed child REQUIRES one), so they are intentionally ignored —
+ * only the single top-level initial entry is constrained (BUG-STATE-004).
+ */
+export function hasStartState(code: string): boolean {
+  return countRootPseudoStates(code).start > 0;
+}
+
+/**
+ * Whether the diagram already has a ROOT-level end pseudo-state (`X --> [*]` at brace-depth 0).
+ * Composite-internal terminals are ignored for the same scoping reason as {@link hasStartState}.
+ */
+export function hasEndState(code: string): boolean {
+  return countRootPseudoStates(code).end > 0;
+}
+
+/** Count the root-scope (brace-depth 0) start (`[*] -->`) and end (`--> [*]`) pseudo-state transitions. */
+function countRootPseudoStates(code: string): { start: number; end: number } {
+  let started = false;
+  let depth = 0;
+  let start = 0;
+  let end = 0;
+  for (const rawLine of code.split("\n")) {
+    const t = stripStateClassShorthand(rawLine.trim());
+    if (!started) {
+      if (/^stateDiagram(?:-v2)?\b/.test(t)) started = true;
+      continue;
+    }
+    if (!t || t.startsWith("%%")) continue;
+    const arrowIdx = t.indexOf(STATE_ARROW);
+    if (depth === 0 && arrowIdx >= 0) {
+      const before = canonicalStateOperand(t.slice(0, arrowIdx));
+      const after = canonicalStateOperand(
+        t.slice(arrowIdx + STATE_ARROW.length).replace(/\s*:.*$/, ""),
+      );
+      if (before === "[*]") start += 1;
+      if (after === "[*]") end += 1;
+    }
+    depth += (t.match(/\{/g)?.length ?? 0) - (t.match(/\}/g)?.length ?? 0);
+    if (depth < 0) depth = 0;
+  }
+  return { start, end };
+}
+
+/**
+ * Add a start transition `[*] --> state_N` (creates `state_N` as a first state). A state diagram is
+ * limited to a SINGLE root-level start pseudo-state, so this no-ops (returns the code unchanged) when
+ * one already exists — the canvas-level guard backing BUG-STATE-004 so no duplicate `[*]` is ever
+ * written to the AST even if the UI control is somehow invoked.
+ */
 export function addStartTransition(code: string): string {
+  if (hasStartState(code)) return code;
   const sid = getNextStateId(code, "state");
   return appendStateLine(code, `    [*] --> ${sid}`);
 }
 
-/** Add an end transition `state_N --> [*]` (creates `state_N` flowing to the terminal). */
+/**
+ * Add an end transition `state_N --> [*]` (creates `state_N` flowing to the terminal). Limited to a
+ * SINGLE root-level end pseudo-state — no-ops when one already exists (BUG-STATE-004 AST guard).
+ */
 export function addEndTransition(code: string): string {
+  if (hasEndState(code)) return code;
   const sid = getNextStateId(code, "state");
   return appendStateLine(code, `    ${sid} --> [*]`);
 }
@@ -1052,8 +1108,12 @@ export function addShapeWithTransition(
 ): { code: string; id: string } {
   switch (kind) {
     case "end":
+      // Only one root-level end pseudo-state is allowed (BUG-STATE-004) — no-op when present.
+      if (hasEndState(code)) return { code, id: "[*]" };
       return { code: appendStateLine(code, `    ${source} --> [*]`), id: "[*]" };
     case "start": {
+      // Only one root-level start pseudo-state is allowed (BUG-STATE-004) — no-op when present.
+      if (hasStartState(code)) return { code, id: source };
       const id = getNextStateId(code, "state");
       const withNode = appendStateLine(code, `    [*] --> ${id}`);
       return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
@@ -1127,6 +1187,10 @@ const DIRECTION_OPTIONS = [
 const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) => {
   const currentDirection = getStateDirection(code);
   const hasTitle = !!getStateTitle(code).trim();
+  // A state diagram is limited to a single root-level Start and End pseudo-state (BUG-STATE-004), so
+  // the corresponding toolbox tiles are disabled once one exists.
+  const startExists = hasStartState(code);
+  const endExists = hasEndState(code);
 
   // The shape toolbox (Story 2) — each button drops the correct semantic UML node with an
   // algorithmic id and the baseline syntax. Mirrors the ER "Entity" button chrome.
@@ -1135,6 +1199,7 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
     label: string;
     icon: React.ReactNode;
     run: () => void;
+    disabled?: boolean;
   }> = [
     {
       key: "state",
@@ -1147,12 +1212,14 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       label: "Start",
       icon: <Circle className="w-4 h-4" />,
       run: () => setCode(addStartTransition(code)),
+      disabled: startExists,
     },
     {
       key: "end",
       label: "End",
       icon: <CircleDot className="w-4 h-4" />,
       run: () => setCode(addEndTransition(code)),
+      disabled: endExists,
     },
     {
       key: "choice",
@@ -1303,8 +1370,13 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
               <DropdownMenuItem
                 key={item.key}
                 onClick={item.run}
-                title={`Add ${item.label.toLowerCase()}`}
-                className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent cursor-pointer focus:bg-accent"
+                disabled={item.disabled}
+                title={
+                  item.disabled
+                    ? `Only one ${item.label.toLowerCase()} node is allowed`
+                    : `Add ${item.label.toLowerCase()}`
+                }
+                className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent cursor-pointer focus:bg-accent data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:border-border data-[disabled]:hover:bg-background"
               >
                 {item.icon}
                 <span className="text-[10px] font-medium leading-none">{item.label}</span>
