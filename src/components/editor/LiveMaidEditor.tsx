@@ -899,13 +899,49 @@ export function LiveMaidEditor({
     [code, handleCodeChange],
   );
 
-  // State-diagram quick-annotation (Phase 4): attach a `note right of <id>` to the selected node.
+  // Open the inline note editor over the note at `noteIndex` (source order) once Mermaid has
+  // re-rendered the new/updated note into the DOM. Used to drop the user straight into editing
+  // (text + Left/Right side toggle) right after a note is added. `g.statediagram-note` DOM order
+  // matches source order, so `noteIndex` indexes the rendered notes directly; we poll a few frames
+  // because the SVG re-render is async after a code change.
+  const openStateNoteEditor = useCallback((noteCode: string, noteIndex: number) => {
+    const note = getStateNotes(noteCode)[noteIndex];
+    if (!note) return;
+    let attempts = 0;
+    const tryOpen = () => {
+      const container = document.querySelector(".mermaid-container");
+      const noteEls = container
+        ? Array.from(container.querySelectorAll("g.statediagram-note"))
+        : [];
+      const el = noteEls[noteIndex];
+      if (!el) {
+        if (attempts++ < 30) requestAnimationFrame(tryOpen);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      setStateTextEdit({
+        kind: "note",
+        id: "",
+        noteIndex,
+        value: note.text,
+        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+      });
+    };
+    requestAnimationFrame(tryOpen);
+  }, []);
+
+  // State-diagram quick-annotation (Phase 4): attach a `note <side> of <id>` to the selected node
+  // (side chosen in the toolbar's placement popover), then drop straight into the inline note editor
+  // so the user can type the label (and still re-flip the side from there).
   const handleAddStateNote = useCallback(
-    (id: string) => {
-      const newCode = addNoteForState(code, id);
-      if (newCode !== code) handleCodeChange(newCode);
+    (id: string, position: "left" | "right" = "right") => {
+      const newCode = addNoteForState(code, id, position);
+      if (newCode !== code) {
+        handleCodeChange(newCode);
+        openStateNoteEditor(newCode, getStateNotes(newCode).length - 1);
+      }
     },
-    [code, handleCodeChange],
+    [code, handleCodeChange, openStateNoteEditor],
   );
 
   // State-diagram note flip (Phase 4): toggle a note between left / right.
@@ -1013,12 +1049,19 @@ export function LiveMaidEditor({
   );
 
   // Drag-to-connect onto EMPTY canvas: create the shape chosen in the drop-point menu and a
-  // transition to it from `source` (a single undo step).
+  // transition to it from `source` (a single undo step). For a NOTE the menu adds a
+  // `note right of <source>`; drop the user straight into the inline note editor (text + side
+  // toggle) so they can immediately label it and pick left/right.
   const handleCreateStateShapeLinked = useCallback(
     (source: string, kind: StateShapeKind) => {
-      handleCodeChange(addShapeWithTransition(code, source, kind).code);
+      const newCode = addShapeWithTransition(code, source, kind).code;
+      if (newCode === code) return;
+      handleCodeChange(newCode);
+      if (kind === "note") {
+        openStateNoteEditor(newCode, getStateNotes(newCode).length - 1);
+      }
     },
-    [code, handleCodeChange],
+    [code, handleCodeChange, openStateNoteEditor],
   );
 
   // Close the ER property panel on a click that is neither the panel, an entity node, nor the
@@ -4293,6 +4336,16 @@ export function LiveMaidEditor({
           }
           initialValue={stateTextEdit.value}
           rect={stateTextEdit.rect}
+          notePosition={
+            stateTextEdit.kind === "note"
+              ? (getStateNotes(code)[stateTextEdit.noteIndex]?.position ?? "right")
+              : undefined
+          }
+          onNotePositionChange={
+            stateTextEdit.kind === "note"
+              ? (position) => handleFlipStateNote(stateTextEdit.noteIndex, position)
+              : undefined
+          }
           onCommit={commitStateTextEdit}
           onCancel={() => setStateTextEdit(null)}
         />

@@ -19,6 +19,15 @@ interface ClassTextEditorProps {
    * behaviour is unchanged (commit on blur/Enter only).
    */
   onLiveChange?: (value: string) => void;
+  /**
+   * State-diagram NOTES only: the note's current side. When provided together with
+   * `onNotePositionChange` (and `kind === "note"`), a small Left/Right segmented toggle floats above
+   * the editor so the user can pick the annotation side without leaving the inline editor. Other
+   * diagrams (class/ER) never pass these, so their behaviour is unchanged.
+   */
+  notePosition?: "left" | "right";
+  /** Switch the note's side (left/right) live while the editor stays open. */
+  onNotePositionChange?: (position: "left" | "right") => void;
 }
 
 /**
@@ -34,13 +43,19 @@ export function ClassTextEditor({
   onCommit,
   onCancel,
   onLiveChange,
+  notePosition,
+  onNotePositionChange,
 }: ClassTextEditorProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const committedRef = useRef(false);
   const [value, setValue] = useState(initialValue);
   // Keep the latest value reachable from the document listener closure (registered once on mount).
   const valueRef = useRef(initialValue);
   valueRef.current = value;
+
+  // Only the state-diagram note editor opts into the side toggle.
+  const showSideToggle = kind === "note" && notePosition != null && !!onNotePositionChange;
 
   useEffect(() => {
     const el = ref.current;
@@ -65,10 +80,11 @@ export function ClassTextEditor({
   // Commit on any mousedown outside the editor (capture phase). A plain `blur` is unreliable here:
   // the canvas's pan handler calls preventDefault on mousedown, which suppresses the default
   // focus-change, so the textarea never blurs when clicking empty canvas. This listener guarantees
-  // "click outside to exit" regardless of what the click target does.
+  // "click outside to exit" regardless of what the click target does. The containment check uses the
+  // wrapper so clicks on the side toggle (a sibling of the textarea) don't count as "outside".
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) commit();
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) commit();
     };
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
@@ -79,51 +95,91 @@ export function ClassTextEditor({
   const height = Math.max(rect.height + 8, 32);
 
   return (
-    <textarea
-      ref={ref}
+    <div
+      ref={wrapperRef}
       data-class-text-editor
-      value={value}
-      spellCheck={false}
-      onChange={(e) => {
-        setValue(e.target.value);
-        onLiveChange?.(e.target.value);
-      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          commit();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          cancel();
-        }
-      }}
-      placeholder={
-        kind === "title"
-          ? "Diagram title"
-          : kind === "relationship"
-            ? "Label"
-            : kind === "namespace"
-              ? "Namespace name"
-              : kind === "state"
-                ? "State label"
-                : "Note text"
-      }
       style={{
         position: "fixed",
         left: rect.left + rect.width / 2 - width / 2,
         top: rect.top - 4,
         width,
-        height,
       }}
-      className={`z-[60] resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
-        kind === "title"
-          ? "text-center font-semibold"
-          : kind === "relationship" || kind === "namespace" || kind === "state"
-            ? "text-center"
-            : "text-left"
-      }`}
-    />
+      className="z-[60]"
+    >
+      {showSideToggle && (
+        <div
+          className="absolute bottom-full left-0 mb-1 flex items-center gap-0.5 rounded-md border-2 border-indigo-500 bg-white p-0.5 shadow-lg"
+          onMouseDown={(e) => {
+            // Keep textarea focus and don't let the canvas start a pan / the outside-click fire.
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          {(["left", "right"] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNotePositionChange?.(side);
+                ref.current?.focus();
+              }}
+              className={`rounded px-2 py-0.5 text-xs font-medium capitalize transition-colors ${
+                notePosition === side
+                  ? "bg-indigo-500 text-white"
+                  : "text-slate-600 hover:bg-slate-100"
+              }`}
+            >
+              {side}
+            </button>
+          ))}
+        </div>
+      )}
+      <textarea
+        ref={ref}
+        value={value}
+        spellCheck={false}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onLiveChange?.(e.target.value);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        placeholder={
+          kind === "title"
+            ? "Diagram title"
+            : kind === "relationship"
+              ? "Label"
+              : kind === "namespace"
+                ? "Namespace name"
+                : kind === "state"
+                  ? "State label"
+                  : "Note text"
+        }
+        style={{ width: "100%", height }}
+        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
+          kind === "title"
+            ? "text-center font-semibold"
+            : kind === "relationship" || kind === "namespace" || kind === "state"
+              ? "text-center"
+              : "text-left"
+        }`}
+      />
+    </div>
   );
 }

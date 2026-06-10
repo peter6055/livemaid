@@ -161,7 +161,7 @@ interface EditorCanvasProps {
   onSetStateStyle?: (id: string, patch: Record<string, string>) => void;
   onResetStateStyle?: (id: string) => void;
   /** State-diagram quick-annotation (Phase 4): attach a note to the selected state / composite. */
-  onAddStateNote?: (id: string) => void;
+  onAddStateNote?: (id: string, position: "left" | "right") => void;
   /** State-diagram note flip (Phase 4): toggle a note between left / right. */
   onFlipStateNote?: (noteIndex: number, position: "left" | "right") => void;
   /** State-diagram composite nesting (Phase 5): relocate a state into / between / out of composites. */
@@ -2315,7 +2315,7 @@ export function EditorCanvas({
                           }
                           onAddNote={
                             connectSourceState && !connectSourceStateIsSpecial
-                              ? () => onAddStateNote?.(connectSourceState)
+                              ? (position) => onAddStateNote?.(connectSourceState, position)
                               : undefined
                           }
                           notePosition={connectSourceStateNotePosition}

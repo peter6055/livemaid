@@ -29,8 +29,9 @@ interface StateNodeToolbarProps {
   onSetStyle?: (patch: Record<string, string>) => void;
   onResetStyle?: () => void;
 
-  /* Phase 4 — quick annotation (attach a `note right of <id>` to the selected state/composite). */
-  onAddNote?: () => void;
+  /* Phase 4 — quick annotation: pick a side, then attach a `note <side> of <id>` to the selected
+     state/composite. The toolbar asks for placement (left/right) FIRST via a small popover. */
+  onAddNote?: (position: "left" | "right") => void;
 
   /* Phase 4 — note left/right flip (note kind only). */
   notePosition?: "left" | "right";
@@ -61,7 +62,8 @@ const BORDER_STYLES: Array<{ id: string; label: string; dash: string }> = [
  *  - Move into composite (state/composite): nest under / between / out of a `state Parent { … }` block.
  *  - Style (state/composite): a popover for border line-style + border / text / fill color, writing a
  *    localized `style <id> …` override (verified valid on simple / composite / choice nodes).
- *  - Add note (state/composite): attach a `note right of <id> : Add Text` annotation.
+ *  - Add note (state/composite): pick placement (left/right) in a popover, then attach a
+ *    `note <side> of <id> : Add Text` annotation.
  *  - Add divider (composite): insert a `--` concurrency divider (seeded with a child region).
  *  - Flip (note): toggle a note between left / right (state notes are left/right only).
  *  - Rename (state/composite/note; omitted for shape-only choice/fork/join) + Delete (cascade).
@@ -90,6 +92,7 @@ export function StateNodeToolbar({
   const containerRef = useRef<HTMLDivElement>(null);
   const [styleOpen, setStyleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
 
   // Block native canvas mousedown/dblclick leakage (same rationale as the other inline toolbars).
   useEffect(() => {
@@ -108,16 +111,17 @@ export function StateNodeToolbar({
 
   // Close any open popover on an outside click.
   useEffect(() => {
-    if (!styleOpen && !moveOpen) return;
+    if (!styleOpen && !moveOpen && !noteOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
         setStyleOpen(false);
         setMoveOpen(false);
+        setNoteOpen(false);
       }
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [styleOpen, moveOpen]);
+  }, [styleOpen, moveOpen, noteOpen]);
 
   const deleteTitle =
     kind === "note" ? "Delete note" : kind === "composite" ? "Delete composite" : "Delete state";
@@ -216,6 +220,7 @@ export function StateNodeToolbar({
                 e.stopPropagation();
                 setMoveOpen((o) => !o);
                 setStyleOpen(false);
+                setNoteOpen(false);
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -308,6 +313,7 @@ export function StateNodeToolbar({
                 e.stopPropagation();
                 setStyleOpen((o) => !o);
                 setMoveOpen(false);
+                setNoteOpen(false);
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -374,21 +380,55 @@ export function StateNodeToolbar({
           </div>
         )}
 
-        {/* Add note (state / composite) */}
+        {/* Add note (state / composite) — pick placement (left/right) FIRST, then create. */}
         {kind !== "note" && onAddNote && (
-          <button
-            type="button"
-            className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Add note"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAddNote();
-            }}
-          >
-            <StickyNote className="h-3.5 w-3.5" />
-            Note
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              className={`pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold transition-colors ${
+                noteOpen
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+              title="Add note"
+              onMouseDownCapture={(e) => {
+                e.stopPropagation();
+                setNoteOpen((o) => !o);
+                setStyleOpen(false);
+                setMoveOpen(false);
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <StickyNote className="h-3.5 w-3.5" />
+              Note
+            </button>
+
+            {noteOpen && (
+              <div
+                className="absolute left-0 bottom-full z-40 mb-2 flex w-44 flex-col gap-0.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Note placement
+                </div>
+                {(["left", "right"] as const).map((side) => (
+                  <button
+                    key={side}
+                    type="button"
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm font-medium text-foreground capitalize transition-colors hover:bg-accent"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNoteOpen(false);
+                      onAddNote(side);
+                    }}
+                  >
+                    <StickyNote className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    {side}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Add concurrency divider (composite) */}

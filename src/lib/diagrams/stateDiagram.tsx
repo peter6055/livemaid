@@ -1024,12 +1024,22 @@ export function addStateWithTransition(code: string, source: string): { code: st
 
 /**
  * The semantic shapes that can be created at the end of a drag-to-connect gesture (the drop-point
- * "what shape?" menu). Each maps to a transition target so `source --> <new shape>` is created in a
- * single edit. `end` is the `[*]` terminal (no new named node — just a transition to the final
- * pseudo-state). `note`/`start` are intentionally excluded: a note is not a transition target and a
- * start pseudo-state can only be a source.
+ * "what shape?" menu) — full parity with the Shape toolbox. Each maps to a transition target so
+ * `source --> <new shape>` is created in a single edit. `end` is the `[*]` terminal (no new named
+ * node — just a transition to the final pseudo-state). Two shapes are adapted to the connect context:
+ * `start` drops a new state that is ALSO an initial state (`[*] --> state_N` + `source --> state_N`),
+ * and `note` attaches a `note right of <source>` annotation to the dragged-from state (a note is not
+ * itself a transition target, so it decorates the source instead of being linked).
  */
-export type StateShapeKind = "state" | "choice" | "fork" | "join" | "composite" | "end";
+export type StateShapeKind =
+  | "state"
+  | "start"
+  | "choice"
+  | "fork"
+  | "join"
+  | "composite"
+  | "end"
+  | "note";
 
 /**
  * Create the requested shape (if any) AND a transition into it from `source`, in one edit. Used by
@@ -1043,6 +1053,16 @@ export function addShapeWithTransition(
   switch (kind) {
     case "end":
       return { code: appendStateLine(code, `    ${source} --> [*]`), id: "[*]" };
+    case "start": {
+      const id = getNextStateId(code, "state");
+      const withNode = appendStateLine(code, `    [*] --> ${id}`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
+    }
+    case "note":
+      return {
+        code: appendStateLine(code, `    note right of ${source} : Add Text`),
+        id: source,
+      };
     case "choice": {
       const id = getNextStateId(code, "choice");
       const withNode = appendStateLine(code, `    state ${id} <<choice>>`);
@@ -1274,11 +1294,11 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
           <span className="text-[15px] font-medium">Shape</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className="w-56 p-3 bg-background border-border rounded-xl"
+          className="w-56 p-2 bg-background border-border rounded-xl"
           sideOffset={10}
           align="start"
         >
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             {toolboxItems.map((item) => (
               <DropdownMenuItem
                 key={item.key}
