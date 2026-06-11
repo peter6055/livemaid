@@ -328,6 +328,16 @@ svg[aria-roledescription="error"],
   stroke-width: 2.5px !important;
 }
 
+/* State-diagram composite containers and concurrency dividers are selectable canvas elements.
+   Mermaid renders composites as `g.statediagram-cluster`; concurrency regions render their `--`
+   divider as `rect.divider` inside an alternate cluster. Override the canvas grab cursor so these
+   areas advertise click/selection affordance like regular state nodes. */
+.mermaid-container g.statediagram-cluster,
+.mermaid-container g.statediagram-cluster *,
+.mermaid-container rect.divider {
+  cursor: pointer !important;
+}
+
 /* State-diagram connection handle (the purple +): crosshair cursor to signal drag-to-connect. */
 .state-connect-btn {
   cursor: crosshair !important;

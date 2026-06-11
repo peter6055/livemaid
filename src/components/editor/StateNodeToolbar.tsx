@@ -11,10 +11,14 @@ import {
   FolderInput,
   FolderOutput,
   Plus,
-  SplitSquareVertical,
   FlipHorizontal,
+  Square,
+  Diamond,
+  Split,
+  Merge,
 } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
+import type { StateNodeShapeKind } from "@/lib/diagrams/stateDiagram";
 
 interface StateNodeToolbarProps {
   /** Which kind of element is selected — drives the tooltip + available actions. */
@@ -44,6 +48,10 @@ interface StateNodeToolbarProps {
   onMoveToNewComposite?: () => void;
   onMoveToRoot?: () => void;
 
+  /* Shape morphing (state nodes only; not notes/composites/concurrency dividers). */
+  currentShape?: StateNodeShapeKind;
+  onChangeShape?: (shape: StateNodeShapeKind) => void;
+
   /* Phase 5 — concurrency divider (composite kind only). */
   onAddConcurrencyDivider?: () => void;
 }
@@ -56,17 +64,29 @@ const BORDER_STYLES: Array<{ id: string; label: string; dash: string }> = [
   { id: "large", label: "Large Dashed", dash: "12 8" },
 ];
 
+const STATE_SHAPES: Array<{
+  id: StateNodeShapeKind;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { id: "state", label: "State", icon: <Square className="h-3.5 w-3.5" /> },
+  { id: "choice", label: "Choice", icon: <Diamond className="h-3.5 w-3.5" /> },
+  { id: "fork", label: "Fork", icon: <Split className="h-3.5 w-3.5" /> },
+  { id: "join", label: "Join", icon: <Merge className="h-3.5 w-3.5" /> },
+];
+
 /**
  * Inline floating toolbar shown when a state node, composite container, or note is single-clicked on a
  * state diagram. Exposes (depending on the selected element):
- *  - Move into composite (state/composite): nest under / between / out of a `state Parent { … }` block.
- *  - Style (state/composite): a popover for border line-style + border / text / fill color, writing a
+ *  - Move into composite (state): nest under / between / out of a `state Parent { … }` block.
+ *  - Style (state): a popover for border line-style + border / text / fill color, writing a
  *    localized `style <id> …` override (verified valid on simple / composite / choice nodes).
- *  - Add note (state/composite): pick placement (left/right) in a popover, then attach a
+ *  - Add note (state): pick placement (left/right) in a popover, then attach a
  *    `note <side> of <id> : Add Text` annotation.
- *  - Add divider (composite): insert a `--` concurrency divider (seeded with a child region).
  *  - Flip (note): toggle a note between left / right (state notes are left/right only).
  *  - Rename (state/composite/note; omitted for shape-only choice/fork/join) + Delete (cascade).
+ * Composite containers intentionally expose only Rename + Delete to keep the large container
+ * toolbar minimal and avoid structural actions on the container shell.
  *
  * Mirrors the chrome of the other inline toolbars (scale-locked, `data-inline-toolbar`, capture-phase
  * native-event guard) so it never leaks clicks to the canvas underneath.
@@ -87,12 +107,14 @@ export function StateNodeToolbar({
   onMoveIntoComposite,
   onMoveToNewComposite,
   onMoveToRoot,
-  onAddConcurrencyDivider,
+  currentShape = "state",
+  onChangeShape,
 }: StateNodeToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [styleOpen, setStyleOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [noteOpen, setNoteOpen] = useState(false);
+  const [shapeOpen, setShapeOpen] = useState(false);
 
   // Block native canvas mousedown/dblclick leakage (same rationale as the other inline toolbars).
   useEffect(() => {
@@ -111,17 +133,18 @@ export function StateNodeToolbar({
 
   // Close any open popover on an outside click.
   useEffect(() => {
-    if (!styleOpen && !moveOpen && !noteOpen) return;
+    if (!styleOpen && !moveOpen && !noteOpen && !shapeOpen) return;
     const onDown = (e: PointerEvent) => {
       if (!containerRef.current?.contains(e.target as Node)) {
         setStyleOpen(false);
         setMoveOpen(false);
         setNoteOpen(false);
+        setShapeOpen(false);
       }
     };
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
-  }, [styleOpen, moveOpen, noteOpen]);
+  }, [styleOpen, moveOpen, noteOpen, shapeOpen]);
 
   const deleteTitle =
     kind === "note" ? "Delete note" : kind === "composite" ? "Delete composite" : "Delete state";
@@ -135,6 +158,7 @@ export function StateNodeToolbar({
   // The composites the selected node can move INTO (everything except the one it already lives in;
   // the canvas filters out a composite-node's own name before passing `composites`).
   const moveTargets = composites.filter((n) => n !== currentComposite);
+  const showStateActions = kind === "state";
 
   const renderColorRow = (label: string, prop: "stroke" | "color" | "fill") => (
     <div className="flex flex-col gap-1.5">
@@ -206,7 +230,7 @@ export function StateNodeToolbar({
         )}
 
         {/* Move into composite (state / composite) */}
-        {kind !== "note" && onMoveIntoComposite && (
+        {showStateActions && onMoveIntoComposite && (
           <div className="relative">
             <button
               type="button"
@@ -221,6 +245,7 @@ export function StateNodeToolbar({
                 setMoveOpen((o) => !o);
                 setStyleOpen(false);
                 setNoteOpen(false);
+                setShapeOpen(false);
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -299,7 +324,7 @@ export function StateNodeToolbar({
         )}
 
         {/* Style popover (state / composite / special) */}
-        {kind !== "note" && onSetStyle && (
+        {showStateActions && onSetStyle && (
           <div className="relative">
             <button
               type="button"
@@ -314,6 +339,7 @@ export function StateNodeToolbar({
                 setStyleOpen((o) => !o);
                 setMoveOpen(false);
                 setNoteOpen(false);
+                setShapeOpen(false);
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -380,8 +406,64 @@ export function StateNodeToolbar({
           </div>
         )}
 
+        {/* Shape morphing (state nodes only). */}
+        {showStateActions && onChangeShape && (
+          <div className="relative">
+            <button
+              type="button"
+              className={`pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold transition-colors ${
+                shapeOpen
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "text-foreground hover:bg-accent hover:text-accent-foreground"
+              }`}
+              title="Change shape"
+              onMouseDownCapture={(e) => {
+                e.stopPropagation();
+                setShapeOpen((o) => !o);
+                setStyleOpen(false);
+                setMoveOpen(false);
+                setNoteOpen(false);
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Square className="h-3.5 w-3.5" />
+              Shape
+            </button>
+
+            {shapeOpen && (
+              <div
+                className="absolute left-0 bottom-full z-40 mb-2 grid w-44 grid-cols-2 gap-1.5 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {STATE_SHAPES.map((shape) => {
+                  const active = currentShape === shape.id;
+                  return (
+                    <button
+                      key={shape.id}
+                      type="button"
+                      className={`flex h-16 flex-col items-center justify-center gap-1 rounded-lg border text-sm font-semibold transition-colors ${
+                        active
+                          ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
+                          : "border-border text-foreground hover:bg-accent"
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShapeOpen(false);
+                        onChangeShape(shape.id);
+                      }}
+                    >
+                      {shape.icon}
+                      <span>{shape.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Add note (state / composite) — pick placement (left/right) FIRST, then create. */}
-        {kind !== "note" && onAddNote && (
+        {showStateActions && onAddNote && (
           <div className="relative">
             <button
               type="button"
@@ -396,6 +478,7 @@ export function StateNodeToolbar({
                 setNoteOpen((o) => !o);
                 setStyleOpen(false);
                 setMoveOpen(false);
+                setShapeOpen(false);
               }}
               onClick={(e) => e.stopPropagation()}
             >
@@ -431,23 +514,6 @@ export function StateNodeToolbar({
           </div>
         )}
 
-        {/* Add concurrency divider (composite) */}
-        {kind === "composite" && onAddConcurrencyDivider && (
-          <button
-            type="button"
-            className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            title="Add concurrency divider"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onAddConcurrencyDivider();
-            }}
-          >
-            <SplitSquareVertical className="h-3.5 w-3.5" />
-            Divider
-          </button>
-        )}
-
         {onRename && (
           <>
             <div className="mx-0.5 h-4 w-px bg-border" />
@@ -470,7 +536,7 @@ export function StateNodeToolbar({
         <div className="mx-0.5 h-4 w-px bg-border" />
         <button
           type="button"
-          className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
+          className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-red-600 transition-colors hover:bg-red-500/10 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
           title={deleteTitle}
           onClick={onDelete}
         >

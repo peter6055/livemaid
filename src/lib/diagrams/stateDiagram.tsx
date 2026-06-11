@@ -15,7 +15,7 @@
  * pre-marked `@/components/ui/*` client components (as ER/class do) and lucide icons.
  *
  * Mermaid state-diagram syntax reference (verified against mermaid 11.15 via headless parse + real
- * render — see reference/FEATURES_AND_TRUTHS.md §22):
+ * render — see reference/DIAGRAM_PLUGIN_DETAILS.md):
  *  - header:        `stateDiagram-v2`
  *  - direction:     statement line `direction TB|BT|LR|RL` (also valid inside a composite)
  *  - bare state:    `s1`
@@ -26,6 +26,7 @@
  *  - fork / join:   `state forkId <<fork>>` / `state joinId <<join>>`
  *  - composite:     `state Parent { ... }` (MUST contain >=1 child — an EMPTY composite parses but
  *                   crashes the renderer with "No such shape: roundedWithTitle")
+ *  - multiline:     `note right of X` ... `end note`
  *  - concurrency:   a line containing only `--` inside a composite block (parallel-region divider)
  *  - note:          `note left of X : text` / `note right of X : text` (state notes are LEFT/RIGHT
  *                   ONLY — `note over` is a lexical error)
@@ -72,6 +73,8 @@ const escapeForRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** The only transition arrow in state diagrams. */
 export const STATE_ARROW = "-->";
+
+export type StateNodeShapeKind = "state" | "choice" | "fork" | "join";
 
 /** Strip a trailing `:::className` style shorthand so id parsing stays clean. */
 function stripStateClassShorthand(s: string): string {
@@ -241,13 +244,21 @@ export function getStateIds(code: string): string[] {
 
 /**
  * Pick the next free `<prefix>_<n>` id (1-based) that does not collide with any existing state id.
- * Used for the toolbox's algorithmic ids: `state_1`, `choice_1`, `fork_1`, `join_1`, `parent_1`, …
+ * Used for the toolbox's algorithmic ids: `state_1`, `choice_1`, `Fork1`, `Join1`, `parent_1`, …
  */
 export function getNextStateId(code: string, prefix: string): string {
   const ids = new Set(getStateIds(code));
   let i = 1;
   while (ids.has(`${prefix}_${i}`)) i += 1;
   return `${prefix}_${i}`;
+}
+
+/** Pick the next free compact `<prefix><n>` id, used where Mermaid examples conventionally omit `_`. */
+export function getNextCompactStateId(code: string, prefix: string): string {
+  const ids = new Set(getStateIds(code));
+  let i = 1;
+  while (ids.has(`${prefix}${i}`)) i += 1;
+  return `${prefix}${i}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -338,14 +349,20 @@ export function addChoice(code: string): string {
   return appendStateLine(code, `    state ${getNextStateId(code, "choice")} <<choice>>`);
 }
 
-/** Add a fork bar `state fork_N <<fork>>`. */
+/** Add a fork bar with two outgoing target states. */
 export function addFork(code: string): string {
-  return appendStateLine(code, `    state ${getNextStateId(code, "fork")} <<fork>>`);
+  const fork = getNextCompactStateId(code, "Fork");
+  const first = getNextStateId(code, "state");
+  const second = getNextStateId(`${code}\n${first}`, "state");
+  return appendStateLine(
+    code,
+    `    state ${fork} <<fork>>\n    ${fork} --> ${first}\n    ${fork} --> ${second}`,
+  );
 }
 
-/** Add a join bar `state join_N <<join>>`. */
+/** Add a join bar `state JoinN <<join>>`. */
 export function addJoin(code: string): string {
-  return appendStateLine(code, `    state ${getNextStateId(code, "join")} <<join>>`);
+  return appendStateLine(code, `    state ${getNextCompactStateId(code, "Join")} <<join>>`);
 }
 
 /**
@@ -357,6 +374,20 @@ export function addComposite(code: string): string {
   const pid = getNextStateId(code, "parent");
   const inner = getNextStateId(code, "inner");
   return appendStateLine(code, `    state ${pid} {\n        [*] --> ${inner}\n    }`);
+}
+
+/**
+ * Add a pre-seeded composite with two parallel regions. Concurrency is not a standalone state node in
+ * Mermaid; it is the `--` divider inside a composite, and both sides must contain renderable content.
+ */
+export function addConcurrencyComposite(code: string): string {
+  const pid = getNextStateId(code, "parallel");
+  const first = getNextStateId(code, "region");
+  const second = getNextStateId(`${code}\n${first}`, "region");
+  return appendStateLine(
+    code,
+    `    state ${pid} {\n        [*] --> ${first}\n        --\n        [*] --> ${second}\n    }`,
+  );
 }
 
 /**
@@ -381,6 +412,32 @@ export function addNote(
     }
   }
   return appendStateLine(working, `    note ${position} of ${target} : Add Text`);
+}
+
+/**
+ * Add a multiline note block using Mermaid's `note ... end note` syntax. For the toolbox this is the
+ * "Multiline" shape requested by users; it attaches to an existing state or creates one first.
+ */
+export function addMultilineNote(
+  code: string,
+  position: "left" | "right" = "right",
+  stateId?: string,
+): string {
+  let working = code;
+  let target = stateId;
+  if (!target) {
+    const ids = getStateIds(working);
+    if (ids.length > 0) {
+      target = ids[0];
+    } else {
+      target = getNextStateId(working, "state");
+      working = appendStateLine(working, `    state "State Name" as ${target}`);
+    }
+  }
+  return appendStateLine(
+    working,
+    `    note ${position} of ${target}\n        Add Text\n        More detail\n    end note`,
+  );
 }
 
 /* -------------------------------------------------------------------------- */
@@ -473,6 +530,37 @@ export function isCompositeState(code: string, id: string): boolean {
 export function isSpecialStateNode(code: string, id: string): boolean {
   const esc = escapeForRegex(id);
   return new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*<<(?:choice|fork|join)>>`, "mi").test(code);
+}
+
+/** The selected state's current visual shape, defaulting to a regular rounded state node. */
+export function getStateNodeShape(code: string, id: string): StateNodeShapeKind {
+  const esc = escapeForRegex(id);
+  const m = code.match(new RegExp(`^[ \\t]*state[ \\t]+${esc}[ \\t]*<<(choice|fork|join)>>`, "mi"));
+  return (m?.[1]?.toLowerCase() as StateNodeShapeKind | undefined) ?? "state";
+}
+
+/**
+ * Rewrite a non-composite state between the supported visual shapes while preserving transitions,
+ * notes, and styles that reference the id. Composite containers and notes are intentionally handled
+ * elsewhere and should not be passed here.
+ */
+export function setStateNodeShape(code: string, id: string, shape: StateNodeShapeKind): string {
+  if (!id || isCompositeState(code, id)) return code;
+  const parent = getStateParentComposite(code, id);
+  const { code: without } = removeStateOwnDeclaration(code, id);
+  const line = shape === "state" ? id : `state ${id} <<${shape}>>`;
+
+  if (parent) {
+    const comp = getStateComposites(without).find((c) => c.name === parent);
+    if (comp) {
+      const lines = without.split("\n");
+      const baseIndent = (lines[comp.startLine].match(/^[ \t]*/)?.[0] ?? "") + "    ";
+      lines.splice(comp.endLine, 0, `${baseIndent}${line}`);
+      return lines.join("\n");
+    }
+  }
+
+  return appendStateLine(without, `    ${line}`);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -882,7 +970,7 @@ function findDanglingDividerLine(code: string): number {
  */
 export function collapseEmptyComposites(code: string): string {
   let result = code;
-  for (; ;) {
+  for (;;) {
     const danglingDivider = findDanglingDividerLine(result);
     if (danglingDivider >= 0) {
       const lines = result.split("\n");
@@ -1094,6 +1182,8 @@ export type StateShapeKind =
   | "fork"
   | "join"
   | "composite"
+  | "multiline"
+  | "concurrency"
   | "end"
   | "note";
 
@@ -1123,18 +1213,31 @@ export function addShapeWithTransition(
         code: appendStateLine(code, `    note right of ${source} : Add Text`),
         id: source,
       };
+    case "multiline":
+      return {
+        code: appendStateLine(
+          code,
+          `    note right of ${source}\n        Add Text\n        More detail\n    end note`,
+        ),
+        id: source,
+      };
     case "choice": {
       const id = getNextStateId(code, "choice");
       const withNode = appendStateLine(code, `    state ${id} <<choice>>`);
       return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
     }
     case "fork": {
-      const id = getNextStateId(code, "fork");
-      const withNode = appendStateLine(code, `    state ${id} <<fork>>`);
+      const id = getNextCompactStateId(code, "Fork");
+      const first = getNextStateId(code, "state");
+      const second = getNextStateId(`${code}\n${first}`, "state");
+      const withNode = appendStateLine(
+        code,
+        `    state ${id} <<fork>>\n    ${id} --> ${first}\n    ${id} --> ${second}`,
+      );
       return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
     }
     case "join": {
-      const id = getNextStateId(code, "join");
+      const id = getNextCompactStateId(code, "Join");
       const withNode = appendStateLine(code, `    state ${id} <<join>>`);
       return { code: appendStateLine(withNode, `    ${source} --> ${id}`), id };
     }
@@ -1142,6 +1245,16 @@ export function addShapeWithTransition(
       const pid = getNextStateId(code, "parent");
       const inner = getNextStateId(code, "inner");
       const withNode = appendStateLine(code, `    state ${pid} {\n        [*] --> ${inner}\n    }`);
+      return { code: appendStateLine(withNode, `    ${source} --> ${pid}`), id: pid };
+    }
+    case "concurrency": {
+      const pid = getNextStateId(code, "parallel");
+      const first = getNextStateId(code, "region");
+      const second = getNextStateId(`${code}\n${first}`, "region");
+      const withNode = appendStateLine(
+        code,
+        `    state ${pid} {\n        [*] --> ${first}\n        --\n        [*] --> ${second}\n    }`,
+      );
       return { code: appendStateLine(withNode, `    ${source} --> ${pid}`), id: pid };
     }
     case "state":
@@ -1200,58 +1313,67 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
     icon: React.ReactNode;
     run: () => void;
     disabled?: boolean;
+    disabledReason?: string;
   }> = [
-      {
-        key: "state",
-        label: "State",
-        icon: <Square className="w-4 h-4" />,
-        run: () => setCode(addState(code)),
-      },
-      {
-        key: "start",
-        label: "Start",
-        icon: <Circle className="w-4 h-4" />,
-        run: () => setCode(addStartTransition(code)),
-        disabled: startExists,
-      },
-      {
-        key: "end",
-        label: "End",
-        icon: <CircleDot className="w-4 h-4" />,
-        run: () => setCode(addEndTransition(code)),
-        disabled: endExists,
-      },
-      {
-        key: "choice",
-        label: "Choice",
-        icon: <Diamond className="w-4 h-4" />,
-        run: () => setCode(addChoice(code)),
-      },
-      {
-        key: "fork",
-        label: "Fork",
-        icon: <Split className="w-4 h-4" />,
-        run: () => setCode(addFork(code)),
-      },
-      {
-        key: "join",
-        label: "Join",
-        icon: <Merge className="w-4 h-4" />,
-        run: () => setCode(addJoin(code)),
-      },
-      {
-        key: "composite",
-        label: "Composite",
-        icon: <Boxes className="w-4 h-4" />,
-        run: () => setCode(addComposite(code)),
-      },
-      {
-        key: "note",
-        label: "Note",
-        icon: <StickyNote className="w-4 h-4" />,
-        run: () => setCode(addNote(code)),
-      },
-    ];
+    {
+      key: "state",
+      label: "State",
+      icon: <Square className="w-4 h-4" />,
+      run: () => setCode(addState(code)),
+    },
+    {
+      key: "start",
+      label: "Start",
+      icon: <Circle className="w-4 h-4" />,
+      run: () => setCode(addStartTransition(code)),
+      disabled: startExists,
+      disabledReason: "Start already exists.",
+    },
+    {
+      key: "end",
+      label: "End",
+      icon: <CircleDot className="w-4 h-4" />,
+      run: () => setCode(addEndTransition(code)),
+      disabled: endExists,
+      disabledReason: "End already exists.",
+    },
+    {
+      key: "choice",
+      label: "Choice",
+      icon: <Diamond className="w-4 h-4" />,
+      run: () => setCode(addChoice(code)),
+    },
+    {
+      key: "fork",
+      label: "Fork",
+      icon: <Split className="w-4 h-4" />,
+      run: () => setCode(addFork(code)),
+    },
+    {
+      key: "join",
+      label: "Join",
+      icon: <Merge className="w-4 h-4" />,
+      run: () => setCode(addJoin(code)),
+    },
+    {
+      key: "composite",
+      label: "Composite",
+      icon: <Boxes className="w-4 h-4" />,
+      run: () => setCode(addComposite(code)),
+    },
+    {
+      key: "multiline",
+      label: "Multiline",
+      icon: <StickyNote className="w-4 h-4" />,
+      run: () => setCode(addMultilineNote(code)),
+    },
+    {
+      key: "concurrency",
+      label: "Concurrency",
+      icon: <Split className="w-4 h-4" />,
+      run: () => setCode(addConcurrencyComposite(code)),
+    },
+  ];
 
   // Title is a toggle (same UX as the class/ER diagrams): ON inserts a default title immediately;
   // OFF asks for confirmation first (removing the title would drop the user-entered title text). The
@@ -1264,15 +1386,16 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       return;
     }
     const current = getStateTitle(code).trim();
-    const description = `Turning off the title removes it from the diagram. The current title${current ? ` ("${current}")` : ""
-      } will be lost.`;
+    const description = `Turning off the title removes it from the diagram. The current title${
+      current ? ` ("${current}")` : ""
+    } will be lost.`;
     const ok = requestConfirm
       ? await requestConfirm({
-        title: "Remove diagram title?",
-        description,
-        confirmLabel: "Remove title",
-        destructive: true,
-      })
+          title: "Remove diagram title?",
+          description,
+          confirmLabel: "Remove title",
+          destructive: true,
+        })
       : window.confirm(`Remove diagram title?\n\n${description}`);
     if (ok) setCode(removeStateTitle(code));
   };
@@ -1327,14 +1450,16 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={handleToggleTitle}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-            }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
           aria-label="Toggle diagram title"
           aria-pressed={hasTitle}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
-              }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
           />
         </button>
       </div>
@@ -1358,27 +1483,53 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
           <span className="text-[15px] font-medium">Shape</span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
-          className="w-56 p-2 bg-background border-border rounded-xl"
+          className="w-56 overflow-visible p-2 bg-background border-border rounded-xl"
           sideOffset={10}
           align="start"
         >
           <div className="grid grid-cols-3 gap-2">
-            {toolboxItems.map((item) => (
-              <DropdownMenuItem
-                key={item.key}
-                onClick={item.run}
-                disabled={item.disabled}
-                title={
-                  item.disabled
-                    ? `Only one ${item.label.toLowerCase()} node is allowed`
-                    : `Add ${item.label.toLowerCase()}`
-                }
-                className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent cursor-pointer focus:bg-accent data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[disabled]:hover:border-border data-[disabled]:hover:bg-background"
-              >
-                {item.icon}
-                <span className="text-[10px] font-medium leading-none">{item.label}</span>
-              </DropdownMenuItem>
-            ))}
+            {toolboxItems.map((item) => {
+              const tooltipId = `state-toolbar-shape-disabled-${item.key}`;
+              return (
+                <DropdownMenuItem
+                  key={item.key}
+                  aria-disabled={item.disabled}
+                  aria-describedby={item.disabled ? tooltipId : undefined}
+                  onClick={(e) => {
+                    if (item.disabled) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      return;
+                    }
+                    item.run();
+                  }}
+                  title={item.disabled ? undefined : `Add ${item.label.toLowerCase()}`}
+                  className={`group relative flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground focus:bg-accent ${
+                    item.disabled
+                      ? "cursor-not-allowed hover:border-border hover:bg-background"
+                      : "cursor-pointer hover:border-indigo-400 hover:bg-accent"
+                  }`}
+                >
+                  <span
+                    className={`flex flex-col items-center justify-center gap-1 ${
+                      item.disabled ? "opacity-40" : ""
+                    }`}
+                  >
+                    {item.icon}
+                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
+                  </span>
+                  {item.disabled && item.disabledReason && (
+                    <span
+                      id={tooltipId}
+                      role="tooltip"
+                      className="pointer-events-none absolute left-1/2 top-full z-[70] mt-2 hidden w-40 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-center text-[11px] font-semibold leading-snug !text-white shadow-xl group-hover:block group-focus:block"
+                    >
+                      {item.disabledReason}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+              );
+            })}
           </div>
         </DropdownMenuContent>
       </DropdownMenu>

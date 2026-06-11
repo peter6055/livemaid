@@ -3225,6 +3225,7 @@ export function useCanvasInteraction({
         const lifelines = getSequenceLifelines();
 
         if (connectionState.active && connectionState.startNodeId?.startsWith("SEQ_ACTOR_")) {
+          setShapePicker(null);
           const sourceActorId = connectionState.startNodeId.replace("SEQ_ACTOR_", "");
           const sourceLifeline = lifelines.find((l) => l.actorId === sourceActorId);
           if (!sourceLifeline) return;
@@ -3311,6 +3312,7 @@ export function useCanvasInteraction({
       }
 
       if (connectionState.active && connectionState.startNodeId) {
+        setShapePicker(null);
         setConnectionState((prev) => ({
           ...prev,
           isDragging: true,

@@ -142,8 +142,9 @@ import {
   moveStateIntoComposite,
   moveStateToNewComposite,
   addConcurrencyDivider,
+  setStateNodeShape,
 } from "@/lib/diagrams/stateDiagram";
-import type { StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -297,7 +298,7 @@ export function LiveMaidEditor({
       .then((data) => {
         if (!cancelled) setFolders(Array.isArray(data) ? data : []);
       })
-      .catch(() => { });
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -975,6 +976,15 @@ export function LiveMaidEditor({
   const handleMoveStateToRoot = useCallback(
     (id: string) => {
       const newCode = moveStateIntoComposite(code, id, null);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleChangeStateShape = useCallback(
+    (id: string, shape: StateNodeShapeKind) => {
+      const newCode = setStateNodeShape(code, id, shape);
       if (newCode !== code) handleCodeChange(newCode);
       handleDeselect();
     },
@@ -3345,28 +3355,25 @@ export function LiveMaidEditor({
     setIsExitConfirmOpen(false);
   }, []);
 
-  const handleDuplicate = async () => {
-    if (!doc) return;
-    try {
-      const res = await fetch("/api/diagrams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${doc.name} (Copy)`,
-          code: code,
-          type: doc.type,
-        }),
-      });
-      if (res.ok) {
-        const newDiagram = await res.json();
-        toast.success("Diagram duplicated");
-        handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...", true);
-      } else {
-        toast.error("Failed to duplicate");
-      }
-    } catch (e) {
-      toast.error("Failed to duplicate");
-    }
+  const handleDuplicate = () => {
+    if (!doc) return null;
+
+    const token =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    window.localStorage.setItem(
+      `livemaid:duplicate:${token}`,
+      JSON.stringify({
+        name: `${doc.name} (Copy)`,
+        code,
+        type: doc.type,
+        folderId: doc.folderId ?? null,
+      }),
+    );
+
+    return `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
   };
 
   const handleCreateSubmit = async () => {
@@ -3387,7 +3394,7 @@ export function LiveMaidEditor({
       } else {
         toast.error("Failed to create diagram");
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to create diagram");
     }
   };
@@ -4117,15 +4124,17 @@ export function LiveMaidEditor({
                           );
                         }
                       }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${code.match(/autonumber/i)
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                        code.match(/autonumber/i)
                           ? "bg-indigo-600"
                           : "bg-slate-200 dark:bg-slate-700"
-                        }`}
+                      }`}
                       aria-label="Toggle Autonumber"
                     >
                       <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                          }`}
+                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                        }`}
                       />
                     </button>
                   </div>
@@ -4225,6 +4234,7 @@ export function LiveMaidEditor({
             onMoveStateIntoComposite={handleMoveStateIntoComposite}
             onMoveStateToNewComposite={handleMoveStateToNewComposite}
             onMoveStateToRoot={handleMoveStateToRoot}
+            onChangeStateShape={handleChangeStateShape}
             onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
             onDeleteStateTransition={handleDeleteStateTransition}
             onAddStateTransition={handleAddStateTransition}
@@ -4445,10 +4455,10 @@ export function LiveMaidEditor({
                       style={
                         c === "transparent"
                           ? {
-                            backgroundImage:
-                              "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
-                            backgroundSize: "10px 10px",
-                          }
+                              backgroundImage:
+                                "conic-gradient(#e5e7eb 90deg, #fff 90deg 180deg, #e5e7eb 180deg 270deg, #fff 270deg)",
+                              backgroundSize: "10px 10px",
+                            }
                           : undefined
                       }
                     />

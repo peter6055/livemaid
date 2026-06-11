@@ -31,7 +31,8 @@ const SHAPES: Array<{ kind: StateShapeKind; label: string; icon: React.ReactNode
   { kind: "fork", label: "Fork", icon: <Split className="h-4 w-4" /> },
   { kind: "join", label: "Join", icon: <Merge className="h-4 w-4" /> },
   { kind: "composite", label: "Composite", icon: <Boxes className="h-4 w-4" /> },
-  { kind: "note", label: "Note", icon: <StickyNote className="h-4 w-4" /> },
+  { kind: "multiline", label: "Multiline", icon: <StickyNote className="h-4 w-4" /> },
+  { kind: "concurrency", label: "Concurrency", icon: <Split className="h-4 w-4" /> },
 ];
 
 /**
@@ -75,7 +76,7 @@ export function StateConnectMenu({
       data-state-connect-menu
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="absolute z-50 flex w-56 flex-col overflow-hidden rounded-xl border border-border bg-background text-foreground shadow-xl"
+      className="absolute z-50 flex w-56 flex-col rounded-xl border border-border bg-background text-foreground shadow-xl"
       style={{
         left: Math.max(8, state.x),
         top: Math.max(8, state.y + 8),
@@ -88,22 +89,43 @@ export function StateConnectMenu({
       <div className="grid grid-cols-3 gap-2 p-2 pt-0">
         {SHAPES.map((s) => {
           const disabled = (s.kind === "start" && !!hasStart) || (s.kind === "end" && !!hasEnd);
+          const disabledReason =
+            s.kind === "start"
+              ? "Start already exists."
+              : s.kind === "end"
+                ? "End already exists."
+                : "";
+          const tooltipId = `state-connect-disabled-${s.kind}`;
           return (
-            <button
-              key={s.kind}
-              type="button"
-              disabled={disabled}
-              onClick={() => onPick(s.kind)}
-              title={
-                disabled
-                  ? `Only one ${s.label.toLowerCase()} node is allowed`
-                  : `Create ${s.label.toLowerCase()}`
-              }
-              className="flex h-14 flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground hover:border-indigo-400 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-background"
-            >
-              {s.icon}
-              <span className="text-[10px] font-medium leading-none">{s.label}</span>
-            </button>
+            <div key={s.kind} className="group relative">
+              <button
+                type="button"
+                aria-disabled={disabled}
+                aria-describedby={disabled ? tooltipId : undefined}
+                onClick={() => {
+                  if (disabled) return;
+                  onPick(s.kind);
+                }}
+                title={disabled ? undefined : `Create ${s.label.toLowerCase()}`}
+                className={`flex h-14 w-full flex-col items-center justify-center gap-1 rounded-lg border border-border bg-background p-1 text-foreground transition-colors ${
+                  disabled
+                    ? "cursor-not-allowed opacity-40 hover:border-border hover:bg-background"
+                    : "cursor-pointer hover:border-indigo-400 hover:bg-accent"
+                }`}
+              >
+                {s.icon}
+                <span className="text-[10px] font-medium leading-none">{s.label}</span>
+              </button>
+              {disabled && (
+                <div
+                  id={tooltipId}
+                  role="tooltip"
+                  className="pointer-events-none absolute bottom-full left-1/2 z-[60] mb-2 hidden w-56 -translate-x-1/2 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-left text-[11px] font-semibold leading-snug text-white shadow-xl group-hover:block group-focus-within:block"
+                >
+                  {disabledReason}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>
