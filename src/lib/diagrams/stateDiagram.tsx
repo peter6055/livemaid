@@ -882,7 +882,7 @@ function findDanglingDividerLine(code: string): number {
  */
 export function collapseEmptyComposites(code: string): string {
   let result = code;
-  for (;;) {
+  for (; ;) {
     const danglingDivider = findDanglingDividerLine(result);
     if (danglingDivider >= 0) {
       const lines = result.split("\n");
@@ -1201,57 +1201,57 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
     run: () => void;
     disabled?: boolean;
   }> = [
-    {
-      key: "state",
-      label: "State",
-      icon: <Square className="w-4 h-4" />,
-      run: () => setCode(addState(code)),
-    },
-    {
-      key: "start",
-      label: "Start",
-      icon: <Circle className="w-4 h-4" />,
-      run: () => setCode(addStartTransition(code)),
-      disabled: startExists,
-    },
-    {
-      key: "end",
-      label: "End",
-      icon: <CircleDot className="w-4 h-4" />,
-      run: () => setCode(addEndTransition(code)),
-      disabled: endExists,
-    },
-    {
-      key: "choice",
-      label: "Choice",
-      icon: <Diamond className="w-4 h-4" />,
-      run: () => setCode(addChoice(code)),
-    },
-    {
-      key: "fork",
-      label: "Fork",
-      icon: <Split className="w-4 h-4" />,
-      run: () => setCode(addFork(code)),
-    },
-    {
-      key: "join",
-      label: "Join",
-      icon: <Merge className="w-4 h-4" />,
-      run: () => setCode(addJoin(code)),
-    },
-    {
-      key: "composite",
-      label: "Composite",
-      icon: <Boxes className="w-4 h-4" />,
-      run: () => setCode(addComposite(code)),
-    },
-    {
-      key: "note",
-      label: "Note",
-      icon: <StickyNote className="w-4 h-4" />,
-      run: () => setCode(addNote(code)),
-    },
-  ];
+      {
+        key: "state",
+        label: "State",
+        icon: <Square className="w-4 h-4" />,
+        run: () => setCode(addState(code)),
+      },
+      {
+        key: "start",
+        label: "Start",
+        icon: <Circle className="w-4 h-4" />,
+        run: () => setCode(addStartTransition(code)),
+        disabled: startExists,
+      },
+      {
+        key: "end",
+        label: "End",
+        icon: <CircleDot className="w-4 h-4" />,
+        run: () => setCode(addEndTransition(code)),
+        disabled: endExists,
+      },
+      {
+        key: "choice",
+        label: "Choice",
+        icon: <Diamond className="w-4 h-4" />,
+        run: () => setCode(addChoice(code)),
+      },
+      {
+        key: "fork",
+        label: "Fork",
+        icon: <Split className="w-4 h-4" />,
+        run: () => setCode(addFork(code)),
+      },
+      {
+        key: "join",
+        label: "Join",
+        icon: <Merge className="w-4 h-4" />,
+        run: () => setCode(addJoin(code)),
+      },
+      {
+        key: "composite",
+        label: "Composite",
+        icon: <Boxes className="w-4 h-4" />,
+        run: () => setCode(addComposite(code)),
+      },
+      {
+        key: "note",
+        label: "Note",
+        icon: <StickyNote className="w-4 h-4" />,
+        run: () => setCode(addNote(code)),
+      },
+    ];
 
   // Title is a toggle (same UX as the class/ER diagrams): ON inserts a default title immediately;
   // OFF asks for confirmation first (removing the title would drop the user-entered title text). The
@@ -1264,16 +1264,15 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       return;
     }
     const current = getStateTitle(code).trim();
-    const description = `Turning off the title removes it from the diagram. The current title${
-      current ? ` ("${current}")` : ""
-    } will be lost.`;
+    const description = `Turning off the title removes it from the diagram. The current title${current ? ` ("${current}")` : ""
+      } will be lost.`;
     const ok = requestConfirm
       ? await requestConfirm({
-          title: "Remove diagram title?",
-          description,
-          confirmLabel: "Remove title",
-          destructive: true,
-        })
+        title: "Remove diagram title?",
+        description,
+        confirmLabel: "Remove title",
+        destructive: true,
+      })
       : window.confirm(`Remove diagram title?\n\n${description}`);
     if (ok) setCode(removeStateTitle(code));
   };
@@ -1328,16 +1327,14 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
         <button
           type="button"
           onClick={handleToggleTitle}
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-          }`}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+            }`}
           aria-label="Toggle diagram title"
           aria-pressed={hasTitle}
         >
           <span
-            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
-            }`}
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+              }`}
           />
         </button>
       </div>

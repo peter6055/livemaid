@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface ClassTextEditorProps {
   /** Whether the target is the diagram title, a note, a relationship label, a namespace, or a state. */
@@ -77,7 +77,14 @@ export function ClassTextEditor({
   }, []);
 
   const width = Math.max(rect.width + 24, 140);
-  const height = Math.max(rect.height + 8, 32);
+  const minHeight = Math.max(rect.height + 8, 32);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
+  }, [value, minHeight]);
 
   return (
     <div
@@ -96,6 +103,7 @@ export function ClassTextEditor({
       <textarea
         ref={ref}
         value={value}
+        rows={1}
         spellCheck={false}
         onChange={(e) => {
           setValue(e.target.value);
@@ -104,7 +112,7 @@ export function ClassTextEditor({
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault();
             commit();
           } else if (e.key === "Escape") {
@@ -123,8 +131,8 @@ export function ClassTextEditor({
                   ? "State label"
                   : "Note text"
         }
-        style={{ width: "100%", height }}
-        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
+        style={{ width: "100%", minHeight }}
+        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none whitespace-pre-wrap ${
           kind === "title"
             ? "text-center font-semibold"
             : kind === "relationship" || kind === "namespace" || kind === "state"

@@ -266,6 +266,28 @@ function nearestPerimeterAnchor(
   return best;
 }
 
+function shellBoxFromRect(
+  rect: DOMRect,
+  shellRect: DOMRect,
+): { cx: number; cy: number; w: number; h: number } {
+  return {
+    cx: rect.left - shellRect.left,
+    cy: rect.top - shellRect.top,
+    w: rect.width,
+    h: rect.height,
+  };
+}
+
+function shellBoxFromElement(
+  el: Element | null,
+  shellRect: DOMRect,
+): { cx: number; cy: number; w: number; h: number } | null {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return shellBoxFromRect(rect, shellRect);
+}
+
 export function EditorCanvas({
   code,
   parseError,
@@ -486,6 +508,21 @@ export function EditorCanvas({
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
   const viewportHeight = viewport?.clientHeight || 600;
+
+  const flowchartConnectionEnd = connectionState.mousePos;
+  const flowchartConnectionStart =
+    selectionBox && flowchartConnectionEnd
+      ? nearestPerimeterAnchor(
+          {
+            cx: selectionBox.x,
+            cy: selectionBox.y,
+            w: selectionBox.width,
+            h: selectionBox.height,
+          },
+          flowchartConnectionEnd.x,
+          flowchartConnectionEnd.y,
+        )
+      : connectionState.startPos;
 
   const updateScaleLockedElements = (container: HTMLDivElement | null, scale: number) => {
     if (!container) return;
@@ -721,14 +758,14 @@ export function EditorCanvas({
     // centers (that lands on the upper message's line). Pair text↔line with the SAME scoring
     // heuristic as the hook's findNearestLineForText (a naive nearest-by-center mis-assigns
     // around self-loops / tall arcs and corrupts neighboring bands).
-    textEls.forEach((el, i) => {
-      const tr = el.getBoundingClientRect();
+    const nearestLineForText = (textEl: SVGElement) => {
+      const tr = textEl.getBoundingClientRect();
       const textX = tr.left + tr.width / 2;
       const textY = tr.top + tr.height / 2;
-      let bestLine: DOMRect | null = null;
+      let bestLine: SVGElement | null = null;
       let bestScore = Number.POSITIVE_INFINITY;
-      for (const l of lineEls) {
-        const lr = l.getBoundingClientRect();
+      for (const lineEl of lineEls) {
+        const lr = lineEl.getBoundingClientRect();
         const lineY = lr.top + lr.height / 2;
         const dx = textX < lr.left ? lr.left - textX : textX > lr.right ? textX - lr.right : 0;
         const dy = Math.abs(lineY - textY);
@@ -736,14 +773,23 @@ export function EditorCanvas({
         const score = dy * 3 + dx + underPenalty;
         if (score < bestScore) {
           bestScore = score;
-          bestLine = lr;
+          bestLine = lineEl;
         }
       }
+      return bestLine;
+    };
+
+    lineEls.forEach((lineEl, i) => {
+      const lr = lineEl.getBoundingClientRect();
+      const pairedTexts = textEls.filter((textEl) => nearestLineForText(textEl) === lineEl);
+      const textRects = pairedTexts.map((textEl) => textEl.getBoundingClientRect());
+      const top = Math.min(lr.top, ...textRects.map((r) => r.top));
+      const bottom = Math.max(lr.bottom, ...textRects.map((r) => r.bottom));
       rows.push({
         kind: "msg",
         domIndex: i,
-        top: Math.min(tr.top, bestLine?.top ?? tr.top) - shellRect.top,
-        bottom: Math.max(tr.bottom, bestLine?.bottom ?? tr.bottom) - shellRect.top,
+        top: top - shellRect.top,
+        bottom: bottom - shellRect.top,
       });
     });
 
@@ -904,7 +950,9 @@ export function EditorCanvas({
         // click is detected by timing (≤ 350ms on the same row key), which survives that swap.
         const now = Date.now();
         const prev = seqLastClickRef.current;
-        const isDouble = prev.key === draggedKey && now - prev.time <= 350;
+        const isBrowserDoubleClick = e.detail >= 2 && selectedKey === draggedKey;
+        const isDouble =
+          isBrowserDoubleClick || (prev.key === draggedKey && now - prev.time <= 350);
         if (isDouble) {
           seqLastClickRef.current = { time: 0, key: "" };
           if (draggedRow.kind === "msg") onHoveredSequenceMessageDoubleClick(draggedRow.domIndex);
@@ -1162,6 +1210,11 @@ export function EditorCanvas({
     const btnRect = e.currentTarget.getBoundingClientRect();
     const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
     const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      Array.from(shell.querySelectorAll(".mermaid-container g.node")).find(
+        (el) => entityNameFromSvgId(el.id) === sourceName,
+      ) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null);
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
 
     const resolveTarget = (
       clientX: number,
@@ -1197,14 +1250,18 @@ export function EditorCanvas({
       const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
-        snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+        snap = shellBoxFromRect(r, shellRect);
         anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
       setErConnect({
-        x1: anchorX,
-        y1: anchorY,
-        x2: anchor ? anchor.x : cursorX,
-        y2: anchor ? anchor.y : cursorY,
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
         snap,
         anchor,
       });
@@ -1242,6 +1299,14 @@ export function EditorCanvas({
     const btnRect = e.currentTarget.getBoundingClientRect();
     const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
     const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      Array.from(
+        shell.querySelectorAll(
+          ".mermaid-container g.node, .mermaid-container g.statediagram-cluster",
+        ),
+      ).find((el) => stateNameFromSvgId(el.id) === sourceId) ??
+      (selectedSvgId ? document.getElementById(selectedSvgId) : null);
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
 
     const resolveTarget = (
       clientX: number,
@@ -1284,14 +1349,18 @@ export function EditorCanvas({
       const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
-        snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+        snap = shellBoxFromRect(r, shellRect);
         anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
       setStateConnect({
-        x1: anchorX,
-        y1: anchorY,
-        x2: anchor ? anchor.x : cursorX,
-        y2: anchor ? anchor.y : cursorY,
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
         snap,
         anchor,
       });
@@ -1338,6 +1407,16 @@ export function EditorCanvas({
     const btnRect = e.currentTarget.getBoundingClientRect();
     const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
     const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      source.kind === "class"
+        ? (Array.from(shell.querySelectorAll(".mermaid-container g.node")).find(
+            (el) => classNameFromSvgId(el.id) === source.name,
+          ) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null))
+        : (Array.from(shell.querySelectorAll(".mermaid-container g.node")).find((el) => {
+            const idx = parseInt(el.id.match(/-note(\d+)$/)?.[1] ?? "-1", 10);
+            return idx === source.index;
+          }) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null));
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
 
     type Target =
       | { kind: "class"; name: string; el: Element }
@@ -1381,19 +1460,18 @@ export function EditorCanvas({
       const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
-        snap = {
-          cx: r.left - shellRect.left,
-          cy: r.top - shellRect.top,
-          w: r.width,
-          h: r.height,
-        };
+        snap = shellBoxFromRect(r, shellRect);
         anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
       setClassConnect({
-        x1: anchorX,
-        y1: anchorY,
-        x2: anchor ? anchor.x : cursorX,
-        y2: anchor ? anchor.y : cursorY,
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
         snap,
         anchor,
       });
@@ -2064,11 +2142,11 @@ export function EditorCanvas({
                       </defs>
                       <line
                         data-scale-lock-stroke
-                        x1={connectionState.startPos.x}
+                        x1={flowchartConnectionStart?.x ?? connectionState.startPos.x}
                         y1={
                           currentType === "sequence"
                             ? (connectionState.anchorY ?? connectionState.startPos.y)
-                            : connectionState.startPos.y
+                            : (flowchartConnectionStart?.y ?? connectionState.startPos.y)
                         }
                         x2={connectionState.mousePos.x}
                         y2={
@@ -2117,6 +2195,7 @@ export function EditorCanvas({
 
                 {isInlineEditing && selectedSvgId && (
                   <style>{`
+                        #${selectedSvgId},
                         #${selectedSvgId} .label,
                         #${selectedSvgId} text,
                         #${selectedSvgId} foreignObject,
