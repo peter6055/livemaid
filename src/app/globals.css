@@ -310,6 +310,39 @@ svg[aria-roledescription="error"],
   cursor: crosshair !important;
 }
 
+/* State-diagram transitions: pointer cursor + indigo hover highlight, driven by the wide transparent
+   `state-transition-hit-target` clone (the immediately-preceding sibling of the real
+   `path.transition`). Mirrors the ER/class relationship treatment. Note-edges are excluded (no
+   hit-target is cloned for them). */
+.mermaid-container path.transition,
+.mermaid-container path.state-transition-hit-target {
+  cursor: pointer !important;
+  transition:
+    stroke 0.2s,
+    stroke-width 0.2s;
+}
+
+.mermaid-container path.transition:hover,
+.mermaid-container path.state-transition-hit-target:hover + path.transition {
+  stroke: #6366f1 !important;
+  stroke-width: 2.5px !important;
+}
+
+/* State-diagram composite containers and concurrency dividers are selectable canvas elements.
+   Mermaid renders composites as `g.statediagram-cluster`; concurrency regions render their `--`
+   divider as `rect.divider` inside an alternate cluster. Override the canvas grab cursor so these
+   areas advertise click/selection affordance like regular state nodes. */
+.mermaid-container g.statediagram-cluster,
+.mermaid-container g.statediagram-cluster *,
+.mermaid-container rect.divider {
+  cursor: pointer !important;
+}
+
+/* State-diagram connection handle (the purple +): crosshair cursor to signal drag-to-connect. */
+.state-connect-btn {
+  cursor: crosshair !important;
+}
+
 /* Hover highlights for sequence diagram message connections */
 .mermaid-container [class*="messageLine"]:hover line,
 .mermaid-container [class*="messageLine"]:hover path,

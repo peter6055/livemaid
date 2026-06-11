@@ -117,6 +117,34 @@ import {
   erRelationshipFromEdgeDataId,
   type EntityEdits,
 } from "@/lib/diagrams/erDiagram";
+import {
+  stateNameFromSvgId,
+  isSpecialStateNode,
+  getStateLabel,
+  setStateLabel,
+  getStateTitle,
+  upsertStateTitle,
+  removeStateTitle,
+  getStateNotes,
+  updateStateNoteByIndex,
+  deleteStateNoteByIndex,
+  deleteStateById,
+  findStateDefinitionLine,
+  stateTransitionFromEdgeDataId,
+  addTransition,
+  addShapeWithTransition,
+  setStateTransitionLabel,
+  deleteStateTransition,
+  setStateStyle,
+  removeStateStyle,
+  addNoteForState,
+  setStateNotePosition,
+  moveStateIntoComposite,
+  moveStateToNewComposite,
+  addConcurrencyDivider,
+  setStateNodeShape,
+} from "@/lib/diagrams/stateDiagram";
+import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -374,6 +402,18 @@ export function LiveMaidEditor({
     rect: { left: number; top: number; width: number; height: number };
   } | null>(null);
 
+  // State-diagram inline editor for a diagram TITLE, a state/composite LABEL, a NOTE, or a transition
+  // EDGE label (double-click to edit, click outside / Enter to commit). Positioned in viewport space
+  // from the element's bounding rect at open time. Reuses the shared `ClassTextEditor` overlay.
+  const [stateTextEdit, setStateTextEdit] = useState<{
+    kind: "title" | "state" | "note" | "edge";
+    id: string; // the state id (kind "state")
+    noteIndex: number; // source-order note index (kind "note")
+    lineIndex?: number; // transition source line (kind "edge")
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
   // Tracks whether the class property panel currently holds invalid attribute/method rows. Kept in
   // a ref (not state) so the outside-click deselect listener reads the latest value without
   // re-subscribing, and so it never triggers a re-render of the editor on every keystroke.
@@ -406,6 +446,9 @@ export function LiveMaidEditor({
       setSelectedEntityName(null);
       setErTitleEdit(null);
       setErEdgeLabelEdit(null);
+    }
+    if (determineDiagramType(code) !== "stateDiagram") {
+      setStateTextEdit(null);
     }
   }, [code]);
 
@@ -652,6 +695,384 @@ export function LiveMaidEditor({
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
   }, [code, openErEdgeLabelEditor]);
+
+  // Double-click routing for state diagrams: the diagram TITLE, a NOTE, a COMPOSITE container, or a
+  // regular STATE enters inline label-edit mode. Same TIMING detection as the class/ER routers (the
+  // first click mounts the selection overlay, so the browser never dispatches a native `dblclick`);
+  // `elementsFromPoint` sees through the overlay to the underlying SVG element.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "stateDiagram") return;
+
+    const route = (clientX: number, clientY: number) => {
+      // In lock mode the canvas is read-only — no double-click-to-edit.
+      if (isLockedRef.current) return;
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest(
+            "[data-class-text-editor],[data-inline-toolbar],.state-connect-btn,.monaco-editor",
+          ),
+        )
+      ) {
+        return;
+      }
+
+      const container = document.querySelector(".mermaid-container");
+
+      // Diagram title — `text.stateDiagramTitleText`. Opens the shared editor seeded from the title.
+      const titleEl = els.find((el) => el.classList?.contains("stateDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setStateTextEdit({
+          kind: "title",
+          id: "",
+          noteIndex: -1,
+          value: getStateTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
+      }
+
+      // Note — `g.statediagram-note`. Map its DOM order to the source-ordered note index.
+      const noteGroup = els
+        .map((el) => el.closest("g.statediagram-note"))
+        .find((g): g is Element => !!g);
+      if (noteGroup && container) {
+        const noteEls = Array.from(container.querySelectorAll("g.statediagram-note"));
+        const idx = noteEls.indexOf(noteGroup);
+        const note = getStateNotes(code)[idx];
+        if (note) {
+          const r = noteGroup.getBoundingClientRect();
+          setStateTextEdit({
+            kind: "note",
+            id: "",
+            noteIndex: idx,
+            value: note.text,
+            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          });
+        }
+        return;
+      }
+
+      // Composite container — `g.statediagram-cluster` (renamed via the colon form on its id).
+      const clusterGroup = els
+        .map((el) => el.closest("g.statediagram-cluster"))
+        .find((g): g is Element => !!g);
+      if (clusterGroup) {
+        const id = stateNameFromSvgId(clusterGroup.id);
+        if (id) {
+          const labelEl = clusterGroup.querySelector(".cluster-label, text, foreignObject");
+          const anchor = labelEl ?? clusterGroup;
+          const r = anchor.getBoundingClientRect();
+          setStateTextEdit({
+            kind: "state",
+            id,
+            noteIndex: -1,
+            value: getStateLabel(code, id) || id,
+            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          });
+        }
+        return;
+      }
+
+      // Regular state node — `g.node` id `…-state-<Name>-<idx>` (excludes [*] pseudo + notes +
+      // shape-only choice/fork/join, which have no editable label).
+      const stateGroup = els
+        .map((el) => el.closest("g.node"))
+        .find(
+          (g): g is Element => !!g && /-state-.+-\d+$/.test(g.id) && !/----note-\d+$/.test(g.id),
+        );
+      if (stateGroup) {
+        const id = stateNameFromSvgId(stateGroup.id);
+        if (id && !isSpecialStateNode(code, id)) {
+          const r = stateGroup.getBoundingClientRect();
+          setStateTextEdit({
+            kind: "state",
+            id,
+            noteIndex: -1,
+            value: getStateLabel(code, id) || id,
+            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+          });
+        }
+        return;
+      }
+
+      // Transition edge / its label — double-click to inline-edit the `: label`. Detect the
+      // transition path (or its wide hit-target), or the `.edgeLabel` container, then resolve its
+      // stable `data-id` (`edge<N>`) to the source line.
+      const edgeEl = els.find(
+        (el) =>
+          el.classList?.contains("transition") ||
+          el.classList?.contains("state-transition-hit-target"),
+      );
+      const labelEl = els.map((el) => el.closest(".edgeLabel")).find((g): g is Element => !!g);
+      const edgeDataId =
+        edgeEl?.getAttribute("data-id") ??
+        labelEl?.querySelector("[data-id]")?.getAttribute("data-id") ??
+        null;
+      if (edgeDataId) {
+        const rel = stateTransitionFromEdgeDataId(code, edgeDataId);
+        if (rel) {
+          setStateTextEdit({
+            kind: "edge",
+            id: "",
+            noteIndex: -1,
+            lineIndex: rel.lineIndex,
+            value: rel.label,
+            rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+          });
+        }
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0;
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code]);
+
+  // Commit the state-diagram inline edit (title / state-or-composite label / note text / transition
+  // label). Routes through handleCodeChange so it is a single Monaco undo step and re-renders.
+  const commitStateTextEdit = useCallback(
+    (value: string) => {
+      if (!stateTextEdit) return;
+      let newCode = code;
+      if (stateTextEdit.kind === "title") {
+        const trimmed = value.trim();
+        newCode = trimmed ? upsertStateTitle(code, trimmed) : removeStateTitle(code);
+      } else if (stateTextEdit.kind === "note") {
+        newCode = updateStateNoteByIndex(code, stateTextEdit.noteIndex, value);
+      } else if (stateTextEdit.kind === "edge") {
+        newCode = setStateTransitionLabel(code, stateTextEdit.lineIndex ?? -1, value);
+      } else {
+        newCode = setStateLabel(code, stateTextEdit.id, value);
+      }
+      if (newCode !== code) handleCodeChange(newCode);
+      setStateTextEdit(null);
+    },
+    [code, handleCodeChange, stateTextEdit],
+  );
+
+  // State-diagram node toolbar (single-click) delete handlers → route through handleCodeChange.
+  const handleDeleteStateNode = useCallback(
+    (id: string) => {
+      const newCode = deleteStateById(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleDeleteStateNote = useCallback(
+    (noteIndex: number) => {
+      const newCode = deleteStateNoteByIndex(code, noteIndex);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  // State-diagram node styling (Phase 4): write / clear a localized `style <id> …` override.
+  const handleSetStateStyle = useCallback(
+    (id: string, patch: Record<string, string>) => {
+      const newCode = setStateStyle(code, id, patch);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleResetStateStyle = useCallback(
+    (id: string) => {
+      const newCode = removeStateStyle(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // Open the inline note editor over the note at `noteIndex` (source order) once Mermaid has
+  // re-rendered the new/updated note into the DOM. Used to drop the user straight into editing
+  // (text + Left/Right side toggle) right after a note is added. `g.statediagram-note` DOM order
+  // matches source order, so `noteIndex` indexes the rendered notes directly; we poll a few frames
+  // because the SVG re-render is async after a code change.
+  const openStateNoteEditor = useCallback((noteCode: string, noteIndex: number) => {
+    const note = getStateNotes(noteCode)[noteIndex];
+    if (!note) return;
+    let attempts = 0;
+    const tryOpen = () => {
+      const container = document.querySelector(".mermaid-container");
+      const noteEls = container
+        ? Array.from(container.querySelectorAll("g.statediagram-note"))
+        : [];
+      const el = noteEls[noteIndex];
+      if (!el) {
+        if (attempts++ < 30) requestAnimationFrame(tryOpen);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      setStateTextEdit({
+        kind: "note",
+        id: "",
+        noteIndex,
+        value: note.text,
+        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+      });
+    };
+    requestAnimationFrame(tryOpen);
+  }, []);
+
+  // State-diagram quick-annotation (Phase 4): attach a `note <side> of <id>` to the selected node
+  // (side chosen in the toolbar's placement popover), then drop straight into the inline note editor
+  // so the user can type the label (and still re-flip the side from there).
+  const handleAddStateNote = useCallback(
+    (id: string, position: "left" | "right" = "right") => {
+      const newCode = addNoteForState(code, id, position);
+      if (newCode !== code) {
+        handleCodeChange(newCode);
+        openStateNoteEditor(newCode, getStateNotes(newCode).length - 1);
+      }
+    },
+    [code, handleCodeChange, openStateNoteEditor],
+  );
+
+  // State-diagram note flip (Phase 4): toggle a note between left / right.
+  const handleFlipStateNote = useCallback(
+    (noteIndex: number, position: "left" | "right") => {
+      const newCode = setStateNotePosition(code, noteIndex, position);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // State-diagram composite nesting (Phase 5): relocate a state into / between / out of composites.
+  const handleMoveStateIntoComposite = useCallback(
+    (id: string, target: string) => {
+      const newCode = moveStateIntoComposite(code, id, target);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleMoveStateToNewComposite = useCallback(
+    (id: string) => {
+      const newCode = moveStateToNewComposite(code, id);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleMoveStateToRoot = useCallback(
+    (id: string) => {
+      const newCode = moveStateIntoComposite(code, id, null);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleChangeStateShape = useCallback(
+    (id: string, shape: StateNodeShapeKind) => {
+      const newCode = setStateNodeShape(code, id, shape);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  // State-diagram concurrency divider (Phase 5): open a parallel region inside a composite.
+  const handleAddStateConcurrencyDivider = useCallback(
+    (compositeId: string) => {
+      const newCode = addConcurrencyDivider(code, compositeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  // Open the inline label editor from the StateNodeToolbar's Rename pencil. Resolves the selected
+  // element (state / composite / note) from its SVG id and positions the editor over it — the same
+  // result as a double-click, just triggered from the toolbar.
+  const handleRenameStateFromToolbar = useCallback(() => {
+    if (!selectedSvgId) return;
+    const container = document.querySelector(".mermaid-container");
+    if (!container) return;
+    const escId =
+      typeof window !== "undefined" && window.CSS && CSS.escape
+        ? CSS.escape(selectedSvgId)
+        : selectedSvgId;
+    const el = container.querySelector(`[id="${escId}"]`);
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const rect = { left: r.left, top: r.top, width: r.width, height: r.height };
+    if (selectedSvgId.includes("----note-")) {
+      const idx = Array.from(container.querySelectorAll("g.statediagram-note")).indexOf(el);
+      const note = getStateNotes(code)[idx];
+      if (note) setStateTextEdit({ kind: "note", id: "", noteIndex: idx, value: note.text, rect });
+      return;
+    }
+    const id = stateNameFromSvgId(selectedSvgId);
+    if (!id || isSpecialStateNode(code, id)) return;
+    setStateTextEdit({
+      kind: "state",
+      id,
+      noteIndex: -1,
+      value: getStateLabel(code, id) || id,
+      rect,
+    });
+  }, [selectedSvgId, code]);
+
+  // ---- State-diagram transitions (edges) ----
+
+  // Resolve the selected transition (`STATE_EDGE_edge<N>`) back to its parsed transition.
+  const resolveSelectedStateEdge = useCallback(() => {
+    if (!selectedNodeId?.startsWith("STATE_EDGE_")) return null;
+    return stateTransitionFromEdgeDataId(code, selectedNodeId.replace("STATE_EDGE_", ""));
+  }, [code, selectedNodeId]);
+
+  // Delete the selected transition (the connected states are preserved).
+  const handleDeleteStateTransition = useCallback(() => {
+    const rel = resolveSelectedStateEdge();
+    if (!rel) return;
+    const newCode = deleteStateTransition(code, rel.lineIndex);
+    if (newCode !== code) handleCodeChange(newCode);
+    handleDeselect();
+  }, [code, handleCodeChange, handleDeselect, resolveSelectedStateEdge]);
+
+  // Drag-to-connect: create a transition `source --> target` between two states.
+  const handleAddStateTransition = useCallback(
+    (source: string, target: string) => {
+      handleCodeChange(addTransition(code, source, target));
+    },
+    [code, handleCodeChange],
+  );
+
+  // Drag-to-connect onto EMPTY canvas: create the shape chosen in the drop-point menu and a
+  // transition to it from `source` (a single undo step). For a NOTE the menu adds a
+  // `note right of <source>`; drop the user straight into the inline note editor (text + side
+  // toggle) so they can immediately label it and pick left/right.
+  const handleCreateStateShapeLinked = useCallback(
+    (source: string, kind: StateShapeKind) => {
+      const newCode = addShapeWithTransition(code, source, kind).code;
+      if (newCode === code) return;
+      handleCodeChange(newCode);
+      if (kind === "note") {
+        openStateNoteEditor(newCode, getStateNotes(newCode).length - 1);
+      }
+    },
+    [code, handleCodeChange, openStateNoteEditor],
+  );
 
   // Close the ER property panel on a click that is neither the panel, an entity node, nor the
   // Monaco editor (the code editor is exempt so editing the `{ }` block keeps the panel open and the
@@ -1472,6 +1893,18 @@ export function LiveMaidEditor({
     }
     if (selectedEntityName) {
       return toRange(findEntityDefinitionLine(code, selectedEntityName));
+    }
+
+    // State diagram: highlight the selected state's definition line. Single-click sets
+    // `selectedSvgId` (`…-state-<Name>-<idx>`); the note/edge cases are handled below / in Phase 3.
+    if (determineDiagramType(code) === "stateDiagram" && selectedSvgId) {
+      const noteM = selectedSvgId.match(/----note-(\d+)$/);
+      if (noteM) {
+        const note = getStateNotes(code)[parseInt(noteM[1], 10)];
+        return note ? toRange(note.lineIndex) : null;
+      }
+      const stateId = stateNameFromSvgId(selectedSvgId);
+      if (stateId) return toRange(findStateDefinitionLine(code, stateId));
     }
 
     if (!selectedNodeId) return null;
@@ -2922,28 +3355,25 @@ export function LiveMaidEditor({
     setIsExitConfirmOpen(false);
   }, []);
 
-  const handleDuplicate = async () => {
-    if (!doc) return;
-    try {
-      const res = await fetch("/api/diagrams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: `${doc.name} (Copy)`,
-          code: code,
-          type: doc.type,
-        }),
-      });
-      if (res.ok) {
-        const newDiagram = await res.json();
-        toast.success("Diagram duplicated");
-        handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...", true);
-      } else {
-        toast.error("Failed to duplicate");
-      }
-    } catch (e) {
-      toast.error("Failed to duplicate");
-    }
+  const handleDuplicate = () => {
+    if (!doc) return null;
+
+    const token =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+    window.localStorage.setItem(
+      `livemaid:duplicate:${token}`,
+      JSON.stringify({
+        name: `${doc.name} (Copy)`,
+        code,
+        type: doc.type,
+        folderId: doc.folderId ?? null,
+      }),
+    );
+
+    return `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
   };
 
   const handleCreateSubmit = async () => {
@@ -2964,7 +3394,7 @@ export function LiveMaidEditor({
       } else {
         toast.error("Failed to create diagram");
       }
-    } catch (e) {
+    } catch {
       toast.error("Failed to create diagram");
     }
   };
@@ -3794,6 +4224,21 @@ export function LiveMaidEditor({
             onEditErEdgeLabel={handleEditErEdgeLabel}
             onAddErRelationship={handleAddErRelationship}
             onCreateErEntityLinked={handleCreateErEntityLinked}
+            onDeleteStateNode={handleDeleteStateNode}
+            onDeleteStateNote={handleDeleteStateNote}
+            onRenameStateNode={handleRenameStateFromToolbar}
+            onSetStateStyle={handleSetStateStyle}
+            onResetStateStyle={handleResetStateStyle}
+            onAddStateNote={handleAddStateNote}
+            onFlipStateNote={handleFlipStateNote}
+            onMoveStateIntoComposite={handleMoveStateIntoComposite}
+            onMoveStateToNewComposite={handleMoveStateToNewComposite}
+            onMoveStateToRoot={handleMoveStateToRoot}
+            onChangeStateShape={handleChangeStateShape}
+            onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
+            onDeleteStateTransition={handleDeleteStateTransition}
+            onAddStateTransition={handleAddStateTransition}
+            onCreateStateShapeLinked={handleCreateStateShapeLinked}
             handleUpdateStyle={handleUpdateStyle}
             handleFormatNodeLabel={handleFormatNodeLabel}
             handleChangeShape={handleChangeShape}
@@ -3880,6 +4325,27 @@ export function LiveMaidEditor({
           onCommit={commitErEdgeLabelEdit}
           onCancel={() => setErEdgeLabelEdit(null)}
           onLiveChange={handleErEdgeLabelLiveChange}
+        />
+      )}
+
+      {/* State-diagram inline editor (double-click a state / composite / note / title to edit, click
+          outside or Enter to commit). Reuses the shared ClassTextEditor overlay. */}
+      {stateTextEdit && (
+        <ClassTextEditor
+          key={`state-${stateTextEdit.kind}-${stateTextEdit.id}-${stateTextEdit.noteIndex}-${stateTextEdit.lineIndex ?? -1}`}
+          kind={
+            stateTextEdit.kind === "title"
+              ? "title"
+              : stateTextEdit.kind === "note"
+                ? "note"
+                : stateTextEdit.kind === "edge"
+                  ? "relationship"
+                  : "state"
+          }
+          initialValue={stateTextEdit.value}
+          rect={stateTextEdit.rect}
+          onCommit={commitStateTextEdit}
+          onCancel={() => setStateTextEdit(null)}
         />
       )}
 

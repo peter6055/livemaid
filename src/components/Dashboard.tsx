@@ -1171,12 +1171,16 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             />
             <div className="flex flex-col gap-2">
               <p className="text-xs font-medium text-muted-foreground">Diagram type</p>
+              <p className="text-xs text-muted-foreground/70">
+                Flowchart, sequence, class, ER, and state diagrams support two-way sync.
+              </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: "flowchart", label: "Flowchart" },
                   { id: "sequence", label: "Sequence" },
                   { id: "classDiagram", label: "Class" },
                   { id: "erDiagram", label: "ER" },
+                  { id: "stateDiagram", label: "State" },
                 ].map((t) => (
                   <button
                     key={t.id}

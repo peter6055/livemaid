@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface ClassTextEditorProps {
-  /** Whether the target is the diagram title, a note, a relationship label, or a namespace name. */
-  kind: "title" | "note" | "relationship" | "namespace";
+  /** Whether the target is the diagram title, a note, a relationship label, a namespace, or a state. */
+  kind: "title" | "note" | "relationship" | "namespace" | "state";
   /** Initial text to seed the editor with. */
   initialValue: string;
   /** Viewport-space rect (from the SVG element's bounding box) used to position the overlay. */
@@ -35,6 +35,7 @@ export function ClassTextEditor({
   onCancel,
   onLiveChange,
 }: ClassTextEditorProps) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
   const committedRef = useRef(false);
   const [value, setValue] = useState(initialValue);
@@ -68,7 +69,7 @@ export function ClassTextEditor({
   // "click outside to exit" regardless of what the click target does.
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) commit();
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) commit();
     };
     document.addEventListener("mousedown", onDown, true);
     return () => document.removeEventListener("mousedown", onDown, true);
@@ -76,52 +77,69 @@ export function ClassTextEditor({
   }, []);
 
   const width = Math.max(rect.width + 24, 140);
-  const height = Math.max(rect.height + 8, 32);
+  const minHeight = Math.max(rect.height + 8, 32);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
+  }, [value, minHeight]);
 
   return (
-    <textarea
-      ref={ref}
+    <div
+      ref={wrapperRef}
       data-class-text-editor
-      value={value}
-      spellCheck={false}
-      onChange={(e) => {
-        setValue(e.target.value);
-        onLiveChange?.(e.target.value);
-      }}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          commit();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          cancel();
-        }
-      }}
-      placeholder={
-        kind === "title"
-          ? "Diagram title"
-          : kind === "relationship"
-            ? "Label"
-            : kind === "namespace"
-              ? "Namespace name"
-              : "Note text"
-      }
       style={{
         position: "fixed",
         left: rect.left + rect.width / 2 - width / 2,
         top: rect.top - 4,
         width,
-        height,
       }}
-      className={`z-[60] resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none ${
-        kind === "title"
-          ? "text-center font-semibold"
-          : kind === "relationship" || kind === "namespace"
-            ? "text-center"
-            : "text-left"
-      }`}
-    />
+      className="z-[60]"
+    >
+      <textarea
+        ref={ref}
+        value={value}
+        rows={1}
+        spellCheck={false}
+        onChange={(e) => {
+          setValue(e.target.value);
+          onLiveChange?.(e.target.value);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            cancel();
+          }
+        }}
+        placeholder={
+          kind === "title"
+            ? "Diagram title"
+            : kind === "relationship"
+              ? "Label"
+              : kind === "namespace"
+                ? "Namespace name"
+                : kind === "state"
+                  ? "State label"
+                  : "Note text"
+        }
+        style={{ width: "100%", minHeight }}
+        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none whitespace-pre-wrap ${
+          kind === "title"
+            ? "text-center font-semibold"
+            : kind === "relationship" || kind === "namespace" || kind === "state"
+              ? "text-center"
+              : "text-left"
+        }`}
+      />
+    </div>
   );
 }

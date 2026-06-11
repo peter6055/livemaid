@@ -317,6 +317,35 @@ function addInteractionHelpersToSvg(svgString: string): string {
       }
     });
 
+    // State-diagram transitions (`path.transition`) get the same wide transparent hit-target. The
+    // clone keeps the stable `data-id` (`edge<N>`, a code-order index used to resolve the transition
+    // back to its source line), but drops the id + arrow markers. Note-edges (`.note-edge`, the
+    // connector from a state to its note) are EXCLUDED — they are not selectable transitions.
+    const stateTransitionPaths = doc.querySelectorAll("path.transition:not(.note-edge)");
+    stateTransitionPaths.forEach((path) => {
+      const clone = path.cloneNode(true) as SVGElement;
+      clone.classList.remove("transition");
+      clone.classList.remove("edge-pattern-dashed", "edge-pattern-dotted");
+      clone.classList.add("state-transition-hit-target");
+      const dataId = path.getAttribute("data-id");
+      if (dataId) clone.setAttribute("data-id", dataId);
+      clone.removeAttribute("id");
+      clone.removeAttribute("marker-start");
+      clone.removeAttribute("marker-end");
+      clone.removeAttribute("stroke-dasharray");
+      clone.setAttribute("stroke-width", "50px");
+      clone.setAttribute("stroke", "transparent");
+      clone.setAttribute("fill", "none");
+      clone.setAttribute("opacity", "0.01");
+      clone.setAttribute(
+        "style",
+        "stroke-width: 50px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important; stroke-dasharray: none !important;",
+      );
+      if (path.parentNode) {
+        path.parentNode.insertBefore(clone, path);
+      }
+    });
+
     const serializer = new XMLSerializer();
     return serializer.serializeToString(doc);
   } catch (error) {

@@ -11,6 +11,26 @@ const SEQ_MSG_SELECTION_PADDING = { x: 2, y: 1 };
 // drawn box, preventing accidental clicks on adjacent message rows.
 const SEQ_MSG_HITTEST_PADDING = { x: 2, y: 1 };
 
+function unionClientRects(elements: SVGElement[]): DOMRect | null {
+  if (elements.length === 0) return null;
+  const rects = elements.map((el) => el.getBoundingClientRect());
+  const left = Math.min(...rects.map((r) => r.left));
+  const top = Math.min(...rects.map((r) => r.top));
+  const right = Math.max(...rects.map((r) => r.right));
+  const bottom = Math.max(...rects.map((r) => r.bottom));
+  return {
+    left,
+    top,
+    right,
+    bottom,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+    x: left,
+    y: top,
+    toJSON: () => ({}),
+  } as DOMRect;
+}
+
 // A parsed sequence block fragment (loop/alt/opt/par/critical/break) or `rect` highlight, with its
 // source-line range, nesting depth, internal section dividers, and computed canvas geometry.
 export type SequenceBlockType = "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect";
@@ -203,6 +223,19 @@ export function useCanvasInteraction({
     }
     return nearest;
   }, []);
+
+  const getSequenceTextElsForLine = useCallback(
+    (lineEl: SVGElement | null, textEls: SVGElement[], lineEls: SVGElement[]) => {
+      if (!lineEl) return [];
+      const grouped = textEls.filter(
+        (textEl) => findNearestLineForText(textEl, lineEls) === lineEl,
+      );
+      if (grouped.length > 0) return grouped;
+      const fallback = findNearestTextForLine(lineEl, textEls);
+      return fallback ? [fallback] : [];
+    },
+    [findNearestLineForText, findNearestTextForLine],
+  );
 
   // Live hit-test: returns the message whose connection band (line + label, with
   // padding) contains the given canvas-space point. Computed directly from the DOM
@@ -1037,13 +1070,16 @@ export function useCanvasInteraction({
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
 
-      const textEl =
+      let textEl =
+        typeof explicitIndex === "number" ? null : hoveredSequenceTargetsRef.current.textEl;
+      const lineEl =
         typeof explicitIndex === "number"
-          ? messageTextEls[explicitIndex] || null
-          : hoveredSequenceTargetsRef.current.textEl;
-      const lineEl = textEl
-        ? findNearestLineForText(textEl, messageLineEls)
-        : hoveredSequenceTargetsRef.current.lineEl;
+          ? messageLineEls[explicitIndex] || null
+          : textEl
+            ? findNearestLineForText(textEl, messageLineEls)
+            : hoveredSequenceTargetsRef.current.lineEl;
+      const labelEls = getSequenceTextElsForLine(lineEl, messageTextEls, messageLineEls);
+      textEl = textEl || labelEls[0] || null;
       if (!textEl && !lineEl) return;
 
       const centerY = (el: SVGElement | null) => {
@@ -1056,7 +1092,7 @@ export function useCanvasInteraction({
         typeof explicitIndex === "number"
           ? explicitIndex
           : textEl
-            ? messageTextEls.indexOf(textEl)
+            ? messageLineEls.indexOf(findNearestLineForText(textEl, messageLineEls) as SVGElement)
             : -1;
       if (messageIndex < 0 && lineEl && messageTextEls.length > 0) {
         const lineCenterY = centerY(lineEl) ?? 0;
@@ -1075,7 +1111,7 @@ export function useCanvasInteraction({
       if (messageIndex < 0) return;
 
       const lineRect = lineEl?.getBoundingClientRect();
-      const textRect = textEl?.getBoundingClientRect();
+      const textRect = unionClientRects(labelEls) || textEl?.getBoundingClientRect();
       const containerRect = container.getBoundingClientRect();
       const scale = containerRect.width / container.offsetWidth;
 
@@ -1123,16 +1159,23 @@ export function useCanvasInteraction({
 
       const nodeId = `SEQ_MSG_${messageIndex}`;
       setSelectedNodeIdWithRef(nodeId);
-      setSelectedSvgId(lineEl?.id || textEl?.id || null);
+      if (textEl && !textEl.id) textEl.id = `seq-msg-${messageIndex}`;
+      setSelectedSvgId(textEl?.id || lineEl?.id || null);
 
       if (startInlineEdit) {
         const msgLine = getSequenceMessageLineByIndex(messageIndex);
         const colonIdx = msgLine?.indexOf(":") ?? -1;
-        setEditingText(colonIdx !== -1 && msgLine ? msgLine.substring(colonIdx + 1).trim() : "");
+        const label = colonIdx !== -1 && msgLine ? msgLine.substring(colonIdx + 1).trim() : "";
+        setEditingText(label.replace(/<br\s*\/?>/gi, "\n"));
         setIsInlineEditing(true);
       }
     },
-    [containerRef, getSequenceMessageLineByIndex, findNearestLineForText],
+    [
+      containerRef,
+      getSequenceMessageLineByIndex,
+      findNearestLineForText,
+      getSequenceTextElsForLine,
+    ],
   );
 
   const triggerSequenceMessageHoverByIndex = useCallback(
@@ -1246,13 +1289,10 @@ export function useCanvasInteraction({
       const toLL = lifelines.find((l) => l.actorId === actors.to);
       if (!fromLL || !toLL) return null;
 
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
-      const textEl = messageTextEls[messageIndex] || null;
-      const lineEl = textEl ? findNearestLineForText(textEl, messageLineEls) : null;
-      const refEl = (lineEl || textEl) as SVGElement | null;
+      const refEl = messageLineEls[messageIndex] || null;
       if (!refEl) return null;
       const refRect = refEl.getBoundingClientRect();
 
@@ -1292,7 +1332,6 @@ export function useCanvasInteraction({
       getSequenceMessageEntries,
       parseSequenceMessageActors,
       getSequenceLifelines,
-      findNearestLineForText,
     ],
   );
 
@@ -1641,6 +1680,8 @@ export function useCanvasInteraction({
       if (id.startsWith("CLASS_EDGE_")) return id;
       // ER-diagram relationship edge ids are kept verbatim too (`ER_EDGE_id_<src>_<dst>_<N>`).
       if (id.startsWith("ER_EDGE_")) return id;
+      // State-diagram transition edge ids are kept verbatim too (`STATE_EDGE_edge<N>`).
+      if (id.startsWith("STATE_EDGE_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -1701,6 +1742,17 @@ export function useCanvasInteraction({
       const dataId = selectedNodeId.replace("ER_EDGE_", "");
       const path = containerRef.current.querySelector(
         `path.relationshipLine[data-id="${dataId}"]`,
+      ) as SVGElement | null;
+      if (path) {
+        foundElement = path;
+        foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("STATE_EDGE_")) {
+      // State transitions: re-resolve by the stable `data-id` (`edge<N>`); measure the real
+      // `path.transition` (not the transparent hit-target) so the box hugs the visible line.
+      const dataId = selectedNodeId.replace("STATE_EDGE_", "");
+      const path = containerRef.current.querySelector(
+        `path.transition[data-id="${dataId}"]`,
       ) as SVGElement | null;
       if (path) {
         foundElement = path;
@@ -1941,11 +1993,14 @@ export function useCanvasInteraction({
             ),
           ) as SVGElement[];
 
-          const pairedText = allMsgTexts[idx] || foundElement;
-          const pairedLine = findNearestLineForText(pairedText as SVGElement, allMsgLines);
+          const pairedLine = allMsgLines[idx] || findNearestLineForText(foundElement, allMsgLines);
+          const pairedTextEls = getSequenceTextElsForLine(pairedLine, allMsgTexts, allMsgLines);
+          const pairedText = pairedTextEls[0] || foundElement;
 
           const lineRect = pairedLine?.getBoundingClientRect();
-          const labelRect = (pairedText as SVGElement | null)?.getBoundingClientRect();
+          const labelRect =
+            unionClientRects(pairedTextEls) ||
+            (pairedText as SVGElement | null)?.getBoundingClientRect();
           if (lineRect || labelRect) {
             const left = Math.min(
               lineRect?.left ?? Number.POSITIVE_INFINITY,
@@ -2072,7 +2127,11 @@ export function useCanvasInteraction({
       let nodeId = null;
 
       while (currentNode && currentNode.tagName !== "svg") {
-        if (currentNode.classList?.contains("node") || currentNode.classList?.contains("cluster")) {
+        if (
+          currentNode.classList?.contains("node") ||
+          currentNode.classList?.contains("cluster") ||
+          currentNode.classList?.contains("statediagram-cluster")
+        ) {
           foundNodeClass = true;
           nodeId = currentNode.id;
           break;
@@ -2143,6 +2202,22 @@ export function useCanvasInteraction({
             break;
           }
         }
+        // State-diagram transitions. Mermaid renders each as `path.transition` with a code-order
+        // `data-id="edge<N>"` (and we clone a wide transparent `state-transition-hit-target`). Note-
+        // edges carry a `note-edge` class and a `<src>-<src>----note-<N>` data-id and are NOT
+        // selectable. Surface a real transition as `STATE_EDGE_<dataId>` (kept verbatim) so the state
+        // edge toolbar can resolve it via the `edge<N>` index.
+        if (
+          currentNode.classList?.contains("transition") ||
+          currentNode.classList?.contains("state-transition-hit-target")
+        ) {
+          const dataId = currentNode.getAttribute("data-id");
+          if (dataId && /^edge\d+$/.test(dataId) && !currentNode.classList?.contains("note-edge")) {
+            foundNodeClass = true;
+            nodeId = `STATE_EDGE_${dataId}`;
+            break;
+          }
+        }
         // Sequence diagram elements: actors. Match both the plain `actor` class (rect headers and
         // the Entity/Database/Queue <g class="actor"> groups) AND `actor-man` (the Actor/Boundary/
         // Control stick-figure <g class="actor-man"> groups, which do NOT carry the bare `actor`
@@ -2210,31 +2285,25 @@ export function useCanvasInteraction({
         // Sequence message text
         if (currentNode.classList?.contains("messageText")) {
           foundNodeClass = true;
-          // Find index among all messageText elements in the container
-          const allMsgs = Array.from(containerRef.current?.querySelectorAll(".messageText") || []);
-          const idx = allMsgs.indexOf(currentNode);
+          const allMsgLines = Array.from(
+            containerRef.current?.querySelectorAll(
+              '[class^="messageLine"], [class*=" messageLine"]',
+            ) || [],
+          ) as SVGElement[];
+          const lineEl = findNearestLineForText(currentNode, allMsgLines);
+          const idx = lineEl ? allMsgLines.indexOf(lineEl) : 0;
           nodeId = `SEQ_MSG_${idx >= 0 ? idx : 0}`;
           break;
         }
         // Sequence message line
         if (isSequenceMessageLineElement(currentNode)) {
           foundNodeClass = true;
-          const allMsgTexts = Array.from(
-            containerRef.current?.querySelectorAll(".messageText") || [],
+          const allMsgLines = Array.from(
+            containerRef.current?.querySelectorAll(
+              '[class^="messageLine"], [class*=" messageLine"]',
+            ) || [],
           ) as SVGElement[];
-          const lineRect = currentNode.getBoundingClientRect();
-          const lineCenterY = lineRect.top + lineRect.height / 2;
-          let idx = 0;
-          let best = Number.POSITIVE_INFINITY;
-          for (let i = 0; i < allMsgTexts.length; i += 1) {
-            const tRect = allMsgTexts[i].getBoundingClientRect();
-            const textCenterY = tRect.top + tRect.height / 2;
-            const d = Math.abs(textCenterY - lineCenterY);
-            if (d < best) {
-              best = d;
-              idx = i;
-            }
-          }
+          const idx = allMsgLines.indexOf(currentNode);
           nodeId = `SEQ_MSG_${idx}`;
           break;
         }
@@ -2276,7 +2345,8 @@ export function useCanvasInteraction({
         const cleanId = nodeId
           ? nodeId.startsWith("SEQ_") ||
             nodeId.startsWith("CLASS_EDGE_") ||
-            nodeId.startsWith("ER_EDGE_")
+            nodeId.startsWith("ER_EDGE_") ||
+            nodeId.startsWith("STATE_EDGE_")
             ? nodeId
             : normalizeId(nodeId)
           : null;
@@ -2446,10 +2516,12 @@ export function useCanvasInteraction({
             ? findNearestLineForText(pairedText as SVGElement, allMsgLines)
             : isSequenceMessageLineElement(currentNode)
               ? currentNode
-              : null;
+              : allMsgLines[idx] || null;
+          const pairedTextEls = getSequenceTextElsForLine(pairedLine, allMsgTexts, allMsgLines);
+          if (pairedTextEls[0] && !pairedTextEls[0].id) pairedTextEls[0].id = `seq-msg-${idx}`;
 
           const lineRect = pairedLine?.getBoundingClientRect();
-          const labelRect = pairedText?.getBoundingClientRect();
+          const labelRect = unionClientRects(pairedTextEls) || pairedText?.getBoundingClientRect();
           if (lineRect || labelRect) {
             const left = Math.min(
               lineRect?.left ?? Number.POSITIVE_INFINITY,
@@ -2480,8 +2552,9 @@ export function useCanvasInteraction({
             } as DOMRect;
             textRect = (labelRect || lineRect)!;
             rawSvgId =
-              (pairedLine as SVGElement | null)?.id ||
+              (pairedTextEls[0] as SVGElement | null)?.id ||
               (pairedText as SVGElement | null)?.id ||
+              (pairedLine as SVGElement | null)?.id ||
               rawSvgId;
           }
         }
@@ -2534,6 +2607,8 @@ export function useCanvasInteraction({
       getSequenceLifelines,
       getSvgTextDisplayName,
       getSequenceParticipantEntries,
+      findNearestLineForText,
+      getSequenceTextElsForLine,
       normalizeSequenceLabel,
     ],
   );
@@ -2716,7 +2791,13 @@ export function useCanvasInteraction({
         const msgLines = getSequenceMessageEntries(code).map((entry) => entry.line);
         if (msgLines[idx]) {
           const colonIdx = msgLines[idx].indexOf(":");
-          currentText = colonIdx !== -1 ? msgLines[idx].substring(colonIdx + 1).trim() : "";
+          currentText =
+            colonIdx !== -1
+              ? msgLines[idx]
+                  .substring(colonIdx + 1)
+                  .trim()
+                  .replace(/<br\s*\/?>/gi, "\n")
+              : "";
         }
       } else if (targetNodeId.startsWith("SEQ_NOTE_")) {
         const idx = parseInt(targetNodeId.replace("SEQ_NOTE_", ""), 10);
@@ -3144,6 +3225,7 @@ export function useCanvasInteraction({
         const lifelines = getSequenceLifelines();
 
         if (connectionState.active && connectionState.startNodeId?.startsWith("SEQ_ACTOR_")) {
+          setShapePicker(null);
           const sourceActorId = connectionState.startNodeId.replace("SEQ_ACTOR_", "");
           const sourceLifeline = lifelines.find((l) => l.actorId === sourceActorId);
           if (!sourceLifeline) return;
@@ -3230,6 +3312,7 @@ export function useCanvasInteraction({
       }
 
       if (connectionState.active && connectionState.startNodeId) {
+        setShapePicker(null);
         setConnectionState((prev) => ({
           ...prev,
           isDragging: true,

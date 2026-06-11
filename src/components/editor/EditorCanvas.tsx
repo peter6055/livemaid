@@ -15,6 +15,8 @@ import { SequenceManipulationToolbar } from "./SequenceManipulationToolbar";
 import { ClassEdgeToolbar } from "./ClassEdgeToolbar";
 import { ClassNodeToolbar } from "./ClassNodeToolbar";
 import { ErNodeToolbar } from "./ErNodeToolbar";
+import { StateNodeToolbar } from "./StateNodeToolbar";
+import { StateEdgeToolbar } from "./StateEdgeToolbar";
 import { ErEdgeToolbar } from "./ErEdgeToolbar";
 import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
@@ -29,6 +31,20 @@ import {
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
 import type { ParsedEntity, EntityEdits } from "@/lib/diagrams/erDiagram";
+import {
+  stateNameFromSvgId,
+  isCompositeState,
+  isSpecialStateNode,
+  getStateStyle,
+  getCompositeNames,
+  getStateParentComposite,
+  getStateNotes,
+  getStateNodeShape,
+  hasStartState,
+  hasEndState,
+} from "@/lib/diagrams/stateDiagram";
+import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -140,6 +156,30 @@ interface EditorCanvasProps {
   onAddErRelationship?: (source: string, target: string) => void;
   /** ER-diagram drag-to-connect onto empty canvas: create a NEW entity linked to the source. */
   onCreateErEntityLinked?: (source: string) => void;
+  /** State-diagram node toolbar (single-click): delete a state / composite, delete a note, rename. */
+  onDeleteStateNode?: (id: string) => void;
+  onDeleteStateNote?: (noteIndex: number) => void;
+  onRenameStateNode?: () => void;
+  /** State-diagram node styling (Phase 4): localized `style <id> …` overrides. */
+  onSetStateStyle?: (id: string, patch: Record<string, string>) => void;
+  onResetStateStyle?: (id: string) => void;
+  /** State-diagram quick-annotation (Phase 4): attach a note to the selected state / composite. */
+  onAddStateNote?: (id: string, position: "left" | "right") => void;
+  /** State-diagram note flip (Phase 4): toggle a note between left / right. */
+  onFlipStateNote?: (noteIndex: number, position: "left" | "right") => void;
+  /** State-diagram composite nesting (Phase 5): relocate a state into / between / out of composites. */
+  onMoveStateIntoComposite?: (id: string, target: string) => void;
+  onMoveStateToNewComposite?: (id: string) => void;
+  onMoveStateToRoot?: (id: string) => void;
+  onChangeStateShape?: (id: string, shape: StateNodeShapeKind) => void;
+  /** State-diagram concurrency divider (Phase 5): open a parallel region inside a composite. */
+  onAddStateConcurrencyDivider?: (compositeId: string) => void;
+  /** State-diagram transition edge toolbar: delete the transition. */
+  onDeleteStateTransition?: () => void;
+  /** State-diagram drag-to-connect: create a transition, or a new linked shape on empty canvas. */
+  onAddStateTransition?: (source: string, target: string) => void;
+  /** Drop-on-empty-canvas: create the chosen shape and link `source --> <shape>` in one edit. */
+  onCreateStateShapeLinked?: (source: string, kind: StateShapeKind) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -186,6 +226,68 @@ interface EditorCanvasProps {
   selectedNodeIds?: string[];
   dragState?: unknown;
   setDragState?: (state: unknown) => void;
+}
+
+/**
+ * Given a target node's bounding box (shell-relative `cx`/`cy`/`w`/`h`) and a cursor point (also
+ * shell-relative), return the nearest perimeter "anchor" — the midpoint of whichever edge
+ * (Top / Bottom / Left / Right) is closest to the cursor. Used purely as a VISUAL docking
+ * affordance for connect-drag previews: the dashed preview line snaps its endpoint to this anchor
+ * and a dot is drawn there. It never affects serialization — drops always resolve to the target
+ * node identity (`source --> target`), since Mermaid owns all edge layout and has no anchor-side
+ * syntax.
+ */
+function nearestPerimeterAnchor(
+  box: { cx: number; cy: number; w: number; h: number },
+  cursorX: number,
+  cursorY: number,
+): { x: number; y: number } {
+  const left = box.cx;
+  const right = box.cx + box.w;
+  const top = box.cy;
+  const bottom = box.cy + box.h;
+  const midX = box.cx + box.w / 2;
+  const midY = box.cy + box.h / 2;
+  const anchors = [
+    { x: midX, y: top }, // Top
+    { x: midX, y: bottom }, // Bottom
+    { x: left, y: midY }, // Left
+    { x: right, y: midY }, // Right
+  ];
+  let best = anchors[0];
+  let bestDist = Infinity;
+  for (const a of anchors) {
+    const dx = a.x - cursorX;
+    const dy = a.y - cursorY;
+    const d = dx * dx + dy * dy;
+    if (d < bestDist) {
+      bestDist = d;
+      best = a;
+    }
+  }
+  return best;
+}
+
+function shellBoxFromRect(
+  rect: DOMRect,
+  shellRect: DOMRect,
+): { cx: number; cy: number; w: number; h: number } {
+  return {
+    cx: rect.left - shellRect.left,
+    cy: rect.top - shellRect.top,
+    w: rect.width,
+    h: rect.height,
+  };
+}
+
+function shellBoxFromElement(
+  el: Element | null,
+  shellRect: DOMRect,
+): { cx: number; cy: number; w: number; h: number } | null {
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  return shellBoxFromRect(rect, shellRect);
 }
 
 export function EditorCanvas({
@@ -260,6 +362,21 @@ export function EditorCanvas({
   onEditErEdgeLabel,
   onAddErRelationship,
   onCreateErEntityLinked,
+  onDeleteStateNode,
+  onDeleteStateNote,
+  onRenameStateNode,
+  onSetStateStyle,
+  onResetStateStyle,
+  onAddStateNote,
+  onFlipStateNote,
+  onMoveStateIntoComposite,
+  onMoveStateToNewComposite,
+  onMoveStateToRoot,
+  onChangeStateShape,
+  onAddStateConcurrencyDivider,
+  onDeleteStateTransition,
+  onAddStateTransition,
+  onCreateStateShapeLinked,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -354,6 +471,7 @@ export function EditorCanvas({
     x2: number;
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
   } | null>(null);
   const [classConnectMenu, setClassConnectMenu] = useState<ClassConnectMenuState | null>(null);
   // ER drag-to-connect state (US1): the live preview line + snap highlight while dragging the
@@ -365,7 +483,21 @@ export function EditorCanvas({
     x2: number;
     y2: number;
     snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
   } | null>(null);
+  // State drag-to-connect state: the live preview line + snap highlight while dragging the purple +
+  // from a selected state toward a target state. Mirrors the ER/class connect drag.
+  const [stateConnecting, setStateConnecting] = useState(false);
+  const [stateConnect, setStateConnect] = useState<{
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    snap: { cx: number; cy: number; w: number; h: number } | null;
+    anchor: { x: number; y: number } | null;
+  } | null>(null);
+  // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
+  const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
@@ -379,6 +511,21 @@ export function EditorCanvas({
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
   const viewportHeight = viewport?.clientHeight || 600;
+
+  const flowchartConnectionEnd = connectionState.mousePos;
+  const flowchartConnectionStart =
+    selectionBox && flowchartConnectionEnd
+      ? nearestPerimeterAnchor(
+          {
+            cx: selectionBox.x,
+            cy: selectionBox.y,
+            w: selectionBox.width,
+            h: selectionBox.height,
+          },
+          flowchartConnectionEnd.x,
+          flowchartConnectionEnd.y,
+        )
+      : connectionState.startPos;
 
   const updateScaleLockedElements = (container: HTMLDivElement | null, scale: number) => {
     if (!container) return;
@@ -614,14 +761,14 @@ export function EditorCanvas({
     // centers (that lands on the upper message's line). Pair text↔line with the SAME scoring
     // heuristic as the hook's findNearestLineForText (a naive nearest-by-center mis-assigns
     // around self-loops / tall arcs and corrupts neighboring bands).
-    textEls.forEach((el, i) => {
-      const tr = el.getBoundingClientRect();
+    const nearestLineForText = (textEl: SVGElement) => {
+      const tr = textEl.getBoundingClientRect();
       const textX = tr.left + tr.width / 2;
       const textY = tr.top + tr.height / 2;
-      let bestLine: DOMRect | null = null;
+      let bestLine: SVGElement | null = null;
       let bestScore = Number.POSITIVE_INFINITY;
-      for (const l of lineEls) {
-        const lr = l.getBoundingClientRect();
+      for (const lineEl of lineEls) {
+        const lr = lineEl.getBoundingClientRect();
         const lineY = lr.top + lr.height / 2;
         const dx = textX < lr.left ? lr.left - textX : textX > lr.right ? textX - lr.right : 0;
         const dy = Math.abs(lineY - textY);
@@ -629,14 +776,23 @@ export function EditorCanvas({
         const score = dy * 3 + dx + underPenalty;
         if (score < bestScore) {
           bestScore = score;
-          bestLine = lr;
+          bestLine = lineEl;
         }
       }
+      return bestLine;
+    };
+
+    lineEls.forEach((lineEl, i) => {
+      const lr = lineEl.getBoundingClientRect();
+      const pairedTexts = textEls.filter((textEl) => nearestLineForText(textEl) === lineEl);
+      const textRects = pairedTexts.map((textEl) => textEl.getBoundingClientRect());
+      const top = Math.min(lr.top, ...textRects.map((r) => r.top));
+      const bottom = Math.max(lr.bottom, ...textRects.map((r) => r.bottom));
       rows.push({
         kind: "msg",
         domIndex: i,
-        top: Math.min(tr.top, bestLine?.top ?? tr.top) - shellRect.top,
-        bottom: Math.max(tr.bottom, bestLine?.bottom ?? tr.bottom) - shellRect.top,
+        top: top - shellRect.top,
+        bottom: bottom - shellRect.top,
       });
     });
 
@@ -797,7 +953,9 @@ export function EditorCanvas({
         // click is detected by timing (≤ 350ms on the same row key), which survives that swap.
         const now = Date.now();
         const prev = seqLastClickRef.current;
-        const isDouble = prev.key === draggedKey && now - prev.time <= 350;
+        const isBrowserDoubleClick = e.detail >= 2 && selectedKey === draggedKey;
+        const isDouble =
+          isBrowserDoubleClick || (prev.key === draggedKey && now - prev.time <= 350);
         if (isDouble) {
           seqLastClickRef.current = { time: 0, key: "" };
           if (draggedRow.kind === "msg") onHoveredSequenceMessageDoubleClick(draggedRow.domIndex);
@@ -977,6 +1135,70 @@ export function EditorCanvas({
     [currentType, selectedSvgId],
   );
 
+  // State-diagram single-click selection → the floating node toolbar (Rename / Delete). A NOTE
+  // (svg id `…----note-<N>`) takes precedence over the state branch; otherwise the selected element
+  // is a state or a composite container (resolved from `…-state-<Name>-<idx>`). `[*]` pseudo-states
+  // resolve to null, so they get no toolbar.
+  //
+  // The `----note-<N>` suffix is mermaid's edge counter (transitions + notes interleaved), NOT the
+  // source-order note index that `getStateNotes` / `deleteStateNoteByIndex` / `setStateNotePosition`
+  // expect. Notes render in source order, so we resolve the index by the selected note's DOM position
+  // among `g.statediagram-note` (the same technique the double-click rename router uses), falling back
+  // to the parsed counter only if the DOM lookup is unavailable.
+  const connectSourceStateNote = useMemo(() => {
+    if (currentType !== "stateDiagram" || !selectedSvgId) return null;
+    if (!/----note-\d+$/.test(selectedSvgId)) return null;
+    if (typeof document !== "undefined") {
+      const container = document.querySelector(".mermaid-container");
+      if (container) {
+        const notes = Array.from(container.querySelectorAll("g.statediagram-note"));
+        const idx = notes.findIndex((n) => n.id === selectedSvgId);
+        if (idx >= 0) return idx;
+      }
+    }
+    const m = selectedSvgId.match(/----note-(\d+)$/);
+    return m ? parseInt(m[1], 10) : null;
+  }, [currentType, selectedSvgId]);
+
+  const connectSourceState = useMemo(() => {
+    if (currentType !== "stateDiagram" || !selectedSvgId) return null;
+    if (/----note-\d+$/.test(selectedSvgId)) return null;
+    return stateNameFromSvgId(selectedSvgId);
+  }, [currentType, selectedSvgId]);
+
+  const connectSourceStateIsComposite = useMemo(
+    () => (connectSourceState ? isCompositeState(code, connectSourceState) : false),
+    [connectSourceState, code],
+  );
+
+  // Choice / fork / join are shape-only (no editable label) — the toolbar omits Rename for them.
+  const connectSourceStateIsSpecial = useMemo(
+    () => (connectSourceState ? isSpecialStateNode(code, connectSourceState) : false),
+    [connectSourceState, code],
+  );
+
+  // The selected state's current `style …` override map (drives the style popover's active states).
+  const connectSourceStateStyle = useMemo(
+    () => (connectSourceState ? getStateStyle(code, connectSourceState) : {}),
+    [connectSourceState, code],
+  );
+
+  // All composite names (move-into targets) and the composite the selected state currently lives in.
+  const stateCompositeNames = useMemo(
+    () => (currentType === "stateDiagram" ? getCompositeNames(code) : []),
+    [currentType, code],
+  );
+  const connectSourceStateParent = useMemo(
+    () => (connectSourceState ? getStateParentComposite(code, connectSourceState) : null),
+    [connectSourceState, code],
+  );
+
+  // The selected note's current side (left/right) for the flip button's label.
+  const connectSourceStateNotePosition = useMemo(() => {
+    if (connectSourceStateNote === null) return undefined;
+    return getStateNotes(code)[connectSourceStateNote]?.position;
+  }, [connectSourceStateNote, code]);
+
   // Begin an ER drag-to-connect from the purple + (US1). Fully isolated (own window listeners +
   // preview SVG outside TransformWrapper), mirroring the class connect drag. Dropping onto a
   // DIFFERENT entity creates a default relationship (`source ||--|| target : ""`); dropping on
@@ -991,6 +1213,11 @@ export function EditorCanvas({
     const btnRect = e.currentTarget.getBoundingClientRect();
     const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
     const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      Array.from(shell.querySelectorAll(".mermaid-container g.node")).find(
+        (el) => entityNameFromSvgId(el.id) === sourceName,
+      ) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null);
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
 
     const resolveTarget = (
       clientX: number,
@@ -1021,16 +1248,25 @@ export function EditorCanvas({
       }
       const tgt = resolveTarget(ev.clientX, ev.clientY);
       let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
-        snap = { cx: r.left - shellRect.left, cy: r.top - shellRect.top, w: r.width, h: r.height };
+        snap = shellBoxFromRect(r, shellRect);
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
       setErConnect({
-        x1: anchorX,
-        y1: anchorY,
-        x2: ev.clientX - shellRect.left,
-        y2: ev.clientY - shellRect.top,
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
         snap,
+        anchor,
       });
     };
 
@@ -1046,6 +1282,113 @@ export function EditorCanvas({
       } else {
         // Dropped on empty canvas → create a NEW entity linked to the source.
         onCreateErEntityLinked?.(sourceName);
+      }
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // Begin a state-diagram drag-to-connect from the purple +. Fully isolated (own window listeners +
+  // preview SVG outside TransformWrapper), mirroring the ER connect drag. Dropping onto a DIFFERENT
+  // state (regular OR composite) creates a transition `source --> target`; dropping on EMPTY canvas
+  // creates a NEW state linked to the source; a no-drag click / drop on the source itself is a no-op.
+  const startStateConnectDrag = (e: React.MouseEvent<HTMLButtonElement>, sourceId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setStateConnectMenu(null);
+    setShapePicker(null);
+    const shell = canvasShellRef.current;
+    if (!shell) return;
+    const shellRect = shell.getBoundingClientRect();
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
+    const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      Array.from(
+        shell.querySelectorAll(
+          ".mermaid-container g.node, .mermaid-container g.statediagram-cluster",
+        ),
+      ).find((el) => stateNameFromSvgId(el.id) === sourceId) ??
+      (selectedSvgId ? document.getElementById(selectedSvgId) : null);
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
+
+    const resolveTarget = (
+      clientX: number,
+      clientY: number,
+    ): { id: string; el: Element } | null => {
+      const els = document.elementsFromPoint(clientX, clientY);
+      for (const el of els) {
+        // A composite container (cluster) is a valid target too.
+        const cluster = el.closest("g.statediagram-cluster");
+        if (cluster) {
+          const id = stateNameFromSvgId(cluster.id);
+          if (!id || id === sourceId) return null;
+          return { id, el: cluster };
+        }
+        const g = el.closest("g.node");
+        if (!g || !/-state-.+-\d+$/.test(g.id) || /----note-\d+$/.test(g.id)) continue;
+        const id = stateNameFromSvgId(g.id);
+        if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
+        return { id, el: g };
+      }
+      return null;
+    };
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+    let dragging = false;
+    setStateConnecting(true);
+
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+        setStateConnectMenu(null);
+        setShapePicker(null);
+      }
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
+      if (tgt) {
+        const r = tgt.el.getBoundingClientRect();
+        snap = shellBoxFromRect(r, shellRect);
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
+      }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
+      setStateConnect({
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
+        snap,
+        anchor,
+      });
+    };
+
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setStateConnect(null);
+      setStateConnecting(false);
+      if (!dragging) return; // a plain click on the + (no drag) is a no-op
+      const tgt = resolveTarget(ev.clientX, ev.clientY);
+      if (tgt) {
+        onAddStateTransition?.(sourceId, tgt.id);
+      } else {
+        // Dropped on empty canvas → ask which shape to create (then link source --> shape).
+        setStateConnectMenu({
+          source: sourceId,
+          x: ev.clientX - shellRect.left,
+          y: ev.clientY - shellRect.top,
+        });
       }
     };
 
@@ -1071,6 +1414,16 @@ export function EditorCanvas({
     const btnRect = e.currentTarget.getBoundingClientRect();
     const anchorX = btnRect.left + btnRect.width / 2 - shellRect.left;
     const anchorY = btnRect.top + btnRect.height / 2 - shellRect.top;
+    const sourceEl =
+      source.kind === "class"
+        ? (Array.from(shell.querySelectorAll(".mermaid-container g.node")).find(
+            (el) => classNameFromSvgId(el.id) === source.name,
+          ) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null))
+        : (Array.from(shell.querySelectorAll(".mermaid-container g.node")).find((el) => {
+            const idx = parseInt(el.id.match(/-note(\d+)$/)?.[1] ?? "-1", 10);
+            return idx === source.index;
+          }) ?? (selectedSvgId ? document.getElementById(selectedSvgId) : null));
+    const sourceBox = shellBoxFromElement(sourceEl, shellRect);
 
     type Target =
       | { kind: "class"; name: string; el: Element }
@@ -1109,21 +1462,25 @@ export function EditorCanvas({
       }
       const tgt = resolveTarget(ev.clientX, ev.clientY);
       let snap: { cx: number; cy: number; w: number; h: number } | null = null;
+      let anchor: { x: number; y: number } | null = null;
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
       if (tgt) {
         const r = tgt.el.getBoundingClientRect();
-        snap = {
-          cx: r.left - shellRect.left,
-          cy: r.top - shellRect.top,
-          w: r.width,
-          h: r.height,
-        };
+        snap = shellBoxFromRect(r, shellRect);
+        anchor = nearestPerimeterAnchor(snap, cursorX, cursorY);
       }
+      const end = anchor ?? { x: cursorX, y: cursorY };
+      const sourceAnchor = sourceBox
+        ? nearestPerimeterAnchor(sourceBox, end.x, end.y)
+        : { x: anchorX, y: anchorY };
       setClassConnect({
-        x1: anchorX,
-        y1: anchorY,
-        x2: ev.clientX - shellRect.left,
-        y2: ev.clientY - shellRect.top,
+        x1: sourceAnchor.x,
+        y1: sourceAnchor.y,
+        x2: end.x,
+        y2: end.y,
         snap,
+        anchor,
       });
     };
 
@@ -1325,7 +1682,8 @@ export function EditorCanvas({
             seqEndpointDragging ||
             !!seqLifelineReorder ||
             classConnecting ||
-            erConnecting,
+            erConnecting ||
+            stateConnecting,
           excluded: [
             "seq-connect-btn",
             "seq-msg-reorder-handle",
@@ -1335,6 +1693,8 @@ export function EditorCanvas({
             "class-relation-hit-target",
             "er-connect-btn",
             "er-relation-hit-target",
+            "state-connect-btn",
+            "state-transition-hit-target",
           ],
         }}
         trackPadPanning={{ disabled: false }}
@@ -1351,16 +1711,25 @@ export function EditorCanvas({
           }
         }}
         onTransform={(_ref, state) => {
+          setStateConnectMenu((menu) => (menu ? null : menu));
           if (containerRef.current) {
             containerRef.current.style.setProperty("--zoom-scale", String(state.scale));
             containerRef.current.style.setProperty("--zoom-inverse-scale", String(1 / state.scale));
             updateScaleLockedElements(containerRef.current, state.scale);
           }
         }}
+        onPanningStart={() => {
+          setStateConnectMenu((menu) => (menu ? null : menu));
+        }}
+        onPanning={() => {
+          setStateConnectMenu((menu) => (menu ? null : menu));
+        }}
         onZoomStart={() => {
+          setStateConnectMenu((menu) => (menu ? null : menu));
           if (onDeselect) onDeselect();
         }}
         onPinchStart={() => {
+          setStateConnectMenu((menu) => (menu ? null : menu));
           if (onDeselect) onDeselect();
         }}
       >
@@ -1789,11 +2158,11 @@ export function EditorCanvas({
                       </defs>
                       <line
                         data-scale-lock-stroke
-                        x1={connectionState.startPos.x}
+                        x1={flowchartConnectionStart?.x ?? connectionState.startPos.x}
                         y1={
                           currentType === "sequence"
                             ? (connectionState.anchorY ?? connectionState.startPos.y)
-                            : connectionState.startPos.y
+                            : (flowchartConnectionStart?.y ?? connectionState.startPos.y)
                         }
                         x2={connectionState.mousePos.x}
                         y2={
@@ -1842,6 +2211,7 @@ export function EditorCanvas({
 
                 {isInlineEditing && selectedSvgId && (
                   <style>{`
+                        #${selectedSvgId},
                         #${selectedSvgId} .label,
                         #${selectedSvgId} text,
                         #${selectedSvgId} foreignObject,
@@ -1984,6 +2354,13 @@ export function EditorCanvas({
                           onEditLabel={() => onEditErEdgeLabel?.()}
                           onDeleteRelationship={onDeleteErRelationship || (() => {})}
                         />
+                      ) : selectedNodeId && selectedNodeId.startsWith("STATE_EDGE_") ? (
+                        <StateEdgeToolbar
+                          selectedNodeId={selectedNodeId}
+                          code={code}
+                          scale={state.scale}
+                          onDeleteTransition={() => onDeleteStateTransition?.()}
+                        />
                       ) : selectedNodeId && isEdgeId(selectedNodeId) ? (
                         <EdgeManipulationToolbar
                           code={code}
@@ -2057,9 +2434,96 @@ export function EditorCanvas({
                           onSetStyle={(patch) => onSetEntityStyle?.(connectSourceEntity, patch)}
                           onResetStyle={() => onResetEntityStyle?.(connectSourceEntity)}
                         />
+                      ) : currentType === "stateDiagram" &&
+                        (connectSourceState || connectSourceStateNote !== null) ? (
+                        <StateNodeToolbar
+                          kind={
+                            connectSourceStateNote !== null
+                              ? "note"
+                              : connectSourceStateIsComposite
+                                ? "composite"
+                                : "state"
+                          }
+                          scale={state.scale}
+                          onRename={
+                            // Notes + states/composites are all renamable; choice/fork/join are
+                            // shape-only (omit Rename for them).
+                            onRenameStateNode && !connectSourceStateIsSpecial
+                              ? () => onRenameStateNode()
+                              : undefined
+                          }
+                          onDelete={() => {
+                            if (connectSourceStateNote !== null)
+                              onDeleteStateNote?.(connectSourceStateNote);
+                            else if (connectSourceState) onDeleteStateNode?.(connectSourceState);
+                          }}
+                          currentStyle={connectSourceStateStyle}
+                          onSetStyle={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? (patch) => onSetStateStyle?.(connectSourceState, patch)
+                              : undefined
+                          }
+                          onResetStyle={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onResetStateStyle?.(connectSourceState)
+                              : undefined
+                          }
+                          onAddNote={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? (position) => onAddStateNote?.(connectSourceState, position)
+                              : undefined
+                          }
+                          notePosition={connectSourceStateNotePosition}
+                          onFlipNote={
+                            connectSourceStateNote !== null
+                              ? () =>
+                                  onFlipStateNote?.(
+                                    connectSourceStateNote,
+                                    connectSourceStateNotePosition === "left" ? "right" : "left",
+                                  )
+                              : undefined
+                          }
+                          composites={
+                            connectSourceStateIsComposite
+                              ? stateCompositeNames.filter((n) => n !== connectSourceState)
+                              : stateCompositeNames
+                          }
+                          currentComposite={connectSourceStateParent}
+                          onMoveIntoComposite={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? (target) => onMoveStateIntoComposite?.(connectSourceState, target)
+                              : undefined
+                          }
+                          onMoveToNewComposite={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onMoveStateToNewComposite?.(connectSourceState)
+                              : undefined
+                          }
+                          onMoveToRoot={
+                            connectSourceState && !connectSourceStateIsSpecial
+                              ? () => onMoveStateToRoot?.(connectSourceState)
+                              : undefined
+                          }
+                          currentShape={
+                            connectSourceState
+                              ? getStateNodeShape(code, connectSourceState)
+                              : "state"
+                          }
+                          onChangeShape={
+                            connectSourceState && !connectSourceStateIsComposite
+                              ? (shape) => onChangeStateShape?.(connectSourceState, shape)
+                              : undefined
+                          }
+                          onAddConcurrencyDivider={
+                            connectSourceState && connectSourceStateIsComposite
+                              ? () => onAddStateConcurrencyDivider?.(connectSourceState)
+                              : undefined
+                          }
+                        />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||
-                        currentType === "erDiagram" ? null : (
+                        currentType === "erDiagram" ||
+                        currentType === "stateDiagram" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -2094,6 +2558,7 @@ export function EditorCanvas({
                       currentType !== "sequence" &&
                       currentType !== "classDiagram" &&
                       currentType !== "erDiagram" &&
+                      currentType !== "stateDiagram" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -2232,6 +2697,32 @@ export function EditorCanvas({
                           </button>
                         </div>
                       )}
+
+                    {/* State-diagram connection + (purple): drag from a selected state onto another
+                        state to create a transition, or onto empty canvas to create a linked state. */}
+                    {!isInlineEditing &&
+                      currentType === "stateDiagram" &&
+                      connectSourceState &&
+                      selectionBox &&
+                      !stateConnecting && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            className="state-connect-btn w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform"
+                            title="Drag onto another state to add a transition, or onto empty canvas to choose a shape to create"
+                            onMouseDown={(e) => startStateConnectDrag(e, connectSourceState)}
+                          >
+                            <Plus className="w-3 h-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
                   </div>
                 )}
               </div>
@@ -2363,6 +2854,11 @@ export function EditorCanvas({
               strokeWidth={2}
             />
           )}
+          {classConnect.anchor && (
+            <g transform={`translate(${classConnect.anchor.x}, ${classConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
+          )}
         </svg>
       )}
 
@@ -2406,6 +2902,59 @@ export function EditorCanvas({
               strokeWidth={2}
             />
           )}
+          {erConnect.anchor && (
+            <g transform={`translate(${erConnect.anchor.x}, ${erConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
+          )}
+        </svg>
+      )}
+
+      {/* State-diagram drag-to-connect preview line + snap highlight, rendered outside the
+          TransformWrapper at shell level so pan/zoom never distorts its coordinates. */}
+      {stateConnect && (
+        <svg className="absolute inset-0 pointer-events-none z-30 w-full h-full overflow-visible">
+          <defs>
+            <marker
+              id="state-connect-arrow"
+              markerWidth="10"
+              markerHeight="7"
+              refX="9"
+              refY="3.5"
+              orient="auto"
+            >
+              <polygon points="0 0, 10 3.5, 0 7" fill="#6366f1" />
+            </marker>
+          </defs>
+          <line
+            x1={stateConnect.x1}
+            y1={stateConnect.y1}
+            x2={stateConnect.x2}
+            y2={stateConnect.y2}
+            stroke="#6366f1"
+            strokeDasharray="10,8"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            markerEnd="url(#state-connect-arrow)"
+          />
+          {stateConnect.snap && (
+            <rect
+              x={stateConnect.snap.cx - 3}
+              y={stateConnect.snap.cy - 3}
+              width={stateConnect.snap.w + 6}
+              height={stateConnect.snap.h + 6}
+              rx={6}
+              fill="rgba(99,102,241,0.10)"
+              stroke="#6366f1"
+              strokeWidth={2}
+            />
+          )}
+          {stateConnect.anchor && (
+            <g transform={`translate(${stateConnect.anchor.x}, ${stateConnect.anchor.y})`}>
+              <circle r={5} fill="#10b981" stroke="#ffffff" strokeWidth={1.5} />
+            </g>
+          )}
         </svg>
       )}
 
@@ -2432,6 +2981,20 @@ export function EditorCanvas({
             setClassConnectMenu(null);
           }}
           onClose={() => setClassConnectMenu(null)}
+        />
+      )}
+
+      {/* State-diagram connection drop menu (pick which shape to create on empty canvas). */}
+      {currentType === "stateDiagram" && stateConnectMenu && (
+        <StateConnectMenu
+          state={stateConnectMenu}
+          hasStart={hasStartState(code)}
+          hasEnd={hasEndState(code)}
+          onPick={(kind) => {
+            onCreateStateShapeLinked?.(stateConnectMenu.source, kind);
+            setStateConnectMenu(null);
+          }}
+          onClose={() => setStateConnectMenu(null)}
         />
       )}
 
@@ -2744,7 +3307,8 @@ export function EditorCanvas({
 
       {shapePicker && (
         <div
-          className="absolute z-50 bg-[#1c1c21]/95 backdrop-blur-md border border-white/10 rounded-xl p-3 shadow-2xl flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-150 text-white"
+          data-flowchart-shape-picker
+          className="absolute z-50 flex flex-col gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150"
           style={{
             left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 250)),
             top: Math.max(10, Math.min(shapePicker.y, viewportHeight - 350)),
@@ -2753,13 +3317,13 @@ export function EditorCanvas({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-white/10 pb-2">
-            <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">
+          <div className="flex items-center justify-between border-b border-border pb-2">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Choose Shape
             </span>
             <button
               onClick={() => setShapePicker(null)}
-              className="text-white/60 hover:text-white text-xs font-medium px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors"
+              className="rounded px-1.5 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
             >
               Cancel
             </button>
@@ -2768,7 +3332,7 @@ export function EditorCanvas({
           <div className="flex flex-col gap-4 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
             {/* Basic Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
                 Basic
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2785,7 +3349,7 @@ export function EditorCanvas({
                       e.stopPropagation();
                       e.preventDefault();
                     }}
-                    className="flex items-center justify-center w-8 h-8 bg-white/5 border border-white/10 rounded-md hover:border-indigo-500 hover:bg-indigo-500/20 hover:text-indigo-400 cursor-pointer text-white p-0 transition-all active:scale-95"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-background p-0 text-foreground transition-all hover:border-indigo-400 hover:bg-accent hover:text-indigo-600 active:scale-95 dark:hover:text-indigo-400"
                     title={shape.l}
                   >
                     <svg viewBox="0 0 24 24" className="w-4 h-4">
@@ -2798,7 +3362,7 @@ export function EditorCanvas({
 
             {/* Extended Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-white/40 uppercase tracking-wider mb-1.5">
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
                 Extended
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2815,7 +3379,7 @@ export function EditorCanvas({
                       e.stopPropagation();
                       e.preventDefault();
                     }}
-                    className="flex items-center justify-center w-8 h-8 bg-white/5 border border-white/10 rounded-md hover:border-indigo-500 hover:bg-indigo-500/20 hover:text-indigo-400 cursor-pointer text-white p-0 transition-all active:scale-95"
+                    className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border border-border bg-background p-0 text-foreground transition-all hover:border-indigo-400 hover:bg-accent hover:text-indigo-600 active:scale-95 dark:hover:text-indigo-400"
                     title={shape.l}
                   >
                     <svg viewBox="0 0 24 24" className="w-4 h-4">

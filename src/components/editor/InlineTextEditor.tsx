@@ -1,4 +1,4 @@
-import { RefObject, useEffect } from "react";
+import { RefObject, useEffect, useLayoutEffect } from "react";
 
 interface InlineTextEditorProps {
   isInlineEditing: boolean;
@@ -12,6 +12,23 @@ interface InlineTextEditorProps {
   handleEditSubmit: () => void;
   inlineInputRef: RefObject<HTMLTextAreaElement | null>;
   selectedSvgId: string | null;
+}
+
+function estimateTextWidth(text: string, fontSize: number) {
+  const longestLine = text
+    .split(/\r?\n/)
+    .reduce((longest, line) => (line.length > longest.length ? line : longest), "");
+  if (!longestLine) return 0;
+
+  if (typeof document === "undefined") {
+    return longestLine.length * fontSize * 0.62;
+  }
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return longestLine.length * fontSize * 0.62;
+  ctx.font = `500 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+  return ctx.measureText(longestLine).width;
 }
 
 export function InlineTextEditor({
@@ -65,6 +82,14 @@ export function InlineTextEditor({
     };
   }, [isInlineEditing, handleEditSubmit, inlineInputRef]);
 
+  useLayoutEffect(() => {
+    if (!isInlineEditing || !textBox || !selectionBox) return;
+    const el = inlineInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.max(el.scrollHeight, Math.max(textBox.height, 24))}px`;
+  }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox]);
+
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
   const offsetCanvas = 4 / scale;
@@ -73,19 +98,21 @@ export function InlineTextEditor({
   const centerX = relativeNodeX + textBox.width / 2;
   const centerY = relativeNodeY + textBox.height / 2;
 
-  const targetVisualWidth = Math.min(Math.max(textBox.width + 200, 350), 700);
-  const targetVisualHeight = Math.max(textBox.height + 20, 40);
+  const fontSize = 14;
+  const measuredTextWidth = estimateTextWidth(editingText, fontSize);
+  const targetVisualWidth = Math.min(Math.max(textBox.width, measuredTextWidth + 20, 80), 700);
+  const targetVisualHeight = Math.max(textBox.height, 24);
 
   return (
     <textarea
       data-scale-lock
       data-base-transform="translate(-50%, -50%)"
       ref={inlineInputRef}
-      className="absolute p-2 bg-white/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center flex items-center justify-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white"
+      className="absolute bg-white/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white whitespace-pre-wrap"
       value={editingText}
       onChange={(e) => setEditingText(e.target.value)}
       onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
+        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
           e.preventDefault();
           handleEditSubmit();
         } else if (e.key === "Escape") {
@@ -95,8 +122,6 @@ export function InlineTextEditor({
         e.stopPropagation();
       }}
       onBlur={(e) => {
-        // Don't submit on blur if focus is moving to another part of the same textarea
-        // Use a small timeout to allow relatedTarget to be set
         const related = e.relatedTarget;
         if (related && inlineInputRef.current?.contains(related as Node)) return;
         handleEditSubmit();
@@ -110,9 +135,11 @@ export function InlineTextEditor({
         transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, 1))`,
         width: targetVisualWidth,
         height: targetVisualHeight,
-        fontSize: "14px",
+        fontSize: `${fontSize}px`,
         lineHeight: 1.4,
         color: "#1c1c21",
+        whiteSpace: "pre-wrap",
+        boxSizing: "border-box",
       }}
     />
   );

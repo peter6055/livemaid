@@ -36,7 +36,7 @@ interface EditorHeaderProps {
   saving: boolean;
   isDemo?: boolean;
   onNavigate: (url: string, message: string) => void;
-  onDuplicate: () => void;
+  onDuplicate: () => string | null;
   onNewDiagram: () => void;
   onRename: () => void;
   onRenameInline?: (name: string) => void;
@@ -100,6 +100,17 @@ export function EditorHeader({
     setDraftName(doc?.name || "");
   };
 
+  const prepareDuplicateLink = (anchor: HTMLAnchorElement) => {
+    if (anchor.dataset.duplicatePrepared === "true") return true;
+    const duplicateUrl = onDuplicate();
+    if (duplicateUrl) {
+      anchor.href = duplicateUrl;
+      anchor.dataset.duplicatePrepared = "true";
+      return true;
+    }
+    return false;
+  };
+
   useEffect(() => {
     if (isEditingName) {
       nameInputRef.current?.focus();
@@ -133,13 +144,27 @@ export function EditorHeader({
               </DropdownMenuItem>
             )}
             {!isDemo && (
-              <DropdownMenuItem
-                onClick={onDuplicate}
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
+              <a
+                href="/"
+                target="_blank"
+                rel="noopener noreferrer"
+                onMouseDown={(e) => {
+                  prepareDuplicateLink(e.currentTarget);
+                }}
+                onFocus={(e) => {
+                  prepareDuplicateLink(e.currentTarget);
+                }}
+                onClick={(e) => {
+                  if (!prepareDuplicateLink(e.currentTarget)) {
+                    e.preventDefault();
+                  }
+                }}
               >
-                <Copy className="w-4 h-4" />
-                <span>Duplicate</span>
-              </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2">
+                  <Copy className="w-4 h-4" />
+                  <span>Duplicate</span>
+                </DropdownMenuItem>
+              </a>
             )}
             {!isDemo && (
               <DropdownMenuItem

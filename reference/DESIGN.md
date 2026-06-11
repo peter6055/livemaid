@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: LiveMaid-design-analysis
-description: "LiveMaid presents a premium, state-of-the-art developer tool aesthetic. It is rigorously dark-themed, utilizing deep slates for surfaces and vibrant indigo as the primary brand accent. The interface feels alive and dynamic through the use of glassmorphism (translucent headers), subtle micro-animations on interactive elements, and a split-screen architecture that balances a dense code editor with an infinite, floating visual canvas. It is designed to feel like a high-end IDE merged with a modern design tool."
+description: "LiveMaid presents a premium developer-tool aesthetic built around a theme-aware shell, a high-contrast white Mermaid canvas, and restrained indigo accents. The interface feels alive through translucent structural surfaces, subtle motion, and a split-screen architecture that balances dense code editing with an infinite visual workspace."
 
 colors:
   primary: "#4f46e5" # indigo-600
@@ -113,13 +113,13 @@ components:
 
 ## Overview
 
-LiveMaid is a local-first WYSIWYG editor for Mermaid diagrams. Its design language bridges the gap between a serious developer environment (like VS Code) and a premium, modern design tool (like Figma or Miro).
+LiveMaid is a local-first WYSIWYG editor for Mermaid diagrams. Its design language bridges the gap between a serious developer environment and a modern design tool.
 
-Because the core value proposition is "diagrams as code", the application defaults to a strict dark mode (`slate-950`) to ease eye strain during long coding sessions. The UI is built on top of `shadcn/ui`, utilizing sharp, minimal borders, subtle translucency (glassmorphism), and a vibrant indigo accent color to draw attention to primary actions and selected states.
+The application shell is theme-aware and follows the active runtime theme, while the Mermaid drawing surface remains white for readability. The UI is built on top of `shadcn/ui`, using sharp borders, subtle translucency, and a restrained indigo accent for primary actions and selected states.
 
 **Key Characteristics:**
 
-- **Dark Mode First:** The entire application lives in a dark slate environment. White is reserved exclusively for the visual canvas nodes to ensure maximum contrast and readability of the diagrams.
+- **Theme-Aware Shell:** The surrounding application chrome follows the active theme. White is still reserved for the visual canvas surface and diagram nodes where contrast matters most.
 - **Glassmorphism:** Headers and structural elements use translucent backgrounds with background-blur, creating a sense of depth without relying heavily on drop shadows.
 - **Split-Screen Dominance:** The editor view is dominated by the resizer. The left side is a pure, unstyled Monaco editor; the right side is an infinite canvas.
 - **Floating Context:** Toolbars inside the canvas float above the grid as pill-shaped, light-themed elements (like the zoom controls), providing a stark contrast to the dark IDE surroundings. The inline-editing text toolbar uses a dark `#1c1c21` theme to closely hug the active node without visually blending into the white canvas.
@@ -135,7 +135,7 @@ Because the core value proposition is "diagrams as code", the application defaul
 
 ### Surface
 
-- **Canvas Slate** (`{colors.canvas}`): The deepest dark (`slate-950`). Used as the absolute background of the dashboard and the root layout.
+- **Canvas Slate** (`{colors.canvas}`): The deepest dark (`slate-950`). Used where dark shell surfaces need maximum contrast.
 - **Surface** (`{colors.surface}`): Slightly lighter (`slate-900`). Used for cards and panels.
 - **Surface Glass** (`{colors.surface-glass}`): A 50% opaque variant of the surface color used with `backdrop-blur` for sticky headers.
 - **Hairline** (`{colors.hairline}`): Subtle borders (`slate-800`) used to separate panes in the split-screen layout and frame cards.
@@ -167,7 +167,7 @@ A clean CSS grid (1 column on mobile, 3 on desktop) for displaying saved diagram
 
 ## Elevation & Depth
 
-Because the base theme is so dark, traditional drop shadows are ineffective. We create depth using three techniques:
+Because dark surfaces remain common in the shell, traditional drop shadows alone are not enough. We create depth using three techniques:
 
 1. **Borders:** 1px `slate-800` borders define boundaries.
 2. **Glassmorphism:** The editor header uses `bg-slate-900/50 backdrop-blur` to ensure that if canvas elements scroll underneath, they are blurred, establishing the header's z-index dominance.
@@ -198,6 +198,6 @@ Because the base theme is so dark, traditional drop shadows are ineffective. We 
 
 ### Don't
 
-- Don't use light mode for the main application shell.
+- Don't hardcode the application shell to a single theme when the runtime is theme-aware.
 - Don't clutter the code editor pane with excessive toolbars.
 - Don't rely on drop shadows on dark surfaces; use borders instead.

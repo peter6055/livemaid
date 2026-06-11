@@ -1,12 +1,24 @@
 <!-- BEGIN:livemaid-architecture-rules -->
 
+## Command Output
+
+Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
+
+Default pattern:
+
+```bash
+COMMAND 2>&1 | head -c 4000
+```
+
 # Architecture and Feature Truths
 
 Before implementing ANY features or modifying the editor logic, you MUST read the following core documentation files in the `reference/` directory:
 
-1. `reference/FEATURES_AND_TRUTHS.md`: Outlines critical implementations like pan/zoom logic, event propagation rules, and two-way sync constraints. Do not proceed with code changes until you understand these constraints. Furthermore, you MUST constantly update this file whenever you implement a new feature or change core architecture logic so that it remains an accurate source of truth.
+1. `reference/FEATURES_AND_TRUTHS.md`: Compact mandatory entrypoint. It tells you which deeper docs are relevant for the subsystem you are touching. Do not proceed until you have followed its reading map. Update it only when global invariants, support boundaries, or the reading rules change.
 2. `reference/ARCHITECTURE.md`: High-level system architecture overview.
 3. `reference/DESIGN.md`: UI/UX design specifications and aesthetic guidelines.
+
+If your change is subsystem-specific, you MUST also read the relevant deep-dive document linked from `reference/FEATURES_AND_TRUTHS.md` before implementing.
 
 > **RULE:** ALL future reference documentation intended for AI agents or developers MUST be placed inside the `reference/` folder. Do not place documentation at the root level to keep the repository clean.
 
@@ -38,8 +50,8 @@ Before planning or implementing any Mermaid diagram logic (parsers, rendering, f
 When implementing UI features, rendering logic, or complex client-side changes, you MUST follow this robust operational loop:
 
 1. **Implement**: Write the code and implement the changes.
-2. **Execute Interactive Testing (Browser)**: Utilize the `chrome-devtools-mcp` tools directly to perform the exact sequence of actions that a user would do to utilize the newly implemented feature. If you do not have these tools loaded or run into issues, trigger the `/browser` subagent to perform the task.
-3. **Capture Comprehensive Visuals**: Capture a screenshot (`take_screenshot`) at every step of the process to provide a complete visual track of the interaction flow.
+2. **Execute Interactive Testing (Browser)**: Use the best available browser automation tooling in the current runtime to perform the exact user flow for the feature. Prefer the in-app Browser tooling when available; otherwise use the loaded browser automation alternative.
+3. **Capture Comprehensive Visuals**: Capture screenshots at each meaningful verification checkpoint so the interaction flow has a visual record.
 4. **Return Results**: Evaluate the results (including all screenshots and DOM observations).
 5. **Scale Testing (If Needed)**: You can spawn multiple subagents to test the implementation to different degrees or in parallel if the feature is complex.
 6. **Address All Errors**: Every error discovered during testing MUST be addressed. This applies equally to errors caused by the new implementation itself, as well as unrelated errors that were accidentally discovered during the test run.
@@ -51,16 +63,8 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 # How to Write a Verification Plan (Testplan)
 
 When an agent is asked to write a verification plan, they MUST format it properly as described in `reference/HOW_TO_WRITE_VERIFICATION_PLAN.md`.
-The verification plan should focus on **what** is to be verified, not _how_, and must contain the following fields (usually presented as a table or structured list):
+Do not duplicate the template inline in this file; follow the dedicated reference doc.
 
-- **Requirement Location**: A pointer to the source Requirements document (if applicable).
-- **Feature**: The high-level feature you are trying to verify.
-- **Sub-Feature**: Optional decomposition of the Feature.
-- **Feature Description**: A summary of what the feature does.
-- **Verification Goals**: A summary of what stimulus and/or configuration needs to be generated/checked/covered.
-- **Pass/Fail Criteria**: How will the testbench know the test passed? (e.g., Self Checking, Signature Check, Check against RM, Assertion Check, Any/All).
-- **Test Type**: RISC-V Compliance, Directed Self-Checking, Directed Non-Self-Checking, Constrained-Random, ENV capability, etc. (Or equivalent UI-testing types for this project: MCP Automated Check, Manual Interaction, etc.)
-- **Coverage Method**: Testcase, Functional Coverage, Assertion Coverage, Code Coverage.
 <!-- END:verification-planning-rules -->
 
 <!-- BEGIN:regression-planning-rules -->
