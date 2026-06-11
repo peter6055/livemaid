@@ -1171,6 +1171,9 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             />
             <div className="flex flex-col gap-2">
               <p className="text-xs font-medium text-muted-foreground">Diagram type</p>
+              <p className="text-xs text-muted-foreground/70">
+                Flowchart, sequence, class, ER, and state diagrams support two-way sync.
+              </p>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: "flowchart", label: "Flowchart" },
