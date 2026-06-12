@@ -2807,7 +2807,13 @@ export function useCanvasInteraction({
         });
         if (noteLines[idx]) {
           const colonIdx = noteLines[idx].indexOf(":");
-          currentText = colonIdx !== -1 ? noteLines[idx].substring(colonIdx + 1).trim() : "";
+          currentText =
+            colonIdx !== -1
+              ? noteLines[idx]
+                  .substring(colonIdx + 1)
+                  .trim()
+                  .replace(/<br\s*\/?>/gi, "\n")
+              : "";
         }
       } else if (targetNodeId.startsWith("SEQ_")) {
         currentText = targetNodeId.replace("SEQ_", "");
