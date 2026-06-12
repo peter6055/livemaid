@@ -1,0 +1,13 @@
+{
+  "id": "erDemoCustomerOrder",
+  "name": "Customer Order Schema - ER",
+  "createdAt": "2026-06-12T00:00:00.000Z",
+  "updatedAt": "2026-06-12T00:00:00.000Z",
+  "deletedAt": null,
+  "code": "---\nconfig:\n  theme: forest\n---\nerDiagram\n    direction LR\n    CUSTOMER ||--o{ ORDER : places\n    CUSTOMER ||--o{ ADDRESS : has\n    ORDER ||--|{ ORDER_ITEM : contains\n    ORDER ||--|| PAYMENT : \"paid by\"\n    PRODUCT ||--o{ ORDER_ITEM : \"appears in\"\n    CATEGORY ||--o{ PRODUCT : groups\n\n    CUSTOMER {\n        string id PK\n        string full_name\n        string email UK\n        datetime created_at\n    }\n\n    ADDRESS {\n        string id PK\n        string customer_id FK\n        string line_1\n        string city\n        string region\n        string postal_code\n    }\n\n    ORDER {\n        string id PK\n        string customer_id FK\n        datetime created_at\n        string status\n        decimal total_amount\n    }\n\n    ORDER_ITEM {\n        string id PK\n        string order_id FK\n        string product_id FK\n        int quantity\n        decimal unit_price\n    }\n\n    PRODUCT {\n        string id PK\n        string category_id FK\n        string name\n        decimal price\n        int stock\n    }\n\n    CATEGORY {\n        string id PK\n        string name\n        string slug UK\n    }\n\n    PAYMENT {\n        string id PK\n        string order_id FK\n        decimal amount\n        string method\n        string status\n    }\n",
+  "type": "erDiagram",
+  "subPages": [],
+  "comments": [],
+  "versionHistory": [],
+  "folderId": "demo-folder-design"
+}
