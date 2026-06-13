@@ -111,7 +111,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [createType, setCreateType] = useState("flowchart");
+  const [createType, setCreateType] = useState("blank");
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState("");
@@ -196,7 +196,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
-    setCreateType("flowchart");
+    setCreateType("blank");
     setIsCreateOpen(true);
   };
 
@@ -211,7 +211,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
         body: JSON.stringify({
           name: createName,
           type: createType,
-          code: DiagramRegistry[createType]?.defaultCode,
+          code: createType === "blank" ? "" : DiagramRegistry[createType]?.defaultCode,
           folderId: currentFolderId,
         }),
       });
@@ -1170,12 +1170,14 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
               onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
             <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Diagram type</p>
-              <p className="text-xs text-muted-foreground/70">
-                Flowchart, sequence, class, ER, and state diagrams support two-way sync.
-              </p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="text-xs font-medium text-muted-foreground">Diagram Template</p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {[
+                  {
+                    id: "blank",
+                    label: "Blank",
+                    description: "Start with an empty canvas and write your own Mermaid code.",
+                  },
                   { id: "flowchart", label: "Flowchart" },
                   { id: "sequence", label: "Sequence" },
                   { id: "classDiagram", label: "Class" },
@@ -1186,13 +1188,13 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     key={t.id}
                     type="button"
                     onClick={() => setCreateType(t.id)}
-                    className={`rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex min-h-20 flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition-all ${
                       createType === t.id
-                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
-                        : "border-border text-muted-foreground hover:bg-accent"
+                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 shadow-sm dark:text-indigo-400"
+                        : "border-border bg-background text-muted-foreground hover:border-indigo-300 hover:bg-accent/60"
                     }`}
                   >
-                    {t.label}
+                    <span className="text-sm font-medium leading-none">{t.label}</span>
                   </button>
                 ))}
               </div>

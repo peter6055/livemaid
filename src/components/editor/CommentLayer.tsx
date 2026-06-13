@@ -1,0 +1,311 @@
+"use client";
+
+import { useEffect, useMemo, useState, type RefObject } from "react";
+import type { DiagramComment, DiagramCommentAnchor } from "@/lib/api/storage";
+import { CommentBubble } from "./comments/CommentBubble";
+import { CommentPin } from "./comments/CommentPin";
+
+const SHAPE_COMMENT_OFFSET = 12;
+const SEQUENCE_COMMENT_OFFSET = 28;
+const COMMENT_SIDEBAR_WIDTH = 384;
+
+type CommentComposerState = {
+  anchor: DiagramCommentAnchor;
+  position: { x: number; y: number };
+  targetLabel: string;
+  commentMode: "shape" | "canvas";
+} | null;
+
+interface CommentLayerProps {
+  comments: DiagramComment[];
+  scale: number;
+  containerRef: RefObject<HTMLDivElement | null>;
+  renderIdRef: RefObject<string | null>;
+  activeCommentId: string | null;
+  onActivateComment: (commentId: string | null) => void;
+  commentComposer: CommentComposerState;
+  commentDraft: string;
+  setCommentDraft: (value: string) => void;
+  onSubmitComposer: (content?: string) => void;
+  commentReplyDrafts: Record<string, string>;
+  onChangeReplyDraft: (commentId: string, value: string) => void;
+  onSubmitReply: (commentId: string) => void;
+  onToggleResolved: (commentId: string, resolved: boolean) => void;
+  showThreadPopover: boolean;
+  commentsSidebarOpen?: boolean;
+}
+
+function normalizeSvgId(rawId: string | null | undefined, renderId: string | null): string {
+  if (!rawId) return "";
+  let cleanId = rawId.replace("-hit-target", "");
+  if (renderId && cleanId.includes(renderId)) {
+    cleanId = cleanId.replace(new RegExp(`^.*?-?${renderId}-`), "");
+  }
+  cleanId = cleanId.replace(/^svg-/, "").replace(/^flowchart-/, "");
+  const edgeMatch = cleanId.match(/^L[_-]([a-zA-Z0-9]+)[_-]([a-zA-Z0-9]+)[_-](\d+)$/);
+  if (edgeMatch) {
+    const rawIndex = parseInt(edgeMatch[3], 10);
+    const canonicalIndex = 2 * Math.floor(rawIndex / 2);
+    return `L_${edgeMatch[1]}_${edgeMatch[2]}_${canonicalIndex}`;
+  }
+  return cleanId.replace(/[-_]\d+$/, "");
+}
+
+function isEdgeAnchorElement(el: Element) {
+  return el.tagName.toLowerCase() === "path" || el.tagName.toLowerCase() === "line";
+}
+
+export function CommentLayer({
+  comments,
+  scale,
+  containerRef,
+  renderIdRef,
+  activeCommentId,
+  onActivateComment,
+  commentComposer,
+  commentDraft,
+  setCommentDraft,
+  onSubmitComposer,
+  commentReplyDrafts,
+  onChangeReplyDraft,
+  onSubmitReply,
+  onToggleResolved,
+  commentsSidebarOpen = false,
+}: CommentLayerProps) {
+  const renderId = renderIdRef.current;
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setContainerEl(containerRef.current);
+  }, [containerRef, comments.length, activeCommentId, commentComposer, scale, renderId]);
+
+  const container = containerEl;
+  const containerRect = container?.getBoundingClientRect() ?? null;
+  const contentWidth = container?.offsetWidth || 1;
+  const contentHeight = container?.offsetHeight || 1;
+  const canMeasure = Boolean(container && containerRect);
+
+  const commentPositions = useMemo(() => {
+    if (!canMeasure) return new Map<string, { x: number; y: number; missingTarget: boolean }>();
+
+    const safeContainer = container!;
+    const safeContainerRect = containerRect!;
+    const entries = new Map<string, { x: number; y: number; missingTarget: boolean }>();
+    const elements = Array.from(safeContainer.querySelectorAll("[id], [data-id]"));
+    const messageTextEls = Array.from(safeContainer.querySelectorAll(".messageText")) as SVGElement[];
+    const messageLineEls = Array.from(
+      safeContainer.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
+    ) as SVGElement[];
+
+    const findNearestLineForText = (textEl: SVGElement) => {
+      if (messageLineEls.length === 0) return null;
+      const textRect = textEl.getBoundingClientRect();
+      const textX = textRect.left + textRect.width / 2;
+      const textY = textRect.top + textRect.height / 2;
+      let nearest = messageLineEls[0];
+      let best = Number.POSITIVE_INFINITY;
+      for (const lineEl of messageLineEls) {
+        const lineRect = lineEl.getBoundingClientRect();
+        const lineY = lineRect.top + lineRect.height / 2;
+        const dx =
+          textX < lineRect.left
+            ? lineRect.left - textX
+            : textX > lineRect.right
+              ? textX - lineRect.right
+              : 0;
+        const dy = Math.abs(textY - lineY);
+        const dist = Math.hypot(dx, dy);
+        if (dist < best) {
+          best = dist;
+          nearest = lineEl;
+        }
+      }
+      return nearest;
+    };
+
+    for (const comment of comments) {
+      let x = contentWidth / 2;
+      let y = contentHeight / 2;
+      let missingTarget = false;
+
+      if (comment.anchor.type === "canvas" && comment.anchor.position) {
+        x = comment.anchor.position.x * contentWidth;
+        y = comment.anchor.position.y * contentHeight;
+      } else if (comment.anchor.type === "shape" && comment.anchor.shapeId) {
+        const sequenceMatch = comment.anchor.shapeId.match(/^SEQ_MSG_(\d+)$/);
+        if (sequenceMatch) {
+          const index = Number(sequenceMatch[1]);
+          const textEl = messageTextEls[index] ?? null;
+          const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
+          if (textEl || lineEl) {
+            const textRect = textEl?.getBoundingClientRect();
+            const lineRect = lineEl?.getBoundingClientRect();
+            const left = Math.min(
+              textRect?.left ?? Number.POSITIVE_INFINITY,
+              lineRect?.left ?? Number.POSITIVE_INFINITY,
+            );
+            const top = Math.min(
+              textRect?.top ?? Number.POSITIVE_INFINITY,
+              lineRect?.top ?? Number.POSITIVE_INFINITY,
+            );
+            const right = Math.max(
+              textRect?.right ?? Number.NEGATIVE_INFINITY,
+              lineRect?.right ?? Number.NEGATIVE_INFINITY,
+            );
+            const bottom = Math.max(
+              textRect?.bottom ?? Number.NEGATIVE_INFINITY,
+              lineRect?.bottom ?? Number.NEGATIVE_INFINITY,
+            );
+            const rawX = right + SEQUENCE_COMMENT_OFFSET * scale;
+            const rawY = top + (bottom - top) / 2;
+            x = (rawX - safeContainerRect.left) / scale;
+            y = (rawY - safeContainerRect.top) / scale;
+            x = Math.min(contentWidth - 16, Math.max(16, x));
+            y = Math.min(contentHeight - 16, Math.max(16, y));
+            entries.set(comment.id, { x, y, missingTarget: false });
+            continue;
+          }
+          if (comment.anchor.fallbackPos) {
+            x = comment.anchor.fallbackPos.x;
+            y = comment.anchor.fallbackPos.y;
+            missingTarget = true;
+          }
+        }
+
+        if (!missingTarget) {
+          const match = elements.find((el) => {
+            const candidateId = el.getAttribute("data-id") || el.id;
+            return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
+          });
+          if (match) {
+            const rect = match.getBoundingClientRect();
+            const isSequenceMessage =
+              Array.from(match.classList).some(
+                (cls) => cls === "messageText" || cls.startsWith("messageLine"),
+              ) ||
+              Boolean(
+                match.closest?.(".messageText, [class^='messageLine'], [class*=' messageLine']"),
+              );
+            const offset = isSequenceMessage ? SEQUENCE_COMMENT_OFFSET : SHAPE_COMMENT_OFFSET;
+            const rawX = isSequenceMessage
+              ? rect.right + offset * scale
+              : isEdgeAnchorElement(match)
+                ? rect.left + rect.width / 2
+                : rect.right + offset * scale;
+            const rawY = isSequenceMessage
+              ? rect.top + rect.height / 2
+              : isEdgeAnchorElement(match)
+                ? rect.top + rect.height / 2
+                : rect.top - offset * scale;
+            x = (rawX - safeContainerRect.left) / scale;
+            y = (rawY - safeContainerRect.top) / scale;
+            x = Math.min(contentWidth - 16, Math.max(16, x));
+            y = Math.min(contentHeight - 16, Math.max(16, y));
+          } else if (comment.anchor.fallbackPos) {
+            x = comment.anchor.fallbackPos.x;
+            y = comment.anchor.fallbackPos.y;
+            missingTarget = true;
+          }
+        }
+      }
+
+      entries.set(comment.id, { x, y, missingTarget });
+    }
+
+    return entries;
+  }, [canMeasure, comments, container, containerRect, contentHeight, contentWidth, renderId, scale]);
+
+  const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
+  const visibleComments = useMemo(() => comments.filter((comment) => !comment.resolved), [comments]);
+
+  const clampBubblePosition = (preferredLeft: number, preferredTop: number, bubbleWidth: number, bubbleHeight: number) => {
+    const sidebarInset = commentsSidebarOpen ? COMMENT_SIDEBAR_WIDTH / scale : 0;
+    const left = Math.min(
+      Math.max(16, preferredLeft),
+      Math.max(16, contentWidth - bubbleWidth - 16 - sidebarInset),
+    );
+    const top = Math.min(
+      Math.max(16, preferredTop),
+      Math.max(16, contentHeight - bubbleHeight - 16),
+    );
+    return { left, top };
+  };
+
+  return (
+    <div className="absolute inset-0 pointer-events-none z-40">
+      {visibleComments.map((comment) => {
+        const pos = commentPositions.get(comment.id) || {
+          x: contentWidth / 2,
+          y: contentHeight / 2,
+          missingTarget: false,
+        };
+        const threadCount = comment.messages.length;
+
+        return (
+          <CommentPin
+            key={comment.id}
+            id={comment.id}
+            left={pos.x}
+            top={pos.y}
+            scale={scale}
+            threadCount={threadCount}
+            missingTarget={pos.missingTarget}
+            resolved={comment.resolved}
+            active={activeCommentId === comment.id}
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              onActivateComment(comment.id);
+            }}
+          />
+        );
+      })}
+
+      {commentComposer && (
+        <CommentBubble
+          kind="compose"
+          position={(() => {
+            const next = clampBubblePosition(
+              commentComposer.position.x - 12,
+              commentComposer.position.y - 12,
+              304 / scale,
+              240 / scale,
+            );
+            return { x: next.left, y: next.top };
+          })()}
+          scale={scale}
+          targetLabel={commentComposer.targetLabel}
+          value={commentDraft}
+          onChangeValue={setCommentDraft}
+          onSubmit={(value) => onSubmitComposer(value)}
+          onClose={() => onActivateComment(null)}
+        />
+      )}
+
+      {activeComment && !commentComposer && (
+        <CommentBubble
+          kind="thread"
+          position={(() => {
+            const next = clampBubblePosition(
+              (commentPositions.get(activeComment.id)?.x ?? contentWidth / 2) + 18,
+              (commentPositions.get(activeComment.id)?.y ?? contentHeight / 2) - 12,
+              352 / scale,
+              312 / scale,
+            );
+            return { x: next.left, y: next.top };
+          })()}
+          scale={scale}
+          comment={activeComment}
+          replyValue={commentReplyDrafts[activeComment.id] ?? ""}
+          missingTarget={commentPositions.get(activeComment.id)?.missingTarget ?? false}
+          onChangeReplyValue={(value) => onChangeReplyDraft(activeComment.id, value)}
+          onSubmitReply={() => onSubmitReply(activeComment.id)}
+          onToggleResolved={() => onToggleResolved(activeComment.id, !activeComment.resolved)}
+          onClose={() => onActivateComment(null)}
+        />
+      )}
+    </div>
+  );
+}

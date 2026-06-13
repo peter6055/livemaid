@@ -17,8 +17,37 @@ export interface DiagramDocument {
   type: "flowchart" | "sequence" | "class";
   folderId: string | null;
   subPages: { id: string; name: string; code: string }[];
-  comments: { id: string; content: string; timestamp: string }[];
+  comments: DiagramComment[];
   versionHistory: VersionHistoryEntry[];
+}
+
+export interface DiagramComment {
+  id: string;
+  anchor: DiagramCommentAnchor;
+  messages: DiagramCommentMessage[];
+  resolved: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiagramCommentAnchor {
+  type: "shape" | "canvas";
+  shapeId?: string;
+  fallbackPos?: {
+    x: number;
+    y: number;
+  };
+  position?: {
+    x: number;
+    y: number;
+  };
+}
+
+export interface DiagramCommentMessage {
+  id: string;
+  content: string;
+  authorId: string;
+  timestamp: string;
 }
 
 export interface VersionHistoryEntry {
@@ -45,6 +74,81 @@ export const IS_DEMO_MODE = process.env.DEMO_MODE === "true";
 // Coerce an arbitrary parsed record into a fully-formed DiagramDocument with safe defaults. Backend-
 // agnostic so both the FS adapter and a future Mongo adapter hydrate documents identically.
 export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
+  const normalizedComments: DiagramComment[] = Array.isArray(raw.comments)
+    ? raw.comments.map((comment: any, index): DiagramComment => {
+        if (comment && Array.isArray(comment.messages)) {
+          const anchor: DiagramCommentAnchor =
+            comment.anchor && typeof comment.anchor === "object"
+              ? comment.anchor.type === "shape"
+                ? {
+                    type: "shape",
+                    shapeId:
+                      typeof comment.anchor.shapeId === "string" ? comment.anchor.shapeId : undefined,
+                    fallbackPos:
+                      comment.anchor.fallbackPos &&
+                      typeof comment.anchor.fallbackPos.x === "number" &&
+                      typeof comment.anchor.fallbackPos.y === "number"
+                        ? {
+                            x: comment.anchor.fallbackPos.x,
+                            y: comment.anchor.fallbackPos.y,
+                          }
+                        : undefined,
+                  }
+                : {
+                    type: "canvas",
+                    position:
+                      comment.anchor.position &&
+                      typeof comment.anchor.position.x === "number" &&
+                      typeof comment.anchor.position.y === "number"
+                        ? {
+                            x: comment.anchor.position.x,
+                            y: comment.anchor.position.y,
+                          }
+                        : { x: 0.5, y: 0.5 },
+                  }
+              : { type: "canvas", position: { x: 0.5, y: 0.5 } };
+          return {
+            id: typeof comment.id === "string" ? comment.id : `comment-${index}`,
+            anchor,
+            messages: comment.messages
+              .filter((message: any) => message && typeof message.content === "string")
+              .map((message: any, messageIndex: number) => ({
+                id: typeof message.id === "string" ? message.id : `comment-${index}-message-${messageIndex}`,
+                content: message.content,
+                authorId: typeof message.authorId === "string" ? message.authorId : "anonymous",
+                timestamp:
+                  typeof message.timestamp === "string" ? message.timestamp : new Date().toISOString(),
+              })),
+            resolved: Boolean(comment.resolved),
+            createdAt:
+              typeof comment.createdAt === "string" ? comment.createdAt : new Date().toISOString(),
+            updatedAt:
+              typeof comment.updatedAt === "string" ? comment.updatedAt : new Date().toISOString(),
+          };
+        }
+
+        const timestamp =
+          typeof comment?.timestamp === "string" ? comment.timestamp : new Date().toISOString();
+        const content = typeof comment?.content === "string" ? comment.content : "";
+        const id = typeof comment?.id === "string" ? comment.id : `legacy-comment-${index}`;
+        return {
+          id,
+          anchor: { type: "canvas", position: { x: 0.5, y: 0.5 } },
+          messages: [
+            {
+              id: `${id}-message-0`,
+              content,
+              authorId: "anonymous",
+              timestamp,
+            },
+          ],
+          resolved: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+      })
+    : [];
+
   return {
     id: raw.id || "",
     name: raw.name || "Untitled Diagram",
@@ -55,7 +159,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
-    comments: Array.isArray(raw.comments) ? raw.comments : [],
+    comments: normalizedComments,
     versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
   };
 }

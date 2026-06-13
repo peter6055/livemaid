@@ -78,6 +78,8 @@ export function useCanvasInteraction({
   isLocked,
   handleCodeChange,
   determineDiagramType,
+  isCommentMode = false,
+  onCanvasCommentPlace,
 }: {
   code: string;
   svgContent?: string;
@@ -86,6 +88,8 @@ export function useCanvasInteraction({
   isLocked: boolean;
   handleCodeChange: (code: string) => void;
   determineDiagramType: (code: string) => string;
+  isCommentMode?: boolean;
+  onCanvasCommentPlace?: (position: { x: number; y: number }) => void;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -2915,6 +2919,16 @@ export function useCanvasInteraction({
       if (isLocked) return;
 
       const target = e.target as HTMLElement;
+      const container = containerRef.current;
+      const containerRect = container?.getBoundingClientRect() ?? null;
+      const scale =
+        container && containerRect ? containerRect.width / container.offsetWidth : 1;
+      const canvasX = containerRect
+        ? (e.clientX - containerRect.left + (container?.scrollLeft ?? 0)) / scale
+        : 0;
+      const canvasY = containerRect
+        ? (e.clientY - containerRect.top + (container?.scrollTop ?? 0)) / scale
+        : 0;
       if (
         target.closest("[data-scale-lock]") ||
         target.closest("[data-scale-lock-border]") ||
@@ -2972,12 +2986,7 @@ export function useCanvasInteraction({
         // and label) selects the message, mirroring how clicking the yellow note area
         // selects the note. Reuses getClickedNode on the band's messageText so the
         // selection box/text box are computed identically to a direct line/text click.
-        const container = containerRef.current;
         if (container && determineDiagramType(code) === "sequence") {
-          const containerRect = container.getBoundingClientRect();
-          const scale = containerRect.width / container.offsetWidth;
-          const canvasX = (e.clientX - containerRect.left + container.scrollLeft) / scale;
-          const canvasY = (e.clientY - containerRect.top + container.scrollTop) / scale;
           const band = findSequenceMessageBandAtPoint(canvasX, canvasY);
           if (band) {
             const bandClicked = getClickedNode(band.el);
@@ -2990,6 +2999,11 @@ export function useCanvasInteraction({
               return;
             }
           }
+        }
+        if (isCommentMode && onCanvasCommentPlace) {
+          debugLog("place-canvas-comment", { canvasX, canvasY });
+          onCanvasCommentPlace({ x: canvasX, y: canvasY });
+          return;
         }
         debugLog("clear-selection");
         setSelectedNodeIdWithRef(null);
@@ -3009,6 +3023,8 @@ export function useCanvasInteraction({
       containerRef,
       determineDiagramType,
       findSequenceMessageBandAtPoint,
+      isCommentMode,
+      onCanvasCommentPlace,
     ],
   );
 

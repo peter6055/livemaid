@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     const plugin = DiagramRegistry[type] || DiagramRegistry["flowchart"];
     const defaultCode = plugin.defaultCode;
-    const finalCode = code || defaultCode;
+    const finalCode = code !== undefined ? code : defaultCode;
 
     const newDiagram: DiagramDocument = {
       id: nanoid(),

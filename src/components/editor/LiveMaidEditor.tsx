@@ -32,10 +32,13 @@ import {
   Undo2,
   Redo2,
   Type,
+  Hash,
   Copy,
   PanelLeftClose,
   PanelLeftOpen,
   FileQuestion,
+  MessageSquarePlus,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -156,6 +159,7 @@ import type { MonacoCodeEditor, ConfirmOptions } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
 import { DemoBanner } from "@/components/DemoBanner";
+import type { DiagramComment, DiagramCommentAnchor } from "@/lib/api/storage";
 
 // Remove sequence blocks left TRULY empty (an opener — rect/loop/opt/alt/par/critical/break —
 // whose body contains no message/note, only section dividers like else/and/option). Such a block
@@ -253,7 +257,39 @@ export function LiveMaidEditor({
   const [previewParseError, setPreviewParseError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState("PNG");
   const [exportBg, setExportBg] = useState("transparent");
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isCommentMode, setIsCommentMode] = useState(false);
+  const [showResolvedComments, setShowResolvedComments] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [commentComposer, setCommentComposer] = useState<{
+    anchor: DiagramCommentAnchor;
+    position: { x: number; y: number };
+    targetLabel: string;
+    commentMode: "shape" | "canvas";
+  } | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
   const allowBrowserBackRef = useRef(false);
+
+  const handleCanvasCommentPlace = useCallback((position: { x: number; y: number }) => {
+    const contentWidth = containerRef.current?.offsetWidth || 1;
+    const contentHeight = containerRef.current?.offsetHeight || 1;
+    setCommentComposer({
+      anchor: {
+        type: "canvas",
+        position: {
+          x: position.x / contentWidth,
+          y: position.y / contentHeight,
+        },
+      },
+      position,
+      targetLabel: `Canvas position ${Math.round(position.x)}, ${Math.round(position.y)}`,
+      commentMode: "canvas",
+    });
+    setCommentDraft("");
+    setIsCommentMode(false);
+    setActiveCommentId(null);
+  }, []);
 
   // Promise-based confirmation provider so server-imported diagram plugins can
   // trigger the UI-library AlertDialog (which they cannot import themselves).
@@ -357,6 +393,8 @@ export function LiveMaidEditor({
     isLocked,
     handleCodeChange,
     determineDiagramType,
+    isCommentMode,
+    onCanvasCommentPlace: handleCanvasCommentPlace,
   });
 
   const handleDeselect = useCallback(() => {
@@ -1973,6 +2011,166 @@ export function LiveMaidEditor({
     const ampm = d.getHours() >= 12 ? "PM" : "AM";
     return `Snapshot ${index + 1} - ${h}:${m} ${ampm}`;
   }, []);
+
+  const sortedComments = useMemo(
+    () =>
+      [...((doc?.comments ?? []) as DiagramComment[])].sort(
+        (a, b) =>
+          Number(Boolean(a.resolved)) - Number(Boolean(b.resolved)) ||
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    [doc?.comments],
+  );
+  const openComments = useMemo(
+    () => sortedComments.filter((comment) => !comment.resolved),
+    [sortedComments],
+  );
+  const resolvedComments = useMemo(
+    () => sortedComments.filter((comment) => comment.resolved),
+    [sortedComments],
+  );
+
+  const refreshCommentDraft = useCallback((commentId: string, value: string) => {
+    setCommentReplyDrafts((current) => ({ ...current, [commentId]: value }));
+  }, []);
+
+  const createCommentThread = useCallback(
+    async (anchor: DiagramCommentAnchor, content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: trimmed,
+            authorId: "anonymous",
+            anchor,
+          }),
+        });
+        if (!response.ok) throw new Error("Failed to create comment");
+        const created = (await response.json()) as DiagramComment;
+        setDoc((prev) =>
+          prev ? { ...prev, comments: [...(prev.comments ?? []), created] } : prev,
+        );
+        setCommentDraft("");
+        setCommentComposer(null);
+        setActiveCommentId(created.id);
+        toast.success("Comment added", {
+          action: {
+            label: "Open comments",
+            onClick: () => setIsCommentsOpen(true),
+          },
+        });
+      } catch {
+        toast.error("Failed to add comment");
+      }
+    },
+    [documentId, setDoc],
+  );
+
+  const submitCommentComposer = useCallback((content?: string) => {
+    if (!commentComposer) return;
+    void createCommentThread(commentComposer.anchor, content ?? commentDraft);
+  }, [commentComposer, commentDraft, createCommentThread]);
+
+  const openSelectionCommentComposer = useCallback(() => {
+    if (!selectedNodeId || !selectionBox) return;
+    const anchor: DiagramCommentAnchor = {
+      type: "shape",
+      shapeId: selectedNodeId,
+      fallbackPos: {
+        x: selectionBox.x + selectionBox.width / 2,
+        y: selectionBox.y + selectionBox.height / 2,
+      },
+    };
+    setCommentComposer({
+      anchor,
+      position: {
+        x: selectionBox.x + selectionBox.width + 12,
+        y: Math.max(12, selectionBox.y - 12),
+      },
+      targetLabel: `Anchored to ${selectedNodeId}`,
+      commentMode: "shape",
+    });
+    setCommentDraft("");
+    setIsCommentMode(false);
+    setActiveCommentId(null);
+  }, [selectedNodeId, selectionBox]);
+
+  const appendCommentReply = useCallback(
+    async (commentId: string) => {
+      const content = (commentReplyDrafts[commentId] ?? "").trim();
+      if (!content) return;
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            commentId,
+            content,
+            authorId: "anonymous",
+          }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (updated) {
+          setDoc((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  comments: (prev.comments ?? []).map((comment) =>
+                    comment.id === updated.id ? updated : comment,
+                  ),
+                }
+              : prev,
+          );
+          setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
+          toast.success("Reply added");
+        }
+      } catch {
+        toast.error("Failed to add reply");
+      }
+    },
+    [commentReplyDrafts, documentId, setDoc],
+  );
+
+  const toggleCommentResolved = useCallback(
+    async (commentId: string, resolved: boolean) => {
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commentId, resolved }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (updated) {
+          setDoc((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  comments: (prev.comments ?? []).map((comment) =>
+                    comment.id === updated.id ? updated : comment,
+                  ),
+                }
+              : prev,
+          );
+        }
+      } catch {
+        toast.error("Failed to update comment");
+      }
+    },
+    [documentId, setDoc],
+  );
+
+  const activateCommentThread = useCallback(
+    (commentId: string | null) => {
+      setActiveCommentId(commentId);
+      setCommentComposer(null);
+    },
+    [],
+  );
 
   const persistHistoryEntries = useCallback(
     async (updatedHistory: VersionHistoryEntry[]) => {
@@ -3669,6 +3867,7 @@ export function LiveMaidEditor({
         onRenameInline={renameDiagram}
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
+        onComments={() => setIsCommentsOpen(true)}
       />
 
       {IS_DEMO_MODE && <DemoBanner />}
@@ -4071,6 +4270,16 @@ export function LiveMaidEditor({
                 </DropdownMenuContent>
               </DropdownMenu>
 
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`shrink-0 rounded-md p-1 h-8 w-8 flex items-center justify-center ${isCommentMode ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300" : "text-foreground hover:bg-accent hover:text-accent-foreground"}`}
+                onClick={() => setIsCommentMode((current) => !current)}
+                title={isCommentMode ? "Exit comment mode" : "Enter comment mode"}
+              >
+                <MessageSquarePlus className="w-4 h-4" />
+              </Button>
+
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
@@ -4111,8 +4320,9 @@ export function LiveMaidEditor({
                 <>
                   <div className="h-5 w-px bg-border mx-1" />
                   <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
-                      Auto Number
+                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+                      <Hash className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                      <span>Auto number</span>
                     </span>
                     <button
                       onClick={() => {
@@ -4181,6 +4391,27 @@ export function LiveMaidEditor({
             hoveredSequenceMessageBox={hoveredSequenceMessageBox}
             hoveredSequenceNoteBox={hoveredSequenceNoteBox}
             hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
+            comments={doc?.comments ?? []}
+            openComments={openComments}
+            resolvedComments={resolvedComments}
+            activeCommentId={activeCommentId}
+            onActivateComment={activateCommentThread}
+            onOpenSelectionCommentComposer={openSelectionCommentComposer}
+            commentComposer={commentComposer}
+            commentDraft={commentDraft}
+            setCommentDraft={setCommentDraft}
+            onSubmitCommentComposer={submitCommentComposer}
+            commentReplyDrafts={commentReplyDrafts}
+            onChangeCommentReplyDraft={refreshCommentDraft}
+            onSubmitCommentReply={appendCommentReply}
+            onToggleCommentResolved={toggleCommentResolved}
+            isCommentsOpen={isCommentsOpen}
+            isCommentMode={isCommentMode}
+            showResolvedComments={showResolvedComments}
+            setShowResolvedComments={setShowResolvedComments}
+            onStartCommentMode={() => setIsCommentMode(true)}
+            onCloseCommentsSidebar={() => setIsCommentsOpen(false)}
+            renderIdRef={renderIdRef}
             sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
             sequenceBlockAreas={sequenceBlockAreas}
             startSequenceConnection={startSequenceConnection}

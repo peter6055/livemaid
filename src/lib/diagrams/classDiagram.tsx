@@ -36,6 +36,7 @@ import {
   Boxes,
   StickyNote,
   Workflow,
+  Type,
   ArrowDown,
   ArrowUp,
   ArrowRight,
@@ -1116,8 +1117,9 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       {/* Hide-empty-members toggle — identical inline label + switch styling to the sequence
           diagram's Auto Number toggle, placed in front of the Class button. */}
       <div className="flex items-center gap-2 px-2 h-8 select-none">
-        <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
-          Hide Empty Members
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+          <Boxes className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+          <span>Hide empty members</span>
         </span>
         <button
           type="button"
@@ -1140,8 +1142,9 @@ const ClassDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
 
       {/* Title toggle — same inline label + switch styling as Hide Empty Members. */}
       <div className="flex items-center gap-2 px-2 h-8 select-none">
-        <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
-          Title
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+          <Type className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+          <span>Title</span>
         </span>
         <button
           type="button"

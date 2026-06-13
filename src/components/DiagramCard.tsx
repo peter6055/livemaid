@@ -92,7 +92,8 @@ export function DiagramCard({
     parsedType === "flowchart" ||
     parsedType === "sequence" ||
     parsedType === "classDiagram" ||
-    parsedType === "erDiagram";
+    parsedType === "erDiagram" ||
+    parsedType === "stateDiagram";
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);

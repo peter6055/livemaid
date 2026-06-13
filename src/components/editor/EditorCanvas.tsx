@@ -8,6 +8,7 @@ import {
   GitBranch,
   SquareStack,
   Palette,
+  MessageSquareText,
 } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
@@ -22,6 +23,8 @@ import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
+import { CommentLayer } from "./CommentLayer";
+import { CommentSidebar } from "./comments/CommentSidebar";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import {
   classNameFromSvgId,
@@ -50,6 +53,7 @@ import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
+import type { DiagramComment } from "@/lib/api/storage";
 
 interface EditorCanvasProps {
   code: string;
@@ -81,6 +85,32 @@ interface EditorCanvasProps {
   hoveredSequenceMessageBox: { x: number; y: number; width: number; height: number } | null;
   hoveredSequenceNoteBox: { x: number; y: number; width: number; height: number } | null;
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
+  comments?: DiagramComment[];
+  openComments?: DiagramComment[];
+  resolvedComments?: DiagramComment[];
+  activeCommentId?: string | null;
+  onActivateComment?: (commentId: string | null) => void;
+  onOpenSelectionCommentComposer?: () => void;
+  commentComposer?: {
+    anchor: import("@/lib/api/storage").DiagramCommentAnchor;
+    position: { x: number; y: number };
+    targetLabel: string;
+    commentMode: "shape" | "canvas";
+  } | null;
+  commentDraft?: string;
+  setCommentDraft?: (value: string) => void;
+  onSubmitCommentComposer?: (content?: string) => void;
+  commentReplyDrafts?: Record<string, string>;
+  onChangeCommentReplyDraft?: (commentId: string, value: string) => void;
+  onSubmitCommentReply?: (commentId: string) => void;
+  onToggleCommentResolved?: (commentId: string, resolved: boolean) => void;
+  isCommentsOpen?: boolean;
+  isCommentMode?: boolean;
+  showResolvedComments?: boolean;
+  setShowResolvedComments?: (value: React.SetStateAction<boolean>) => void;
+  onStartCommentMode?: () => void;
+  onCloseCommentsSidebar?: () => void;
+  renderIdRef?: React.MutableRefObject<string | null>;
   sequenceMessageTriggerAreas: Array<{
     index: number;
     x: number;
@@ -311,6 +341,27 @@ export function EditorCanvas({
   hoveredSequenceMessageBox,
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
+  comments = [],
+  openComments = [],
+  resolvedComments = [],
+  activeCommentId = null,
+  onActivateComment,
+  onOpenSelectionCommentComposer,
+  commentComposer = null,
+  commentDraft = "",
+  setCommentDraft,
+  onSubmitCommentComposer,
+  commentReplyDrafts = {},
+  onChangeCommentReplyDraft,
+  onSubmitCommentReply,
+  onToggleCommentResolved,
+  isCommentsOpen = false,
+  isCommentMode = false,
+  showResolvedComments = false,
+  setShowResolvedComments,
+  onStartCommentMode,
+  onCloseCommentsSidebar,
+  renderIdRef,
   sequenceMessageTriggerAreas,
   sequenceBlockAreas,
   startSequenceConnection,
@@ -507,6 +558,7 @@ export function EditorCanvas({
   // counter does NOT survive the hover→selected overlay element swap (the two clicks land on
   // different DOM nodes), so we time clicks ourselves keyed by message index.
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
+  const fallbackRenderIdRef = useRef<string | null>(null);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
@@ -536,18 +588,6 @@ export function EditorCanvas({
     transformElements.forEach((el) => {
       const baseTransform = el.getAttribute("data-base-transform") || "";
       el.style.transform = `${baseTransform} scale(${inverse})`.trim();
-    });
-
-    // 1b. Clamped scale-lock transforms (counter-scale capped at 1×). Used by on-canvas
-    // affordances that should stay a CONSTANT size while zooming IN (inverse < 1) but must
-    // SHRINK with the diagram while zooming OUT (inverse > 1) instead of ballooning to a fixed
-    // screen size that dwarfs a densely-packed, zoomed-out diagram. e.g. the message endpoint
-    // drag bars: at min zoom a constant 44px bar spanned many message rows and dominated.
-    const clampedScale = Math.min(1, inverse);
-    const clampedElements = container.querySelectorAll<HTMLElement>("[data-scale-lock-max1]");
-    clampedElements.forEach((el) => {
-      const baseTransform = el.getAttribute("data-base-transform") || "";
-      el.style.transform = `${baseTransform} scale(${clampedScale})`.trim();
     });
 
     // 2. Scale-lock borders
@@ -1734,7 +1774,7 @@ export function EditorCanvas({
         }}
       >
         {({ zoomIn, zoomOut, resetTransform, state }) => (
-          <>
+            <>
             <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-background border border-border p-1 rounded-lg shadow-sm">
               <Button
                 variant="ghost"
@@ -1833,6 +1873,25 @@ export function EditorCanvas({
                 <div
                   className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
                   dangerouslySetInnerHTML={{ __html: svgContent }}
+                />
+
+                <CommentLayer
+                  comments={comments}
+                  scale={state.scale}
+                  containerRef={containerRef}
+                  renderIdRef={renderIdRef ?? fallbackRenderIdRef}
+                  activeCommentId={activeCommentId}
+                  onActivateComment={onActivateComment ?? (() => {})}
+                  commentComposer={commentComposer}
+                  commentDraft={commentDraft}
+                  setCommentDraft={setCommentDraft ?? (() => {})}
+                  onSubmitComposer={onSubmitCommentComposer ?? (() => {})}
+                  commentReplyDrafts={commentReplyDrafts}
+                  onChangeReplyDraft={onChangeCommentReplyDraft ?? (() => {})}
+                  onSubmitReply={onSubmitCommentReply ?? (() => {})}
+                  onToggleResolved={onToggleCommentResolved ?? (() => {})}
+                  showThreadPopover={!isCommentsOpen}
+                  commentsSidebarOpen={isCommentsOpen}
                 />
 
                 {/* Logic-block / highlight overlays are intentionally NOT drawn: Mermaid already
@@ -2264,15 +2323,10 @@ export function EditorCanvas({
                         { key: "source" as const, pt: selectedSeqMsgEndpoints.source },
                         { key: "target" as const, pt: selectedSeqMsgEndpoints.target },
                       ].map(({ key, pt }) => {
-                        // Clamped counter-scale (cap at 1×): stay a constant on-screen size when
-                        // zoomed IN, but shrink WITH the diagram when zoomed OUT so the bar never
-                        // dominates a densely-packed min-zoom diagram. Mirrors data-scale-lock-max1
-                        // in updateScaleLockedElements (which overrides this inline value on zoom).
-                        const epScale = Math.min(1, 1 / state.scale);
                         return (
                           <div
                             key={`seq-endpoint-${key}`}
-                            data-scale-lock-max1
+                            data-scale-lock
                             data-base-transform="translate(-50%, -50%)"
                             className="seq-endpoint-handle absolute z-[24] pointer-events-auto cursor-grab active:cursor-grabbing rounded-full bg-white border-[3px] border-blue-500 shadow-sm hover:bg-blue-50 transition-colors"
                             style={{
@@ -2282,9 +2336,9 @@ export function EditorCanvas({
                               // (rows pack to a few px apart while the bar keeps a min screen size), so
                               // it must straddle its own endpoint symmetrically at every zoom level.
                               top: pt.y,
-                              width: 17,
-                              height: 54,
-                              transform: `translate(-50%, -50%) scale(${epScale})`,
+                              width: "10px",
+                              height: "32px",
+                              transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
                             }}
                             title={
                               key === "source" ? "Drag to change sender" : "Drag to change receiver"
@@ -2540,6 +2594,26 @@ export function EditorCanvas({
                         />
                       ))}
 
+                    {onOpenSelectionCommentComposer && selectedNodeId && (
+                      <button
+                        type="button"
+                        data-scale-lock
+                        data-inline-toolbar
+                        className="absolute right-0 top-0 z-[23] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-indigo-600 shadow-lg transition-colors hover:bg-indigo-50 pointer-events-auto dark:bg-zinc-900 dark:text-indigo-300 dark:hover:bg-zinc-800"
+                        style={{
+                          transform: `translate(50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        }}
+                        title="Add comment to selection"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenSelectionCommentComposer();
+                        }}
+                      >
+                        <MessageSquareText className="h-4 w-4" />
+                      </button>
+                    )}
+
                     <InlineTextEditor
                       isInlineEditing={isInlineEditing}
                       setIsInlineEditing={setIsInlineEditing}
@@ -2736,6 +2810,23 @@ export function EditorCanvas({
           </>
         )}
       </TransformWrapper>
+
+      {isCommentsOpen && (
+        <CommentSidebar
+          openComments={openComments}
+          resolvedComments={resolvedComments}
+          activeCommentId={activeCommentId ?? null}
+          showResolvedComments={showResolvedComments}
+          isCommentMode={isCommentMode}
+          onClose={onCloseCommentsSidebar ?? (() => {})}
+          onStartCommentMode={onStartCommentMode ?? (() => {})}
+          onActivateComment={onActivateComment ?? (() => {})}
+          onToggleResolvedComment={onToggleCommentResolved ?? (() => {})}
+          onToggleResolvedSection={() => {
+            setShowResolvedComments?.((current) => !current);
+          }}
+        />
+      )}
 
       {/* Class-diagram property panel — a viewport-level right-sidebar overlay rendered outside
           the TransformWrapper so canvas pan/zoom never moves it. */}
