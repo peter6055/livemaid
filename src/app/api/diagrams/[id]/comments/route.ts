@@ -1,9 +1,51 @@
 import { NextResponse } from "next/server";
 import { getDiagram, saveDiagram, IS_DEMO_MODE, type DiagramComment } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 
-function normalizeAnchor(anchor: any): DiagramComment["anchor"] {
+function normalizeAnchor(anchor: any, code: string): DiagramComment["anchor"] {
+  const sequenceMessageEntries = String(code || "")
+    .split("\n")
+    .map((line, index) => ({ index, line }))
+    .filter(({ line }) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("%%")) return false;
+      const keywords = [
+        "sequenceDiagram",
+        "Note",
+        "note",
+        "rect",
+        "alt",
+        "opt",
+        "loop",
+        "par",
+        "critical",
+        "option",
+        "else",
+        "end",
+        "participant",
+        "actor",
+        "autonumber",
+        "activate",
+        "deactivate",
+        "box",
+        "links",
+        "link",
+        "properties",
+        "details",
+      ];
+      if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
+      return trimmed.includes(":");
+    });
+
   if (anchor && anchor.type === "shape") {
+    const legacySequenceMatch =
+      typeof anchor.shapeId === "string" ? anchor.shapeId.match(/^SEQ_MSG_(\d+)$/) : null;
+    const derivedSequenceMessage =
+      !anchor.sequenceMessage && legacySequenceMatch
+        ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
+        : null;
+
     return {
       type: "shape",
       shapeId: typeof anchor.shapeId === "string" ? anchor.shapeId : undefined,
@@ -16,6 +58,21 @@ function normalizeAnchor(anchor: any): DiagramComment["anchor"] {
               y: anchor.fallbackPos.y,
             }
           : undefined,
+      sequenceMessage:
+        anchor.sequenceMessage &&
+        typeof anchor.sequenceMessage.sender === "string" &&
+        typeof anchor.sequenceMessage.receiver === "string" &&
+        typeof anchor.sequenceMessage.operator === "string" &&
+        typeof anchor.sequenceMessage.label === "string" &&
+        typeof anchor.sequenceMessage.occurrence === "number"
+          ? {
+              sender: anchor.sequenceMessage.sender,
+              receiver: anchor.sequenceMessage.receiver,
+              operator: anchor.sequenceMessage.operator,
+              label: anchor.sequenceMessage.label,
+              occurrence: anchor.sequenceMessage.occurrence,
+            }
+          : derivedSequenceMessage ?? undefined,
     };
   }
   if (
@@ -67,7 +124,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const now = new Date().toISOString();
     const comment: DiagramComment = {
       id: nanoid(),
-      anchor: normalizeAnchor(body.anchor),
+      anchor: normalizeAnchor(body.anchor, diagram.code),
       messages: [
         {
           id: nanoid(),

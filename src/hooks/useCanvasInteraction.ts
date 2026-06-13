@@ -125,6 +125,10 @@ export function useCanvasInteraction({
     snapTargetPos: null,
     anchorY: null,
   });
+  const connectionStateRef = useRef(connectionState);
+  useEffect(() => {
+    connectionStateRef.current = connectionState;
+  }, [connectionState]);
 
   const [sequenceLifelineOverlay, setSequenceLifelineOverlay] = useState<{
     actorId: string;
@@ -158,6 +162,7 @@ export function useCanvasInteraction({
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<
     Array<{ index: number; x: number; y: number; width: number; height: number }>
   >([]);
+  const sequenceConnectionCommittedRef = useRef(false);
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const hoveredSequenceTargetsRef = useRef<{
     textEl: SVGElement | null;
@@ -3058,6 +3063,7 @@ export function useCanvasInteraction({
     ) => {
       const container = containerRef.current;
       if (!container) return;
+      const currentConnectionState = connectionStateRef.current;
       // Use the rect captured synchronously at event time. Falling back to a fresh
       // getBoundingClientRect() only when no pre-captured rect is provided (e.g.,
       // callers that don't go through the RAF throttle path).
@@ -3246,14 +3252,17 @@ export function useCanvasInteraction({
       if (diagramType === "sequence") {
         const lifelines = getSequenceLifelines();
 
-        if (connectionState.active && connectionState.startNodeId?.startsWith("SEQ_ACTOR_")) {
+        if (
+          currentConnectionState.active &&
+          currentConnectionState.startNodeId?.startsWith("SEQ_ACTOR_")
+        ) {
           setShapePicker(null);
-          const sourceActorId = connectionState.startNodeId.replace("SEQ_ACTOR_", "");
+          const sourceActorId = currentConnectionState.startNodeId.replace("SEQ_ACTOR_", "");
           const sourceLifeline = lifelines.find((l) => l.actorId === sourceActorId);
           if (!sourceLifeline) return;
 
           const sourceSlots = getSequenceAnchorSlots(sourceLifeline);
-          const anchorY = connectionState.anchorY ?? findNearestSlot(sourceSlots, mouseY);
+          const anchorY = currentConnectionState.anchorY ?? findNearestSlot(sourceSlots, mouseY);
           const snappedAnchorY = findNearestSlot(sourceSlots, anchorY);
 
           const snapThreshold = 28 / scale;
@@ -3267,8 +3276,8 @@ export function useCanvasInteraction({
             }
           }
 
-          setConnectionState((prev) => ({
-            ...prev,
+          const nextConnectionState: ConnectionState = {
+            ...connectionStateRef.current,
             isDragging: true,
             mousePos: {
               x: snapTargetPos?.x ?? mouseX,
@@ -3277,7 +3286,9 @@ export function useCanvasInteraction({
             anchorY: snappedAnchorY,
             snapTargetId,
             snapTargetPos,
-          }));
+          };
+          connectionStateRef.current = nextConnectionState;
+          setConnectionState(nextConnectionState);
           setSequenceLifelineOverlay(null);
           return;
         }
@@ -3324,7 +3335,7 @@ export function useCanvasInteraction({
               slots: getSequenceAnchorSlots(nearestLifeline, mouseY),
             });
           }
-        } else if (!connectionState.active) {
+        } else if (!currentConnectionState.active) {
           setSequenceLifelineOverlay(null);
         }
       } else {
@@ -3333,22 +3344,21 @@ export function useCanvasInteraction({
         setHoveredSequenceNoteBox(null);
       }
 
-      if (connectionState.active && connectionState.startNodeId) {
+      if (currentConnectionState.active && currentConnectionState.startNodeId) {
         setShapePicker(null);
-        setConnectionState((prev) => ({
-          ...prev,
+        const nextConnectionState: ConnectionState = {
+          ...connectionStateRef.current,
           isDragging: true,
           mousePos: {
             x: mouseX,
             y: mouseY,
           },
-        }));
+        };
+        connectionStateRef.current = nextConnectionState;
+        setConnectionState(nextConnectionState);
       }
     },
     [
-      connectionState.active,
-      connectionState.startNodeId,
-      connectionState.anchorY,
       containerRef,
       code,
       determineDiagramType,
@@ -3449,8 +3459,9 @@ export function useCanvasInteraction({
 
   const startSequenceConnection = useCallback(
     (actorId: string, anchorY: number) => {
+      sequenceConnectionCommittedRef.current = false;
       const lifeline = getSequenceLifelines().find((l) => l.actorId === actorId);
-      setConnectionState({
+      const nextConnectionState: ConnectionState = {
         active: true,
         startNodeId: `SEQ_ACTOR_${actorId}`,
         startPos: lifeline ? { x: lifeline.x, y: anchorY } : null,
@@ -3459,36 +3470,81 @@ export function useCanvasInteraction({
         snapTargetId: null,
         snapTargetPos: null,
         anchorY,
-      });
+      };
+      connectionStateRef.current = nextConnectionState;
+      setConnectionState(nextConnectionState);
     },
     [getSequenceLifelines],
   );
 
+  const clearConnectionState = useCallback(() => {
+    const clearedConnectionState: ConnectionState = {
+      active: false,
+      startNodeId: null,
+      startPos: null,
+      mousePos: null,
+      isDragging: false,
+      snapTargetId: null,
+      snapTargetPos: null,
+      anchorY: null,
+    };
+    connectionStateRef.current = clearedConnectionState;
+    setConnectionState(clearedConnectionState);
+  }, []);
+
+  const finalizeSequenceConnection = useCallback(() => {
+    const currentConnectionState = connectionStateRef.current;
+    if (
+      !currentConnectionState.active ||
+      !currentConnectionState.startNodeId?.startsWith("SEQ_ACTOR_")
+    ) {
+      return false;
+    }
+
+    if (sequenceConnectionCommittedRef.current) {
+      clearConnectionState();
+      setSequenceLifelineOverlay(null);
+      return true;
+    }
+
+    sequenceConnectionCommittedRef.current = true;
+    const targetId = currentConnectionState.snapTargetId;
+    if (targetId) {
+      const insertIndex =
+        currentConnectionState.anchorY !== null
+          ? getSequenceInsertIndexForAnchor(currentConnectionState.anchorY)
+          : undefined;
+      handleAddNodeFromSelected(
+        currentConnectionState.startNodeId,
+        targetId,
+        undefined,
+        insertIndex,
+      );
+    }
+
+    clearConnectionState();
+    setSequenceLifelineOverlay(null);
+    return true;
+  }, [clearConnectionState, getSequenceInsertIndexForAnchor, handleAddNodeFromSelected]);
+
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
+      const currentConnectionState = connectionStateRef.current;
       clearSequenceMessageHoverHighlight();
       setHoveredFlowchartNodeBox(null);
-      if (connectionState.active && connectionState.startNodeId) {
+      if (currentConnectionState.active && currentConnectionState.startNodeId) {
         const diagramType = determineDiagramType(code);
-        if (connectionState.isDragging) {
-          if (diagramType === "sequence" && connectionState.startNodeId.startsWith("SEQ_ACTOR_")) {
-            const targetId = connectionState.snapTargetId;
-            if (targetId) {
-              const insertIndex =
-                connectionState.anchorY !== null
-                  ? getSequenceInsertIndexForAnchor(connectionState.anchorY)
-                  : undefined;
-              handleAddNodeFromSelected(
-                connectionState.startNodeId,
-                targetId,
-                undefined,
-                insertIndex,
-              );
-            }
+        if (currentConnectionState.isDragging) {
+          if (
+            diagramType === "sequence" &&
+            currentConnectionState.startNodeId.startsWith("SEQ_ACTOR_")
+          ) {
+            finalizeSequenceConnection();
+            return;
           } else {
             const result = getClickedNode(e.target as Element);
-            if (result && result.cleanId && result.cleanId !== connectionState.startNodeId) {
-              handleAddNodeFromSelected(connectionState.startNodeId, result.cleanId);
+            if (result && result.cleanId && result.cleanId !== currentConnectionState.startNodeId) {
+              handleAddNodeFromSelected(currentConnectionState.startNodeId, result.cleanId);
             } else if (!result) {
               // Dropped on empty space - trigger the shape selector
               if (diagramType === "flowchart" || diagramType === "graph") {
@@ -3500,28 +3556,20 @@ export function useCanvasInteraction({
                   setShapePicker({
                     x: e.clientX - rect.left,
                     y: e.clientY - rect.top,
-                    startNodeId: connectionState.startNodeId,
+                    startNodeId: currentConnectionState.startNodeId,
                   });
                 }
               }
             }
           }
         }
-        setConnectionState({
-          active: false,
-          startNodeId: null,
-          startPos: null,
-          mousePos: null,
-          isDragging: false,
-          snapTargetId: null,
-          snapTargetPos: null,
-          anchorY: null,
-        });
+        clearConnectionState();
       }
       setSequenceLifelineOverlay(null);
     },
     [
-      connectionState,
+      clearConnectionState,
+      finalizeSequenceConnection,
       getClickedNode,
       handleAddNodeFromSelected,
       code,
@@ -3531,6 +3579,26 @@ export function useCanvasInteraction({
       clearSequenceMessageHoverHighlight,
     ],
   );
+
+  useEffect(() => {
+    const currentConnectionState = connectionStateRef.current;
+    if (
+      !currentConnectionState.active ||
+      !currentConnectionState.isDragging ||
+      !currentConnectionState.startNodeId?.startsWith("SEQ_ACTOR_")
+    ) {
+      return;
+    }
+
+    const onWindowMouseUp = () => {
+      finalizeSequenceConnection();
+    };
+
+    window.addEventListener("mouseup", onWindowMouseUp);
+    return () => {
+      window.removeEventListener("mouseup", onWindowMouseUp);
+    };
+  }, [connectionState, finalizeSequenceConnection]);
 
   useEffect(() => {
     return () => {

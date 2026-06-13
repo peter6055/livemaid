@@ -105,6 +105,7 @@ interface EditorCanvasProps {
   onToggleCommentResolved?: (commentId: string, resolved: boolean) => void;
   renderIdRef?: React.MutableRefObject<string | null>;
   commentsRailWidth?: number;
+  sequenceMessageEntries?: Array<{ index: number; line: string }>;
   sequenceMessageTriggerAreas: Array<{
     index: number;
     x: number;
@@ -349,6 +350,8 @@ export function EditorCanvas({
   onToggleCommentResolved,
   renderIdRef,
   commentsRailWidth = 0,
+  sequenceMessageEntries = [],
+  getSequenceMessageEndpointGeometry,
   sequenceMessageTriggerAreas,
   sequenceBlockAreas,
   startSequenceConnection,
@@ -427,7 +430,6 @@ export function EditorCanvas({
   onChangeSequenceParticipantType,
   currentSequenceParticipantType,
   onChangeSequenceMessageEndpoint,
-  getSequenceMessageEndpointGeometry,
   onLinkSequenceNote,
   setIsInlineEditing,
   handleAddNodeFromSelected,
@@ -1878,6 +1880,8 @@ export function EditorCanvas({
                   onSubmitReply={onSubmitCommentReply ?? (() => {})}
                   onToggleResolved={onToggleCommentResolved ?? (() => {})}
                   commentsRailWidth={commentsRailWidth}
+                  sequenceMessageEntries={sequenceMessageEntries}
+                  getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
                 />
 
                 {/* Logic-block / highlight overlays are intentionally NOT drawn: Mermaid already
@@ -2136,16 +2140,28 @@ export function EditorCanvas({
                                 const shellRect = canvasShellRef.current?.getBoundingClientRect();
                                 if (!shellRect) return;
                                 const cursorX = ev.clientX - shellRect.left;
+                                const lifelines = getSequenceLifelines?.() ?? [];
+                                const containerRect = containerRef.current?.getBoundingClientRect();
+                                const scale =
+                                  containerRect && containerRef.current
+                                    ? containerRect.width / containerRef.current.offsetWidth
+                                    : null;
                                 // Viewport-space snap detection: find the nearest actor-line within 28 viewport-px
                                 let snapX: number | null = null;
-                                const actorLineEls =
-                                  containerRef.current?.querySelectorAll("line.actor-line") ?? [];
-                                for (const lineEl of actorLineEls) {
-                                  const lr = (lineEl as Element).getBoundingClientRect();
-                                  const lifelineViewportX = lr.left - shellRect.left; // center of the zero-width line
-                                  if (Math.abs(lifelineViewportX - cursorX) <= 28) {
-                                    snapX = lifelineViewportX;
-                                    break;
+                                let snappedActorId: string | null = null;
+                                if (scale && containerRect && containerRef.current) {
+                                  const toShellX = (canvasX: number) =>
+                                    canvasX * scale +
+                                    containerRect.left -
+                                    containerRef.current!.scrollLeft -
+                                    shellRect.left;
+                                  for (const lifeline of lifelines) {
+                                    const lifelineViewportX = toShellX(lifeline.x);
+                                    if (Math.abs(lifelineViewportX - cursorX) <= 28) {
+                                      snapX = lifelineViewportX;
+                                      snappedActorId = lifeline.actorId;
+                                      break;
+                                    }
                                   }
                                 }
                                 setSeqDragIndicator({
@@ -2155,6 +2171,20 @@ export function EditorCanvas({
                                   y2: anchorMenuY,
                                   snapX,
                                 });
+                                setConnectionState((prev) => ({
+                                  ...prev,
+                                  isDragging: true,
+                                  mousePos: {
+                                    x: snapX !== null ? snapX : cursorX,
+                                    y: anchorMenuY,
+                                  },
+                                  anchorY,
+                                  snapTargetId: snappedActorId ? `SEQ_ACTOR_${snappedActorId}` : null,
+                                  snapTargetPos:
+                                    snapX !== null
+                                      ? { x: snapX, y: anchorMenuY }
+                                      : null,
+                                }));
                               }
                             };
                             const onUp = () => {

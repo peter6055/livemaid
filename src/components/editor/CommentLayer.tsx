@@ -4,9 +4,13 @@ import { useEffect, useMemo, useState, type RefObject } from "react";
 import type { DiagramComment, DiagramCommentAnchor } from "@/lib/api/storage";
 import { CommentBubble } from "./comments/CommentBubble";
 import { CommentPin } from "./comments/CommentPin";
+import {
+  findSequenceMessageIndexByAnchor,
+  type SequenceMessageAnchorSignature,
+} from "@/lib/diagrams/sequenceCommentAnchor";
 
-const SHAPE_COMMENT_OFFSET = 12;
-const SEQUENCE_COMMENT_OFFSET = 28;
+const SHAPE_COMMENT_OFFSET = 8;
+const SEQUENCE_COMMENT_OFFSET = 10;
 type CommentComposerState = {
   anchor: DiagramCommentAnchor;
   position: { x: number; y: number };
@@ -30,6 +34,15 @@ interface CommentLayerProps {
   onSubmitReply: (commentId: string) => void;
   onToggleResolved: (commentId: string, resolved: boolean) => void;
   commentsRailWidth?: number;
+  sequenceMessageEntries?: Array<{ index: number; line: string }>;
+  getSequenceMessageEndpointGeometry?: (messageIndex: number) => {
+    from: string;
+    to: string;
+    isSelf: boolean;
+    source: { x: number; y: number };
+    target: { x: number; y: number };
+    lifelines: Array<{ actorId: string; x: number }>;
+  } | null;
 }
 
 function normalizeSvgId(rawId: string | null | undefined, renderId: string | null): string {
@@ -68,6 +81,8 @@ export function CommentLayer({
   onSubmitReply,
   onToggleResolved,
   commentsRailWidth = 0,
+  sequenceMessageEntries = [],
+  getSequenceMessageEndpointGeometry,
 }: CommentLayerProps) {
   const renderId = renderIdRef.current;
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
@@ -123,6 +138,36 @@ export function CommentLayer({
       return nearest;
     };
 
+    const getSequenceMessageCanvasPosition = (index: number) => {
+      if (getSequenceMessageEndpointGeometry) {
+        const geometry = getSequenceMessageEndpointGeometry(index);
+        if (geometry) {
+          const anchorX = Math.max(geometry.source.x, geometry.target.x) + SEQUENCE_COMMENT_OFFSET;
+          const anchorY = (geometry.source.y + geometry.target.y) / 2;
+          return { x: anchorX, y: anchorY };
+        }
+      }
+
+      const textEl = messageTextEls[index] ?? null;
+      const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
+      if (!textEl && !lineEl) return null;
+
+      const textRect = textEl?.getBoundingClientRect();
+      const lineRect = lineEl?.getBoundingClientRect();
+      const referenceTop = lineRect?.top ?? textRect?.top ?? Number.POSITIVE_INFINITY;
+      const referenceRight = lineRect?.right ?? textRect?.right ?? Number.NEGATIVE_INFINITY;
+      const referenceBottom = lineRect?.bottom ?? textRect?.bottom ?? Number.NEGATIVE_INFINITY;
+      const rawX = referenceRight + SEQUENCE_COMMENT_OFFSET * scale;
+      const rawY =
+        lineRect && Number.isFinite(lineRect.top) && Number.isFinite(lineRect.height)
+          ? lineRect.top + lineRect.height / 2
+          : referenceTop + (referenceBottom - referenceTop) / 2;
+      return {
+        x: (rawX - safeContainerRect.left) / scale,
+        y: (rawY - safeContainerRect.top) / scale,
+      };
+    };
+
     for (const comment of comments) {
       let x = contentWidth / 2;
       let y = contentHeight / 2;
@@ -131,35 +176,50 @@ export function CommentLayer({
       if (comment.anchor.type === "canvas" && comment.anchor.position) {
         x = comment.anchor.position.x * contentWidth;
         y = comment.anchor.position.y * contentHeight;
-      } else if (comment.anchor.type === "shape" && comment.anchor.shapeId) {
-        const sequenceMatch = comment.anchor.shapeId.match(/^SEQ_MSG_(\d+)$/);
-        if (sequenceMatch) {
-          const index = Number(sequenceMatch[1]);
+      } else if (comment.anchor.type === "shape") {
+        const hasSequenceSignature = Boolean(comment.anchor.sequenceMessage);
+        const directSequenceIndex = Number(comment.anchor.shapeId?.match(/^SEQ_MSG_(\d+)$/)?.[1] ?? -1);
+        let sequenceIndex =
+          Number.isFinite(directSequenceIndex) && directSequenceIndex >= 0
+            ? directSequenceIndex
+            : hasSequenceSignature
+              ? findSequenceMessageIndexByAnchor(
+                  sequenceMessageEntries,
+                  comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
+                )
+              : directSequenceIndex;
+
+        if (
+          !hasSequenceSignature &&
+          Number.isFinite(sequenceIndex) &&
+          sequenceIndex >= 0 &&
+          comment.anchor.fallbackPos &&
+          sequenceMessageEntries.length > 0
+        ) {
+          let bestIndex = sequenceIndex;
+          let bestDist = Number.POSITIVE_INFINITY;
+          for (let i = 0; i < sequenceMessageEntries.length; i += 1) {
+            const pos = getSequenceMessageCanvasPosition(i);
+            if (!pos) continue;
+            const dist = Math.hypot(pos.x - comment.anchor.fallbackPos.x, pos.y - comment.anchor.fallbackPos.y);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIndex = i;
+            }
+          }
+          sequenceIndex = bestIndex;
+        }
+
+        if (Number.isFinite(sequenceIndex) && sequenceIndex >= 0) {
+          const index = sequenceIndex;
           const textEl = messageTextEls[index] ?? null;
           const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
           if (textEl || lineEl) {
-            const textRect = textEl?.getBoundingClientRect();
-            const lineRect = lineEl?.getBoundingClientRect();
-            const left = Math.min(
-              textRect?.left ?? Number.POSITIVE_INFINITY,
-              lineRect?.left ?? Number.POSITIVE_INFINITY,
-            );
-            const top = Math.min(
-              textRect?.top ?? Number.POSITIVE_INFINITY,
-              lineRect?.top ?? Number.POSITIVE_INFINITY,
-            );
-            const right = Math.max(
-              textRect?.right ?? Number.NEGATIVE_INFINITY,
-              lineRect?.right ?? Number.NEGATIVE_INFINITY,
-            );
-            const bottom = Math.max(
-              textRect?.bottom ?? Number.NEGATIVE_INFINITY,
-              lineRect?.bottom ?? Number.NEGATIVE_INFINITY,
-            );
-            const rawX = right + SEQUENCE_COMMENT_OFFSET * scale;
-            const rawY = top + (bottom - top) / 2;
-            x = (rawX - safeContainerRect.left) / scale;
-            y = (rawY - safeContainerRect.top) / scale;
+            const pos = getSequenceMessageCanvasPosition(index);
+            if (pos) {
+              x = pos.x;
+              y = pos.y;
+            }
             x = Math.min(contentWidth - 16, Math.max(16, x));
             y = Math.min(contentHeight - 16, Math.max(16, y));
             entries.set(comment.id, { x, y, missingTarget: false });
@@ -168,11 +228,11 @@ export function CommentLayer({
           if (comment.anchor.fallbackPos) {
             x = comment.anchor.fallbackPos.x;
             y = comment.anchor.fallbackPos.y;
-            missingTarget = true;
+            missingTarget = hasSequenceSignature;
           }
         }
 
-        if (!missingTarget) {
+        if (!missingTarget && !hasSequenceSignature) {
           const match = elements.find((el) => {
             const candidateId = el.getAttribute("data-id") || el.id;
             return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
@@ -213,7 +273,17 @@ export function CommentLayer({
     }
 
     return entries;
-  }, [canMeasure, comments, container, containerRect, contentHeight, contentWidth, renderId, scale]);
+  }, [
+    canMeasure,
+    comments,
+    container,
+    containerRect,
+    contentHeight,
+    contentWidth,
+    renderId,
+    scale,
+    sequenceMessageEntries,
+  ]);
 
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
   const visibleComments = useMemo(() => comments.filter((comment) => !comment.resolved), [comments]);

@@ -7,6 +7,8 @@
 // concrete backend — they only use the façade in `storage.ts` — so migrating backends is a
 // localized change.
 
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
+
 export interface DiagramDocument {
   id: string;
   name: string;
@@ -41,6 +43,13 @@ export interface DiagramCommentAnchor {
     x: number;
     y: number;
   };
+  sequenceMessage?: {
+    sender: string;
+    receiver: string;
+    operator: string;
+    label: string;
+    occurrence: number;
+  };
 }
 
 export interface DiagramCommentMessage {
@@ -74,9 +83,56 @@ export const IS_DEMO_MODE = process.env.DEMO_MODE === "true";
 // Coerce an arbitrary parsed record into a fully-formed DiagramDocument with safe defaults. Backend-
 // agnostic so both the FS adapter and a future Mongo adapter hydrate documents identically.
 export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
+  const sequenceMessageEntries = String(raw.code || "")
+    .split("\n")
+    .map((line, index) => ({ index, line }))
+    .filter(({ line }) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("%%")) return false;
+      const keywords = [
+        "sequenceDiagram",
+        "Note",
+        "note",
+        "rect",
+        "alt",
+        "opt",
+        "loop",
+        "par",
+        "critical",
+        "option",
+        "else",
+        "end",
+        "participant",
+        "actor",
+        "autonumber",
+        "activate",
+        "deactivate",
+        "box",
+        "links",
+        "link",
+        "properties",
+        "details",
+      ];
+      if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
+      return trimmed.includes(":");
+    });
+
   const normalizedComments: DiagramComment[] = Array.isArray(raw.comments)
     ? raw.comments.map((comment: any, index): DiagramComment => {
         if (comment && Array.isArray(comment.messages)) {
+          const legacySequenceMatch =
+            comment.anchor &&
+            comment.anchor.type === "shape" &&
+            typeof comment.anchor.shapeId === "string"
+              ? comment.anchor.shapeId.match(/^SEQ_MSG_(\d+)$/)
+              : null;
+          const derivedSequenceMessage =
+            comment.anchor &&
+            comment.anchor.type === "shape" &&
+            !comment.anchor.sequenceMessage &&
+            legacySequenceMatch
+              ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
+              : null;
           const anchor: DiagramCommentAnchor =
             comment.anchor && typeof comment.anchor === "object"
               ? comment.anchor.type === "shape"
@@ -93,6 +149,21 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
                             y: comment.anchor.fallbackPos.y,
                           }
                         : undefined,
+                    sequenceMessage:
+                      comment.anchor.sequenceMessage &&
+                      typeof comment.anchor.sequenceMessage.sender === "string" &&
+                      typeof comment.anchor.sequenceMessage.receiver === "string" &&
+                      typeof comment.anchor.sequenceMessage.operator === "string" &&
+                      typeof comment.anchor.sequenceMessage.label === "string" &&
+                      typeof comment.anchor.sequenceMessage.occurrence === "number"
+                        ? {
+                            sender: comment.anchor.sequenceMessage.sender,
+                            receiver: comment.anchor.sequenceMessage.receiver,
+                            operator: comment.anchor.sequenceMessage.operator,
+                            label: comment.anchor.sequenceMessage.label,
+                            occurrence: comment.anchor.sequenceMessage.occurrence,
+                          }
+                        : derivedSequenceMessage ?? undefined,
                   }
                 : {
                     type: "canvas",

@@ -20,6 +20,7 @@ import {
   findFlowchartEdgeLine,
   findSequenceParticipantLine,
 } from "@/lib/diagrams/selectionLineMap";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -1615,6 +1616,11 @@ export function LiveMaidEditor({
     [isSequenceMessageLine],
   );
 
+  const sequenceMessageEntries = useMemo(
+    () => getSequenceMessageEntries(code),
+    [code, getSequenceMessageEntries],
+  );
+
   const getSelectedSequenceParticipantForNote = useCallback(() => {
     if (!selectedNodeId) return null;
 
@@ -2079,19 +2085,44 @@ export function LiveMaidEditor({
 
   const openSelectionCommentComposer = useCallback(() => {
     if (!selectedNodeId || !selectionBox) return;
+    const sequenceMessageIndex = selectedNodeId.startsWith("SEQ_MSG_")
+      ? parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10)
+      : null;
+    const sequenceGeometry =
+      Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
+        ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
+        : null;
+    const fallbackPos =
+      sequenceGeometry && Number.isFinite(sequenceGeometry.source.x) && Number.isFinite(sequenceGeometry.target.x)
+        ? {
+            x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
+            y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
+          }
+        : {
+            x: selectionBox.x + selectionBox.width / 2,
+            y: selectionBox.y + selectionBox.height / 2,
+          };
     const anchor: DiagramCommentAnchor = {
       type: "shape",
       shapeId: selectedNodeId,
-      fallbackPos: {
-        x: selectionBox.x + selectionBox.width / 2,
-        y: selectionBox.y + selectionBox.height / 2,
-      },
+      fallbackPos,
     };
+
+    if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
+      const messageEntries = getSequenceMessageEntries(code);
+      const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
+      if (sequenceMessage) {
+        anchor.sequenceMessage = sequenceMessage;
+      }
+    }
+
     setCommentComposer({
       anchor,
       position: {
-        x: selectionBox.x + selectionBox.width + 12,
-        y: Math.max(12, selectionBox.y - 12),
+        x: sequenceGeometry
+          ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
+          : selectionBox.x + selectionBox.width + 12,
+        y: sequenceGeometry ? Math.max(12, fallbackPos.y - 12) : Math.max(12, selectionBox.y - 12),
       },
       targetLabel: `Anchored to ${selectedNodeId}`,
       commentMode: "shape",
@@ -2099,7 +2130,7 @@ export function LiveMaidEditor({
     setCommentDraft("");
     setIsCommentMode(false);
     setActiveCommentId(null);
-  }, [selectedNodeId, selectionBox]);
+  }, [code, getSequenceMessageEntries, getSequenceMessageEndpointGeometry, selectedNodeId, selectionBox]);
 
   const appendCommentReply = useCallback(
     async (commentId: string) => {
@@ -4409,6 +4440,8 @@ export function LiveMaidEditor({
             onToggleCommentResolved={toggleCommentResolved}
             renderIdRef={renderIdRef}
             commentsRailWidth={isCommentsOpen ? 384 : 0}
+            sequenceMessageEntries={sequenceMessageEntries}
+            getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
             sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
             sequenceBlockAreas={sequenceBlockAreas}
             startSequenceConnection={startSequenceConnection}
@@ -4479,7 +4512,6 @@ export function LiveMaidEditor({
             onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
             currentSequenceParticipantType={currentSequenceParticipantType}
             onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
-            getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
             onLinkSequenceNote={handleLinkSequenceNote}
             setIsInlineEditing={setIsInlineEditing}
             textBox={textBox}
