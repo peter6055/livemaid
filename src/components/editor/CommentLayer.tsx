@@ -7,8 +7,6 @@ import { CommentPin } from "./comments/CommentPin";
 
 const SHAPE_COMMENT_OFFSET = 12;
 const SEQUENCE_COMMENT_OFFSET = 28;
-const COMMENT_SIDEBAR_WIDTH = 384;
-
 type CommentComposerState = {
   anchor: DiagramCommentAnchor;
   position: { x: number; y: number };
@@ -31,8 +29,7 @@ interface CommentLayerProps {
   onChangeReplyDraft: (commentId: string, value: string) => void;
   onSubmitReply: (commentId: string) => void;
   onToggleResolved: (commentId: string, resolved: boolean) => void;
-  showThreadPopover: boolean;
-  commentsSidebarOpen?: boolean;
+  commentsRailWidth?: number;
 }
 
 function normalizeSvgId(rawId: string | null | undefined, renderId: string | null): string {
@@ -70,7 +67,7 @@ export function CommentLayer({
   onChangeReplyDraft,
   onSubmitReply,
   onToggleResolved,
-  commentsSidebarOpen = false,
+  commentsRailWidth = 0,
 }: CommentLayerProps) {
   const renderId = renderIdRef.current;
   const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null);
@@ -84,6 +81,9 @@ export function CommentLayer({
   const contentWidth = container?.offsetWidth || 1;
   const contentHeight = container?.offsetHeight || 1;
   const canMeasure = Boolean(container && containerRect);
+  const sidebarRect =
+    container?.ownerDocument?.querySelector<HTMLElement>("[data-comment-sidebar]")?.getBoundingClientRect() ??
+    null;
 
   const commentPositions = useMemo(() => {
     if (!canMeasure) return new Map<string, { x: number; y: number; missingTarget: boolean }>();
@@ -219,10 +219,17 @@ export function CommentLayer({
   const visibleComments = useMemo(() => comments.filter((comment) => !comment.resolved), [comments]);
 
   const clampBubblePosition = (preferredLeft: number, preferredTop: number, bubbleWidth: number, bubbleHeight: number) => {
-    const sidebarInset = commentsSidebarOpen ? COMMENT_SIDEBAR_WIDTH / scale : 0;
+    const railLeftBound = commentsRailWidth > 0 ? contentWidth - commentsRailWidth - bubbleWidth - 16 : null;
+    const rightBoundFromSidebar =
+      sidebarRect && containerRect
+        ? sidebarRect.left - containerRect.left - bubbleWidth - 12
+        : contentWidth - bubbleWidth - 16;
     const left = Math.min(
       Math.max(16, preferredLeft),
-      Math.max(16, contentWidth - bubbleWidth - 16 - sidebarInset),
+      Math.max(
+        16,
+        Math.min(contentWidth - bubbleWidth - 16, rightBoundFromSidebar, railLeftBound ?? Number.POSITIVE_INFINITY),
+      ),
     );
     const top = Math.min(
       Math.max(16, preferredTop),

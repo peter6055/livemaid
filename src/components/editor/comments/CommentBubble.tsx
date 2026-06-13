@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { DiagramComment } from "@/lib/api/storage";
 import { MessageSquareText, Send, X } from "lucide-react";
 
@@ -36,7 +35,7 @@ type CommentBubbleProps = ComposeBubbleProps | ThreadBubbleProps;
 
 export function CommentBubble(props: CommentBubbleProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const replyInputRef = useRef<HTMLInputElement | null>(null);
+  const replyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
@@ -123,42 +122,52 @@ export function CommentBubble(props: CommentBubbleProps) {
           </div>
         </div>
       ) : (
-        <div className="w-[22rem] rounded-2xl border border-border bg-background p-3 shadow-2xl">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">Comment thread</p>
-              <p className="text-xs text-muted-foreground">
-                {props.comment.messages.length} message
-                {props.comment.messages.length === 1 ? "" : "s"}
-                {props.comment.resolved ? " · Resolved" : ""}
-              </p>
-              {props.missingTarget && (
-                <p className="text-xs leading-5 text-amber-700 dark:text-amber-300">
-                  The shape has been deleted.
+        <div className="w-[22rem] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+          <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold text-foreground">Comment thread</p>
+                  {props.comment.resolved && (
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
+                      Resolved
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {props.comment.messages.length} message
+                  {props.comment.messages.length === 1 ? "" : "s"} ·{" "}
+                  {props.comment.resolved ? "Resolved" : "Open"} ·{" "}
+                  {props.comment.anchor.type === "canvas" ? "attached to canvas" : "attached to item"}
                 </p>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant={props.comment.resolved ? "outline" : "default"}
-                size="sm"
-                className={`h-11 px-5 text-base ${
-                  props.comment.resolved
-                    ? ""
-                    : "bg-emerald-600 text-white hover:bg-emerald-700"
-                }`}
-                onClick={props.onToggleResolved}
-              >
-                {props.comment.resolved ? "Reopen" : "Resolve"}
-              </Button>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose}>
-                <X className="h-4 w-4" />
-              </Button>
+                {props.missingTarget && (
+                  <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
+                    The shape has been deleted.
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={
+                    props.comment.resolved
+                      ? "h-8 border-border bg-background text-foreground hover:bg-accent/60"
+                      : "h-8 border-emerald-600 bg-background text-emerald-700 hover:border-emerald-600 hover:bg-emerald-600 hover:text-white"
+                  }
+                  onClick={props.onToggleResolved}
+                >
+                  {props.comment.resolved ? "Reopen" : "Resolve"}
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={props.onClose}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
-          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-56 space-y-2 overflow-y-auto px-3 py-3">
             {props.comment.messages.map((message) => (
-              <div key={message.id} className="rounded-lg bg-muted/50 px-3 py-2 text-sm">
+              <div key={message.id} className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
                 <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>{message.authorId}</span>
                   <span>{new Date(message.timestamp).toLocaleString()}</span>
@@ -167,22 +176,25 @@ export function CommentBubble(props: CommentBubbleProps) {
               </div>
             ))}
           </div>
-          <div className="mt-3 flex gap-2">
-            <Input
+          <div className="border-t border-border px-3 py-3">
+            <textarea
               ref={replyInputRef}
               value={props.replyValue}
               onChange={(event) => props.onChangeReplyValue(event.target.value)}
               placeholder="Reply..."
-              className="h-11"
+              className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
             />
-            <Button
-              size="sm"
-              className="h-11 px-4"
-              onClick={props.onSubmitReply}
-              disabled={!props.replyValue.trim()}
-            >
-              Reply
-            </Button>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to reply</p>
+              <Button
+                size="sm"
+                className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+                onClick={props.onSubmitReply}
+                disabled={!props.replyValue.trim()}
+              >
+                Reply
+              </Button>
+            </div>
           </div>
         </div>
       )}

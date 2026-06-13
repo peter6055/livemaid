@@ -24,7 +24,6 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { CommentLayer } from "./CommentLayer";
-import { CommentSidebar } from "./comments/CommentSidebar";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import {
   classNameFromSvgId,
@@ -54,6 +53,8 @@ import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
+
+const DEFAULT_CANVAS_INITIAL_SCALE = 1.75;
 
 interface EditorCanvasProps {
   code: string;
@@ -86,8 +87,6 @@ interface EditorCanvasProps {
   hoveredSequenceNoteBox: { x: number; y: number; width: number; height: number } | null;
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
   comments?: DiagramComment[];
-  openComments?: DiagramComment[];
-  resolvedComments?: DiagramComment[];
   activeCommentId?: string | null;
   onActivateComment?: (commentId: string | null) => void;
   onOpenSelectionCommentComposer?: () => void;
@@ -104,13 +103,8 @@ interface EditorCanvasProps {
   onChangeCommentReplyDraft?: (commentId: string, value: string) => void;
   onSubmitCommentReply?: (commentId: string) => void;
   onToggleCommentResolved?: (commentId: string, resolved: boolean) => void;
-  isCommentsOpen?: boolean;
-  isCommentMode?: boolean;
-  showResolvedComments?: boolean;
-  setShowResolvedComments?: (value: React.SetStateAction<boolean>) => void;
-  onStartCommentMode?: () => void;
-  onCloseCommentsSidebar?: () => void;
   renderIdRef?: React.MutableRefObject<string | null>;
+  commentsRailWidth?: number;
   sequenceMessageTriggerAreas: Array<{
     index: number;
     x: number;
@@ -342,8 +336,6 @@ export function EditorCanvas({
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   comments = [],
-  openComments = [],
-  resolvedComments = [],
   activeCommentId = null,
   onActivateComment,
   onOpenSelectionCommentComposer,
@@ -355,13 +347,8 @@ export function EditorCanvas({
   onChangeCommentReplyDraft,
   onSubmitCommentReply,
   onToggleCommentResolved,
-  isCommentsOpen = false,
-  isCommentMode = false,
-  showResolvedComments = false,
-  setShowResolvedComments,
-  onStartCommentMode,
-  onCloseCommentsSidebar,
   renderIdRef,
+  commentsRailWidth = 0,
   sequenceMessageTriggerAreas,
   sequenceBlockAreas,
   startSequenceConnection,
@@ -1707,7 +1694,7 @@ export function EditorCanvas({
         }}
       />
       <TransformWrapper
-        initialScale={1.5}
+        initialScale={DEFAULT_CANVAS_INITIAL_SCALE}
         minScale={0.5}
         maxScale={50}
         centerOnInit={true}
@@ -1890,8 +1877,7 @@ export function EditorCanvas({
                   onChangeReplyDraft={onChangeCommentReplyDraft ?? (() => {})}
                   onSubmitReply={onSubmitCommentReply ?? (() => {})}
                   onToggleResolved={onToggleCommentResolved ?? (() => {})}
-                  showThreadPopover={!isCommentsOpen}
-                  commentsSidebarOpen={isCommentsOpen}
+                  commentsRailWidth={commentsRailWidth}
                 />
 
                 {/* Logic-block / highlight overlays are intentionally NOT drawn: Mermaid already
@@ -2336,8 +2322,10 @@ export function EditorCanvas({
                               // (rows pack to a few px apart while the bar keeps a min screen size), so
                               // it must straddle its own endpoint symmetrically at every zoom level.
                               top: pt.y,
-                              width: "10px",
-                              height: "32px",
+                              width: "14px",
+                              height: "44px",
+                              minWidth: "14px",
+                              minHeight: "44px",
                               transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
                             }}
                             title={
@@ -2810,23 +2798,6 @@ export function EditorCanvas({
           </>
         )}
       </TransformWrapper>
-
-      {isCommentsOpen && (
-        <CommentSidebar
-          openComments={openComments}
-          resolvedComments={resolvedComments}
-          activeCommentId={activeCommentId ?? null}
-          showResolvedComments={showResolvedComments}
-          isCommentMode={isCommentMode}
-          onClose={onCloseCommentsSidebar ?? (() => {})}
-          onStartCommentMode={onStartCommentMode ?? (() => {})}
-          onActivateComment={onActivateComment ?? (() => {})}
-          onToggleResolvedComment={onToggleCommentResolved ?? (() => {})}
-          onToggleResolvedSection={() => {
-            setShowResolvedComments?.((current) => !current);
-          }}
-        />
-      )}
 
       {/* Class-diagram property panel — a viewport-level right-sidebar overlay rendered outside
           the TransformWrapper so canvas pan/zoom never moves it. */}

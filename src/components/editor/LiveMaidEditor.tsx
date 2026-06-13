@@ -25,6 +25,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
+import { CommentSidebar } from "./comments/CommentSidebar";
 import { ClassTextEditor } from "./ClassTextEditor";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
@@ -152,6 +153,8 @@ import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+
+const DEFAULT_HISTORY_PREVIEW_SCALE = 1.5;
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
@@ -3913,7 +3916,7 @@ export function LiveMaidEditor({
                         </div>
                       ) : previewSvgContent ? (
                         <TransformWrapper
-                          initialScale={1.35}
+                          initialScale={DEFAULT_HISTORY_PREVIEW_SCALE}
                           minScale={0.5}
                           maxScale={50}
                           wheel={{ wheelDisabled: true, step: 0.05 }}
@@ -4172,7 +4175,8 @@ export function LiveMaidEditor({
         </DialogContent>
       </Dialog>
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-grow">
+      <div className="flex flex-1 min-h-0 min-w-0">
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
         {isCodePanelOpen && (
           <>
             <ResizablePanel
@@ -4194,7 +4198,7 @@ export function LiveMaidEditor({
 
         <ResizablePanel
           defaultSize={isCodePanelOpen ? 74 : 100}
-          className="bg-white relative overflow-hidden text-zinc-900"
+          className="bg-white relative overflow-hidden text-zinc-900 min-w-0"
         >
           <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
             <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
@@ -4392,8 +4396,6 @@ export function LiveMaidEditor({
             hoveredSequenceNoteBox={hoveredSequenceNoteBox}
             hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
             comments={doc?.comments ?? []}
-            openComments={openComments}
-            resolvedComments={resolvedComments}
             activeCommentId={activeCommentId}
             onActivateComment={activateCommentThread}
             onOpenSelectionCommentComposer={openSelectionCommentComposer}
@@ -4405,13 +4407,8 @@ export function LiveMaidEditor({
             onChangeCommentReplyDraft={refreshCommentDraft}
             onSubmitCommentReply={appendCommentReply}
             onToggleCommentResolved={toggleCommentResolved}
-            isCommentsOpen={isCommentsOpen}
-            isCommentMode={isCommentMode}
-            showResolvedComments={showResolvedComments}
-            setShowResolvedComments={setShowResolvedComments}
-            onStartCommentMode={() => setIsCommentMode(true)}
-            onCloseCommentsSidebar={() => setIsCommentsOpen(false)}
             renderIdRef={renderIdRef}
+            commentsRailWidth={isCommentsOpen ? 384 : 0}
             sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
             sequenceBlockAreas={sequenceBlockAreas}
             startSequenceConnection={startSequenceConnection}
@@ -4519,7 +4516,27 @@ export function LiveMaidEditor({
             setShapePicker={setShapePicker}
           />
         </ResizablePanel>
-      </ResizablePanelGroup>
+        </ResizablePanelGroup>
+
+        {isCommentsOpen && (
+          <div className="h-full w-[24rem] shrink-0 min-h-0">
+            <CommentSidebar
+              openComments={openComments}
+              resolvedComments={resolvedComments}
+              activeCommentId={activeCommentId ?? null}
+              showResolvedComments={showResolvedComments}
+              isCommentMode={isCommentMode}
+              onClose={() => setIsCommentsOpen(false)}
+              onStartCommentMode={() => setIsCommentMode(true)}
+              onActivateComment={activateCommentThread}
+              onToggleResolvedComment={toggleCommentResolved}
+              onToggleResolvedSection={() => {
+                setShowResolvedComments?.((current) => !current);
+              }}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
       {classTextEdit && (
