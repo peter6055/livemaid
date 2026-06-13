@@ -155,7 +155,7 @@ import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diag
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 
-const DEFAULT_HISTORY_PREVIEW_SCALE = 1.5;
+const DEFAULT_HISTORY_PREVIEW_SCALE = 2;
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";

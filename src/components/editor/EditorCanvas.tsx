@@ -54,7 +54,7 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 
-const DEFAULT_CANVAS_INITIAL_SCALE = 1.75;
+const DEFAULT_CANVAS_INITIAL_SCALE = 2.25;
 
 interface EditorCanvasProps {
   code: string;
