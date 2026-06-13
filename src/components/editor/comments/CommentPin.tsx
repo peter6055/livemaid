@@ -53,9 +53,6 @@ export function CommentPin({
       onClick={onClick}
     >
       <Pin className="h-3.5 w-3.5" />
-      <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-slate-900 px-1 text-[10px] font-semibold text-white">
-        {threadCount}
-      </span>
       {resolved && (
         <span className="absolute -bottom-1 -right-1 inline-flex h-3 w-3 items-center justify-center rounded-full bg-emerald-500 text-white">
           <CheckCheck className="h-2 w-2" />
