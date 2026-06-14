@@ -40,7 +40,6 @@ import {
   PanelLeftOpen,
   FileQuestion,
   MessageSquarePlus,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -93,7 +92,6 @@ import {
   deleteClassNoteByIndex,
   findClassDefinitionLine,
   getNamespaceNames,
-  getClassNamespace,
   findNamespaceDefinitionLine,
   renameNamespace,
   deleteNamespace,
@@ -2038,6 +2036,23 @@ export function LiveMaidEditor({
     () => sortedComments.filter((comment) => comment.resolved),
     [sortedComments],
   );
+  const commentSortStorageKey = useMemo(() => `livemaid:comment-sort:${documentId}`, [documentId]);
+
+  const replaceCommentInDoc = useCallback(
+    (updatedComment: DiagramComment) => {
+      setDoc((prev) =>
+        prev
+          ? {
+              ...prev,
+              comments: (prev.comments ?? []).map((comment) =>
+                comment.id === updatedComment.id ? updatedComment : comment,
+              ),
+            }
+          : prev,
+      );
+    },
+    [setDoc],
+  );
 
   const refreshCommentDraft = useCallback((commentId: string, value: string) => {
     setCommentReplyDrafts((current) => ({ ...current, [commentId]: value }));
@@ -2149,16 +2164,7 @@ export function LiveMaidEditor({
         if (!response.ok) throw new Error("Failed to update comment");
         const updated = (await response.json()) as DiagramComment | null;
         if (updated) {
-          setDoc((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  comments: (prev.comments ?? []).map((comment) =>
-                    comment.id === updated.id ? updated : comment,
-                  ),
-                }
-              : prev,
-          );
+          replaceCommentInDoc(updated);
           setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
           toast.success("Reply added");
         }
@@ -2166,7 +2172,7 @@ export function LiveMaidEditor({
         toast.error("Failed to add reply");
       }
     },
-    [commentReplyDrafts, documentId, setDoc],
+    [commentReplyDrafts, documentId, replaceCommentInDoc],
   );
 
   const toggleCommentResolved = useCallback(
@@ -2180,22 +2186,33 @@ export function LiveMaidEditor({
         if (!response.ok) throw new Error("Failed to update comment");
         const updated = (await response.json()) as DiagramComment | null;
         if (updated) {
-          setDoc((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  comments: (prev.comments ?? []).map((comment) =>
-                    comment.id === updated.id ? updated : comment,
-                  ),
-                }
-              : prev,
-          );
+          replaceCommentInDoc(updated);
         }
       } catch {
         toast.error("Failed to update comment");
       }
     },
-    [documentId, setDoc],
+    [documentId, replaceCommentInDoc],
+  );
+
+  const toggleCommentStar = useCallback(
+    async (commentId: string, starred: boolean) => {
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commentId, starred }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (updated) {
+          replaceCommentInDoc(updated);
+        }
+      } catch {
+        toast.error("Failed to update comment");
+      }
+    },
+    [documentId, replaceCommentInDoc],
   );
 
   const activateCommentThread = useCallback(
@@ -4553,15 +4570,18 @@ export function LiveMaidEditor({
         {isCommentsOpen && (
           <div className="h-full w-[24rem] shrink-0 min-h-0">
             <CommentSidebar
+              key={commentSortStorageKey}
               openComments={openComments}
               resolvedComments={resolvedComments}
               activeCommentId={activeCommentId ?? null}
               showResolvedComments={showResolvedComments}
               isCommentMode={isCommentMode}
+              sortStorageKey={commentSortStorageKey}
               onClose={() => setIsCommentsOpen(false)}
               onStartCommentMode={() => setIsCommentMode(true)}
               onActivateComment={activateCommentThread}
               onToggleResolvedComment={toggleCommentResolved}
+              onToggleStarComment={toggleCommentStar}
               onToggleResolvedSection={() => {
                 setShowResolvedComments?.((current) => !current);
               }}

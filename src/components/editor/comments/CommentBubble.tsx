@@ -34,17 +34,21 @@ type ThreadBubbleProps = {
 type CommentBubbleProps = ComposeBubbleProps | ThreadBubbleProps;
 
 export function CommentBubble(props: CommentBubbleProps) {
+  const { kind, position, onClose } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const replyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    const el = props.kind === "compose" ? composeInputRef.current : replyInputRef.current;
-    el?.focus();
-    if (props.kind === "compose") {
-      composeInputRef.current?.select();
-    }
-  }, [props.kind, props.position.x, props.position.y]);
+    const el = kind === "compose" ? composeInputRef.current : replyInputRef.current;
+    const frame = window.requestAnimationFrame(() => {
+      el?.focus();
+      if (kind === "compose") {
+        composeInputRef.current?.select();
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [kind, position.x, position.y]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {
@@ -53,12 +57,12 @@ export function CommentBubble(props: CommentBubbleProps) {
       if (rootRef.current?.contains(target)) return;
       if (target.closest('[data-comment-sidebar]')) return;
       if (target.closest('[id^="comment-pin-"]')) return;
-      props.onClose();
+      onClose();
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        props.onClose();
+        onClose();
       }
     };
 
@@ -68,7 +72,7 @@ export function CommentBubble(props: CommentBubbleProps) {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [props.onClose]);
+  }, [onClose]);
 
   return (
     <div
@@ -78,15 +82,15 @@ export function CommentBubble(props: CommentBubbleProps) {
       data-inline-toolbar
       data-comment-bubble
       style={{
-        left: props.position.x,
-        top: props.position.y,
+        left: position.x,
+        top: position.y,
         transform: `scale(var(--zoom-inverse-scale, ${1 / props.scale}))`,
         transformOrigin: "top left",
       }}
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
-      {props.kind === "compose" ? (
+      {kind === "compose" ? (
         <div className="w-[19rem] rounded-2xl border border-border bg-background p-3 shadow-2xl">
           <div className="mb-2 flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -96,19 +100,28 @@ export function CommentBubble(props: CommentBubbleProps) {
               </p>
               <p className="truncate text-xs text-muted-foreground">{props.targetLabel}</p>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={props.onClose}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
               <X className="h-4 w-4" />
             </Button>
           </div>
           <textarea
             ref={composeInputRef}
+            autoFocus
             value={props.value}
             onChange={(event) => props.onChangeValue(event.target.value)}
+            onKeyDownCapture={(event) => {
+              event.stopPropagation();
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                props.onSubmit(props.value);
+              }
+            }}
+            onPointerDownCapture={(event) => event.stopPropagation()}
             placeholder="Write the first message..."
             className="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <div className="mt-3 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={props.onClose}>
+            <Button variant="outline" size="sm" onClick={onClose}>
               Cancel
             </Button>
             <Button
@@ -128,7 +141,7 @@ export function CommentBubble(props: CommentBubbleProps) {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-foreground">Comment thread</p>
-                  {props.comment.resolved && (
+                {props.comment.resolved && (
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
                       Resolved
                     </span>
@@ -155,11 +168,22 @@ export function CommentBubble(props: CommentBubbleProps) {
                       ? "h-8 border-border bg-background text-foreground hover:bg-accent/60"
                       : "h-8 border-emerald-600 bg-background text-emerald-700 hover:border-emerald-600 hover:bg-emerald-600 hover:text-white"
                   }
-                  onClick={props.onToggleResolved}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    props.onToggleResolved();
+                  }}
                 >
                   {props.comment.resolved ? "Reopen" : "Resolve"}
                 </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={props.onClose}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onClose();
+                  }}
+                >
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -177,18 +201,29 @@ export function CommentBubble(props: CommentBubbleProps) {
             ))}
           </div>
           <div className="border-t border-border px-3 py-3">
-            <textarea
-              ref={replyInputRef}
-              value={props.replyValue}
-              onChange={(event) => props.onChangeReplyValue(event.target.value)}
-              placeholder="Reply..."
-              className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
-            />
+          <textarea
+            ref={replyInputRef}
+            autoFocus
+            value={props.replyValue}
+            onChange={(event) => props.onChangeReplyValue(event.target.value)}
+            onKeyDownCapture={(event) => {
+              event.stopPropagation();
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                event.preventDefault();
+                if (props.replyValue.trim()) {
+                  props.onSubmitReply();
+                }
+              }
+            }}
+            onPointerDownCapture={(event) => event.stopPropagation()}
+            placeholder="Reply..."
+            className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
+          />
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to reply</p>
-              <Button
-                size="sm"
-                className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+            <Button
+              size="sm"
+              className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
                 onClick={props.onSubmitReply}
                 disabled={!props.replyValue.trim()}
               >

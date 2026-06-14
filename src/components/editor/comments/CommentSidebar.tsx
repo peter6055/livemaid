@@ -17,11 +17,13 @@ interface CommentSidebarProps {
   activeCommentId: string | null;
   showResolvedComments: boolean;
   isCommentMode: boolean;
+  sortStorageKey: string;
   onClose: () => void;
   onStartCommentMode: () => void;
   onActivateComment: (commentId: string) => void;
   onToggleResolvedComment: (commentId: string, resolved: boolean) => void;
   onToggleResolvedSection: () => void;
+  onToggleStarComment: (commentId: string, starred: boolean) => void;
 }
 
 type CommentSortMode =
@@ -42,6 +44,22 @@ type CommentCard = {
   createdAt: string;
   comment: DiagramComment;
 };
+
+const DEFAULT_SORT_MODE: CommentSortMode = "activity-desc";
+
+function isCommentSortMode(value: string | null): value is CommentSortMode {
+  return (
+    value === "activity-desc" ||
+    value === "activity-asc" ||
+    value === "created-desc" ||
+    value === "created-asc" ||
+    value === "position-asc" ||
+    value === "position-desc" ||
+    value === "replies-desc" ||
+    value === "replies-asc" ||
+    value === "starred-first"
+  );
+}
 
 function formatTimestamp(timestamp: string) {
   return new Date(timestamp).toLocaleString();
@@ -104,30 +122,38 @@ function getSortButtonLabel(mode: CommentSortMode) {
 
 function getSortMenuLabel(mode: CommentSortMode) {
   switch (mode) {
+    case "activity-desc":
+      return "Last activity · Newest first";
     case "activity-asc":
       return "Last activity · Oldest first";
+    case "created-desc":
+      return "Created date · Newest first";
+    case "created-asc":
+      return "Created date · Oldest first";
+    case "position-asc":
+      return "Position · Top to bottom";
+    case "position-desc":
+      return "Position · Bottom to top";
+    case "replies-desc":
+      return "Replies · Most first";
+    case "replies-asc":
+      return "Replies · Fewest first";
     case "starred-first":
       return "Starred first";
-    case "activity-desc":
     default:
       return "Last activity · Newest first";
   }
 }
 
-function compareCommentCards(
-  left: CommentCard,
-  right: CommentCard,
-  mode: CommentSortMode,
-  stars: Record<string, boolean>,
-) {
+function compareCommentCards(left: CommentCard, right: CommentCard, mode: CommentSortMode) {
   const leftActivity = new Date(left.timestamp).getTime() || 0;
   const rightActivity = new Date(right.timestamp).getTime() || 0;
   const leftCreated = new Date(left.createdAt).getTime() || 0;
   const rightCreated = new Date(right.createdAt).getTime() || 0;
   const leftReplies = left.comment.messages.length;
   const rightReplies = right.comment.messages.length;
-  const leftStarred = Boolean(stars[left.id]);
-  const rightStarred = Boolean(stars[right.id]);
+  const leftStarred = Boolean(left.comment.starred);
+  const rightStarred = Boolean(right.comment.starred);
   const leftPosition = getAnchorPosition(left.comment);
   const rightPosition = getAnchorPosition(right.comment);
 
@@ -161,8 +187,8 @@ function compareCommentCards(
   }
 }
 
-function sortCommentCards(cards: CommentCard[], mode: CommentSortMode, stars: Record<string, boolean>) {
-  return [...cards].sort((left, right) => compareCommentCards(left, right, mode, stars));
+function sortCommentCards(cards: CommentCard[], mode: CommentSortMode) {
+  return [...cards].sort((left, right) => compareCommentCards(left, right, mode));
 }
 
 function CommentThreadCard({
@@ -190,7 +216,7 @@ function CommentThreadCard({
     <div
       role="button"
       tabIndex={0}
-      className={`relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-colors ${
+          className={`relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-colors ${
         active
           ? "border-border bg-indigo-50/70 pl-[15px] dark:border-indigo-500/30 dark:bg-indigo-500/10"
           : "border-border bg-background hover:bg-accent/30"
@@ -219,11 +245,11 @@ function CommentThreadCard({
             </p>
           </div>
         </div>
-        <div className="mt-2 flex items-center justify-end gap-2">
+        <div className="mt-3 flex items-center justify-end gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className={`h-7 w-7 ${
+            className={`h-8 w-8 ${
               starred
                 ? "text-amber-500 hover:text-amber-600"
                 : "text-muted-foreground hover:text-foreground"
@@ -241,8 +267,8 @@ function CommentThreadCard({
             size="sm"
             className={
               resolved
-                ? "h-7 border-border bg-background text-foreground hover:bg-accent/60"
-                : "h-7 border-emerald-600 bg-background text-emerald-700 hover:border-emerald-600 hover:bg-emerald-600 hover:text-white"
+                ? "h-8 border-border bg-background text-foreground hover:bg-accent/60"
+                : "h-8 border-emerald-600 bg-background text-emerald-700 hover:border-emerald-600 hover:bg-emerald-600 hover:text-white"
             }
             onClick={(event) => {
               event.stopPropagation();
@@ -263,14 +289,19 @@ export function CommentSidebar({
   activeCommentId,
   showResolvedComments,
   isCommentMode,
+  sortStorageKey,
   onClose,
   onStartCommentMode,
   onActivateComment,
   onToggleResolvedComment,
   onToggleResolvedSection,
+  onToggleStarComment,
 }: CommentSidebarProps) {
-  const [starredCommentIds, setStarredCommentIds] = useState<Record<string, boolean>>({});
-  const [sortMode, setSortMode] = useState<CommentSortMode>("activity-desc");
+  const [sortMode, setSortMode] = useState<CommentSortMode>(() => {
+    if (typeof window === "undefined") return DEFAULT_SORT_MODE;
+    const saved = window.localStorage.getItem(sortStorageKey);
+    return isCommentSortMode(saved) ? saved : DEFAULT_SORT_MODE;
+  });
   const openCount = openComments.length;
   const resolvedCount = resolvedComments.length;
 
@@ -299,17 +330,18 @@ export function CommentSidebar({
   );
 
   const sortedOpenCommentCards = useMemo(
-    () => sortCommentCards(openCommentCards, sortMode, starredCommentIds),
-    [openCommentCards, sortMode, starredCommentIds],
+    () => sortCommentCards(openCommentCards, sortMode),
+    [openCommentCards, sortMode],
   );
   const sortedResolvedCommentCards = useMemo(
-    () => sortCommentCards(resolvedCommentCards, sortMode, starredCommentIds),
-    [resolvedCommentCards, sortMode, starredCommentIds],
+    () => sortCommentCards(resolvedCommentCards, sortMode),
+    [resolvedCommentCards, sortMode],
   );
 
-  const toggleStar = (commentId: string) => {
-    setStarredCommentIds((current) => ({ ...current, [commentId]: !current[commentId] }));
-  };
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(sortStorageKey, sortMode);
+  }, [sortMode, sortStorageKey]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -394,6 +426,60 @@ export function CommentSidebar({
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("created-desc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("created-desc")}</span>
+                  {sortMode === "created-desc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("created-asc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("created-asc")}</span>
+                  {sortMode === "created-asc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("position-asc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("position-asc")}</span>
+                  {sortMode === "position-asc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("position-desc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("position-desc")}</span>
+                  {sortMode === "position-desc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("replies-desc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("replies-desc")}</span>
+                  {sortMode === "replies-desc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
+                onClick={() => setSortMode("replies-asc")}
+              >
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span>{getSortMenuLabel("replies-asc")}</span>
+                  {sortMode === "replies-asc" && <Check className="h-4 w-4 text-foreground" />}
+                </span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
                 onClick={() => setSortMode("starred-first")}
               >
                 <span className="flex w-full items-center justify-between gap-3">
@@ -413,8 +499,6 @@ export function CommentSidebar({
         <div className="space-y-2">
           {sortedOpenCommentCards.length > 0 ? (
             sortedOpenCommentCards.map(({ id, snippet, timestamp, comment }) => {
-              const starred = Boolean(starredCommentIds[id]);
-
               return (
                 <CommentThreadCard
                   key={id}
@@ -422,10 +506,10 @@ export function CommentSidebar({
                   timestamp={timestamp}
                   comment={comment}
                   active={activeCommentId === id}
-                  starred={starred}
+                  starred={Boolean(comment.starred)}
                   resolved={false}
                   onActivate={() => onActivateComment(id)}
-                  onToggleStar={() => toggleStar(id)}
+                  onToggleStar={() => onToggleStarComment(id, !comment.starred)}
                   onToggleResolved={() => onToggleResolvedComment(id, true)}
                 />
               );
@@ -460,8 +544,6 @@ export function CommentSidebar({
             <div className="mt-2 space-y-2">
               {sortedResolvedCommentCards.length > 0 ? (
                 sortedResolvedCommentCards.map(({ id, snippet, timestamp, comment }) => {
-                  const starred = Boolean(starredCommentIds[id]);
-
                   return (
                     <CommentThreadCard
                       key={id}
@@ -469,10 +551,10 @@ export function CommentSidebar({
                       timestamp={timestamp}
                       comment={comment}
                       active={activeCommentId === id}
-                      starred={starred}
+                      starred={Boolean(comment.starred)}
                       resolved
                       onActivate={() => onActivateComment(id)}
-                      onToggleStar={() => toggleStar(id)}
+                      onToggleStar={() => onToggleStarComment(id, !comment.starred)}
                       onToggleResolved={() => onToggleResolvedComment(id, false)}
                     />
                   );

@@ -28,6 +28,7 @@ export interface DiagramComment {
   anchor: DiagramCommentAnchor;
   messages: DiagramCommentMessage[];
   resolved: boolean;
+  starred?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,6 +81,10 @@ export interface Folder {
 // that return 403s for writes) shares a single source of truth.
 export const IS_DEMO_MODE = process.env.DEMO_MODE === "true";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 // Coerce an arbitrary parsed record into a fully-formed DiagramDocument with safe defaults. Backend-
 // agnostic so both the FS adapter and a future Mongo adapter hydrate documents identically.
 export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
@@ -118,90 +123,100 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     });
 
   const normalizedComments: DiagramComment[] = Array.isArray(raw.comments)
-    ? raw.comments.map((comment: any, index): DiagramComment => {
-        if (comment && Array.isArray(comment.messages)) {
+    ? raw.comments.map((comment, index): DiagramComment => {
+        const rawComment = isRecord(comment) ? comment : null;
+        if (rawComment && Array.isArray(rawComment.messages)) {
+          const rawAnchor = isRecord(rawComment.anchor) ? rawComment.anchor : null;
           const legacySequenceMatch =
-            comment.anchor &&
-            comment.anchor.type === "shape" &&
-            typeof comment.anchor.shapeId === "string"
-              ? comment.anchor.shapeId.match(/^SEQ_MSG_(\d+)$/)
+            rawAnchor &&
+            rawAnchor.type === "shape" &&
+            typeof rawAnchor.shapeId === "string"
+              ? rawAnchor.shapeId.match(/^SEQ_MSG_(\d+)$/)
               : null;
           const derivedSequenceMessage =
-            comment.anchor &&
-            comment.anchor.type === "shape" &&
-            !comment.anchor.sequenceMessage &&
+            rawAnchor &&
+            rawAnchor.type === "shape" &&
+            !rawAnchor.sequenceMessage &&
             legacySequenceMatch
               ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
               : null;
           const anchor: DiagramCommentAnchor =
-            comment.anchor && typeof comment.anchor === "object"
-              ? comment.anchor.type === "shape"
+            rawAnchor
+              ? rawAnchor.type === "shape"
                 ? {
                     type: "shape",
                     shapeId:
-                      typeof comment.anchor.shapeId === "string" ? comment.anchor.shapeId : undefined,
+                      typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId : undefined,
                     fallbackPos:
-                      comment.anchor.fallbackPos &&
-                      typeof comment.anchor.fallbackPos.x === "number" &&
-                      typeof comment.anchor.fallbackPos.y === "number"
+                      isRecord(rawAnchor.fallbackPos) &&
+                      typeof rawAnchor.fallbackPos.x === "number" &&
+                      typeof rawAnchor.fallbackPos.y === "number"
                         ? {
-                            x: comment.anchor.fallbackPos.x,
-                            y: comment.anchor.fallbackPos.y,
+                            x: rawAnchor.fallbackPos.x,
+                            y: rawAnchor.fallbackPos.y,
                           }
                         : undefined,
                     sequenceMessage:
-                      comment.anchor.sequenceMessage &&
-                      typeof comment.anchor.sequenceMessage.sender === "string" &&
-                      typeof comment.anchor.sequenceMessage.receiver === "string" &&
-                      typeof comment.anchor.sequenceMessage.operator === "string" &&
-                      typeof comment.anchor.sequenceMessage.label === "string" &&
-                      typeof comment.anchor.sequenceMessage.occurrence === "number"
+                      isRecord(rawAnchor.sequenceMessage) &&
+                      typeof rawAnchor.sequenceMessage.sender === "string" &&
+                      typeof rawAnchor.sequenceMessage.receiver === "string" &&
+                      typeof rawAnchor.sequenceMessage.operator === "string" &&
+                      typeof rawAnchor.sequenceMessage.label === "string" &&
+                      typeof rawAnchor.sequenceMessage.occurrence === "number"
                         ? {
-                            sender: comment.anchor.sequenceMessage.sender,
-                            receiver: comment.anchor.sequenceMessage.receiver,
-                            operator: comment.anchor.sequenceMessage.operator,
-                            label: comment.anchor.sequenceMessage.label,
-                            occurrence: comment.anchor.sequenceMessage.occurrence,
+                            sender: rawAnchor.sequenceMessage.sender,
+                            receiver: rawAnchor.sequenceMessage.receiver,
+                            operator: rawAnchor.sequenceMessage.operator,
+                            label: rawAnchor.sequenceMessage.label,
+                            occurrence: rawAnchor.sequenceMessage.occurrence,
                           }
                         : derivedSequenceMessage ?? undefined,
                   }
                 : {
                     type: "canvas",
                     position:
-                      comment.anchor.position &&
-                      typeof comment.anchor.position.x === "number" &&
-                      typeof comment.anchor.position.y === "number"
+                      isRecord(rawAnchor.position) &&
+                      typeof rawAnchor.position.x === "number" &&
+                      typeof rawAnchor.position.y === "number"
                         ? {
-                            x: comment.anchor.position.x,
-                            y: comment.anchor.position.y,
+                            x: rawAnchor.position.x,
+                            y: rawAnchor.position.y,
                           }
                         : { x: 0.5, y: 0.5 },
                   }
               : { type: "canvas", position: { x: 0.5, y: 0.5 } };
           return {
-            id: typeof comment.id === "string" ? comment.id : `comment-${index}`,
+            id: typeof rawComment.id === "string" ? rawComment.id : `comment-${index}`,
             anchor,
-            messages: comment.messages
-              .filter((message: any) => message && typeof message.content === "string")
-              .map((message: any, messageIndex: number) => ({
+            messages: rawComment.messages
+              .filter((message) => message && typeof message.content === "string")
+              .map((message, messageIndex: number) => ({
                 id: typeof message.id === "string" ? message.id : `comment-${index}-message-${messageIndex}`,
                 content: message.content,
                 authorId: typeof message.authorId === "string" ? message.authorId : "anonymous",
                 timestamp:
                   typeof message.timestamp === "string" ? message.timestamp : new Date().toISOString(),
-              })),
-            resolved: Boolean(comment.resolved),
+            })),
+            resolved: Boolean(rawComment.resolved),
+            starred: Boolean(rawComment.starred),
             createdAt:
-              typeof comment.createdAt === "string" ? comment.createdAt : new Date().toISOString(),
+              typeof rawComment.createdAt === "string" ? rawComment.createdAt : new Date().toISOString(),
             updatedAt:
-              typeof comment.updatedAt === "string" ? comment.updatedAt : new Date().toISOString(),
+              typeof rawComment.updatedAt === "string" ? rawComment.updatedAt : new Date().toISOString(),
           };
         }
 
+        const rawLegacyComment = isRecord(comment) ? comment : null;
         const timestamp =
-          typeof comment?.timestamp === "string" ? comment.timestamp : new Date().toISOString();
-        const content = typeof comment?.content === "string" ? comment.content : "";
-        const id = typeof comment?.id === "string" ? comment.id : `legacy-comment-${index}`;
+          rawLegacyComment && typeof rawLegacyComment.timestamp === "string"
+            ? rawLegacyComment.timestamp
+            : new Date().toISOString();
+        const content =
+          rawLegacyComment && typeof rawLegacyComment.content === "string" ? rawLegacyComment.content : "";
+        const id =
+          rawLegacyComment && typeof rawLegacyComment.id === "string"
+            ? rawLegacyComment.id
+            : `legacy-comment-${index}`;
         return {
           id,
           anchor: { type: "canvas", position: { x: 0.5, y: 0.5 } },
@@ -214,6 +229,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
             },
           ],
           resolved: false,
+          starred: false,
           createdAt: timestamp,
           updatedAt: timestamp,
         };

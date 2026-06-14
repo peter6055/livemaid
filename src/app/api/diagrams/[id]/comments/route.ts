@@ -3,7 +3,11 @@ import { getDiagram, saveDiagram, IS_DEMO_MODE, type DiagramComment } from "@/li
 import { nanoid } from "nanoid";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 
-function normalizeAnchor(anchor: any, code: string): DiagramComment["anchor"] {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeAnchor(anchor: unknown, code: string): DiagramComment["anchor"] {
   const sequenceMessageEntries = String(code || "")
     .split("\n")
     .map((line, index) => ({ index, line }))
@@ -38,53 +42,57 @@ function normalizeAnchor(anchor: any, code: string): DiagramComment["anchor"] {
       return trimmed.includes(":");
     });
 
-  if (anchor && anchor.type === "shape") {
+  const rawAnchor = isRecord(anchor) ? anchor : null;
+
+  if (rawAnchor?.type === "shape") {
     const legacySequenceMatch =
-      typeof anchor.shapeId === "string" ? anchor.shapeId.match(/^SEQ_MSG_(\d+)$/) : null;
+      typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId.match(/^SEQ_MSG_(\d+)$/) : null;
     const derivedSequenceMessage =
-      !anchor.sequenceMessage && legacySequenceMatch
+      !rawAnchor.sequenceMessage && legacySequenceMatch
         ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
         : null;
 
+    const rawFallbackPos = isRecord(rawAnchor.fallbackPos) ? rawAnchor.fallbackPos : null;
+    const rawSequenceMessage = isRecord(rawAnchor.sequenceMessage) ? rawAnchor.sequenceMessage : null;
+
     return {
       type: "shape",
-      shapeId: typeof anchor.shapeId === "string" ? anchor.shapeId : undefined,
+      shapeId: typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId : undefined,
       fallbackPos:
-        anchor.fallbackPos &&
-        typeof anchor.fallbackPos.x === "number" &&
-        typeof anchor.fallbackPos.y === "number"
+        rawFallbackPos &&
+        typeof rawFallbackPos.x === "number" &&
+        typeof rawFallbackPos.y === "number"
           ? {
-              x: anchor.fallbackPos.x,
-              y: anchor.fallbackPos.y,
+              x: rawFallbackPos.x,
+              y: rawFallbackPos.y,
             }
           : undefined,
       sequenceMessage:
-        anchor.sequenceMessage &&
-        typeof anchor.sequenceMessage.sender === "string" &&
-        typeof anchor.sequenceMessage.receiver === "string" &&
-        typeof anchor.sequenceMessage.operator === "string" &&
-        typeof anchor.sequenceMessage.label === "string" &&
-        typeof anchor.sequenceMessage.occurrence === "number"
+        rawSequenceMessage &&
+        typeof rawSequenceMessage.sender === "string" &&
+        typeof rawSequenceMessage.receiver === "string" &&
+        typeof rawSequenceMessage.operator === "string" &&
+        typeof rawSequenceMessage.label === "string" &&
+        typeof rawSequenceMessage.occurrence === "number"
           ? {
-              sender: anchor.sequenceMessage.sender,
-              receiver: anchor.sequenceMessage.receiver,
-              operator: anchor.sequenceMessage.operator,
-              label: anchor.sequenceMessage.label,
-              occurrence: anchor.sequenceMessage.occurrence,
+              sender: rawSequenceMessage.sender,
+              receiver: rawSequenceMessage.receiver,
+              operator: rawSequenceMessage.operator,
+              label: rawSequenceMessage.label,
+              occurrence: rawSequenceMessage.occurrence,
             }
           : derivedSequenceMessage ?? undefined,
     };
   }
   if (
-    anchor &&
-    anchor.type === "canvas" &&
-    anchor.position &&
-    typeof anchor.position.x === "number" &&
-    typeof anchor.position.y === "number"
+    rawAnchor?.type === "canvas" &&
+    isRecord(rawAnchor.position) &&
+    typeof rawAnchor.position.x === "number" &&
+    typeof rawAnchor.position.y === "number"
   ) {
     return {
       type: "canvas",
-      position: { x: anchor.position.x, y: anchor.position.y },
+      position: { x: rawAnchor.position.x, y: rawAnchor.position.y },
     };
   }
   return { type: "canvas", position: { x: 0.5, y: 0.5 } };
@@ -134,6 +142,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         },
       ],
       resolved: false,
+      starred: false,
       createdAt: now,
       updatedAt: now,
     };
@@ -189,6 +198,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         ...comment,
         messages: nextMessages,
         resolved: typeof body.resolved === "boolean" ? body.resolved : comment.resolved,
+        starred: typeof body.starred === "boolean" ? body.starred : comment.starred,
         updatedAt: now,
       };
     });
