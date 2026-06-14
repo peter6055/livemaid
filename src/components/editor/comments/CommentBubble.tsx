@@ -33,6 +33,8 @@ type ThreadBubbleProps = {
 
 type CommentBubbleProps = ComposeBubbleProps | ThreadBubbleProps;
 
+const THREAD_MAX_HEIGHT = "min(calc(100vh - 2rem), 26rem)";
+
 export function CommentBubble(props: CommentBubbleProps) {
   const { kind, position, onClose } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -136,13 +138,16 @@ export function CommentBubble(props: CommentBubbleProps) {
           </div>
         </div>
       ) : (
-        <div className="flex max-h-[calc(100vh-2rem)] w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+        <div
+          className="flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
+          style={{ height: THREAD_MAX_HEIGHT }}
+        >
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <p className="text-sm font-semibold text-foreground">Comment thread</p>
-                {props.comment.resolved && (
+                  {props.comment.resolved && (
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-300">
                       Resolved
                     </span>
@@ -205,29 +210,29 @@ export function CommentBubble(props: CommentBubbleProps) {
             ))}
           </div>
           <div className="border-t border-border px-3 py-3">
-          <textarea
-            ref={replyInputRef}
-            autoFocus
-            value={props.replyValue}
-            onChange={(event) => props.onChangeReplyValue(event.target.value)}
-            onKeyDownCapture={(event) => {
-              event.stopPropagation();
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                event.preventDefault();
-                if (props.replyValue.trim()) {
-                  props.onSubmitReply();
+            <textarea
+              ref={replyInputRef}
+              autoFocus
+              value={props.replyValue}
+              onChange={(event) => props.onChangeReplyValue(event.target.value)}
+              onKeyDownCapture={(event) => {
+                event.stopPropagation();
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  if (props.replyValue.trim()) {
+                    props.onSubmitReply();
+                  }
                 }
-              }
-            }}
-            onPointerDownCapture={(event) => event.stopPropagation()}
-            placeholder="Reply..."
-            className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
-          />
+              }}
+              onPointerDownCapture={(event) => event.stopPropagation()}
+              placeholder="Reply..."
+              className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
+            />
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to reply</p>
-            <Button
-              size="sm"
-              className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+              <Button
+                size="sm"
+                className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
                 onClick={props.onSubmitReply}
                 disabled={!props.replyValue.trim()}
               >
