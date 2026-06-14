@@ -33,7 +33,7 @@ type ThreadBubbleProps = {
 
 type CommentBubbleProps = ComposeBubbleProps | ThreadBubbleProps;
 
-const THREAD_MAX_HEIGHT = "300px";
+const THREAD_MAX_HEIGHT = "440px";
 
 export function CommentBubble(props: CommentBubbleProps) {
   const { kind, position, onClose } = props;
