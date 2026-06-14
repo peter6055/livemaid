@@ -89,6 +89,7 @@ export function CommentBubble(props: CommentBubbleProps) {
       }}
       onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
+      onWheelCapture={(event) => event.stopPropagation()}
     >
       {kind === "compose" ? (
         <div className="w-[19rem] rounded-2xl border border-border bg-background p-3 shadow-2xl">
@@ -135,7 +136,7 @@ export function CommentBubble(props: CommentBubbleProps) {
           </div>
         </div>
       ) : (
-        <div className="w-[22rem] overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
+        <div className="flex max-h-[calc(100vh-2rem)] w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -189,7 +190,10 @@ export function CommentBubble(props: CommentBubbleProps) {
               </div>
             </div>
           </div>
-          <div className="max-h-56 space-y-2 overflow-y-auto px-3 py-3">
+          <div
+            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-3"
+            onWheelCapture={(event) => event.stopPropagation()}
+          >
             {props.comment.messages.map((message) => (
               <div key={message.id} className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
                 <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
