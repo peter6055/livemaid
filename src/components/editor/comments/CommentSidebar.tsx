@@ -360,9 +360,6 @@ export function CommentSidebar({
     <aside
       data-comment-sidebar
       className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-background text-foreground"
-      onMouseDownCapture={(event) => event.stopPropagation()}
-      onPointerDownCapture={(event) => event.stopPropagation()}
-      onClickCapture={(event) => event.stopPropagation()}
       onWheelCapture={(event) => event.stopPropagation()}
     >
       <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-4 backdrop-blur">
@@ -387,7 +384,23 @@ export function CommentSidebar({
               Add comment
             </Button>
 
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="Close comments"
+              title="Close comments"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onClose();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onClose();
+              }}
+            >
               <X className="h-4 w-4" />
             </Button>
           </div>

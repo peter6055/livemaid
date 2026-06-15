@@ -3918,7 +3918,7 @@ export function LiveMaidEditor({
         onRenameInline={renameDiagram}
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
-        onComments={() => setIsCommentsOpen(true)}
+        onComments={() => setIsCommentsOpen((current) => !current)}
       />
 
       {IS_DEMO_MODE && <DemoBanner />}
