@@ -8,6 +8,10 @@ import {
   findSequenceMessageIndexByAnchor,
   type SequenceMessageAnchorSignature,
 } from "@/lib/diagrams/sequenceCommentAnchor";
+import {
+  getSequenceNoteRectForText,
+  getSortedSequenceNoteTextElements,
+} from "@/lib/diagrams/sequenceNotes";
 
 const SHAPE_COMMENT_OFFSET = 8;
 const SEQUENCE_COMMENT_OFFSET = 10;
@@ -111,6 +115,7 @@ export function CommentLayer({
     const messageLineEls = Array.from(
       safeContainer.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
     ) as SVGElement[];
+    const noteTextEls = getSortedSequenceNoteTextElements(safeContainer);
 
     const findNearestLineForText = (textEl: SVGElement) => {
       if (messageLineEls.length === 0) return null;
@@ -168,6 +173,17 @@ export function CommentLayer({
       };
     };
 
+    const getSequenceNoteCanvasPosition = (index: number) => {
+      const textEl = noteTextEls[index] ?? null;
+      if (!textEl) return null;
+      const rectEl = getSequenceNoteRectForText(textEl) ?? textEl;
+      const rect = rectEl.getBoundingClientRect();
+      return {
+        x: (rect.right + SHAPE_COMMENT_OFFSET * scale - safeContainerRect.left) / scale,
+        y: (rect.top + rect.height / 2 - safeContainerRect.top) / scale,
+      };
+    };
+
     for (const comment of comments) {
       let x = contentWidth / 2;
       let y = contentHeight / 2;
@@ -179,6 +195,7 @@ export function CommentLayer({
       } else if (comment.anchor.type === "shape") {
         const hasSequenceSignature = Boolean(comment.anchor.sequenceMessage);
         const directSequenceIndex = Number(comment.anchor.shapeId?.match(/^SEQ_MSG_(\d+)$/)?.[1] ?? -1);
+        const directSequenceNoteIndex = Number(comment.anchor.shapeId?.match(/^SEQ_NOTE_(\d+)$/)?.[1] ?? -1);
         let sequenceIndex =
           Number.isFinite(directSequenceIndex) && directSequenceIndex >= 0
             ? directSequenceIndex
@@ -186,8 +203,27 @@ export function CommentLayer({
               ? findSequenceMessageIndexByAnchor(
                   sequenceMessageEntries,
                   comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
-                )
+              )
               : directSequenceIndex;
+
+        if (Number.isFinite(directSequenceNoteIndex) && directSequenceNoteIndex >= 0) {
+          const notePos = getSequenceNoteCanvasPosition(directSequenceNoteIndex);
+          if (notePos) {
+            x = notePos.x;
+            y = notePos.y;
+            x = Math.min(contentWidth - 16, Math.max(16, x));
+            y = Math.min(contentHeight - 16, Math.max(16, y));
+            entries.set(comment.id, { x, y, missingTarget: false });
+            continue;
+          }
+          if (comment.anchor.fallbackPos) {
+            x = comment.anchor.fallbackPos.x;
+            y = comment.anchor.fallbackPos.y;
+            missingTarget = true;
+            entries.set(comment.id, { x, y, missingTarget });
+            continue;
+          }
+        }
 
         if (
           !hasSequenceSignature &&

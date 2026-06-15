@@ -53,6 +53,7 @@ import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
+import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
 
 const DEFAULT_CANVAS_INITIAL_SCALE = 2.25;
 
@@ -775,7 +776,7 @@ export function EditorCanvas({
     const shellRect = shell.getBoundingClientRect();
 
     const textEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
-    const noteTextEls = Array.from(container.querySelectorAll(".noteText")) as SVGElement[];
+    const noteTextEls = getSortedSequenceNoteTextElements(container);
     if (textEls.length === 0 && noteTextEls.length === 0) return;
     const lineEls = Array.from(
       container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
@@ -825,8 +826,8 @@ export function EditorCanvas({
       });
     });
 
-    // Note rows: band = the note's rect.note box (full yellow box), keyed by .noteText DOM index
-    // so it matches the SEQ_NOTE_ selection id format.
+    // Note rows: band = the note's rect.note box (full yellow box), keyed by the same visual
+    // ordering used for SEQ_NOTE_ selection ids so drag-reorder and selection stay aligned.
     noteTextEls.forEach((el, j) => {
       const parentGroup = el.parentElement;
       const rectNote = (parentGroup?.querySelector("rect.note") ??

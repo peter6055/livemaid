@@ -1,6 +1,11 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
 import { isEdgeId, parseEdgeId, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
+import {
+  getSequenceNoteRectForText,
+  getSequenceNoteTextElementAtIndex,
+  getSortedSequenceNoteTextElements,
+} from "@/lib/diagrams/sequenceNotes";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -958,7 +963,7 @@ export function useCanvasInteraction({
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
-      const noteTextEls = Array.from(container.querySelectorAll(".noteText")) as SVGElement[];
+      const noteTextEls = getSortedNoteTextEls(container);
 
       const msgEntries = getSequenceMessageEntries(code);
       const codeLines = code.split("\n");
@@ -1384,6 +1389,10 @@ export function useCanvasInteraction({
     return entries;
   }, []);
 
+  function getSortedNoteTextEls(container: ParentNode | null | undefined) {
+    return getSortedSequenceNoteTextElements(container);
+  }
+
   // Insert a note at a specific message index
   const insertSequenceNoteAtIndex = useCallback(
     (
@@ -1448,12 +1457,9 @@ export function useCanvasInteraction({
     (startInlineEdit = false, index = -1) => {
       const container = containerRef.current;
       if (!container) return;
-      const noteTextEls = Array.from(container.querySelectorAll(".noteText")) as SVGElement[];
-      const textEl = noteTextEls[index] || null;
+      const textEl = getSequenceNoteTextElementAtIndex(container, index);
       if (!textEl) return;
-      const parentGroup = textEl.parentElement;
-      const rectNote = (parentGroup?.querySelector("rect.note") ??
-        parentGroup?.parentElement?.querySelector("rect.note")) as SVGElement | null;
+      const rectNote = getSequenceNoteRectForText(textEl);
       const containerRect = container.getBoundingClientRect();
       const scale = containerRect.width / container.offsetWidth;
       const boxEl: SVGElement = rectNote || textEl;
@@ -1874,7 +1880,7 @@ export function useCanvasInteraction({
       }
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
       const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
-      const allNotes = Array.from(containerRef.current.querySelectorAll(".noteText"));
+      const allNotes = getSortedNoteTextEls(containerRef.current);
       if (allNotes[idx]) {
         foundElement = allNotes[idx] as SVGElement;
         if (!foundElement.id) foundElement.id = `seq-note-${idx}`;
@@ -2319,7 +2325,7 @@ export function useCanvasInteraction({
         // Sequence note text (clicking the label text)
         if (currentNode.classList?.contains("noteText")) {
           foundNodeClass = true;
-          const allNotes = Array.from(containerRef.current?.querySelectorAll(".noteText") || []);
+          const allNotes = getSortedNoteTextEls(containerRef.current || document.body);
           const idx = allNotes.indexOf(currentNode);
           nodeId = `SEQ_NOTE_${idx >= 0 ? idx : 0}`;
           break;
@@ -2331,14 +2337,10 @@ export function useCanvasInteraction({
         ) {
           foundNodeClass = true;
           // Find the nearest .noteText sibling in the same parent group to resolve the index
-          const allNoteRects = Array.from(
-            containerRef.current?.querySelectorAll("rect.note") || [],
-          );
+          const allNoteRects = Array.from(containerRef.current?.querySelectorAll("rect.note") || []);
           const rectIdx = allNoteRects.indexOf(currentNode);
           // .noteText elements are in 1:1 correspondence with rect.note elements
-          const allNoteTexts = Array.from(
-            containerRef.current?.querySelectorAll(".noteText") || [],
-          );
+          const allNoteTexts = getSortedNoteTextEls(containerRef.current || document.body);
           const idx = rectIdx >= 0 && rectIdx < allNoteTexts.length ? rectIdx : 0;
           // Remap currentNode to the paired .noteText so selection/textBox logic finds the label
           if (allNoteTexts[idx]) {
@@ -2572,15 +2574,11 @@ export function useCanvasInteraction({
         // The foundElement is .noteText (for editing), but visually we want the yellow box bounds.
         if (cleanId && cleanId.startsWith("SEQ_NOTE_")) {
           const idx = parseInt(cleanId.replace("SEQ_NOTE_", ""), 10);
-          const allNoteTexts = Array.from(
-            containerRef.current.querySelectorAll(".noteText"),
-          ) as SVGElement[];
+          const allNoteTexts = getSortedNoteTextEls(containerRef.current);
           const noteTextEl =
             allNoteTexts[idx] || (currentNode.classList?.contains("noteText") ? currentNode : null);
           if (noteTextEl) {
-            const parentGroup = noteTextEl.parentElement;
-            const rectNote = (parentGroup?.querySelector("rect.note") ??
-              parentGroup?.parentElement?.querySelector("rect.note")) as SVGElement | null;
+            const rectNote = getSequenceNoteRectForText(noteTextEl);
             if (rectNote) {
               rect = rectNote.getBoundingClientRect();
               textRect = noteTextEl.getBoundingClientRect();
