@@ -173,14 +173,6 @@ export function useCanvasInteraction({
     textEl: SVGElement | null;
     lineEl: SVGElement | null;
   }>({ textEl: null, lineEl: null });
-  // Opener for the highlight-recolor popover. EditorCanvas owns the popover (it needs canvasShell
-  // coords + its own state), but the dblclick that triggers it is detected here in handleEditClick
-  // (the React onDoubleClick on the canvas does NOT fire for SVG rects because react-zoom-pan-pinch
-  // intercepts it — only the document-level capture dblclick listener that drives handleEditClick
-  // works). EditorCanvas assigns `.current`; handleEditClick calls it when a highlight rect is hit.
-  const openHighlightRecolorRef = useRef<
-    ((lineIndex: number, color: string, clientX: number, clientY: number) => void) | null
-  >(null);
 
   const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
     if (lineEls.length === 0) return null;
@@ -880,42 +872,6 @@ export function useCanvasInteraction({
         .sort((a, b) => a.startLine - b.startLine);
       if (idx >= openers.length) return null;
       return { lineIndex: openers[idx].startLine };
-    },
-    [containerRef, code, determineDiagramType, getSequenceBlockEntries],
-  );
-
-  // Map a double-clicked `rect` highlight background (`<rect class="rect" fill="rgb(...)">`) back
-  // to its SOURCE line + current color so it can be recolored. Like the block labels, Mermaid does
-  // NOT paint these rects in source order (inner/nested rects paint first), but their TOP edges are
-  // strictly ordered, so Y-sorting the highlight rects reproduces source order. We index the
-  // Y-sorted rects into the source-ordered `rect` blocks from `getSequenceBlockEntries`.
-  const resolveSequenceHighlightTarget = useCallback(
-    (clientX: number, clientY: number): { lineIndex: number; color: string } | null => {
-      const container = containerRef.current;
-      if (!container || determineDiagramType(code) !== "sequence") return null;
-
-      const isHighlightRect = (el: Element | null): el is SVGElement =>
-        !!el &&
-        el.tagName.toLowerCase() === "rect" &&
-        el.getAttribute("class") === "rect" &&
-        /^rgba?\(/i.test(el.getAttribute("fill") || "");
-
-      const hit = document.elementsFromPoint(clientX, clientY).find(isHighlightRect) as
-        | SVGElement
-        | undefined;
-      if (!hit) return null;
-
-      const rects = (Array.from(container.querySelectorAll("rect.rect")) as SVGElement[])
-        .filter((r) => /^rgba?\(/i.test(r.getAttribute("fill") || ""))
-        .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
-      const idx = rects.indexOf(hit);
-      if (idx < 0) return null;
-
-      const blocks = getSequenceBlockEntries(code)
-        .filter((b) => b.type === "rect")
-        .sort((a, b) => a.startLine - b.startLine);
-      if (idx >= blocks.length) return null;
-      return { lineIndex: blocks[idx].startLine, color: hit.getAttribute("fill") || "" };
     },
     [containerRef, code, determineDiagramType, getSequenceBlockEntries],
   );
@@ -2645,27 +2601,6 @@ export function useCanvasInteraction({
         return;
       }
 
-      // Double-clicking a `rect` highlight's colored background opens the recolor popover (highlights
-      // carry only a color, no text label). Detected here — NOT in EditorCanvas's React onDoubleClick
-      // — because react-zoom-pan-pinch swallows the synthetic dblclick on SVG rects; this path is
-      // reached via the document-level capture dblclick listener that also drives label/message edit.
-      if (
-        currentType === "sequence" &&
-        "clientX" in e &&
-        "clientY" in e &&
-        openHighlightRecolorRef.current
-      ) {
-        const hl = resolveSequenceHighlightTarget(e.clientX, e.clientY);
-        if (hl) {
-          if (isInlineEditing) {
-            commitEditRef.current?.();
-            setIsInlineEditing(false);
-          }
-          openHighlightRecolorRef.current(hl.lineIndex, hl.color, e.clientX, e.clientY);
-          return;
-        }
-      }
-
       // Resolve actual SVG element via elementsFromPoint to bypass overlay divs.
       // EXCEPTION: when invoked from a floating toolbar (e.g. the Rename button), the cursor is
       // over the toolbar — NOT the diagram element — so elementsFromPoint would resolve to whatever
@@ -2900,7 +2835,6 @@ export function useCanvasInteraction({
       getSequenceMessageEntries,
       isInlineEditing,
       resolveSequenceBlockLabelTarget,
-      resolveSequenceHighlightTarget,
     ],
   );
 
@@ -3784,8 +3718,6 @@ export function useCanvasInteraction({
     sequenceMessageTriggerAreas,
     sequenceBlockAreas,
     getSequenceBlockEntries,
-    resolveSequenceHighlightTarget,
-    openHighlightRecolorRef,
     dragState: null as null,
     setDragState: (_: unknown) => {},
     startSequenceConnection,

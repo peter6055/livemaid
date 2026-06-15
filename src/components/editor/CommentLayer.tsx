@@ -345,80 +345,84 @@ export function CommentLayer({
   };
 
   return (
-    <div className="absolute inset-0 pointer-events-none z-40">
-      {visibleComments.map((comment) => {
-        const pos = commentPositions.get(comment.id) || {
-          x: contentWidth / 2,
-          y: contentHeight / 2,
-          missingTarget: false,
-        };
-        const threadCount = comment.messages.length;
+    <>
+      <div className="absolute inset-0 pointer-events-none z-20">
+        {visibleComments.map((comment) => {
+          const pos = commentPositions.get(comment.id) || {
+            x: contentWidth / 2,
+            y: contentHeight / 2,
+            missingTarget: false,
+          };
+          const threadCount = comment.messages.length;
 
-        return (
-          <CommentPin
-            key={comment.id}
-            id={comment.id}
-            left={pos.x}
-            top={pos.y}
+          return (
+            <CommentPin
+              key={comment.id}
+              id={comment.id}
+              left={pos.x}
+              top={pos.y}
+              scale={scale}
+              threadCount={threadCount}
+              missingTarget={pos.missingTarget}
+              resolved={comment.resolved}
+              active={activeCommentId === comment.id}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.stopPropagation();
+                onActivateComment(comment.id);
+              }}
+            />
+          );
+        })}
+      </div>
+      <div className="absolute inset-0 pointer-events-none z-[70]">
+        {commentComposer && (
+          <CommentBubble
+            kind="compose"
+            position={(() => {
+              const bubbleWidth = 304 / scale;
+              const bubbleHeight = 240 / scale;
+              const next = clampBubblePosition(
+                commentComposer.position.x - bubbleWidth / 2,
+                commentComposer.position.y - bubbleHeight / 2,
+                bubbleWidth,
+                bubbleHeight,
+              );
+              return { x: next.left, y: next.top };
+            })()}
             scale={scale}
-            threadCount={threadCount}
-            missingTarget={pos.missingTarget}
-            resolved={comment.resolved}
-            active={activeCommentId === comment.id}
-            onMouseDown={(event) => {
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onActivateComment(comment.id);
-            }}
+            targetLabel={commentComposer.targetLabel}
+            value={commentDraft}
+            onChangeValue={setCommentDraft}
+            onSubmit={(value) => onSubmitComposer(value)}
+            onClose={() => onActivateComment(null)}
           />
-        );
-      })}
-
-      {commentComposer && (
-        <CommentBubble
-          kind="compose"
-          position={(() => {
-            const next = clampBubblePosition(
-              commentComposer.position.x - 12,
-              commentComposer.position.y - 12,
-              304 / scale,
-              240 / scale,
-            );
-            return { x: next.left, y: next.top };
-          })()}
-          scale={scale}
-          targetLabel={commentComposer.targetLabel}
-          value={commentDraft}
-          onChangeValue={setCommentDraft}
-          onSubmit={(value) => onSubmitComposer(value)}
-          onClose={() => onActivateComment(null)}
-        />
-      )}
-
-      {activeComment && !commentComposer && (
-        <CommentBubble
-          kind="thread"
-          position={(() => {
-            const next = clampBubblePosition(
-              (commentPositions.get(activeComment.id)?.x ?? contentWidth / 2) + 18,
-              (commentPositions.get(activeComment.id)?.y ?? contentHeight / 2) - 12,
-              352 / scale,
-              312 / scale,
-            );
-            return { x: next.left, y: next.top };
-          })()}
-          scale={scale}
-          comment={activeComment}
-          replyValue={commentReplyDrafts[activeComment.id] ?? ""}
-          missingTarget={commentPositions.get(activeComment.id)?.missingTarget ?? false}
-          onChangeReplyValue={(value) => onChangeReplyDraft(activeComment.id, value)}
-          onSubmitReply={() => onSubmitReply(activeComment.id)}
-          onToggleResolved={() => onToggleResolved(activeComment.id, !activeComment.resolved)}
-          onClose={() => onActivateComment(null)}
-        />
-      )}
-    </div>
+        )}
+        {activeComment && !commentComposer && (
+          <CommentBubble
+            kind="thread"
+            position={(() => {
+              const next = clampBubblePosition(
+                (commentPositions.get(activeComment.id)?.x ?? contentWidth / 2) + 18,
+                (commentPositions.get(activeComment.id)?.y ?? contentHeight / 2) - 12,
+                352 / scale,
+                312 / scale,
+              );
+              return { x: next.left, y: next.top };
+            })()}
+            scale={scale}
+            comment={activeComment}
+            replyValue={commentReplyDrafts[activeComment.id] ?? ""}
+            missingTarget={commentPositions.get(activeComment.id)?.missingTarget ?? false}
+            onChangeReplyValue={(value) => onChangeReplyDraft(activeComment.id, value)}
+            onSubmitReply={() => onSubmitReply(activeComment.id)}
+            onToggleResolved={() => onToggleResolved(activeComment.id, !activeComment.resolved)}
+            onClose={() => onActivateComment(null)}
+          />
+        )}
+      </div>
+    </>
   );
 }

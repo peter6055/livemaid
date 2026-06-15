@@ -343,19 +343,6 @@ export function CommentSidebar({
     window.localStorage.setItem(sortStorageKey, sortMode);
   }, [sortMode, sortStorageKey]);
 
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    document.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [onClose]);
-
   return (
     <aside
       data-comment-sidebar

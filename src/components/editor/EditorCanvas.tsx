@@ -1,4 +1,4 @@
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import {
   Lock,
   Unlock,
@@ -7,7 +7,6 @@ import {
   RotateCcw,
   GitBranch,
   SquareStack,
-  Palette,
   MessageSquareText,
 } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
@@ -48,14 +47,14 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
-import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
 
-const DEFAULT_CANVAS_INITIAL_SCALE = 2.25;
+const DEFAULT_CANVAS_INITIAL_SCALE = 2.75;
 
 interface EditorCanvasProps {
   code: string;
@@ -63,6 +62,7 @@ interface EditorCanvasProps {
   svgContent: string;
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
+  isCommentMode?: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
   handleSvgClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
@@ -89,6 +89,7 @@ interface EditorCanvasProps {
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
   comments?: DiagramComment[];
   activeCommentId?: string | null;
+  activeCommentFocusToken?: number;
   onActivateComment?: (commentId: string | null) => void;
   onOpenSelectionCommentComposer?: () => void;
   commentComposer?: {
@@ -123,10 +124,6 @@ interface EditorCanvasProps {
     position: "left" | "right" | "over",
   ) => void;
   onSequencePlusBlock?: (anchorY: number, type: SequenceBlockType) => void;
-  openHighlightRecolorRef?: React.MutableRefObject<
-    ((lineIndex: number, color: string, clientX: number, clientY: number) => void) | null
-  >;
-  onRecolorSequenceHighlight?: (lineIndex: number, color: string) => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
@@ -135,6 +132,7 @@ interface EditorCanvasProps {
   onReorderSequenceItem?: (item: { kind: "msg" | "note"; index: number }, toSlot: number) => void;
   onReorderSequenceLifelines?: (newOrderIds: string[]) => void;
   getSequenceLifelines?: () => Array<{ actorId: string; x: number; y1: number; y2: number }>;
+  currentSequenceNotePosition?: "left" | "right" | "over" | null;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -316,6 +314,48 @@ function shellBoxFromElement(
   return shellBoxFromRect(rect, shellRect);
 }
 
+function CommentFocusSync({
+  activeCommentId,
+  activeCommentFocusToken,
+  commentsRailWidth,
+}: {
+  activeCommentId: string | null;
+  activeCommentFocusToken: number;
+  commentsRailWidth: number;
+}) {
+  const { state, zoomToElement } = useControls();
+  const commentsRailWidthRef = useRef(commentsRailWidth);
+  const lastAppliedFocusTokenRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    commentsRailWidthRef.current = commentsRailWidth;
+  }, [commentsRailWidth]);
+
+  useEffect(() => {
+    if (!activeCommentId) return;
+    if (lastAppliedFocusTokenRef.current === activeCommentFocusToken) return;
+    lastAppliedFocusTokenRef.current = activeCommentFocusToken;
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.getElementById(`comment-pin-${activeCommentId}`);
+      if (!node) return;
+
+      zoomToElement(
+        node,
+        state.scale,
+        320,
+        "easeOut",
+        commentsRailWidthRef.current > 0 ? -(commentsRailWidthRef.current / 2) : 0,
+        0,
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeCommentId, activeCommentFocusToken, state.scale, zoomToElement]);
+
+  return null;
+}
+
 export function EditorCanvas({
   code,
   parseError,
@@ -339,6 +379,8 @@ export function EditorCanvas({
   hoveredFlowchartNodeBox,
   comments = [],
   activeCommentId = null,
+  activeCommentFocusToken = 0,
+  isCommentMode = false,
   onActivateComment,
   onOpenSelectionCommentComposer,
   commentComposer = null,
@@ -359,8 +401,6 @@ export function EditorCanvas({
   onSequencePlusSelfLoop,
   onSequencePlusNote,
   onSequencePlusBlock,
-  openHighlightRecolorRef,
-  onRecolorSequenceHighlight,
   onHoveredSequenceMessageHover,
   onHoveredSequenceMessageClick,
   onHoveredSequenceMessageDoubleClick,
@@ -369,6 +409,7 @@ export function EditorCanvas({
   onReorderSequenceItem,
   onReorderSequenceLifelines,
   getSequenceLifelines,
+  currentSequenceNotePosition,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -459,14 +500,6 @@ export function EditorCanvas({
     y: number;
     mode: "root" | "note" | "logic";
   } | null>(null);
-  // Viewport-space (canvasShellRef-relative) popover for recoloring a `rect` highlight, opened by
-  // double-clicking the highlight's colored background. `lineIndex` is the source line of the rect.
-  const [seqHighlightColorMenu, setSeqHighlightColorMenu] = useState<{
-    lineIndex: number;
-    x: number;
-    y: number;
-    color: string;
-  } | null>(null);
   // Viewport-space indicator for sequence drag — lives outside the TransformWrapper so
   // canvas pan/zoom never affects its coordinate system. Positions are relative to canvasShellRef.
   const [seqDragIndicator, setSeqDragIndicator] = useState<{
@@ -540,7 +573,6 @@ export function EditorCanvas({
   // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
   const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
-  const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
   // hover grab overlay can distinguish a reorder-drag from a plain click (select).
   const seqDidDragRef = useRef(false);
@@ -629,36 +661,6 @@ export function EditorCanvas({
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, [sequencePlusMenu]);
-
-  useEffect(() => {
-    if (!seqHighlightColorMenu) return;
-    const onOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && seqHighlightColorMenuRef.current?.contains(target)) return;
-      setSeqHighlightColorMenu(null);
-    };
-    document.addEventListener("mousedown", onOutsideClick);
-    return () => document.removeEventListener("mousedown", onOutsideClick);
-  }, [seqHighlightColorMenu]);
-
-  // Register the highlight-recolor popover opener so the hook (which detects the dblclick on the
-  // `rect` highlight via its document-level capture listener) can open this canvasShell-positioned
-  // menu. Positions are converted to canvasShellRef-relative viewport coords.
-  useEffect(() => {
-    if (!openHighlightRecolorRef) return;
-    openHighlightRecolorRef.current = (lineIndex, color, clientX, clientY) => {
-      const shellRect = canvasShellRef.current?.getBoundingClientRect();
-      setSeqHighlightColorMenu({
-        lineIndex,
-        x: clientX - (shellRect?.left ?? 0),
-        y: clientY - (shellRect?.top ?? 0),
-        color,
-      });
-    };
-    return () => {
-      if (openHighlightRecolorRef) openHighlightRecolorRef.current = null;
-    };
-  }, [openHighlightRecolorRef]);
 
   // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
   // React bubbling/capture handlers. Use a document-level capture fallback so single
@@ -1765,6 +1767,11 @@ export function EditorCanvas({
       >
         {({ zoomIn, zoomOut, resetTransform, state }) => (
             <>
+            <CommentFocusSync
+              activeCommentId={activeCommentId}
+              activeCommentFocusToken={activeCommentFocusToken ?? 0}
+              commentsRailWidth={commentsRailWidth}
+            />
             <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-background border border-border p-1 rounded-lg shadow-sm">
               <Button
                 variant="ghost"
@@ -1821,7 +1828,7 @@ export function EditorCanvas({
             >
               <div
                 ref={containerRef}
-                className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
+                className={`w-full h-full relative flex items-center justify-center ${isCommentMode ? "cursor-copy" : "cursor-grab active:cursor-grabbing"}`}
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
@@ -2454,6 +2461,7 @@ export function EditorCanvas({
                         <SequenceManipulationToolbar
                           selectedNodeId={selectedNodeId}
                           scale={state.scale}
+                          currentNotePosition={currentSequenceNotePosition}
                           onEditLabel={(e) => handleEditClick(e)}
                           onAddNote={onAddSequenceNote}
                           onMoveNote={onMoveSequenceNote}
@@ -3169,76 +3177,6 @@ export function EditorCanvas({
               borderRadius: 9999,
             }}
           />
-        </div>
-      )}
-
-      {seqHighlightColorMenu && (
-        <div
-          ref={seqHighlightColorMenuRef}
-          className="absolute pointer-events-auto z-30"
-          style={{
-            left: seqHighlightColorMenu.x,
-            top: seqHighlightColorMenu.y,
-            transform: "translate(-50%, calc(-100% - 12px))",
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="rounded-xl border border-border bg-popover p-2 shadow-xl">
-            <div className="px-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Highlight Color
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { name: "Blue", rgb: "rgb(200, 220, 255)" },
-                { name: "Green", rgb: "rgb(204, 245, 217)" },
-                { name: "Yellow", rgb: "rgb(255, 244, 191)" },
-                { name: "Orange", rgb: "rgb(255, 224, 191)" },
-                { name: "Red", rgb: "rgb(255, 205, 205)" },
-                { name: "Purple", rgb: "rgb(229, 214, 255)" },
-                { name: "Pink", rgb: "rgb(255, 209, 235)" },
-                { name: "Gray", rgb: "rgb(228, 231, 236)" },
-              ].map((c) => {
-                const isActive =
-                  (seqHighlightColorMenu.color || "").replace(/\s/g, "") ===
-                  c.rgb.replace(/\s/g, "");
-                return (
-                  <button
-                    key={c.name}
-                    title={c.name}
-                    className={`h-7 w-7 rounded-full border border-slate-300 transition-transform hover:scale-110 ${isActive ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-popover" : ""}`}
-                    style={{ backgroundColor: c.rgb }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onRecolorSequenceHighlight?.(seqHighlightColorMenu.lineIndex, c.rgb);
-                      setSeqHighlightColorMenu(null);
-                    }}
-                  />
-                );
-              })}
-            </div>
-            <label className="mt-2 flex items-center gap-2 rounded-md px-1 py-1 text-sm text-popover-foreground">
-              <Palette className="h-4 w-4 shrink-0 text-violet-500" />
-              <span className="flex-1">Custom…</span>
-              <input
-                type="color"
-                className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => {
-                  const hex = e.target.value;
-                  const r = parseInt(hex.slice(1, 3), 16);
-                  const g = parseInt(hex.slice(3, 5), 16);
-                  const b = parseInt(hex.slice(5, 7), 16);
-                  onRecolorSequenceHighlight?.(
-                    seqHighlightColorMenu.lineIndex,
-                    `rgb(${r}, ${g}, ${b})`,
-                  );
-                  setSeqHighlightColorMenu(null);
-                }}
-              />
-            </label>
-          </div>
         </div>
       )}
 

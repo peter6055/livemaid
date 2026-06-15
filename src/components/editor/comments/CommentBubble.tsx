@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { DiagramComment } from "@/lib/api/storage";
-import { MessageSquareText, Send, X } from "lucide-react";
+import { MessageSquareText, X } from "lucide-react";
 
 type BubblePosition = { x: number; y: number };
 
@@ -33,13 +33,16 @@ type ThreadBubbleProps = {
 
 type CommentBubbleProps = ComposeBubbleProps | ThreadBubbleProps;
 
-const THREAD_MAX_HEIGHT = "560px";
+const THREAD_MAX_HEIGHT = 560;
+const THREAD_MAX_MESSAGE_COUNT = 4;
 
 export function CommentBubble(props: CommentBubbleProps) {
   const { kind, position, onClose } = props;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const replyInputRef = useRef<HTMLTextAreaElement | null>(null);
   const composeInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const shouldClampThreadHeight =
+    kind === "thread" && props.comment.messages.length > THREAD_MAX_MESSAGE_COUNT;
 
   useEffect(() => {
     const el = kind === "compose" ? composeInputRef.current : replyInputRef.current;
@@ -94,53 +97,74 @@ export function CommentBubble(props: CommentBubbleProps) {
       onWheelCapture={(event) => event.stopPropagation()}
     >
       {kind === "compose" ? (
-        <div className="w-[19rem] rounded-2xl border border-border bg-background p-3 shadow-2xl">
-          <div className="mb-2 flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                <MessageSquareText className="h-4 w-4 text-indigo-500" />
-                New comment
-              </p>
-              <p className="truncate text-xs text-muted-foreground">{props.targetLabel}</p>
+        <div
+          className="flex w-[22rem] flex-col rounded-2xl border border-border bg-background shadow-2xl"
+        >
+          <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  <MessageSquareText className="h-4 w-4 text-indigo-500" />
+                  New comment
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">{props.targetLabel}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose();
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
-              <X className="h-4 w-4" />
-            </Button>
           </div>
-          <textarea
-            ref={composeInputRef}
-            autoFocus
-            value={props.value}
-            onChange={(event) => props.onChangeValue(event.target.value)}
-            onKeyDownCapture={(event) => {
-              event.stopPropagation();
-              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                event.preventDefault();
-                props.onSubmit(props.value);
-              }
-            }}
-            onPointerDownCapture={(event) => event.stopPropagation()}
-            placeholder="Write the first message..."
-            className="min-h-24 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <div className="mt-3 flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => props.onSubmit(props.value)}
-              disabled={!props.value.trim()}
-            >
-              <Send className="mr-2 h-3.5 w-3.5" />
-              Add
-            </Button>
+          <div className="px-3 py-3">
+            <textarea
+              ref={composeInputRef}
+              autoFocus
+              value={props.value}
+              onChange={(event) => props.onChangeValue(event.target.value)}
+              onKeyDownCapture={(event) => {
+                event.stopPropagation();
+                if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                  event.preventDefault();
+                  props.onSubmit(props.value);
+                }
+              }}
+              onPointerDownCapture={(event) => event.stopPropagation()}
+              placeholder="Write the first message..."
+              className="min-h-24 w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-indigo-500 focus:ring-0"
+            />
+          </div>
+          <div className="border-t border-border px-3 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to add</p>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+                  onClick={() => props.onSubmit(props.value)}
+                  disabled={!props.value.trim()}
+                >
+                  Add
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       ) : (
         <div
-          className="flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-          style={{ height: THREAD_MAX_HEIGHT }}
+          className={`flex w-[22rem] flex-col rounded-2xl border border-border bg-background shadow-2xl ${
+            shouldClampThreadHeight ? "overflow-hidden" : "overflow-visible"
+          }`}
+          style={shouldClampThreadHeight ? { maxHeight: `${THREAD_MAX_HEIGHT}px` } : undefined}
         >
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
@@ -196,7 +220,11 @@ export function CommentBubble(props: CommentBubbleProps) {
             </div>
           </div>
           <div
-            className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-3"
+            className={
+              shouldClampThreadHeight
+                ? "min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-3 py-3"
+                : "space-y-2 px-3 py-3"
+            }
             onWheelCapture={(event) => event.stopPropagation()}
           >
             {props.comment.messages.map((message) => (

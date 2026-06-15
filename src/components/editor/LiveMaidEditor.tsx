@@ -263,6 +263,7 @@ export function LiveMaidEditor({
   const [isCommentMode, setIsCommentMode] = useState(false);
   const [showResolvedComments, setShowResolvedComments] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [activeCommentFocusToken, setActiveCommentFocusToken] = useState(0);
   const [commentComposer, setCommentComposer] = useState<{
     anchor: DiagramCommentAnchor;
     position: { x: number; y: number };
@@ -272,6 +273,33 @@ export function LiveMaidEditor({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
   const allowBrowserBackRef = useRef(false);
+
+  const handleCloseComments = useCallback(() => {
+    setIsCommentsOpen(false);
+    setIsCommentMode(false);
+    setCommentComposer(null);
+    setCommentDraft("");
+  }, []);
+
+  const handleExitCommentMode = useCallback(() => {
+    setIsCommentMode(false);
+    setCommentComposer(null);
+    setCommentDraft("");
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !isCommentMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleExitCommentMode();
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [handleExitCommentMode, isCommentMode]);
 
   const handleCanvasCommentPlace = useCallback((position: { x: number; y: number }) => {
     const contentWidth = containerRef.current?.offsetWidth || 1;
@@ -380,7 +408,6 @@ export function LiveMaidEditor({
     getSequenceLifelines,
     sequenceBlockAreas,
     getSequenceBlockEntries,
-    openHighlightRecolorRef,
     shapePicker,
     setShapePicker,
     getSequenceNoteEntries,
@@ -1682,6 +1709,13 @@ export function LiveMaidEditor({
     ],
   );
 
+  const currentSequenceNotePosition = useMemo<"left" | "right" | "over" | null>(() => {
+    if (!selectedNodeId?.startsWith("SEQ_NOTE_")) return null;
+    const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    return getSequenceNoteEntries(code)[idx]?.position ?? null;
+  }, [code, getSequenceNoteEntries, selectedNodeId]);
+
   const handleSequencePlusSelfLoop = useCallback(
     (actorId: string, anchorY: number) => {
       if (!actorId || !Number.isFinite(anchorY)) return;
@@ -1755,24 +1789,6 @@ export function LiveMaidEditor({
       getSequenceLifelines,
       handleCodeChange,
     ],
-  );
-
-  // Recolor an existing `rect` highlight (double-click the highlight box → color picker). The
-  // line index comes from `resolveSequenceHighlightTarget` (Y-sorted DOM rects ↔ source rect
-  // blocks); only the color argument after the `rect` keyword is rewritten, indentation preserved.
-  const handleRecolorSequenceHighlight = useCallback(
-    (lineIndex: number, color: string) => {
-      const lines = code.split("\n");
-      const line = lines[lineIndex];
-      if (line == null) return;
-      const m = line.match(/^(\s*)rect\b.*$/i);
-      if (!m) return;
-      const next = `${m[1]}rect ${color}`;
-      if (next === line) return;
-      lines[lineIndex] = next;
-      handleCodeChange(lines.join("\n"));
-    },
-    [code, handleCodeChange],
   );
 
   const handleMoveSequenceNote = useCallback(
@@ -1964,13 +1980,6 @@ export function LiveMaidEditor({
       const idx = parseInt(selectedNodeId.slice("SEQ_NOTE_".length), 10);
       const entry = getSequenceNoteEntries(code)[idx];
       return entry ? toRange(entry.index) : null;
-    }
-
-    if (selectedNodeId.startsWith("SEQ_BLOCK_")) {
-      const startLine = parseInt(selectedNodeId.slice("SEQ_BLOCK_".length), 10);
-      const blk = getSequenceBlockEntries(code).find((b) => b.startLine === startLine);
-      if (blk) return { startLine: blk.startLine, endLine: blk.endLine };
-      return Number.isFinite(startLine) ? toRange(startLine) : null;
     }
 
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
@@ -2219,6 +2228,9 @@ export function LiveMaidEditor({
     (commentId: string | null) => {
       setActiveCommentId(commentId);
       setCommentComposer(null);
+      if (commentId) {
+        setActiveCommentFocusToken((token) => token + 1);
+      }
     },
     [],
   );
@@ -4435,6 +4447,7 @@ export function LiveMaidEditor({
             handleSequenceHoverOver={handleSequenceHoverOver}
             handleSequenceHoverOut={handleSequenceHoverOut}
             handleEditClick={handleEditClick}
+            isCommentMode={isCommentMode}
             selectionBox={selectionBox}
             connectionState={connectionState}
             setConnectionState={setConnectionState}
@@ -4445,6 +4458,7 @@ export function LiveMaidEditor({
             hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
             comments={doc?.comments ?? []}
             activeCommentId={activeCommentId}
+            activeCommentFocusToken={activeCommentFocusToken}
             onActivateComment={activateCommentThread}
             onOpenSelectionCommentComposer={openSelectionCommentComposer}
             commentComposer={commentComposer}
@@ -4465,8 +4479,7 @@ export function LiveMaidEditor({
             onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
             onSequencePlusNote={handleSequencePlusNote}
             onSequencePlusBlock={handleSequencePlusBlock}
-            openHighlightRecolorRef={openHighlightRecolorRef}
-            onRecolorSequenceHighlight={handleRecolorSequenceHighlight}
+            currentSequenceNotePosition={currentSequenceNotePosition}
             isInlineEditing={isInlineEditing}
             selectedSvgId={selectedSvgId}
             selectedNodeId={selectedNodeId}
@@ -4577,7 +4590,7 @@ export function LiveMaidEditor({
               showResolvedComments={showResolvedComments}
               isCommentMode={isCommentMode}
               sortStorageKey={commentSortStorageKey}
-              onClose={() => setIsCommentsOpen(false)}
+              onClose={handleCloseComments}
               onStartCommentMode={() => setIsCommentMode(true)}
               onActivateComment={activateCommentThread}
               onToggleResolvedComment={toggleCommentResolved}

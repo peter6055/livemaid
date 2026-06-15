@@ -5,6 +5,7 @@ import { ParticipantIcon, PARTICIPANT_TYPES } from "@/lib/diagrams/sequence";
 interface SequenceManipulationToolbarProps {
   selectedNodeId: string | null;
   scale: number;
+  currentNotePosition?: "left" | "right" | "over" | null;
   onEditLabel: (e: React.MouseEvent) => void;
   onAddNote: (position: "left" | "right" | "over") => void;
   onMoveNote: (position: "left" | "right" | "over") => void;
@@ -26,6 +27,7 @@ const MESSAGE_TYPES: Array<{ operator: string; label: string; preview: string }>
 export function SequenceManipulationToolbar({
   selectedNodeId,
   scale,
+  currentNotePosition,
   onEditLabel,
   onAddNote,
   onMoveNote,
@@ -42,6 +44,14 @@ export function SequenceManipulationToolbar({
   const [moveMenuOpen, setMoveMenuOpen] = useState(false);
   const [typeMenuOpen, setTypeMenuOpen] = useState(false);
   const [participantMenuOpen, setParticipantMenuOpen] = useState(false);
+  const notePositions: Array<{
+    position: "left" | "right" | "over";
+    label: string;
+  }> = [
+    { position: "left", label: "Move note to the left" },
+    { position: "right", label: "Move note to the right" },
+    { position: "over", label: "Move note over" },
+  ];
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -272,33 +282,24 @@ export function SequenceManipulationToolbar({
                     <div className="px-2 pb-1 text-base font-semibold text-popover-foreground">
                       Note
                     </div>
-                    <button
-                      className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => {
-                        onMoveNote("left");
-                        setMoveMenuOpen(false);
-                      }}
-                    >
-                      Move note to the left
-                    </button>
-                    <button
-                      className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => {
-                        onMoveNote("right");
-                        setMoveMenuOpen(false);
-                      }}
-                    >
-                      Move note to the right
-                    </button>
-                    <button
-                      className="w-full rounded-md px-2 py-2 text-left text-base hover:bg-accent"
-                      onClick={() => {
-                        onMoveNote("over");
-                        setMoveMenuOpen(false);
-                      }}
-                    >
-                      Move note over
-                    </button>
+                    {notePositions.map((option) => {
+                      const isActive = currentNotePosition === option.position;
+                      return (
+                        <button
+                          key={option.position}
+                          aria-pressed={isActive}
+                          className={`w-full rounded-md px-2 py-2 text-left text-base transition-colors ${
+                            isActive ? "bg-indigo-50 font-semibold text-indigo-700 ring-1 ring-indigo-500" : "hover:bg-accent"
+                          }`}
+                          onClick={() => {
+                            onMoveNote(option.position);
+                            setMoveMenuOpen(false);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
