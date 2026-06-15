@@ -4223,7 +4223,7 @@ export function LiveMaidEditor({
         </DialogContent>
       </Dialog>
 
-      <div className="flex flex-1 min-h-0 min-w-0">
+      <div className="relative flex flex-1 min-h-0 min-w-0">
         <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
         {isCodePanelOpen && (
           <>
@@ -4568,7 +4568,7 @@ export function LiveMaidEditor({
         </ResizablePanelGroup>
 
         {isCommentsOpen && (
-          <div className="h-full w-[24rem] shrink-0 min-h-0">
+          <div className="absolute inset-y-0 right-0 z-30 h-full w-[24rem] min-h-0 border-l border-border bg-background shadow-2xl">
             <CommentSidebar
               key={commentSortStorageKey}
               openComments={openComments}

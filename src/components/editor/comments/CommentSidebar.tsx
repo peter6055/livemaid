@@ -360,6 +360,10 @@ export function CommentSidebar({
     <aside
       data-comment-sidebar
       className="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-background text-foreground"
+      onMouseDownCapture={(event) => event.stopPropagation()}
+      onPointerDownCapture={(event) => event.stopPropagation()}
+      onClickCapture={(event) => event.stopPropagation()}
+      onWheelCapture={(event) => event.stopPropagation()}
     >
       <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-4 py-4 backdrop-blur">
         <div className="flex items-start justify-between gap-3">
