@@ -157,6 +157,7 @@ const DEFAULT_HISTORY_PREVIEW_SCALE = 2;
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
+import { nanoid } from "nanoid";
 import type { MonacoCodeEditor, ConfirmOptions } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
@@ -2048,13 +2049,13 @@ export function LiveMaidEditor({
   const commentSortStorageKey = useMemo(() => `livemaid:comment-sort:${documentId}`, [documentId]);
 
   const replaceCommentInDoc = useCallback(
-    (updatedComment: DiagramComment) => {
+    (commentId: string, updatedComment: DiagramComment) => {
       setDoc((prev) =>
         prev
           ? {
               ...prev,
               comments: (prev.comments ?? []).map((comment) =>
-                comment.id === updatedComment.id ? updatedComment : comment,
+                comment.id === commentId ? updatedComment : comment,
               ),
             }
           : prev,
@@ -2068,9 +2069,38 @@ export function LiveMaidEditor({
   }, []);
 
   const createCommentThread = useCallback(
-    async (anchor: DiagramCommentAnchor, content: string) => {
+    async (
+      composer: NonNullable<typeof commentComposer>,
+      content: string,
+    ) => {
       const trimmed = content.trim();
       if (!trimmed) return;
+      const tempCommentId = `temp-comment-${nanoid()}`;
+      const tempMessageId = `temp-message-${nanoid()}`;
+      const now = new Date().toISOString();
+      const tempComment: DiagramComment = {
+        id: tempCommentId,
+        anchor: composer.anchor,
+        messages: [
+          {
+            id: tempMessageId,
+            content: trimmed,
+            authorId: "anonymous",
+            timestamp: now,
+          },
+        ],
+        resolved: false,
+        starred: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const previousActiveCommentId = activeCommentId;
+      setDoc((prev) =>
+        prev ? { ...prev, comments: [...(prev.comments ?? []), tempComment] } : prev,
+      );
+      setCommentDraft("");
+      setCommentComposer(null);
+      setActiveCommentId(tempCommentId);
       try {
         const response = await fetch(`/api/diagrams/${documentId}/comments`, {
           method: "POST",
@@ -2078,16 +2108,13 @@ export function LiveMaidEditor({
           body: JSON.stringify({
             content: trimmed,
             authorId: "anonymous",
-            anchor,
+            anchor: composer.anchor,
           }),
         });
         if (!response.ok) throw new Error("Failed to create comment");
         const created = (await response.json()) as DiagramComment;
-        setDoc((prev) =>
-          prev ? { ...prev, comments: [...(prev.comments ?? []), created] } : prev,
-        );
-        setCommentDraft("");
-        setCommentComposer(null);
+        if (!created) throw new Error("Failed to create comment");
+        replaceCommentInDoc(tempCommentId, created);
         setActiveCommentId(created.id);
         toast.success("Comment added", {
           action: {
@@ -2096,15 +2123,28 @@ export function LiveMaidEditor({
           },
         });
       } catch {
+        setDoc((prev) =>
+          prev
+            ? {
+                ...prev,
+                comments: (prev.comments ?? []).filter((comment) => comment.id !== tempCommentId),
+              }
+            : prev,
+        );
+        setCommentComposer(composer);
+        setCommentDraft(trimmed);
+        setActiveCommentId((current) =>
+          current === tempCommentId ? previousActiveCommentId : current,
+        );
         toast.error("Failed to add comment");
       }
     },
-    [documentId, setDoc],
+    [activeCommentId, documentId, replaceCommentInDoc, setDoc],
   );
 
   const submitCommentComposer = useCallback((content?: string) => {
     if (!commentComposer) return;
-    void createCommentThread(commentComposer.anchor, content ?? commentDraft);
+    void createCommentThread(commentComposer, content ?? commentDraft);
   }, [commentComposer, commentDraft, createCommentThread]);
 
   const openSelectionCommentComposer = useCallback(() => {
@@ -2160,6 +2200,26 @@ export function LiveMaidEditor({
     async (commentId: string) => {
       const content = (commentReplyDrafts[commentId] ?? "").trim();
       if (!content) return;
+      const originalComment = doc?.comments.find((comment) => comment.id === commentId);
+      if (!originalComment) return;
+      const tempMessageId = `temp-message-${nanoid()}`;
+      const now = new Date().toISOString();
+      const optimisticComment: DiagramComment = {
+        ...originalComment,
+        messages: [
+          ...originalComment.messages,
+          {
+            id: tempMessageId,
+            content,
+            authorId: "anonymous",
+            timestamp: now,
+          },
+        ],
+        updatedAt: now,
+      };
+      const previousDraft = commentReplyDrafts[commentId];
+      replaceCommentInDoc(commentId, optimisticComment);
+      setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
       try {
         const response = await fetch(`/api/diagrams/${documentId}/comments`, {
           method: "PATCH",
@@ -2172,16 +2232,16 @@ export function LiveMaidEditor({
         });
         if (!response.ok) throw new Error("Failed to update comment");
         const updated = (await response.json()) as DiagramComment | null;
-        if (updated) {
-          replaceCommentInDoc(updated);
-          setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
-          toast.success("Reply added");
-        }
+        if (!updated) throw new Error("Failed to update comment");
+        replaceCommentInDoc(commentId, updated);
+        toast.success("Reply added");
       } catch {
+        replaceCommentInDoc(commentId, originalComment);
+        setCommentReplyDrafts((current) => ({ ...current, [commentId]: previousDraft }));
         toast.error("Failed to add reply");
       }
     },
-    [commentReplyDrafts, documentId, replaceCommentInDoc],
+    [commentReplyDrafts, doc?.comments, documentId, replaceCommentInDoc],
   );
 
   const toggleCommentResolved = useCallback(
@@ -2195,7 +2255,7 @@ export function LiveMaidEditor({
         if (!response.ok) throw new Error("Failed to update comment");
         const updated = (await response.json()) as DiagramComment | null;
         if (updated) {
-          replaceCommentInDoc(updated);
+          replaceCommentInDoc(commentId, updated);
         }
       } catch {
         toast.error("Failed to update comment");
@@ -2215,7 +2275,7 @@ export function LiveMaidEditor({
         if (!response.ok) throw new Error("Failed to update comment");
         const updated = (await response.json()) as DiagramComment | null;
         if (updated) {
-          replaceCommentInDoc(updated);
+          replaceCommentInDoc(commentId, updated);
         }
       } catch {
         toast.error("Failed to update comment");

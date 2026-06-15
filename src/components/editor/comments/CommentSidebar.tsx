@@ -29,12 +29,6 @@ interface CommentSidebarProps {
 type CommentSortMode =
   | "activity-desc"
   | "activity-asc"
-  | "created-desc"
-  | "created-asc"
-  | "position-asc"
-  | "position-desc"
-  | "replies-desc"
-  | "replies-asc"
   | "starred-first";
 
 type CommentCard = {
@@ -51,12 +45,6 @@ function isCommentSortMode(value: string | null): value is CommentSortMode {
   return (
     value === "activity-desc" ||
     value === "activity-asc" ||
-    value === "created-desc" ||
-    value === "created-asc" ||
-    value === "position-asc" ||
-    value === "position-desc" ||
-    value === "replies-desc" ||
-    value === "replies-asc" ||
     value === "starred-first"
   );
 }
@@ -84,34 +72,10 @@ function messagePreview(comment: DiagramComment) {
   return (latest?.content || "Comment thread").split(/\r?\n/)[0];
 }
 
-function getAnchorPosition(comment: DiagramComment) {
-  if (comment.anchor.type === "canvas") {
-    return comment.anchor.position ?? null;
-  }
-
-  if (comment.anchor.type === "shape") {
-    return comment.anchor.fallbackPos ?? null;
-  }
-
-  return null;
-}
-
 function getSortButtonLabel(mode: CommentSortMode) {
   switch (mode) {
     case "activity-asc":
       return "Sort: Last activity ↑";
-    case "created-desc":
-      return "Sort: Created date ↓";
-    case "created-asc":
-      return "Sort: Created date ↑";
-    case "position-asc":
-      return "Sort: Position top→bottom";
-    case "position-desc":
-      return "Sort: Position bottom→top";
-    case "replies-desc":
-      return "Sort: Most replies ↓";
-    case "replies-asc":
-      return "Sort: Most replies ↑";
     case "starred-first":
       return "Sort: Starred first";
     case "activity-desc":
@@ -126,18 +90,6 @@ function getSortMenuLabel(mode: CommentSortMode) {
       return "Last activity · Newest first";
     case "activity-asc":
       return "Last activity · Oldest first";
-    case "created-desc":
-      return "Created date · Newest first";
-    case "created-asc":
-      return "Created date · Oldest first";
-    case "position-asc":
-      return "Position · Top to bottom";
-    case "position-desc":
-      return "Position · Bottom to top";
-    case "replies-desc":
-      return "Replies · Most first";
-    case "replies-asc":
-      return "Replies · Fewest first";
     case "starred-first":
       return "Starred first";
     default:
@@ -148,38 +100,14 @@ function getSortMenuLabel(mode: CommentSortMode) {
 function compareCommentCards(left: CommentCard, right: CommentCard, mode: CommentSortMode) {
   const leftActivity = new Date(left.timestamp).getTime() || 0;
   const rightActivity = new Date(right.timestamp).getTime() || 0;
-  const leftCreated = new Date(left.createdAt).getTime() || 0;
-  const rightCreated = new Date(right.createdAt).getTime() || 0;
-  const leftReplies = left.comment.messages.length;
-  const rightReplies = right.comment.messages.length;
   const leftStarred = Boolean(left.comment.starred);
   const rightStarred = Boolean(right.comment.starred);
-  const leftPosition = getAnchorPosition(left.comment);
-  const rightPosition = getAnchorPosition(right.comment);
 
   switch (mode) {
     case "activity-asc":
       return leftActivity - rightActivity;
     case "activity-desc":
       return rightActivity - leftActivity;
-    case "created-asc":
-      return leftCreated - rightCreated;
-    case "created-desc":
-      return rightCreated - leftCreated;
-    case "position-asc":
-      if (leftPosition && rightPosition) {
-        return leftPosition.y - rightPosition.y || leftPosition.x - rightPosition.x;
-      }
-      return rightActivity - leftActivity;
-    case "position-desc":
-      if (leftPosition && rightPosition) {
-        return rightPosition.y - leftPosition.y || rightPosition.x - leftPosition.x;
-      }
-      return rightActivity - leftActivity;
-    case "replies-asc":
-      return leftReplies - rightReplies || rightActivity - leftActivity;
-    case "replies-desc":
-      return rightReplies - leftReplies || rightActivity - leftActivity;
     case "starred-first":
       return Number(rightStarred) - Number(leftStarred) || rightActivity - leftActivity;
     default:
@@ -426,60 +354,6 @@ export function CommentSidebar({
                 <span className="flex w-full items-center justify-between gap-3">
                   <span>{getSortMenuLabel("activity-asc")}</span>
                   {sortMode === "activity-asc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("created-desc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("created-desc")}</span>
-                  {sortMode === "created-desc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("created-asc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("created-asc")}</span>
-                  {sortMode === "created-asc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("position-asc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("position-asc")}</span>
-                  {sortMode === "position-asc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("position-desc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("position-desc")}</span>
-                  {sortMode === "position-desc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("replies-desc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("replies-desc")}</span>
-                  {sortMode === "replies-desc" && <Check className="h-4 w-4 text-foreground" />}
-                </span>
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground"
-                onClick={() => setSortMode("replies-asc")}
-              >
-                <span className="flex w-full items-center justify-between gap-3">
-                  <span>{getSortMenuLabel("replies-asc")}</span>
-                  {sortMode === "replies-asc" && <Check className="h-4 w-4 text-foreground" />}
                 </span>
               </DropdownMenuItem>
               <DropdownMenuItem

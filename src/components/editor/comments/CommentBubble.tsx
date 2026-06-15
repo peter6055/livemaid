@@ -98,7 +98,7 @@ export function CommentBubble(props: CommentBubbleProps) {
     >
       {kind === "compose" ? (
         <div
-          className="flex w-[22rem] flex-col rounded-2xl border border-border bg-background shadow-2xl"
+          className="flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
         >
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
@@ -161,9 +161,7 @@ export function CommentBubble(props: CommentBubbleProps) {
         </div>
       ) : (
         <div
-          className={`flex w-[22rem] flex-col rounded-2xl border border-border bg-background shadow-2xl ${
-            shouldClampThreadHeight ? "overflow-hidden" : "overflow-visible"
-          }`}
+          className={`flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl`}
           style={shouldClampThreadHeight ? { maxHeight: `${THREAD_MAX_HEIGHT}px` } : undefined}
         >
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
@@ -228,12 +226,15 @@ export function CommentBubble(props: CommentBubbleProps) {
             onWheelCapture={(event) => event.stopPropagation()}
           >
             {props.comment.messages.map((message) => (
-              <div key={message.id} className="rounded-lg bg-muted/40 px-3 py-2 text-sm">
+              <div
+                key={message.id}
+                className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-foreground dark:bg-muted/30"
+              >
                 <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
                   <span>{message.authorId}</span>
                   <span>{new Date(message.timestamp).toLocaleString()}</span>
                 </div>
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <p className="whitespace-pre-wrap text-foreground">{message.content}</p>
               </div>
             ))}
           </div>
