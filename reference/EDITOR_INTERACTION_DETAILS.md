@@ -68,8 +68,17 @@ truths:
 - Full message bands, not just the thin arrow line, are intentionally interactive.
 - Reorder, endpoint reassignment, and connection-drag indicators run in shell/viewport
   coordinates so pan/zoom does not skew hit-testing.
-- Endpoint handles use clamped scale-lock behavior so they stay usable without overwhelming the
-  canvas at low zoom.
+- Sequence message endpoint drag handles are rendered as a **viewport-space overlay** (inside the
+  TransformWrapper render function but outside TransformComponent), so their screen size stays
+  fixed regardless of zoom level. Canvas coordinates from `getSequenceMessageEndpointGeometry`
+  are converted to viewport coordinates via:
+  ```
+  vpX = pt.x * state.scale + containerRect.left - container.scrollLeft - shellRect.left
+  vpY = pt.y * state.scale + containerRect.top  - container.scrollTop  - shellRect.top
+  ```
+  This avoids `data-scale-lock` scaling entirely, preventing handles from becoming oversized at
+  extreme zoom-out or undersized at extreme zoom-in. Handle dimensions are plain CSS (`width`/`height`)
+  without any zoom compensation.
 - Logic-block overlays depend on DOM measurement and must tolerate cold-load timing delays
   before the transformed container is ready.
 - Toolbar hit areas, hover suppression, and stacking order must keep floating sequence UI from

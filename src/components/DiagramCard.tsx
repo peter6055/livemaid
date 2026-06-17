@@ -59,11 +59,14 @@ export function DiagramCard({
 }) {
   const [svgContent, setSvgContent] = useState<string>("");
   const [isCompiling, setIsCompiling] = useState<boolean>(true);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const showPreviewLoader = Boolean(diagram.code) && isCompiling;
 
   useEffect(() => {
     if (diagram.code) {
       const renderPreview = async () => {
         setIsCompiling(true);
+        setPreviewError(null);
         try {
           mermaid.initialize({
             startOnLoad: false,
@@ -73,16 +76,17 @@ export function DiagramCard({
           await mermaid.parse(diagram.code!, { suppressErrors: true });
           const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
           setSvgContent(svg);
-        } catch {
-          // invalid syntax, don't render bomb error
+        } catch (error) {
+          // Keep the preview card resilient, but explain why it failed when possible.
           setSvgContent("");
+          setPreviewError(
+            error instanceof Error && error.message.trim() ? error.message : "Syntax error",
+          );
         } finally {
           setIsCompiling(false);
         }
       };
       renderPreview();
-    } else {
-      setIsCompiling(false);
     }
   }, [diagram.code, diagram.id]);
 
@@ -92,7 +96,8 @@ export function DiagramCard({
     parsedType === "flowchart" ||
     parsedType === "sequence" ||
     parsedType === "classDiagram" ||
-    parsedType === "erDiagram";
+    parsedType === "erDiagram" ||
+    parsedType === "stateDiagram";
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
@@ -313,7 +318,7 @@ export function DiagramCard({
           }}
         >
           <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
-            {isCompiling ? (
+            {showPreviewLoader ? (
               <div className="w-full h-full flex items-center justify-center gap-3 px-4 animate-pulse opacity-50 dark:opacity-40">
                 {/* Node 1: Start (stadium) */}
                 <div className="h-7 w-12 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
@@ -342,7 +347,14 @@ export function DiagramCard({
                 className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900"
               />
             ) : (
-              <span className="text-zinc-500 text-xs font-medium">Preview Unavailable</span>
+              <div className="flex flex-col items-center gap-1 px-4 text-center">
+                <span className="text-zinc-500 text-xs font-medium">Preview unavailable</span>
+                <span className="max-w-[12rem] text-[11px] leading-4 text-zinc-400">
+                  {previewError
+                    ? "Mermaid syntax could not be rendered."
+                    : "Preview is not available."}
+                </span>
+              </div>
             )}
           </div>
         </a>

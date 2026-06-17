@@ -11,7 +11,10 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepush": "npm run typecheck && npm run lint && npm run format:check && npm run build"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "prepush": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -22,11 +25,12 @@
     "html-to-image": "^1.11.13",
     "jsdom": "^27.0.1",
     "lucide-react": "^1.17.0",
+    "marked": "^14.0.0",
     "mermaid": "^11.15.0",
+    "monaco-editor": "^0.55.1",
     "nanoid": "^5.1.11",
     "next": "16.2.6",
     "next-themes": "^0.4.6",
-    "playwright": "^1.60.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-resizable-panels": "^4.11.2",
@@ -41,14 +45,17 @@
     "postcss": "^8.5.15"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "playwright": "^1.60.0",
     "prettier": "^3.8.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.9"
   }
 }

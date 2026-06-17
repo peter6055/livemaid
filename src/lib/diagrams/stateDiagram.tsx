@@ -63,6 +63,7 @@ import {
   Boxes,
   StickyNote,
   Plus,
+  Type,
 } from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
@@ -1444,8 +1445,9 @@ const StateDiagramToolbar = ({ code, setCode, requestConfirm }: EditorContext) =
       {/* Title toggle — same inline label + pill-switch styling as the class/ER Title toggle. The
           diagram title TEXT is editable by double-clicking it on the canvas. */}
       <div className="flex items-center gap-2 px-2 h-8 select-none">
-        <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
-          Title
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+          <Type className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+          <span>Title</span>
         </span>
         <button
           type="button"

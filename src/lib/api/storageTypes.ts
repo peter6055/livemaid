@@ -7,6 +7,8 @@
 // concrete backend — they only use the façade in `storage.ts` — so migrating backends is a
 // localized change.
 
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
+
 export interface DiagramDocument {
   id: string;
   name: string;
@@ -17,8 +19,45 @@ export interface DiagramDocument {
   type: "flowchart" | "sequence" | "class";
   folderId: string | null;
   subPages: { id: string; name: string; code: string }[];
-  comments: { id: string; content: string; timestamp: string }[];
+  comments: DiagramComment[];
   versionHistory: VersionHistoryEntry[];
+}
+
+export interface DiagramComment {
+  id: string;
+  anchor: DiagramCommentAnchor;
+  messages: DiagramCommentMessage[];
+  resolved: boolean;
+  starred?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DiagramCommentAnchor {
+  type: "shape" | "canvas";
+  shapeId?: string;
+  fallbackPos?: {
+    x: number;
+    y: number;
+  };
+  position?: {
+    x: number;
+    y: number;
+  };
+  sequenceMessage?: {
+    sender: string;
+    receiver: string;
+    operator: string;
+    label: string;
+    occurrence: number;
+  };
+}
+
+export interface DiagramCommentMessage {
+  id: string;
+  content: string;
+  authorId: string;
+  timestamp: string;
 }
 
 export interface VersionHistoryEntry {
@@ -42,9 +81,168 @@ export interface Folder {
 // that return 403s for writes) shares a single source of truth.
 export const IS_DEMO_MODE = process.env.DEMO_MODE === "true";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 // Coerce an arbitrary parsed record into a fully-formed DiagramDocument with safe defaults. Backend-
 // agnostic so both the FS adapter and a future Mongo adapter hydrate documents identically.
 export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
+  const sequenceMessageEntries = String(raw.code || "")
+    .split("\n")
+    .map((line, index) => ({ index, line }))
+    .filter(({ line }) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("%%")) return false;
+      const keywords = [
+        "sequenceDiagram",
+        "Note",
+        "note",
+        "rect",
+        "alt",
+        "opt",
+        "loop",
+        "par",
+        "critical",
+        "option",
+        "else",
+        "end",
+        "participant",
+        "actor",
+        "autonumber",
+        "activate",
+        "deactivate",
+        "box",
+        "links",
+        "link",
+        "properties",
+        "details",
+      ];
+      if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
+      return trimmed.includes(":");
+    });
+
+  const normalizedComments: DiagramComment[] = Array.isArray(raw.comments)
+    ? raw.comments.map((comment, index): DiagramComment => {
+        const rawComment = isRecord(comment) ? comment : null;
+        if (rawComment && Array.isArray(rawComment.messages)) {
+          const rawAnchor = isRecord(rawComment.anchor) ? rawComment.anchor : null;
+          const legacySequenceMatch =
+            rawAnchor && rawAnchor.type === "shape" && typeof rawAnchor.shapeId === "string"
+              ? rawAnchor.shapeId.match(/^SEQ_MSG_(\d+)$/)
+              : null;
+          const derivedSequenceMessage =
+            rawAnchor &&
+            rawAnchor.type === "shape" &&
+            !rawAnchor.sequenceMessage &&
+            legacySequenceMatch
+              ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
+              : null;
+          const anchor: DiagramCommentAnchor = rawAnchor
+            ? rawAnchor.type === "shape"
+              ? {
+                  type: "shape",
+                  shapeId: typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId : undefined,
+                  fallbackPos:
+                    isRecord(rawAnchor.fallbackPos) &&
+                    typeof rawAnchor.fallbackPos.x === "number" &&
+                    typeof rawAnchor.fallbackPos.y === "number"
+                      ? {
+                          x: rawAnchor.fallbackPos.x,
+                          y: rawAnchor.fallbackPos.y,
+                        }
+                      : undefined,
+                  sequenceMessage:
+                    isRecord(rawAnchor.sequenceMessage) &&
+                    typeof rawAnchor.sequenceMessage.sender === "string" &&
+                    typeof rawAnchor.sequenceMessage.receiver === "string" &&
+                    typeof rawAnchor.sequenceMessage.operator === "string" &&
+                    typeof rawAnchor.sequenceMessage.label === "string" &&
+                    typeof rawAnchor.sequenceMessage.occurrence === "number"
+                      ? {
+                          sender: rawAnchor.sequenceMessage.sender,
+                          receiver: rawAnchor.sequenceMessage.receiver,
+                          operator: rawAnchor.sequenceMessage.operator,
+                          label: rawAnchor.sequenceMessage.label,
+                          occurrence: rawAnchor.sequenceMessage.occurrence,
+                        }
+                      : (derivedSequenceMessage ?? undefined),
+                }
+              : {
+                  type: "canvas",
+                  position:
+                    isRecord(rawAnchor.position) &&
+                    typeof rawAnchor.position.x === "number" &&
+                    typeof rawAnchor.position.y === "number"
+                      ? {
+                          x: rawAnchor.position.x,
+                          y: rawAnchor.position.y,
+                        }
+                      : { x: 0.5, y: 0.5 },
+                }
+            : { type: "canvas", position: { x: 0.5, y: 0.5 } };
+          return {
+            id: typeof rawComment.id === "string" ? rawComment.id : `comment-${index}`,
+            anchor,
+            messages: rawComment.messages
+              .filter((message) => message && typeof message.content === "string")
+              .map((message, messageIndex: number) => ({
+                id:
+                  typeof message.id === "string"
+                    ? message.id
+                    : `comment-${index}-message-${messageIndex}`,
+                content: message.content,
+                authorId: typeof message.authorId === "string" ? message.authorId : "anonymous",
+                timestamp:
+                  typeof message.timestamp === "string"
+                    ? message.timestamp
+                    : new Date().toISOString(),
+              })),
+            resolved: Boolean(rawComment.resolved),
+            starred: Boolean(rawComment.starred),
+            createdAt:
+              typeof rawComment.createdAt === "string"
+                ? rawComment.createdAt
+                : new Date().toISOString(),
+            updatedAt:
+              typeof rawComment.updatedAt === "string"
+                ? rawComment.updatedAt
+                : new Date().toISOString(),
+          };
+        }
+
+        const rawLegacyComment = isRecord(comment) ? comment : null;
+        const timestamp =
+          rawLegacyComment && typeof rawLegacyComment.timestamp === "string"
+            ? rawLegacyComment.timestamp
+            : new Date().toISOString();
+        const content =
+          rawLegacyComment && typeof rawLegacyComment.content === "string"
+            ? rawLegacyComment.content
+            : "";
+        const id =
+          rawLegacyComment && typeof rawLegacyComment.id === "string"
+            ? rawLegacyComment.id
+            : `legacy-comment-${index}`;
+        return {
+          id,
+          anchor: { type: "canvas", position: { x: 0.5, y: 0.5 } },
+          messages: [
+            {
+              id: `${id}-message-0`,
+              content,
+              authorId: "anonymous",
+              timestamp,
+            },
+          ],
+          resolved: false,
+          starred: false,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+      })
+    : [];
+
   return {
     id: raw.id || "",
     name: raw.name || "Untitled Diagram",
@@ -55,7 +253,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
-    comments: Array.isArray(raw.comments) ? raw.comments : [],
+    comments: normalizedComments,
     versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
   };
 }

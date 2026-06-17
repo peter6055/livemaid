@@ -108,7 +108,7 @@ export function InlineTextEditor({
       data-scale-lock
       data-base-transform="translate(-50%, -50%)"
       ref={inlineInputRef}
-      className="absolute bg-white/95 backdrop-blur-sm pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white whitespace-pre-wrap"
+      className="absolute bg-white pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white whitespace-pre-wrap"
       value={editingText}
       onChange={(e) => setEditingText(e.target.value)}
       onKeyDown={(e) => {

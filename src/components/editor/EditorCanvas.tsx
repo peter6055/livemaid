@@ -1,4 +1,4 @@
-import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
+import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
 import {
   Lock,
   Unlock,
@@ -7,7 +7,7 @@ import {
   RotateCcw,
   GitBranch,
   SquareStack,
-  Palette,
+  MessageSquareText,
 } from "lucide-react";
 import { NodeManipulationToolbar } from "./NodeManipulationToolbar";
 import { EdgeManipulationToolbar } from "./EdgeManipulationToolbar";
@@ -22,6 +22,7 @@ import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
+import { CommentLayer } from "./CommentLayer";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import {
   classNameFromSvgId,
@@ -46,10 +47,23 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
-import { CSSProperties, RefObject, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
+import type { DiagramComment } from "@/lib/api/storage";
+import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
+
+const DEFAULT_CANVAS_INITIAL_SCALE = 2.75;
 
 interface EditorCanvasProps {
   code: string;
@@ -57,6 +71,7 @@ interface EditorCanvasProps {
   svgContent: string;
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
+  isCommentMode?: boolean;
   containerRef: RefObject<HTMLDivElement | null>;
   handleSvgClick: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleMouseMove: (e: React.MouseEvent<HTMLDivElement>) => void;
@@ -81,6 +96,27 @@ interface EditorCanvasProps {
   hoveredSequenceMessageBox: { x: number; y: number; width: number; height: number } | null;
   hoveredSequenceNoteBox: { x: number; y: number; width: number; height: number } | null;
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
+  comments?: DiagramComment[];
+  activeCommentId?: string | null;
+  activeCommentFocusToken?: number;
+  onActivateComment?: (commentId: string | null) => void;
+  onOpenSelectionCommentComposer?: () => void;
+  commentComposer?: {
+    anchor: import("@/lib/api/storage").DiagramCommentAnchor;
+    position: { x: number; y: number };
+    targetLabel: string;
+    commentMode: "shape" | "canvas";
+  } | null;
+  commentDraft?: string;
+  setCommentDraft?: (value: string) => void;
+  onSubmitCommentComposer?: (content?: string) => void;
+  commentReplyDrafts?: Record<string, string>;
+  onChangeCommentReplyDraft?: (commentId: string, value: string) => void;
+  onSubmitCommentReply?: (commentId: string) => void;
+  onToggleCommentResolved?: (commentId: string, resolved: boolean) => void;
+  renderIdRef?: React.MutableRefObject<string | null>;
+  commentsRailWidth?: number;
+  sequenceMessageEntries?: Array<{ index: number; line: string }>;
   sequenceMessageTriggerAreas: Array<{
     index: number;
     x: number;
@@ -97,10 +133,6 @@ interface EditorCanvasProps {
     position: "left" | "right" | "over",
   ) => void;
   onSequencePlusBlock?: (anchorY: number, type: SequenceBlockType) => void;
-  openHighlightRecolorRef?: React.MutableRefObject<
-    ((lineIndex: number, color: string, clientX: number, clientY: number) => void) | null
-  >;
-  onRecolorSequenceHighlight?: (lineIndex: number, color: string) => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
@@ -109,6 +141,7 @@ interface EditorCanvasProps {
   onReorderSequenceItem?: (item: { kind: "msg" | "note"; index: number }, toSlot: number) => void;
   onReorderSequenceLifelines?: (newOrderIds: string[]) => void;
   getSequenceLifelines?: () => Array<{ actorId: string; x: number; y1: number; y2: number }>;
+  currentSequenceNotePosition?: "left" | "right" | "over" | null;
   isInlineEditing: boolean;
   selectedSvgId: string | null;
   selectedNodeId: string | null;
@@ -290,6 +323,48 @@ function shellBoxFromElement(
   return shellBoxFromRect(rect, shellRect);
 }
 
+function CommentFocusSync({
+  activeCommentId,
+  activeCommentFocusToken,
+  commentsRailWidth,
+}: {
+  activeCommentId: string | null;
+  activeCommentFocusToken: number;
+  commentsRailWidth: number;
+}) {
+  const { state, zoomToElement } = useControls();
+  const commentsRailWidthRef = useRef(commentsRailWidth);
+  const lastAppliedFocusTokenRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    commentsRailWidthRef.current = commentsRailWidth;
+  }, [commentsRailWidth]);
+
+  useEffect(() => {
+    if (!activeCommentId) return;
+    if (lastAppliedFocusTokenRef.current === activeCommentFocusToken) return;
+    lastAppliedFocusTokenRef.current = activeCommentFocusToken;
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = document.getElementById(`comment-pin-${activeCommentId}`);
+      if (!node) return;
+
+      zoomToElement(
+        node,
+        state.scale,
+        320,
+        "easeOut",
+        commentsRailWidthRef.current > 0 ? -(commentsRailWidthRef.current / 2) : 0,
+        0,
+      );
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeCommentId, activeCommentFocusToken, state.scale, zoomToElement]);
+
+  return null;
+}
+
 export function EditorCanvas({
   code,
   parseError,
@@ -311,14 +386,30 @@ export function EditorCanvas({
   hoveredSequenceMessageBox,
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
+  comments = [],
+  activeCommentId = null,
+  activeCommentFocusToken = 0,
+  isCommentMode = false,
+  onActivateComment,
+  onOpenSelectionCommentComposer,
+  commentComposer = null,
+  commentDraft = "",
+  setCommentDraft,
+  onSubmitCommentComposer,
+  commentReplyDrafts = {},
+  onChangeCommentReplyDraft,
+  onSubmitCommentReply,
+  onToggleCommentResolved,
+  renderIdRef,
+  commentsRailWidth = 0,
+  sequenceMessageEntries = [],
+  getSequenceMessageEndpointGeometry,
   sequenceMessageTriggerAreas,
   sequenceBlockAreas,
   startSequenceConnection,
   onSequencePlusSelfLoop,
   onSequencePlusNote,
   onSequencePlusBlock,
-  openHighlightRecolorRef,
-  onRecolorSequenceHighlight,
   onHoveredSequenceMessageHover,
   onHoveredSequenceMessageClick,
   onHoveredSequenceMessageDoubleClick,
@@ -327,6 +418,7 @@ export function EditorCanvas({
   onReorderSequenceItem,
   onReorderSequenceLifelines,
   getSequenceLifelines,
+  currentSequenceNotePosition,
   isInlineEditing,
   selectedSvgId,
   selectedNodeId,
@@ -389,7 +481,6 @@ export function EditorCanvas({
   onChangeSequenceParticipantType,
   currentSequenceParticipantType,
   onChangeSequenceMessageEndpoint,
-  getSequenceMessageEndpointGeometry,
   onLinkSequenceNote,
   setIsInlineEditing,
   handleAddNodeFromSelected,
@@ -411,20 +502,91 @@ export function EditorCanvas({
   handleCodeChange,
 }: EditorCanvasProps) {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
+  const selectedSvgSelector = useMemo(() => {
+    if (!selectedSvgId) return null;
+    const escapeCss =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape
+        : (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    return `#${escapeCss(selectedSvgId)}`;
+  }, [selectedSvgId]);
+
+  useLayoutEffect(() => {
+    if (!isInlineEditing || !textBox || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const targetRect = {
+      left: containerRect.left - container.scrollLeft + textBox.x * scale,
+      top: containerRect.top - container.scrollTop + textBox.y * scale,
+      right: containerRect.left - container.scrollLeft + (textBox.x + textBox.width) * scale,
+      bottom: containerRect.top - container.scrollTop + (textBox.y + textBox.height) * scale,
+    };
+    const overlapPad = 6;
+    const elements = new Set<HTMLElement | SVGElement>();
+
+    if (selectedSvgSelector) {
+      try {
+        container
+          .querySelectorAll<
+            HTMLElement | SVGElement
+          >(`${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`)
+          .forEach((el) => elements.add(el));
+      } catch {
+        // Ignore invalid third-party SVG ids; overlap fallback still handles the visible label.
+      }
+    }
+
+    const overlapCandidates =
+      selectedNodeId?.startsWith("SEQ_MSG_") ||
+      selectedNodeId?.startsWith("SEQ_NOTE_") ||
+      isEdgeId(selectedNodeId)
+        ? container.querySelectorAll<HTMLElement | SVGElement>(
+            ".messageText, .noteText, .edgeLabel, .nodeLabel, .cluster-label",
+          )
+        : container.querySelectorAll<HTMLElement | SVGElement>(
+            ".nodeLabel, .cluster-label, .label, text, foreignObject",
+          );
+
+    overlapCandidates.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      const overlaps =
+        rect.right >= targetRect.left - overlapPad &&
+        rect.left <= targetRect.right + overlapPad &&
+        rect.bottom >= targetRect.top - overlapPad &&
+        rect.top <= targetRect.bottom + overlapPad;
+      if (overlaps) elements.add(el);
+    });
+
+    const previous = Array.from(elements).map((el) => ({
+      el,
+      opacity: el.style.opacity,
+      visibility: el.style.visibility,
+      pointerEvents: el.style.pointerEvents,
+    }));
+
+    previous.forEach(({ el }) => {
+      el.style.opacity = "0";
+      el.style.visibility = "hidden";
+      el.style.pointerEvents = "none";
+    });
+
+    return () => {
+      previous.forEach(({ el, opacity, visibility, pointerEvents }) => {
+        if (!el.isConnected) return;
+        el.style.opacity = opacity;
+        el.style.visibility = visibility;
+        el.style.pointerEvents = pointerEvents;
+      });
+    };
+  }, [containerRef, isInlineEditing, selectedNodeId, selectedSvgSelector, textBox]);
   const [sequencePlusMenu, setSequencePlusMenu] = useState<{
     actorId: string;
     anchorY: number;
     x: number;
     y: number;
     mode: "root" | "note" | "logic";
-  } | null>(null);
-  // Viewport-space (canvasShellRef-relative) popover for recoloring a `rect` highlight, opened by
-  // double-clicking the highlight's colored background. `lineIndex` is the source line of the rect.
-  const [seqHighlightColorMenu, setSeqHighlightColorMenu] = useState<{
-    lineIndex: number;
-    x: number;
-    y: number;
-    color: string;
   } | null>(null);
   // Viewport-space indicator for sequence drag — lives outside the TransformWrapper so
   // canvas pan/zoom never affects its coordinate system. Positions are relative to canvasShellRef.
@@ -499,7 +661,6 @@ export function EditorCanvas({
   // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
   const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
-  const seqHighlightColorMenuRef = useRef<HTMLDivElement | null>(null);
   // Tracks whether the last sequence-message pointer interaction actually became a drag, so the
   // hover grab overlay can distinguish a reorder-drag from a plain click (select).
   const seqDidDragRef = useRef(false);
@@ -507,6 +668,7 @@ export function EditorCanvas({
   // counter does NOT survive the hover→selected overlay element swap (the two clicks land on
   // different DOM nodes), so we time clicks ourselves keyed by message index.
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
+  const fallbackRenderIdRef = useRef<string | null>(null);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
@@ -536,18 +698,6 @@ export function EditorCanvas({
     transformElements.forEach((el) => {
       const baseTransform = el.getAttribute("data-base-transform") || "";
       el.style.transform = `${baseTransform} scale(${inverse})`.trim();
-    });
-
-    // 1b. Clamped scale-lock transforms (counter-scale capped at 1×). Used by on-canvas
-    // affordances that should stay a CONSTANT size while zooming IN (inverse < 1) but must
-    // SHRINK with the diagram while zooming OUT (inverse > 1) instead of ballooning to a fixed
-    // screen size that dwarfs a densely-packed, zoomed-out diagram. e.g. the message endpoint
-    // drag bars: at min zoom a constant 44px bar spanned many message rows and dominated.
-    const clampedScale = Math.min(1, inverse);
-    const clampedElements = container.querySelectorAll<HTMLElement>("[data-scale-lock-max1]");
-    clampedElements.forEach((el) => {
-      const baseTransform = el.getAttribute("data-base-transform") || "";
-      el.style.transform = `${baseTransform} scale(${clampedScale})`.trim();
     });
 
     // 2. Scale-lock borders
@@ -599,36 +749,6 @@ export function EditorCanvas({
     document.addEventListener("mousedown", onOutsideClick);
     return () => document.removeEventListener("mousedown", onOutsideClick);
   }, [sequencePlusMenu]);
-
-  useEffect(() => {
-    if (!seqHighlightColorMenu) return;
-    const onOutsideClick = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (target && seqHighlightColorMenuRef.current?.contains(target)) return;
-      setSeqHighlightColorMenu(null);
-    };
-    document.addEventListener("mousedown", onOutsideClick);
-    return () => document.removeEventListener("mousedown", onOutsideClick);
-  }, [seqHighlightColorMenu]);
-
-  // Register the highlight-recolor popover opener so the hook (which detects the dblclick on the
-  // `rect` highlight via its document-level capture listener) can open this canvasShell-positioned
-  // menu. Positions are converted to canvasShellRef-relative viewport coords.
-  useEffect(() => {
-    if (!openHighlightRecolorRef) return;
-    openHighlightRecolorRef.current = (lineIndex, color, clientX, clientY) => {
-      const shellRect = canvasShellRef.current?.getBoundingClientRect();
-      setSeqHighlightColorMenu({
-        lineIndex,
-        x: clientX - (shellRect?.left ?? 0),
-        y: clientY - (shellRect?.top ?? 0),
-        color,
-      });
-    };
-    return () => {
-      if (openHighlightRecolorRef) openHighlightRecolorRef.current = null;
-    };
-  }, [openHighlightRecolorRef]);
 
   // Some Mermaid-rendered elements (especially foreignObject HTML labels) can bypass
   // React bubbling/capture handlers. Use a document-level capture fallback so single
@@ -746,7 +866,7 @@ export function EditorCanvas({
     const shellRect = shell.getBoundingClientRect();
 
     const textEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
-    const noteTextEls = Array.from(container.querySelectorAll(".noteText")) as SVGElement[];
+    const noteTextEls = getSortedSequenceNoteTextElements(container);
     if (textEls.length === 0 && noteTextEls.length === 0) return;
     const lineEls = Array.from(
       container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
@@ -796,8 +916,8 @@ export function EditorCanvas({
       });
     });
 
-    // Note rows: band = the note's rect.note box (full yellow box), keyed by .noteText DOM index
-    // so it matches the SEQ_NOTE_ selection id format.
+    // Note rows: band = the note's rect.note box (full yellow box), keyed by the same visual
+    // ordering used for SEQ_NOTE_ selection ids so drag-reorder and selection stay aligned.
     noteTextEls.forEach((el, j) => {
       const parentGroup = el.parentElement;
       const rectNote = (parentGroup?.querySelector("rect.note") ??
@@ -1667,7 +1787,7 @@ export function EditorCanvas({
         }}
       />
       <TransformWrapper
-        initialScale={1.5}
+        initialScale={DEFAULT_CANVAS_INITIAL_SCALE}
         minScale={0.5}
         maxScale={50}
         centerOnInit={true}
@@ -1735,6 +1855,11 @@ export function EditorCanvas({
       >
         {({ zoomIn, zoomOut, resetTransform, state }) => (
           <>
+            <CommentFocusSync
+              activeCommentId={activeCommentId}
+              activeCommentFocusToken={activeCommentFocusToken ?? 0}
+              commentsRailWidth={commentsRailWidth}
+            />
             <div className="absolute bottom-4 right-4 z-20 flex flex-col gap-2 bg-background border border-border p-1 rounded-lg shadow-sm">
               <Button
                 variant="ghost"
@@ -1791,7 +1916,7 @@ export function EditorCanvas({
             >
               <div
                 ref={containerRef}
-                className="w-full h-full relative flex items-center justify-center cursor-grab active:cursor-grabbing"
+                className={`w-full h-full relative flex items-center justify-center ${isCommentMode ? "cursor-copy" : "cursor-grab active:cursor-grabbing"}`}
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
@@ -1833,6 +1958,26 @@ export function EditorCanvas({
                 <div
                   className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
                   dangerouslySetInnerHTML={{ __html: svgContent }}
+                />
+
+                <CommentLayer
+                  comments={comments}
+                  scale={state.scale}
+                  containerRef={containerRef}
+                  renderIdRef={renderIdRef ?? fallbackRenderIdRef}
+                  activeCommentId={activeCommentId}
+                  onActivateComment={onActivateComment ?? (() => {})}
+                  commentComposer={commentComposer}
+                  commentDraft={commentDraft}
+                  setCommentDraft={setCommentDraft ?? (() => {})}
+                  onSubmitComposer={onSubmitCommentComposer ?? (() => {})}
+                  commentReplyDrafts={commentReplyDrafts}
+                  onChangeReplyDraft={onChangeCommentReplyDraft ?? (() => {})}
+                  onSubmitReply={onSubmitCommentReply ?? (() => {})}
+                  onToggleResolved={onToggleCommentResolved ?? (() => {})}
+                  commentsRailWidth={commentsRailWidth}
+                  sequenceMessageEntries={sequenceMessageEntries}
+                  getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
                 />
 
                 {/* Logic-block / highlight overlays are intentionally NOT drawn: Mermaid already
@@ -2091,16 +2236,28 @@ export function EditorCanvas({
                                 const shellRect = canvasShellRef.current?.getBoundingClientRect();
                                 if (!shellRect) return;
                                 const cursorX = ev.clientX - shellRect.left;
+                                const lifelines = getSequenceLifelines?.() ?? [];
+                                const containerRect = containerRef.current?.getBoundingClientRect();
+                                const scale =
+                                  containerRect && containerRef.current
+                                    ? containerRect.width / containerRef.current.offsetWidth
+                                    : null;
                                 // Viewport-space snap detection: find the nearest actor-line within 28 viewport-px
                                 let snapX: number | null = null;
-                                const actorLineEls =
-                                  containerRef.current?.querySelectorAll("line.actor-line") ?? [];
-                                for (const lineEl of actorLineEls) {
-                                  const lr = (lineEl as Element).getBoundingClientRect();
-                                  const lifelineViewportX = lr.left - shellRect.left; // center of the zero-width line
-                                  if (Math.abs(lifelineViewportX - cursorX) <= 28) {
-                                    snapX = lifelineViewportX;
-                                    break;
+                                let snappedActorId: string | null = null;
+                                if (scale && containerRect && containerRef.current) {
+                                  const toShellX = (canvasX: number) =>
+                                    canvasX * scale +
+                                    containerRect.left -
+                                    containerRef.current!.scrollLeft -
+                                    shellRect.left;
+                                  for (const lifeline of lifelines) {
+                                    const lifelineViewportX = toShellX(lifeline.x);
+                                    if (Math.abs(lifelineViewportX - cursorX) <= 28) {
+                                      snapX = lifelineViewportX;
+                                      snappedActorId = lifeline.actorId;
+                                      break;
+                                    }
                                   }
                                 }
                                 setSeqDragIndicator({
@@ -2110,6 +2267,20 @@ export function EditorCanvas({
                                   y2: anchorMenuY,
                                   snapX,
                                 });
+                                setConnectionState((prev) => ({
+                                  ...prev,
+                                  isDragging: true,
+                                  mousePos: {
+                                    x: snapX !== null ? snapX : cursorX,
+                                    y: anchorMenuY,
+                                  },
+                                  anchorY,
+                                  snapTargetId: snappedActorId
+                                    ? `SEQ_ACTOR_${snappedActorId}`
+                                    : null,
+                                  snapTargetPos:
+                                    snapX !== null ? { x: snapX, y: anchorMenuY } : null,
+                                }));
                               }
                             };
                             const onUp = () => {
@@ -2209,17 +2380,19 @@ export function EditorCanvas({
                     </svg>
                   )}
 
-                {isInlineEditing && selectedSvgId && (
+                {isInlineEditing && selectedSvgSelector && (
                   <style>{`
-                        #${selectedSvgId},
-                        #${selectedSvgId} .label,
-                        #${selectedSvgId} text,
-                        #${selectedSvgId} foreignObject,
-                        #${selectedSvgId} .nodeLabel,
-                        #${selectedSvgId} .cluster-label,
-                        #${selectedSvgId} .messageText,
-                        #${selectedSvgId} .noteText {
+                        ${selectedSvgSelector},
+                        ${selectedSvgSelector} .label,
+                        ${selectedSvgSelector} text,
+                        ${selectedSvgSelector} foreignObject,
+                        ${selectedSvgSelector} .nodeLabel,
+                        ${selectedSvgSelector} .cluster-label,
+                        ${selectedSvgSelector} .messageText,
+                        ${selectedSvgSelector} .noteText {
                             opacity: 0 !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
                         }
                      `}</style>
                 )}
@@ -2242,60 +2415,6 @@ export function EditorCanvas({
                       title="Drag to reorder"
                       onMouseDown={startSeqReorderDrag}
                     />
-                  )}
-
-                {/* Message endpoint drag handles — vertical rounded "bars" (capsules) at the
-                      sender + receiver ends of the selected message. Dragging a handle to another
-                      lifeline reassigns that endpoint in the code; dragging onto the source's own
-                      lifeline morphs the message into a self-loop (and vice-versa). Rendered in
-                      canvas coords inside the TransformComponent so they track pan/zoom;
-                      scale-locked so the on-screen size stays constant. z above the reorder grab
-                      overlay + selection border. */}
-                {currentType === "sequence" &&
-                  selectedSeqMsgEndpoints &&
-                  selectionBox &&
-                  !isLocked &&
-                  !isInlineEditing &&
-                  !connectionState.active &&
-                  !seqReorder &&
-                  !seqEndpointDragging && (
-                    <>
-                      {[
-                        { key: "source" as const, pt: selectedSeqMsgEndpoints.source },
-                        { key: "target" as const, pt: selectedSeqMsgEndpoints.target },
-                      ].map(({ key, pt }) => {
-                        // Clamped counter-scale (cap at 1×): stay a constant on-screen size when
-                        // zoomed IN, but shrink WITH the diagram when zoomed OUT so the bar never
-                        // dominates a densely-packed min-zoom diagram. Mirrors data-scale-lock-max1
-                        // in updateScaleLockedElements (which overrides this inline value on zoom).
-                        const epScale = Math.min(1, 1 / state.scale);
-                        return (
-                          <div
-                            key={`seq-endpoint-${key}`}
-                            data-scale-lock-max1
-                            data-base-transform="translate(-50%, -50%)"
-                            className="seq-endpoint-handle absolute z-[24] pointer-events-auto cursor-grab active:cursor-grabbing rounded-full bg-white border-[3px] border-blue-500 shadow-sm hover:bg-blue-50 transition-colors"
-                            style={{
-                              left: pt.x,
-                              // Center the bar ON the endpoint line (no fixed upward nudge). A constant
-                              // upward offset drifts the bar onto the PREVIOUS message when zoomed out
-                              // (rows pack to a few px apart while the bar keeps a min screen size), so
-                              // it must straddle its own endpoint symmetrically at every zoom level.
-                              top: pt.y,
-                              width: 17,
-                              height: 54,
-                              transform: `translate(-50%, -50%) scale(${epScale})`,
-                            }}
-                            title={
-                              key === "source" ? "Drag to change sender" : "Drag to change receiver"
-                            }
-                            onMouseDown={(e) =>
-                              startSeqEndpointDrag(e, key, selectedSeqMsgEndpoints)
-                            }
-                          />
-                        );
-                      })}
-                    </>
                   )}
 
                 {selectionBox && !isLocked && (
@@ -2381,6 +2500,7 @@ export function EditorCanvas({
                         <SequenceManipulationToolbar
                           selectedNodeId={selectedNodeId}
                           scale={state.scale}
+                          currentNotePosition={currentSequenceNotePosition}
                           onEditLabel={(e) => handleEditClick(e)}
                           onAddNote={onAddSequenceNote}
                           onMoveNote={onMoveSequenceNote}
@@ -2539,6 +2659,26 @@ export function EditorCanvas({
                           onResetStyle={onResetStyle}
                         />
                       ))}
+
+                    {onOpenSelectionCommentComposer && selectedNodeId && (
+                      <button
+                        type="button"
+                        data-scale-lock
+                        data-inline-toolbar
+                        className="absolute right-0 top-0 z-[23] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-indigo-600 shadow-lg transition-colors hover:bg-indigo-50 pointer-events-auto dark:bg-zinc-900 dark:text-indigo-300 dark:hover:bg-zinc-800"
+                        style={{
+                          transform: `translate(50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        }}
+                        title="Add comment to selection"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenSelectionCommentComposer();
+                        }}
+                      >
+                        <MessageSquareText className="h-4 w-4" />
+                      </button>
+                    )}
 
                     <InlineTextEditor
                       isInlineEditing={isInlineEditing}
@@ -2733,6 +2873,50 @@ export function EditorCanvas({
                 <Lock className="w-4 h-4 mr-2" /> Diagram Locked
               </div>
             )}
+
+            {/* Sequence message endpoint drag handles — rendered in viewport space
+                  outside TransformComponent so their screen size stays fixed regardless
+                  of zoom. Canvas coordinates are converted to viewport via scale/rects. */}
+            {currentType === "sequence" &&
+              selectedSeqMsgEndpoints &&
+              selectionBox &&
+              !isLocked &&
+              !isInlineEditing &&
+              !connectionState.active &&
+              !seqReorder &&
+              !seqEndpointDragging && (
+                <>
+                  {[
+                    { key: "source" as const, pt: selectedSeqMsgEndpoints.source },
+                    { key: "target" as const, pt: selectedSeqMsgEndpoints.target },
+                  ].map(({ key, pt }) => {
+                    const container = containerRef.current;
+                    const shell = canvasShellRef.current;
+                    if (!container || !shell) return null;
+                    const cRect = container.getBoundingClientRect();
+                    const sRect = shell.getBoundingClientRect();
+                    const vpX = pt.x * state.scale + cRect.left - container.scrollLeft - sRect.left;
+                    const vpY = pt.y * state.scale + cRect.top - container.scrollTop - sRect.top;
+                    return (
+                      <div
+                        key={`seq-endpoint-${key}`}
+                        className="seq-endpoint-handle absolute z-[24] pointer-events-auto cursor-grab active:cursor-grabbing rounded-full bg-white border-2 border-blue-500 shadow-sm hover:bg-blue-50 transition-colors"
+                        style={{
+                          left: vpX,
+                          top: vpY,
+                          width: "14px",
+                          height: "36px",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        title={
+                          key === "source" ? "Drag to change sender" : "Drag to change receiver"
+                        }
+                        onMouseDown={(e) => startSeqEndpointDrag(e, key, selectedSeqMsgEndpoints)}
+                      />
+                    );
+                  })}
+                </>
+              )}
           </>
         )}
       </TransformWrapper>
@@ -3076,76 +3260,6 @@ export function EditorCanvas({
               borderRadius: 9999,
             }}
           />
-        </div>
-      )}
-
-      {seqHighlightColorMenu && (
-        <div
-          ref={seqHighlightColorMenuRef}
-          className="absolute pointer-events-auto z-30"
-          style={{
-            left: seqHighlightColorMenu.x,
-            top: seqHighlightColorMenu.y,
-            transform: "translate(-50%, calc(-100% - 12px))",
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="rounded-xl border border-border bg-popover p-2 shadow-xl">
-            <div className="px-1 pb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Highlight Color
-            </div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {[
-                { name: "Blue", rgb: "rgb(200, 220, 255)" },
-                { name: "Green", rgb: "rgb(204, 245, 217)" },
-                { name: "Yellow", rgb: "rgb(255, 244, 191)" },
-                { name: "Orange", rgb: "rgb(255, 224, 191)" },
-                { name: "Red", rgb: "rgb(255, 205, 205)" },
-                { name: "Purple", rgb: "rgb(229, 214, 255)" },
-                { name: "Pink", rgb: "rgb(255, 209, 235)" },
-                { name: "Gray", rgb: "rgb(228, 231, 236)" },
-              ].map((c) => {
-                const isActive =
-                  (seqHighlightColorMenu.color || "").replace(/\s/g, "") ===
-                  c.rgb.replace(/\s/g, "");
-                return (
-                  <button
-                    key={c.name}
-                    title={c.name}
-                    className={`h-7 w-7 rounded-full border border-slate-300 transition-transform hover:scale-110 ${isActive ? "ring-2 ring-indigo-500 ring-offset-1 ring-offset-popover" : ""}`}
-                    style={{ backgroundColor: c.rgb }}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      onRecolorSequenceHighlight?.(seqHighlightColorMenu.lineIndex, c.rgb);
-                      setSeqHighlightColorMenu(null);
-                    }}
-                  />
-                );
-              })}
-            </div>
-            <label className="mt-2 flex items-center gap-2 rounded-md px-1 py-1 text-sm text-popover-foreground">
-              <Palette className="h-4 w-4 shrink-0 text-violet-500" />
-              <span className="flex-1">Custom…</span>
-              <input
-                type="color"
-                className="h-6 w-8 cursor-pointer rounded border border-border bg-transparent p-0"
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => {
-                  const hex = e.target.value;
-                  const r = parseInt(hex.slice(1, 3), 16);
-                  const g = parseInt(hex.slice(3, 5), 16);
-                  const b = parseInt(hex.slice(5, 7), 16);
-                  onRecolorSequenceHighlight?.(
-                    seqHighlightColorMenu.lineIndex,
-                    `rgb(${r}, ${g}, ${b})`,
-                  );
-                  setSeqHighlightColorMenu(null);
-                }}
-              />
-            </label>
-          </div>
         </div>
       )}
 

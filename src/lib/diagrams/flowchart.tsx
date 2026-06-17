@@ -913,8 +913,9 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
 
       <div className="h-5 w-px bg-border" />
       <div className="flex items-center gap-2 px-2 opacity-70" title="Auto Layout is locked">
-        <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
-          Auto Layout
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-muted-foreground whitespace-nowrap">
+          <Workflow className="h-3.5 w-3.5 shrink-0" />
+          <span>Auto layout</span>
         </span>
         <div className="w-7 h-4 bg-indigo-500 rounded-full flex items-center px-0.5 cursor-not-allowed">
           <div className="w-3 h-3 bg-white rounded-full translate-x-3 shadow-sm" />

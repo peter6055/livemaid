@@ -122,6 +122,8 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
     };
 
     const lines = code.split("\n");
+    const participantDeclWithLabelRe =
+      /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+[^\s@]+(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+?))?\s*$/i;
 
     // AC 1.3 — Auto-ID: scan every existing participant ID (from declarations AND message
     // references) so the new id never collides. Pick the first unused single uppercase letter
@@ -144,6 +146,19 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
         usedIds.add(mm[2]);
       }
     }
+
+    // Keep the generated human-readable label unique as well. Sequence Mermaid allows repeated
+    // participant ids with the same visible name, but that makes the duplicate lifelines look like
+    // a rendering bug in the editor. "New Database", "New Database 2", "New Database 3", ...
+    // stays readable while preserving multiple participants of the same type.
+    const usedLabels = new Set<string>();
+    for (const line of lines) {
+      const match = line.trim().match(participantDeclWithLabelRe);
+      if (!match) continue;
+      const label = match[1]?.trim();
+      if (label) usedLabels.add(label);
+    }
+
     let newId = "";
     for (let i = 0; i < 26; i += 1) {
       const c = String.fromCharCode(65 + i);
@@ -155,12 +170,19 @@ const SequenceToolbar = ({ code, setCode }: EditorContext) => {
     if (!newId) newId = `P${Date.now().toString().slice(-3)}`;
 
     let insertLine = "";
+    const baseLabel = `New ${displayNames[type]}`;
+    let newLabel = baseLabel;
+    if (usedLabels.has(baseLabel)) {
+      let suffix = 2;
+      while (usedLabels.has(`${baseLabel} ${suffix}`)) suffix += 1;
+      newLabel = `${baseLabel} ${suffix}`;
+    }
     if (type === "participant") {
-      insertLine = `    participant ${newId} as New ${displayNames[type]}`;
+      insertLine = `    participant ${newId} as ${newLabel}`;
     } else if (type === "actor") {
-      insertLine = `    actor ${newId} as New ${displayNames[type]}`;
+      insertLine = `    actor ${newId} as ${newLabel}`;
     } else {
-      insertLine = `    participant ${newId}@{ "type": "${type}" } as New ${displayNames[type]}`;
+      insertLine = `    participant ${newId}@{ "type": "${type}" } as ${newLabel}`;
     }
 
     // AC 1.1 / 1.2 — Right-side insertion. Mermaid lays out participant columns in first-appearance

@@ -1,6 +1,47 @@
 export const CONNECTOR_PATTERN =
   "<==>|<-->|x==x|o==o|x-\\\\.-x|x-.-x|o-\\\\.-o|o-.-o|x--x|o--o|x-\\\\.x|x-.x|o-\\\\.o|o-.o|<-\\\\.->|<-.->|-\\\\.->|-.->|-->|==>|==x|==o|-.-x|-.-o|--x|--o|-\\\\.x|-.x|-\\\\.o|-.o|---|===|-\\\\.-|-.-|~~~";
 export const CONNECTOR_REGEX = new RegExp(CONNECTOR_PATTERN);
+const INLINE_TEXT_LINK_PATTERN = String.raw`(?:--|==|-\.)\s+[^|\n]+?\s+(?:-->|---|==>|===|\.->|-\.-)`;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function matchFlowchartLinkLine(
+  line: string,
+  src: string,
+  dst: string,
+): RegExpMatchArray | null {
+  const srcPattern = escapeRegExp(src);
+  const dstPattern = escapeRegExp(dst);
+  const standardLabelRegex = new RegExp(
+    `(^|\\s*)${srcPattern}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dstPattern}\\b`,
+    "i",
+  );
+  const inlineTextLabelRegex = new RegExp(
+    `(^|\\s*)${srcPattern}(?:\\b|(?=[xoXO]))[^\\n]*?(${INLINE_TEXT_LINK_PATTERN})[^\\n]*?(?:\\b|(?<=[xoXO]))${dstPattern}\\b`,
+    "i",
+  );
+
+  return line.match(standardLabelRegex) ?? line.match(inlineTextLabelRegex);
+}
+
+export function getLinkLabelFromMiddle(middlePart: string): string {
+  const withoutEdgeId = middlePart.replace(
+    new RegExp(`\\b[a-zA-Z0-9_-]+@(?=${CONNECTOR_PATTERN})`),
+    "",
+  );
+  const quoteMatch = withoutEdgeId.match(/"([^"]*)"/);
+  if (quoteMatch) return quoteMatch[1];
+
+  const barMatch = withoutEdgeId.match(/\|([^|]*)\|/);
+  if (barMatch) return barMatch[1];
+
+  const inlineTextMatch = withoutEdgeId.match(
+    new RegExp(String.raw`(?:--|==|-\.)\s+([^|\n]+?)\s+(?:-->|---|==>|===|\.->|-\.-)`),
+  );
+  return inlineTextMatch ? inlineTextMatch[1].trim() : "";
+}
 
 export function updateMermaidTheme(code: string, newTheme: string): string {
   const regex = /^---\r?\n\s*config:\s*\r?\n([\s\S]*?)(?:\r?\n)?---\r?\n/m;
@@ -395,27 +436,13 @@ export function updateLinkStyleAndLabel(
       return line;
     }
 
-    const linkLineRegex = new RegExp(
-      `(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`,
-      "i",
-    );
-    const match = line.match(linkLineRegex);
+    const match = matchFlowchartLinkLine(line, src, dst);
     if (match) {
       if (currentOccurrence === occurrenceIndex) {
         currentOccurrence++;
         const middlePart = match[2];
         const current = parseConnectorStyle(middlePart);
-
-        let currentLabel = "";
-        const quoteMatch = middlePart.match(/"([^"]*)"/);
-        if (quoteMatch) {
-          currentLabel = quoteMatch[1];
-        } else {
-          const barMatch = middlePart.match(/\|([^|]*)\|/);
-          if (barMatch) {
-            currentLabel = barMatch[1];
-          }
-        }
+        const currentLabel = getLinkLabelFromMiddle(middlePart);
 
         const finalStroke = updates.stroke !== undefined ? updates.stroke : current.stroke;
         const finalArrowType =

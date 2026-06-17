@@ -7,9 +7,21 @@
 // keep their identical imports — they never reference a concrete backend.
 
 import { createFileSystemStorageAdapter } from "./storageFsAdapter";
-import type { DiagramDocument, Folder, StorageAdapter } from "./storageTypes";
+import type {
+  DiagramDocument,
+  DiagramComment,
+  DiagramCommentAnchor,
+  Folder,
+  StorageAdapter,
+} from "./storageTypes";
 
-export type { DiagramDocument, Folder, VersionHistoryEntry } from "./storageTypes";
+export type {
+  DiagramDocument,
+  DiagramComment,
+  DiagramCommentAnchor,
+  Folder,
+  VersionHistoryEntry,
+} from "./storageTypes";
 export { IS_DEMO_MODE } from "./storageTypes";
 
 // ── Active backend ────────────────────────────────────────────────────────────

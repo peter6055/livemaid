@@ -13,18 +13,21 @@ import {
   updateLinkAnimation,
   deleteLink,
   rebuildLinkStyles,
-  CONNECTOR_PATTERN,
+  getLinkLabelFromMiddle,
+  matchFlowchartLinkLine,
 } from "@/lib/diagrams/utils";
 import {
   findFlowchartNodeLine,
   findFlowchartEdgeLine,
   findSequenceParticipantLine,
 } from "@/lib/diagrams/selectionLineMap";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
 import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
+import { CommentSidebar } from "./comments/CommentSidebar";
 import { ClassTextEditor } from "./ClassTextEditor";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
@@ -32,10 +35,12 @@ import {
   Undo2,
   Redo2,
   Type,
+  Hash,
   Copy,
   PanelLeftClose,
   PanelLeftOpen,
   FileQuestion,
+  MessageSquarePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -88,7 +93,6 @@ import {
   deleteClassNoteByIndex,
   findClassDefinitionLine,
   getNamespaceNames,
-  getClassNamespace,
   findNamespaceDefinitionLine,
   renameNamespace,
   deleteNamespace,
@@ -149,13 +153,17 @@ import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
+
+const DEFAULT_HISTORY_PREVIEW_SCALE = 2;
 import { Star } from "lucide-react";
 import mermaid from "mermaid";
 import type { VersionHistoryEntry, Folder } from "@/lib/api/storage";
+import { nanoid } from "nanoid";
 import type { MonacoCodeEditor, ConfirmOptions } from "@/lib/diagrams/types";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import type { OnMount } from "@monaco-editor/react";
 import { DemoBanner } from "@/components/DemoBanner";
+import type { DiagramComment, DiagramCommentAnchor } from "@/lib/api/storage";
 
 // Remove sequence blocks left TRULY empty (an opener — rect/loop/opt/alt/par/critical/break —
 // whose body contains no message/note, only section dividers like else/and/option). Such a block
@@ -253,7 +261,67 @@ export function LiveMaidEditor({
   const [previewParseError, setPreviewParseError] = useState<string | null>(null);
   const [exportFormat, setExportFormat] = useState("PNG");
   const [exportBg, setExportBg] = useState("transparent");
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+  const [isCommentMode, setIsCommentMode] = useState(false);
+  const [showResolvedComments, setShowResolvedComments] = useState(false);
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
+  const [activeCommentFocusToken, setActiveCommentFocusToken] = useState(0);
+  const [commentComposer, setCommentComposer] = useState<{
+    anchor: DiagramCommentAnchor;
+    position: { x: number; y: number };
+    targetLabel: string;
+    commentMode: "shape" | "canvas";
+  } | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
   const allowBrowserBackRef = useRef(false);
+
+  const handleCloseComments = useCallback(() => {
+    setIsCommentsOpen(false);
+    setIsCommentMode(false);
+    setCommentComposer(null);
+    setCommentDraft("");
+  }, []);
+
+  const handleExitCommentMode = useCallback(() => {
+    setIsCommentMode(false);
+    setCommentComposer(null);
+    setCommentDraft("");
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !isCommentMode) return;
+      event.preventDefault();
+      event.stopPropagation();
+      handleExitCommentMode();
+    };
+
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [handleExitCommentMode, isCommentMode]);
+
+  const handleCanvasCommentPlace = useCallback((position: { x: number; y: number }) => {
+    const contentWidth = containerRef.current?.offsetWidth || 1;
+    const contentHeight = containerRef.current?.offsetHeight || 1;
+    setCommentComposer({
+      anchor: {
+        type: "canvas",
+        position: {
+          x: position.x / contentWidth,
+          y: position.y / contentHeight,
+        },
+      },
+      position,
+      targetLabel: `Canvas position ${Math.round(position.x)}, ${Math.round(position.y)}`,
+      commentMode: "canvas",
+    });
+    setCommentDraft("");
+    setIsCommentMode(false);
+    setActiveCommentId(null);
+  }, []);
 
   // Promise-based confirmation provider so server-imported diagram plugins can
   // trigger the UI-library AlertDialog (which they cannot import themselves).
@@ -342,7 +410,6 @@ export function LiveMaidEditor({
     getSequenceLifelines,
     sequenceBlockAreas,
     getSequenceBlockEntries,
-    openHighlightRecolorRef,
     shapePicker,
     setShapePicker,
     getSequenceNoteEntries,
@@ -357,6 +424,8 @@ export function LiveMaidEditor({
     isLocked,
     handleCodeChange,
     determineDiagramType,
+    isCommentMode,
+    onCanvasCommentPlace: handleCanvasCommentPlace,
   });
 
   const handleDeselect = useCallback(() => {
@@ -1574,6 +1643,11 @@ export function LiveMaidEditor({
     [isSequenceMessageLine],
   );
 
+  const sequenceMessageEntries = useMemo(
+    () => getSequenceMessageEntries(code),
+    [code, getSequenceMessageEntries],
+  );
+
   const getSelectedSequenceParticipantForNote = useCallback(() => {
     if (!selectedNodeId) return null;
 
@@ -1636,6 +1710,13 @@ export function LiveMaidEditor({
       selectedNodeId,
     ],
   );
+
+  const currentSequenceNotePosition = useMemo<"left" | "right" | "over" | null>(() => {
+    if (!selectedNodeId?.startsWith("SEQ_NOTE_")) return null;
+    const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
+    if (!Number.isFinite(idx) || idx < 0) return null;
+    return getSequenceNoteEntries(code)[idx]?.position ?? null;
+  }, [code, getSequenceNoteEntries, selectedNodeId]);
 
   const handleSequencePlusSelfLoop = useCallback(
     (actorId: string, anchorY: number) => {
@@ -1710,24 +1791,6 @@ export function LiveMaidEditor({
       getSequenceLifelines,
       handleCodeChange,
     ],
-  );
-
-  // Recolor an existing `rect` highlight (double-click the highlight box → color picker). The
-  // line index comes from `resolveSequenceHighlightTarget` (Y-sorted DOM rects ↔ source rect
-  // blocks); only the color argument after the `rect` keyword is rewritten, indentation preserved.
-  const handleRecolorSequenceHighlight = useCallback(
-    (lineIndex: number, color: string) => {
-      const lines = code.split("\n");
-      const line = lines[lineIndex];
-      if (line == null) return;
-      const m = line.match(/^(\s*)rect\b.*$/i);
-      if (!m) return;
-      const next = `${m[1]}rect ${color}`;
-      if (next === line) return;
-      lines[lineIndex] = next;
-      handleCodeChange(lines.join("\n"));
-    },
-    [code, handleCodeChange],
   );
 
   const handleMoveSequenceNote = useCallback(
@@ -1921,13 +1984,6 @@ export function LiveMaidEditor({
       return entry ? toRange(entry.index) : null;
     }
 
-    if (selectedNodeId.startsWith("SEQ_BLOCK_")) {
-      const startLine = parseInt(selectedNodeId.slice("SEQ_BLOCK_".length), 10);
-      const blk = getSequenceBlockEntries(code).find((b) => b.startLine === startLine);
-      if (blk) return { startLine: blk.startLine, endLine: blk.endLine };
-      return Number.isFinite(startLine) ? toRange(startLine) : null;
-    }
-
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.slice("SEQ_ACTOR_".length);
       const declLine = findSequenceParticipantLine(code, actorId);
@@ -1972,6 +2028,277 @@ export function LiveMaidEditor({
     const m = String(d.getMinutes()).padStart(2, "0");
     const ampm = d.getHours() >= 12 ? "PM" : "AM";
     return `Snapshot ${index + 1} - ${h}:${m} ${ampm}`;
+  }, []);
+
+  const sortedComments = useMemo(
+    () =>
+      [...((doc?.comments ?? []) as DiagramComment[])].sort(
+        (a, b) =>
+          Number(Boolean(a.resolved)) - Number(Boolean(b.resolved)) ||
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    [doc?.comments],
+  );
+  const openComments = useMemo(
+    () => sortedComments.filter((comment) => !comment.resolved),
+    [sortedComments],
+  );
+  const resolvedComments = useMemo(
+    () => sortedComments.filter((comment) => comment.resolved),
+    [sortedComments],
+  );
+  const commentSortStorageKey = useMemo(() => `livemaid:comment-sort:${documentId}`, [documentId]);
+
+  const replaceCommentInDoc = useCallback(
+    (commentId: string, updatedComment: DiagramComment) => {
+      setDoc((prev) =>
+        prev
+          ? {
+              ...prev,
+              comments: (prev.comments ?? []).map((comment) =>
+                comment.id === commentId ? updatedComment : comment,
+              ),
+            }
+          : prev,
+      );
+    },
+    [setDoc],
+  );
+
+  const refreshCommentDraft = useCallback((commentId: string, value: string) => {
+    setCommentReplyDrafts((current) => ({ ...current, [commentId]: value }));
+  }, []);
+
+  const createCommentThread = useCallback(
+    async (composer: NonNullable<typeof commentComposer>, content: string) => {
+      const trimmed = content.trim();
+      if (!trimmed) return;
+      const tempCommentId = `temp-comment-${nanoid()}`;
+      const tempMessageId = `temp-message-${nanoid()}`;
+      const now = new Date().toISOString();
+      const tempComment: DiagramComment = {
+        id: tempCommentId,
+        anchor: composer.anchor,
+        messages: [
+          {
+            id: tempMessageId,
+            content: trimmed,
+            authorId: "anonymous",
+            timestamp: now,
+          },
+        ],
+        resolved: false,
+        starred: false,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const previousActiveCommentId = activeCommentId;
+      setDoc((prev) =>
+        prev ? { ...prev, comments: [...(prev.comments ?? []), tempComment] } : prev,
+      );
+      setCommentDraft("");
+      setCommentComposer(null);
+      setActiveCommentId(tempCommentId);
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: trimmed,
+            authorId: "anonymous",
+            anchor: composer.anchor,
+          }),
+        });
+        if (!response.ok) throw new Error("Failed to create comment");
+        const created = (await response.json()) as DiagramComment;
+        if (!created) throw new Error("Failed to create comment");
+        replaceCommentInDoc(tempCommentId, created);
+        setActiveCommentId(created.id);
+        toast.success("Comment added", {
+          action: {
+            label: "Open comments",
+            onClick: () => setIsCommentsOpen(true),
+          },
+        });
+      } catch {
+        setDoc((prev) =>
+          prev
+            ? {
+                ...prev,
+                comments: (prev.comments ?? []).filter((comment) => comment.id !== tempCommentId),
+              }
+            : prev,
+        );
+        setCommentComposer(composer);
+        setCommentDraft(trimmed);
+        setActiveCommentId((current) =>
+          current === tempCommentId ? previousActiveCommentId : current,
+        );
+        toast.error("Failed to add comment");
+      }
+    },
+    [activeCommentId, documentId, replaceCommentInDoc, setDoc],
+  );
+
+  const submitCommentComposer = useCallback(
+    (content?: string) => {
+      if (!commentComposer) return;
+      void createCommentThread(commentComposer, content ?? commentDraft);
+    },
+    [commentComposer, commentDraft, createCommentThread],
+  );
+
+  const openSelectionCommentComposer = useCallback(() => {
+    if (!selectedNodeId || !selectionBox) return;
+    const sequenceMessageIndex = selectedNodeId.startsWith("SEQ_MSG_")
+      ? parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10)
+      : null;
+    const sequenceGeometry =
+      Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
+        ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
+        : null;
+    const fallbackPos =
+      sequenceGeometry &&
+      Number.isFinite(sequenceGeometry.source.x) &&
+      Number.isFinite(sequenceGeometry.target.x)
+        ? {
+            x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
+            y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
+          }
+        : {
+            x: selectionBox.x + selectionBox.width / 2,
+            y: selectionBox.y + selectionBox.height / 2,
+          };
+    const anchor: DiagramCommentAnchor = {
+      type: "shape",
+      shapeId: selectedNodeId,
+      fallbackPos,
+    };
+
+    if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
+      const messageEntries = getSequenceMessageEntries(code);
+      const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
+      if (sequenceMessage) {
+        anchor.sequenceMessage = sequenceMessage;
+      }
+    }
+
+    setCommentComposer({
+      anchor,
+      position: {
+        x: sequenceGeometry
+          ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
+          : selectionBox.x + selectionBox.width + 12,
+        y: sequenceGeometry ? Math.max(12, fallbackPos.y - 12) : Math.max(12, selectionBox.y - 12),
+      },
+      targetLabel: `Anchored to ${selectedNodeId}`,
+      commentMode: "shape",
+    });
+    setCommentDraft("");
+    setIsCommentMode(false);
+    setActiveCommentId(null);
+  }, [
+    code,
+    getSequenceMessageEntries,
+    getSequenceMessageEndpointGeometry,
+    selectedNodeId,
+    selectionBox,
+  ]);
+
+  const appendCommentReply = useCallback(
+    async (commentId: string) => {
+      const content = (commentReplyDrafts[commentId] ?? "").trim();
+      if (!content) return;
+      const originalComment = doc?.comments.find((comment) => comment.id === commentId);
+      if (!originalComment) return;
+      const tempMessageId = `temp-message-${nanoid()}`;
+      const now = new Date().toISOString();
+      const optimisticComment: DiagramComment = {
+        ...originalComment,
+        messages: [
+          ...originalComment.messages,
+          {
+            id: tempMessageId,
+            content,
+            authorId: "anonymous",
+            timestamp: now,
+          },
+        ],
+        updatedAt: now,
+      };
+      const previousDraft = commentReplyDrafts[commentId];
+      replaceCommentInDoc(commentId, optimisticComment);
+      setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            commentId,
+            content,
+            authorId: "anonymous",
+          }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (!updated) throw new Error("Failed to update comment");
+        replaceCommentInDoc(commentId, updated);
+        toast.success("Reply added");
+      } catch {
+        replaceCommentInDoc(commentId, originalComment);
+        setCommentReplyDrafts((current) => ({ ...current, [commentId]: previousDraft }));
+        toast.error("Failed to add reply");
+      }
+    },
+    [commentReplyDrafts, doc?.comments, documentId, replaceCommentInDoc],
+  );
+
+  const toggleCommentResolved = useCallback(
+    async (commentId: string, resolved: boolean) => {
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commentId, resolved }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (updated) {
+          replaceCommentInDoc(commentId, updated);
+        }
+      } catch {
+        toast.error("Failed to update comment");
+      }
+    },
+    [documentId, replaceCommentInDoc],
+  );
+
+  const toggleCommentStar = useCallback(
+    async (commentId: string, starred: boolean) => {
+      try {
+        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ commentId, starred }),
+        });
+        if (!response.ok) throw new Error("Failed to update comment");
+        const updated = (await response.json()) as DiagramComment | null;
+        if (updated) {
+          replaceCommentInDoc(commentId, updated);
+        }
+      } catch {
+        toast.error("Failed to update comment");
+      }
+    },
+    [documentId, replaceCommentInDoc],
+  );
+
+  const activateCommentThread = useCallback((commentId: string | null) => {
+    setActiveCommentId(commentId);
+    setCommentComposer(null);
+    if (commentId) {
+      setActiveCommentFocusToken((token) => token + 1);
+    }
   }, []);
 
   const persistHistoryEntries = useCallback(
@@ -2206,23 +2533,10 @@ export function LiveMaidEditor({
           ) {
             continue;
           }
-          const linkLineRegex = new RegExp(
-            `(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`,
-            "i",
-          );
-          const match = line.match(linkLineRegex);
+          const match = matchFlowchartLinkLine(line, src, dst);
           if (match) {
             if (currentOccurrence === occurrenceIndex) {
-              const middlePart = match[2];
-              const quoteMatch = middlePart.match(/"([^"]*)"/);
-              if (quoteMatch) {
-                currentLabel = quoteMatch[1];
-              } else {
-                const barMatch = middlePart.match(/\|([^|]*)\|/);
-                if (barMatch) {
-                  currentLabel = barMatch[1];
-                }
-              }
+              currentLabel = getLinkLabelFromMiddle(match[2]);
               break;
             }
             currentOccurrence++;
@@ -3669,6 +3983,7 @@ export function LiveMaidEditor({
         onRenameInline={renameDiagram}
         onExport={() => setIsExportOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
+        onComments={() => setIsCommentsOpen((current) => !current)}
       />
 
       {IS_DEMO_MODE && <DemoBanner />}
@@ -3714,7 +4029,7 @@ export function LiveMaidEditor({
                         </div>
                       ) : previewSvgContent ? (
                         <TransformWrapper
-                          initialScale={1.35}
+                          initialScale={DEFAULT_HISTORY_PREVIEW_SCALE}
                           minScale={0.5}
                           maxScale={50}
                           wheel={{ wheelDisabled: true, step: 0.05 }}
@@ -3973,322 +4288,375 @@ export function LiveMaidEditor({
         </DialogContent>
       </Dialog>
 
-      <ResizablePanelGroup orientation="horizontal" className="flex-grow">
-        {isCodePanelOpen && (
-          <>
-            <ResizablePanel
-              defaultSize={26}
-              minSize={15}
-              className="bg-background flex flex-col border-r border-border"
-            >
-              <EditorCodePanel
-                code={code}
-                handleCodeChange={handleCodeChange}
-                handleEditorDidMount={handleEditorDidMount}
-                parseError={parseError}
-                highlightRange={highlightRange}
-              />
-            </ResizablePanel>
-            <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
-          </>
-        )}
-
-        <ResizablePanel
-          defaultSize={isCodePanelOpen ? 74 : 100}
-          className="bg-white relative overflow-hidden text-zinc-900"
-        >
-          <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
-            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
-                title={isCodePanelOpen ? "Collapse code section" : "Expand code section"}
+      <div className="relative flex flex-1 min-h-0 min-w-0">
+        <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
+          {isCodePanelOpen && (
+            <>
+              <ResizablePanel
+                defaultSize={26}
+                minSize={15}
+                className="bg-background flex flex-col border-r border-border"
               >
-                {isCodePanelOpen ? (
-                  <PanelLeftClose className="w-4 h-4" />
-                ) : (
-                  <PanelLeftOpen className="w-4 h-4" />
-                )}
-              </Button>
-              <div className="h-5 w-px bg-border" />
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={() => editorRef.current?.trigger("keyboard", "undo", null)}
-                title="Undo"
-              >
-                <Undo2 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={() => editorRef.current?.trigger("keyboard", "redo", null)}
-                title="Redo"
-              >
-                <Redo2 className="w-4 h-4" />
-              </Button>
-              <div className="h-5 w-px bg-border" />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-full border ${currentTheme === "dark" ? "bg-zinc-800 border-zinc-900" : currentTheme === "forest" ? "bg-green-400 border-green-500" : currentTheme === "neutral" ? "bg-slate-200 border-slate-300" : currentTheme === "base" ? "bg-orange-100 border-orange-200" : currentTheme === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"}`}
-                      />
-                    </Button>
-                  }
+                <EditorCodePanel
+                  code={code}
+                  handleCodeChange={handleCodeChange}
+                  handleEditorDidMount={handleEditorDidMount}
+                  parseError={parseError}
+                  highlightRange={highlightRange}
                 />
-                <DropdownMenuContent
-                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
-                  sideOffset={10}
-                  align="start"
+              </ResizablePanel>
+              <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
+            </>
+          )}
+
+          <ResizablePanel
+            defaultSize={isCodePanelOpen ? 74 : 100}
+            className="bg-white relative overflow-hidden text-zinc-900 min-w-0"
+          >
+            <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
+              <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                  onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
+                  title={isCodePanelOpen ? "Collapse code section" : "Expand code section"}
                 >
-                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
-                  <div className="flex flex-col">
-                    {["default", "forest", "dark", "neutral", "base", "redux"].map((t) => (
-                      <DropdownMenuItem
-                        key={t}
-                        onClick={() => handleThemeChange(t)}
-                        className="flex items-center gap-3 cursor-pointer"
+                  {isCodePanelOpen ? (
+                    <PanelLeftClose className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftOpen className="w-4 h-4" />
+                  )}
+                </Button>
+                <div className="h-5 w-px bg-border" />
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => editorRef.current?.trigger("keyboard", "undo", null)}
+                  title="Undo"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => editorRef.current?.trigger("keyboard", "redo", null)}
+                  title="Redo"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+                <div className="h-5 w-px bg-border" />
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
                       >
                         <div
-                          className={`w-4 h-4 rounded border ${t === "dark" ? "bg-zinc-800 border-zinc-900" : t === "forest" ? "bg-green-200 border-green-300" : t === "neutral" ? "bg-slate-200 border-slate-300" : t === "base" ? "bg-orange-100 border-orange-200" : t === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"} ${currentTheme === t ? "ring-2 ring-indigo-500" : ""}`}
+                          className={`w-5 h-5 rounded-full border ${currentTheme === "dark" ? "bg-zinc-800 border-zinc-900" : currentTheme === "forest" ? "bg-green-400 border-green-500" : currentTheme === "neutral" ? "bg-slate-200 border-slate-300" : currentTheme === "base" ? "bg-orange-100 border-orange-200" : currentTheme === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"}`}
                         />
-                        <span className="capitalize">{t}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                    sideOffset={10}
+                    align="start"
+                  >
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
+                    <div className="flex flex-col">
+                      {["default", "forest", "dark", "neutral", "base", "redux"].map((t) => (
+                        <DropdownMenuItem
+                          key={t}
+                          onClick={() => handleThemeChange(t)}
+                          className="flex items-center gap-3 cursor-pointer"
+                        >
+                          <div
+                            className={`w-4 h-4 rounded border ${t === "dark" ? "bg-zinc-800 border-zinc-900" : t === "forest" ? "bg-green-200 border-green-300" : t === "neutral" ? "bg-slate-200 border-slate-300" : t === "base" ? "bg-orange-100 border-orange-200" : t === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"} ${currentTheme === t ? "ring-2 ring-indigo-500" : ""}`}
+                          />
+                          <span className="capitalize">{t}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                    >
-                      <Type className="w-4 h-4" />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent
-                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
-                  sideOffset={10}
-                  align="start"
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`shrink-0 rounded-md p-1 h-8 w-8 flex items-center justify-center ${isCommentMode ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300" : "text-foreground hover:bg-accent hover:text-accent-foreground"}`}
+                  onClick={() => setIsCommentMode((current) => !current)}
+                  title={isCommentMode ? "Exit comment mode" : "Enter comment mode"}
                 >
-                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
-                  <div className="flex flex-col">
-                    {FONT_OPTIONS.map((f) => (
-                      <DropdownMenuItem
-                        key={f.label}
-                        onClick={() => handleFontChange(f)}
-                        className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? "bg-accent/70" : ""}`}
+                  <MessageSquarePlus className="w-4 h-4" />
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                      >
+                        <Type className="w-4 h-4" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                    sideOffset={10}
+                    align="start"
+                  >
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                    <div className="flex flex-col">
+                      {FONT_OPTIONS.map((f) => (
+                        <DropdownMenuItem
+                          key={f.label}
+                          onClick={() => handleFontChange(f)}
+                          className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? "bg-accent/70" : ""}`}
+                        >
+                          <span
+                            className={
+                              activeFontLabel === f.label ? "font-bold text-indigo-500" : ""
+                            }
+                          >
+                            {f.label}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {currentType === "sequence" && (
+                  <>
+                    <div className="h-5 w-px bg-border mx-1" />
+                    <div className="flex items-center gap-2 px-2 h-8 select-none">
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+                        <Hash className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                        <span>Auto number</span>
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (code.match(/autonumber/i)) {
+                            handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ""));
+                          } else {
+                            handleCodeChange(
+                              code.replace(/(sequenceDiagram)/i, "$1\n    autonumber"),
+                            );
+                          }
+                        }}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                          code.match(/autonumber/i)
+                            ? "bg-indigo-600"
+                            : "bg-slate-200 dark:bg-slate-700"
+                        }`}
+                        aria-label="Toggle Autonumber"
                       >
                         <span
-                          className={activeFontLabel === f.label ? "font-bold text-indigo-500" : ""}
-                        >
-                          {f.label}
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                          className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                            code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </>
+                )}
 
-              {currentType === "sequence" && (
-                <>
-                  <div className="h-5 w-px bg-border mx-1" />
-                  <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground whitespace-nowrap">
-                      Auto Number
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (code.match(/autonumber/i)) {
-                          handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ""));
-                        } else {
-                          handleCodeChange(
-                            code.replace(/(sequenceDiagram)/i, "$1\n    autonumber"),
-                          );
-                        }
-                      }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        code.match(/autonumber/i)
-                          ? "bg-indigo-600"
-                          : "bg-slate-200 dark:bg-slate-700"
-                      }`}
-                      aria-label="Toggle Autonumber"
-                    >
-                      <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
+                <div className="h-5 w-px bg-border" />
+
+                {DiagramRegistry[currentType] &&
+                  DiagramRegistry[currentType].ToolbarComponent &&
+                  (() => {
+                    const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
+                    return ToolbarComp ? (
+                      <ToolbarComp
+                        code={code}
+                        setCode={handleCodeChange}
+                        editorRef={editorRef}
+                        selectedNodeId={selectedNodeId}
+                        requestConfirm={requestConfirm}
                       />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              <div className="h-5 w-px bg-border" />
-
-              {DiagramRegistry[currentType] &&
-                DiagramRegistry[currentType].ToolbarComponent &&
-                (() => {
-                  const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
-                  return ToolbarComp ? (
-                    <ToolbarComp
-                      code={code}
-                      setCode={handleCodeChange}
-                      editorRef={editorRef}
-                      selectedNodeId={selectedNodeId}
-                      requestConfirm={requestConfirm}
-                    />
-                  ) : null;
-                })()}
+                    ) : null;
+                  })()}
+              </div>
             </div>
-          </div>
 
-          <EditorCanvas
-            code={code}
-            parseError={parseError}
-            svgContent={svgContent}
-            isLocked={isLocked}
-            setIsLocked={setIsLocked}
-            containerRef={containerRef}
-            handleSvgClick={handleSvgClick}
-            handleMouseMove={handleMouseMove}
-            handleMouseUp={handleMouseUp}
-            handleSequenceHoverOver={handleSequenceHoverOver}
-            handleSequenceHoverOut={handleSequenceHoverOut}
-            handleEditClick={handleEditClick}
-            selectionBox={selectionBox}
-            connectionState={connectionState}
-            setConnectionState={setConnectionState}
-            sequenceLifelineOverlay={sequenceLifelineOverlay}
-            hoveredSequenceActorBox={hoveredSequenceActorBox}
-            hoveredSequenceMessageBox={hoveredSequenceMessageBox}
-            hoveredSequenceNoteBox={hoveredSequenceNoteBox}
-            hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
-            sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
-            sequenceBlockAreas={sequenceBlockAreas}
-            startSequenceConnection={startSequenceConnection}
-            onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
-            onSequencePlusNote={handleSequencePlusNote}
-            onSequencePlusBlock={handleSequencePlusBlock}
-            openHighlightRecolorRef={openHighlightRecolorRef}
-            onRecolorSequenceHighlight={handleRecolorSequenceHighlight}
-            isInlineEditing={isInlineEditing}
-            selectedSvgId={selectedSvgId}
-            selectedNodeId={selectedNodeId}
-            currentType={currentType}
-            selectedClass={selectedClass}
-            onApplyClassEdits={handleApplyClassEdits}
-            onCloseClassPanel={handleDeselect}
-            onClassPanelValidityChange={handleClassPanelValidityChange}
-            onAddClassRelationship={handleAddClassRelationship}
-            onLinkNoteToClass={handleLinkNoteToClass}
-            onCreateClassLinked={handleCreateClassLinked}
-            onCreateNoteForClass={handleCreateNoteForClass}
-            onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
-            onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
-            onDeleteClassRelationship={handleDeleteClassRelationship}
-            onDeleteClassNode={handleDeleteClassNode}
-            onDeleteClassNote={handleDeleteClassNote}
-            onDeleteClassNamespace={handleDeleteClassNamespace}
-            onMoveClassToNamespace={handleMoveClassToNamespace}
-            onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
-            onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
-            selectedEntity={selectedEntity}
-            onApplyEntityEdits={handleApplyEntityEdits}
-            onCloseEntityPanel={handleCloseEntityPanel}
-            onEntityPanelValidityChange={handleEntityPanelValidityChange}
-            onDuplicateEntity={handleDuplicateEntity}
-            onDeleteEntity={handleDeleteEntity}
-            onSetEntityStyle={handleSetEntityStyle}
-            onResetEntityStyle={handleResetEntityStyle}
-            currentEntityStyle={currentEntityStyle}
-            onUpdateErRelationshipOperator={handleUpdateErRelationshipOperator}
-            onDeleteErRelationship={handleDeleteErRelationship}
-            onEditErEdgeLabel={handleEditErEdgeLabel}
-            onAddErRelationship={handleAddErRelationship}
-            onCreateErEntityLinked={handleCreateErEntityLinked}
-            onDeleteStateNode={handleDeleteStateNode}
-            onDeleteStateNote={handleDeleteStateNote}
-            onRenameStateNode={handleRenameStateFromToolbar}
-            onSetStateStyle={handleSetStateStyle}
-            onResetStateStyle={handleResetStateStyle}
-            onAddStateNote={handleAddStateNote}
-            onFlipStateNote={handleFlipStateNote}
-            onMoveStateIntoComposite={handleMoveStateIntoComposite}
-            onMoveStateToNewComposite={handleMoveStateToNewComposite}
-            onMoveStateToRoot={handleMoveStateToRoot}
-            onChangeStateShape={handleChangeStateShape}
-            onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
-            onDeleteStateTransition={handleDeleteStateTransition}
-            onAddStateTransition={handleAddStateTransition}
-            onCreateStateShapeLinked={handleCreateStateShapeLinked}
-            handleUpdateStyle={handleUpdateStyle}
-            handleFormatNodeLabel={handleFormatNodeLabel}
-            handleChangeShape={handleChangeShape}
-            handleDuplicateNode={handleDuplicateNode}
-            handleDeleteNode={handleDeleteNode}
-            onAddSequenceNote={handleAddSequenceNote}
-            onMoveSequenceNote={handleMoveSequenceNote}
-            onChangeSequenceMessageType={handleChangeSequenceMessageType}
-            currentSequenceMessageOperator={currentSequenceMessageOperator}
-            onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
-            currentSequenceParticipantType={currentSequenceParticipantType}
-            onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
-            getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
-            onLinkSequenceNote={handleLinkSequenceNote}
-            setIsInlineEditing={setIsInlineEditing}
-            textBox={textBox}
-            theme={currentTheme}
-            editingText={editingText}
-            setEditingText={setEditingText}
-            handleEditSubmit={handleEditSubmit}
-            inlineInputRef={inlineInputRef}
-            handleAddNodeFromSelected={handleAddNodeFromSelected}
-            onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
-            onHoveredSequenceMessageClick={(index) =>
-              triggerHoveredSequenceMessageSelection(false, index)
-            }
-            onHoveredSequenceMessageDoubleClick={(index) =>
-              triggerHoveredSequenceMessageSelection(true, index)
-            }
-            onHoveredSequenceNoteClick={(index) =>
-              triggerHoveredSequenceNoteSelection(false, index)
-            }
-            onHoveredSequenceNoteDoubleClick={(index) =>
-              triggerHoveredSequenceNoteSelection(true, index)
-            }
-            onReorderSequenceItem={handleReorderSequenceItem}
-            onReorderSequenceLifelines={handleReorderSequenceLifelines}
-            getSequenceLifelines={getSequenceLifelines}
-            onDeselect={handleDeselect}
-            onResetStyle={handleResetStyle}
-            onUpdateEdgeStyle={handleUpdateEdgeStyle}
-            onUpdateEdgeColor={handleUpdateEdgeColor}
-            onUpdateEdgeCurve={handleUpdateEdgeCurve}
-            onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
-            onDeleteEdge={handleDeleteEdge}
-            shapePicker={shapePicker}
-            setShapePicker={setShapePicker}
-          />
-        </ResizablePanel>
-      </ResizablePanelGroup>
+            <EditorCanvas
+              code={code}
+              parseError={parseError}
+              svgContent={svgContent}
+              isLocked={isLocked}
+              setIsLocked={setIsLocked}
+              containerRef={containerRef}
+              handleSvgClick={handleSvgClick}
+              handleMouseMove={handleMouseMove}
+              handleMouseUp={handleMouseUp}
+              handleSequenceHoverOver={handleSequenceHoverOver}
+              handleSequenceHoverOut={handleSequenceHoverOut}
+              handleEditClick={handleEditClick}
+              isCommentMode={isCommentMode}
+              selectionBox={selectionBox}
+              connectionState={connectionState}
+              setConnectionState={setConnectionState}
+              sequenceLifelineOverlay={sequenceLifelineOverlay}
+              hoveredSequenceActorBox={hoveredSequenceActorBox}
+              hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+              hoveredSequenceNoteBox={hoveredSequenceNoteBox}
+              hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
+              comments={doc?.comments ?? []}
+              activeCommentId={activeCommentId}
+              activeCommentFocusToken={activeCommentFocusToken}
+              onActivateComment={activateCommentThread}
+              onOpenSelectionCommentComposer={openSelectionCommentComposer}
+              commentComposer={commentComposer}
+              commentDraft={commentDraft}
+              setCommentDraft={setCommentDraft}
+              onSubmitCommentComposer={submitCommentComposer}
+              commentReplyDrafts={commentReplyDrafts}
+              onChangeCommentReplyDraft={refreshCommentDraft}
+              onSubmitCommentReply={appendCommentReply}
+              onToggleCommentResolved={toggleCommentResolved}
+              renderIdRef={renderIdRef}
+              commentsRailWidth={isCommentsOpen ? 384 : 0}
+              sequenceMessageEntries={sequenceMessageEntries}
+              getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
+              sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
+              sequenceBlockAreas={sequenceBlockAreas}
+              startSequenceConnection={startSequenceConnection}
+              onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
+              onSequencePlusNote={handleSequencePlusNote}
+              onSequencePlusBlock={handleSequencePlusBlock}
+              currentSequenceNotePosition={currentSequenceNotePosition}
+              isInlineEditing={isInlineEditing}
+              selectedSvgId={selectedSvgId}
+              selectedNodeId={selectedNodeId}
+              currentType={currentType}
+              selectedClass={selectedClass}
+              onApplyClassEdits={handleApplyClassEdits}
+              onCloseClassPanel={handleDeselect}
+              onClassPanelValidityChange={handleClassPanelValidityChange}
+              onAddClassRelationship={handleAddClassRelationship}
+              onLinkNoteToClass={handleLinkNoteToClass}
+              onCreateClassLinked={handleCreateClassLinked}
+              onCreateNoteForClass={handleCreateNoteForClass}
+              onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
+              onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
+              onDeleteClassRelationship={handleDeleteClassRelationship}
+              onDeleteClassNode={handleDeleteClassNode}
+              onDeleteClassNote={handleDeleteClassNote}
+              onDeleteClassNamespace={handleDeleteClassNamespace}
+              onMoveClassToNamespace={handleMoveClassToNamespace}
+              onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
+              onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
+              selectedEntity={selectedEntity}
+              onApplyEntityEdits={handleApplyEntityEdits}
+              onCloseEntityPanel={handleCloseEntityPanel}
+              onEntityPanelValidityChange={handleEntityPanelValidityChange}
+              onDuplicateEntity={handleDuplicateEntity}
+              onDeleteEntity={handleDeleteEntity}
+              onSetEntityStyle={handleSetEntityStyle}
+              onResetEntityStyle={handleResetEntityStyle}
+              currentEntityStyle={currentEntityStyle}
+              onUpdateErRelationshipOperator={handleUpdateErRelationshipOperator}
+              onDeleteErRelationship={handleDeleteErRelationship}
+              onEditErEdgeLabel={handleEditErEdgeLabel}
+              onAddErRelationship={handleAddErRelationship}
+              onCreateErEntityLinked={handleCreateErEntityLinked}
+              onDeleteStateNode={handleDeleteStateNode}
+              onDeleteStateNote={handleDeleteStateNote}
+              onRenameStateNode={handleRenameStateFromToolbar}
+              onSetStateStyle={handleSetStateStyle}
+              onResetStateStyle={handleResetStateStyle}
+              onAddStateNote={handleAddStateNote}
+              onFlipStateNote={handleFlipStateNote}
+              onMoveStateIntoComposite={handleMoveStateIntoComposite}
+              onMoveStateToNewComposite={handleMoveStateToNewComposite}
+              onMoveStateToRoot={handleMoveStateToRoot}
+              onChangeStateShape={handleChangeStateShape}
+              onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
+              onDeleteStateTransition={handleDeleteStateTransition}
+              onAddStateTransition={handleAddStateTransition}
+              onCreateStateShapeLinked={handleCreateStateShapeLinked}
+              handleUpdateStyle={handleUpdateStyle}
+              handleFormatNodeLabel={handleFormatNodeLabel}
+              handleChangeShape={handleChangeShape}
+              handleDuplicateNode={handleDuplicateNode}
+              handleDeleteNode={handleDeleteNode}
+              onAddSequenceNote={handleAddSequenceNote}
+              onMoveSequenceNote={handleMoveSequenceNote}
+              onChangeSequenceMessageType={handleChangeSequenceMessageType}
+              currentSequenceMessageOperator={currentSequenceMessageOperator}
+              onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
+              currentSequenceParticipantType={currentSequenceParticipantType}
+              onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
+              onLinkSequenceNote={handleLinkSequenceNote}
+              setIsInlineEditing={setIsInlineEditing}
+              textBox={textBox}
+              theme={currentTheme}
+              editingText={editingText}
+              setEditingText={setEditingText}
+              handleEditSubmit={handleEditSubmit}
+              inlineInputRef={inlineInputRef}
+              handleAddNodeFromSelected={handleAddNodeFromSelected}
+              onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
+              onHoveredSequenceMessageClick={(index) =>
+                triggerHoveredSequenceMessageSelection(false, index)
+              }
+              onHoveredSequenceMessageDoubleClick={(index) =>
+                triggerHoveredSequenceMessageSelection(true, index)
+              }
+              onHoveredSequenceNoteClick={(index) =>
+                triggerHoveredSequenceNoteSelection(false, index)
+              }
+              onHoveredSequenceNoteDoubleClick={(index) =>
+                triggerHoveredSequenceNoteSelection(true, index)
+              }
+              onReorderSequenceItem={handleReorderSequenceItem}
+              onReorderSequenceLifelines={handleReorderSequenceLifelines}
+              getSequenceLifelines={getSequenceLifelines}
+              onDeselect={handleDeselect}
+              onResetStyle={handleResetStyle}
+              onUpdateEdgeStyle={handleUpdateEdgeStyle}
+              onUpdateEdgeColor={handleUpdateEdgeColor}
+              onUpdateEdgeCurve={handleUpdateEdgeCurve}
+              onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
+              onDeleteEdge={handleDeleteEdge}
+              shapePicker={shapePicker}
+              setShapePicker={setShapePicker}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+
+        {isCommentsOpen && (
+          <div className="absolute inset-y-0 right-0 z-30 h-full w-[24rem] min-h-0 border-l border-border bg-background shadow-2xl">
+            <CommentSidebar
+              key={commentSortStorageKey}
+              openComments={openComments}
+              resolvedComments={resolvedComments}
+              activeCommentId={activeCommentId ?? null}
+              showResolvedComments={showResolvedComments}
+              isCommentMode={isCommentMode}
+              sortStorageKey={commentSortStorageKey}
+              onClose={handleCloseComments}
+              onStartCommentMode={() => setIsCommentMode(true)}
+              onActivateComment={activateCommentThread}
+              onToggleResolvedComment={toggleCommentResolved}
+              onToggleStarComment={toggleCommentStar}
+              onToggleResolvedSection={() => {
+                setShowResolvedComments?.((current) => !current);
+              }}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
       {classTextEdit && (
