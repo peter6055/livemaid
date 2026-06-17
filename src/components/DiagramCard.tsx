@@ -56,7 +56,7 @@ export function DiagramCard({
   moveTargets?: { id: string | null; name: string; depth: number }[];
   isDemo?: boolean;
   view?: "grid" | "list";
-  }) {
+}) {
   const [svgContent, setSvgContent] = useState<string>("");
   const [isCompiling, setIsCompiling] = useState<boolean>(true);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -79,7 +79,9 @@ export function DiagramCard({
         } catch (error) {
           // Keep the preview card resilient, but explain why it failed when possible.
           setSvgContent("");
-          setPreviewError(error instanceof Error && error.message.trim() ? error.message : "Syntax error");
+          setPreviewError(
+            error instanceof Error && error.message.trim() ? error.message : "Syntax error",
+          );
         } finally {
           setIsCompiling(false);
         }
@@ -348,7 +350,9 @@ export function DiagramCard({
               <div className="flex flex-col items-center gap-1 px-4 text-center">
                 <span className="text-zinc-500 text-xs font-medium">Preview unavailable</span>
                 <span className="max-w-[12rem] text-[11px] leading-4 text-zinc-400">
-                  {previewError ? "Mermaid syntax could not be rendered." : "Preview is not available."}
+                  {previewError
+                    ? "Mermaid syntax could not be rendered."
+                    : "Preview is not available."}
                 </span>
               </div>
             )}

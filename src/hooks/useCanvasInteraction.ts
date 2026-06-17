@@ -1,5 +1,10 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
-import { isEdgeId, parseEdgeId, CONNECTOR_PATTERN } from "@/lib/diagrams/utils";
+import {
+  isEdgeId,
+  parseEdgeId,
+  getLinkLabelFromMiddle,
+  matchFlowchartLinkLine,
+} from "@/lib/diagrams/utils";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import {
   getSequenceNoteRectForText,
@@ -118,6 +123,10 @@ export function useCanvasInteraction({
   } | null>(null);
   const [editingText, setEditingText] = useState("");
   const [isInlineEditing, setIsInlineEditing] = useState(false);
+  const isInlineEditingRef = useRef(isInlineEditing);
+  useEffect(() => {
+    isInlineEditingRef.current = isInlineEditing;
+  }, [isInlineEditing]);
   const [shapePicker, setShapePicker] = useState<ShapePicker | null>(null);
 
   const [connectionState, setConnectionState] = useState<ConnectionState>({
@@ -2116,19 +2125,19 @@ export function useCanvasInteraction({
           nodeId = currentNode.id;
           if (!nodeId) {
             if (currentNode.classList?.contains("edgeLabel")) {
-              const dataIdEl = currentNode.querySelector("[data-id]");
-              if (dataIdEl) {
-                const rawId = dataIdEl.getAttribute("data-id");
-                if (rawId) {
-                  const canonical = normalizeId(rawId);
-                  const paths = Array.from(
-                    containerRef.current?.querySelectorAll(
-                      "path.flowchart-link:not(.flowchart-link-hit-target)",
-                    ) || [],
-                  );
-                  const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
-                  if (path && path.id) nodeId = path.id;
-                }
+              const rawId =
+                currentNode.getAttribute("data-id") ??
+                currentNode.querySelector("[data-id]")?.getAttribute("data-id") ??
+                null;
+              if (rawId) {
+                const canonical = normalizeId(rawId);
+                const paths = Array.from(
+                  containerRef.current?.querySelectorAll(
+                    "path.flowchart-link:not(.flowchart-link-hit-target)",
+                  ) || [],
+                );
+                const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+                if (path && path.id) nodeId = path.id;
               }
             } else {
               const path =
@@ -2293,7 +2302,9 @@ export function useCanvasInteraction({
         ) {
           foundNodeClass = true;
           // Find the nearest .noteText sibling in the same parent group to resolve the index
-          const allNoteRects = Array.from(containerRef.current?.querySelectorAll("rect.note") || []);
+          const allNoteRects = Array.from(
+            containerRef.current?.querySelectorAll("rect.note") || [],
+          );
           const rectIdx = allNoteRects.indexOf(currentNode);
           // .noteText elements are in 1:1 correspondence with rect.note elements
           const allNoteTexts = getSortedNoteTextEls(containerRef.current || document.body);
@@ -2328,14 +2339,12 @@ export function useCanvasInteraction({
         ) {
           const edgeLabels = Array.from(containerRef.current.querySelectorAll(".edgeLabel"));
           const matchingLabel = edgeLabels.find((labelEl) => {
-            const dIdEl = labelEl.querySelector("[data-id]");
+            const rawId =
+              labelEl.getAttribute("data-id") ??
+              labelEl.querySelector("[data-id]")?.getAttribute("data-id") ??
+              null;
             const hasText = labelEl.textContent?.trim() !== "";
-            return (
-              hasText &&
-              dIdEl &&
-              dIdEl.getAttribute("data-id") &&
-              normalizeId(dIdEl.getAttribute("data-id")!) === cleanId
-            );
+            return hasText && rawId !== null && normalizeId(rawId) === cleanId;
           });
           if (matchingLabel) {
             currentNode = matchingLabel as SVGElement;
@@ -2581,7 +2590,7 @@ export function useCanvasInteraction({
   // The hook calls it before any cross-element or background transition so that
   // typed edits are committed to the diagram code before the selection changes.
   const commitEditRef = useRef<(() => void) | null>(null);
-  const DOUBLE_CLICK_MS = 300;
+  const DOUBLE_CLICK_MS = 500;
   const lastClickRef = useRef<{ id: string; time: number } | null>(null);
   // Set to true when click(detail=2) already handled the dblclick gesture so the capture-phase
   // native dblclick listener knows to skip — prevents double-invocation of handleEditClick.
@@ -2775,23 +2784,10 @@ export function useCanvasInteraction({
             ) {
               continue;
             }
-            const linkLineRegex = new RegExp(
-              `(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`,
-              "i",
-            );
-            const match = line.match(linkLineRegex);
+            const match = matchFlowchartLinkLine(line, src, dst);
             if (match) {
               if (currentOccurrence === occurrenceIndex) {
-                const middlePart = match[2];
-                const barMatch = middlePart.match(/\|([^|]*)\|/);
-                const quoteMatch = middlePart.match(/"([^"]*)"/);
-                if (quoteMatch) {
-                  currentText = quoteMatch[1];
-                } else if (barMatch) {
-                  currentText = barMatch[1];
-                } else {
-                  currentText = "";
-                }
+                currentText = getLinkLabelFromMiddle(match[2]);
                 break;
               }
               currentOccurrence++;
@@ -2858,8 +2854,8 @@ export function useCanvasInteraction({
       const target = e.target as HTMLElement;
       const container = containerRef.current;
       const containerRect = container?.getBoundingClientRect() ?? null;
-      const scale =
-        container && containerRect ? containerRect.width / container.offsetWidth : 1;
+      const scale = container && containerRect ? containerRect.width / container.offsetWidth : 1;
+      const currentDiagramType = determineDiagramType(code);
       const canvasX = containerRect
         ? (e.clientX - containerRect.left + (container?.scrollLeft ?? 0)) / scale
         : 0;
@@ -2882,19 +2878,31 @@ export function useCanvasInteraction({
         inlineEditing: isInlineEditing,
       });
 
+      const now = Date.now();
+      const lastClick = lastClickRef.current;
+      const isTimingDoubleClick = Boolean(
+        clicked && lastClick?.id === clicked.cleanId && now - lastClick.time <= DOUBLE_CLICK_MS,
+      );
+
       // Robust double-click entry: some Mermaid SVG/foreignObject targets do not
-      // consistently dispatch React onDoubleClick. Use click count from the shared
-      // handler so double-click on the currently selected element always enters edit mode.
+      // consistently dispatch React onDoubleClick or preserve click detail. Use click count
+      // when available, then fall back to timing so repeated clicks on the same selected edge
+      // still enter edit mode.
       if (
-        e.detail >= 2 &&
+        (e.detail >= 2 || isTimingDoubleClick) &&
         clicked &&
-        clicked.cleanId === selectedNodeIdRef.current &&
+        (clicked.cleanId === selectedNodeIdRef.current ||
+          ((currentDiagramType === "flowchart" || currentDiagramType === "graph") &&
+            isEdgeId(clicked.cleanId))) &&
         !isInlineEditing
       ) {
         debugLog("enter-edit-mode-double-click", clicked.cleanId);
+        lastClickRef.current = null;
         handleEditClick(e);
         return;
       }
+
+      lastClickRef.current = clicked?.cleanId ? { id: clicked.cleanId, time: now } : null;
 
       // State transition rule:
       // - Same element while editing: keep editing.
@@ -2923,7 +2931,7 @@ export function useCanvasInteraction({
         // and label) selects the message, mirroring how clicking the yellow note area
         // selects the note. Reuses getClickedNode on the band's messageText so the
         // selection box/text box are computed identically to a direct line/text click.
-        if (container && determineDiagramType(code) === "sequence") {
+        if (container && currentDiagramType === "sequence") {
           const band = findSequenceMessageBandAtPoint(canvasX, canvasY);
           if (band) {
             const bandClicked = getClickedNode(band.el);
@@ -3003,6 +3011,15 @@ export function useCanvasInteraction({
       const scale = containerRectForScale.width / container.offsetWidth;
       const diagramType = determineDiagramType(code);
       const e = { clientX, clientY, target: eventTarget } as React.MouseEvent<HTMLDivElement>;
+
+      if (isInlineEditing) {
+        setHoveredSequenceActorBox(null);
+        setHoveredSequenceNoteBox(null);
+        setHoveredFlowchartNodeBox(null);
+        setSequenceLifelineOverlay(null);
+        clearSequenceMessageHoverHighlight();
+        return;
+      }
 
       const mouseX = (e.clientX - containerRectForScale.left + container.scrollLeft) / scale;
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
@@ -3301,6 +3318,7 @@ export function useCanvasInteraction({
       getSelectedMessageOverlay,
       updateSequenceMessageHoverHighlight,
       clearSequenceMessageHoverHighlight,
+      isInlineEditing,
     ],
   );
   // Keep mouseMoveInnerRef always pointing at the latest version (avoids stale closure in RAF)
@@ -3550,11 +3568,11 @@ export function useCanvasInteraction({
       // 1. If it has class edgeLabel or is inside one, find the data-id
       const labelEl = el.closest(".edgeLabel");
       if (labelEl) {
-        const dataIdEl = labelEl.querySelector("[data-id]");
-        if (dataIdEl) {
-          const rawId = dataIdEl.getAttribute("data-id");
-          if (rawId) return normalizeId(rawId);
-        }
+        const rawId =
+          labelEl.getAttribute("data-id") ??
+          labelEl.querySelector("[data-id]")?.getAttribute("data-id") ??
+          null;
+        if (rawId) return normalizeId(rawId);
       }
 
       // 2. If it's a path or flowchart-link or hit target
@@ -3574,6 +3592,12 @@ export function useCanvasInteraction({
     const handleMouseOver = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target) return;
+      if (isInlineEditingRef.current) {
+        container.querySelectorAll(".edge-hover-highlight").forEach((el) => {
+          el.classList.remove("edge-hover-highlight");
+        });
+        return;
+      }
 
       const canonicalEdgeId = getCanonicalEdgeId(target);
 
@@ -3598,12 +3622,12 @@ export function useCanvasInteraction({
         // Highlight matched labels
         const allLabels = container.querySelectorAll(".edgeLabel");
         allLabels.forEach((label: Element) => {
-          const dataIdEl = label.querySelector("[data-id]");
-          if (dataIdEl) {
-            const rawId = dataIdEl.getAttribute("data-id");
-            if (rawId && normalizeId(rawId) === canonicalEdgeId) {
-              label.classList.add("edge-hover-highlight");
-            }
+          const rawId =
+            label.getAttribute("data-id") ??
+            label.querySelector("[data-id]")?.getAttribute("data-id") ??
+            null;
+          if (rawId && normalizeId(rawId) === canonicalEdgeId) {
+            label.classList.add("edge-hover-highlight");
           }
         });
       }
@@ -3612,6 +3636,12 @@ export function useCanvasInteraction({
     const handleMouseOut = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
       if (!target) return;
+      if (isInlineEditingRef.current) {
+        container.querySelectorAll(".edge-hover-highlight").forEach((el) => {
+          el.classList.remove("edge-hover-highlight");
+        });
+        return;
+      }
 
       const relatedTarget = e.relatedTarget as HTMLElement;
 
@@ -3643,12 +3673,12 @@ export function useCanvasInteraction({
 
         const allLabels = container.querySelectorAll(".edgeLabel");
         allLabels.forEach((label: Element) => {
-          const dataIdEl = label.querySelector("[data-id]");
-          if (dataIdEl) {
-            const rawId = dataIdEl.getAttribute("data-id");
-            if (rawId && normalizeId(rawId) === relatedCanonicalId) {
-              label.classList.add("edge-hover-highlight");
-            }
+          const rawId =
+            label.getAttribute("data-id") ??
+            label.querySelector("[data-id]")?.getAttribute("data-id") ??
+            null;
+          if (rawId && normalizeId(rawId) === relatedCanonicalId) {
+            label.classList.add("edge-hover-highlight");
           }
         });
       }
@@ -3661,7 +3691,7 @@ export function useCanvasInteraction({
       container.removeEventListener("mouseover", handleMouseOver);
       container.removeEventListener("mouseout", handleMouseOut);
     };
-  }, [containerRef, svgContent, normalizeId]);
+  }, [containerRef, svgContent, normalizeId, isInlineEditing]);
 
   // Capture-phase native dblclick listener: fires BEFORE any child element handlers,
   // bypassing toolbar buttons that call e.stopPropagation() on 'click' (not 'dblclick').

@@ -13,14 +13,15 @@ export function getSortedSequenceNoteTextElements(container: ParentNode | null |
     });
 }
 
-export function getSequenceNoteTextElementAtIndex(container: ParentNode | null | undefined, index: number) {
+export function getSequenceNoteTextElementAtIndex(
+  container: ParentNode | null | undefined,
+  index: number,
+) {
   return getSortedSequenceNoteTextElements(container)[index] ?? null;
 }
 
 export function getSequenceNoteRectForText(noteTextEl: SVGElement) {
   const parentGroup = noteTextEl.parentElement;
-  return (
-    (parentGroup?.querySelector("rect.note") ??
-      parentGroup?.parentElement?.querySelector("rect.note")) as SVGElement | null
-  );
+  return (parentGroup?.querySelector("rect.note") ??
+    parentGroup?.parentElement?.querySelector("rect.note")) as SVGElement | null;
 }

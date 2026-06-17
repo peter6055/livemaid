@@ -13,7 +13,8 @@ import {
   updateLinkAnimation,
   deleteLink,
   rebuildLinkStyles,
-  CONNECTOR_PATTERN,
+  getLinkLabelFromMiddle,
+  matchFlowchartLinkLine,
 } from "@/lib/diagrams/utils";
 import {
   findFlowchartNodeLine,
@@ -2069,10 +2070,7 @@ export function LiveMaidEditor({
   }, []);
 
   const createCommentThread = useCallback(
-    async (
-      composer: NonNullable<typeof commentComposer>,
-      content: string,
-    ) => {
+    async (composer: NonNullable<typeof commentComposer>, content: string) => {
       const trimmed = content.trim();
       if (!trimmed) return;
       const tempCommentId = `temp-comment-${nanoid()}`;
@@ -2142,10 +2140,13 @@ export function LiveMaidEditor({
     [activeCommentId, documentId, replaceCommentInDoc, setDoc],
   );
 
-  const submitCommentComposer = useCallback((content?: string) => {
-    if (!commentComposer) return;
-    void createCommentThread(commentComposer, content ?? commentDraft);
-  }, [commentComposer, commentDraft, createCommentThread]);
+  const submitCommentComposer = useCallback(
+    (content?: string) => {
+      if (!commentComposer) return;
+      void createCommentThread(commentComposer, content ?? commentDraft);
+    },
+    [commentComposer, commentDraft, createCommentThread],
+  );
 
   const openSelectionCommentComposer = useCallback(() => {
     if (!selectedNodeId || !selectionBox) return;
@@ -2157,7 +2158,9 @@ export function LiveMaidEditor({
         ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
         : null;
     const fallbackPos =
-      sequenceGeometry && Number.isFinite(sequenceGeometry.source.x) && Number.isFinite(sequenceGeometry.target.x)
+      sequenceGeometry &&
+      Number.isFinite(sequenceGeometry.source.x) &&
+      Number.isFinite(sequenceGeometry.target.x)
         ? {
             x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
             y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
@@ -2194,7 +2197,13 @@ export function LiveMaidEditor({
     setCommentDraft("");
     setIsCommentMode(false);
     setActiveCommentId(null);
-  }, [code, getSequenceMessageEntries, getSequenceMessageEndpointGeometry, selectedNodeId, selectionBox]);
+  }, [
+    code,
+    getSequenceMessageEntries,
+    getSequenceMessageEndpointGeometry,
+    selectedNodeId,
+    selectionBox,
+  ]);
 
   const appendCommentReply = useCallback(
     async (commentId: string) => {
@@ -2284,16 +2293,13 @@ export function LiveMaidEditor({
     [documentId, replaceCommentInDoc],
   );
 
-  const activateCommentThread = useCallback(
-    (commentId: string | null) => {
-      setActiveCommentId(commentId);
-      setCommentComposer(null);
-      if (commentId) {
-        setActiveCommentFocusToken((token) => token + 1);
-      }
-    },
-    [],
-  );
+  const activateCommentThread = useCallback((commentId: string | null) => {
+    setActiveCommentId(commentId);
+    setCommentComposer(null);
+    if (commentId) {
+      setActiveCommentFocusToken((token) => token + 1);
+    }
+  }, []);
 
   const persistHistoryEntries = useCallback(
     async (updatedHistory: VersionHistoryEntry[]) => {
@@ -2527,23 +2533,10 @@ export function LiveMaidEditor({
           ) {
             continue;
           }
-          const linkLineRegex = new RegExp(
-            `(^|\\s*)${src}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dst}\\b`,
-            "i",
-          );
-          const match = line.match(linkLineRegex);
+          const match = matchFlowchartLinkLine(line, src, dst);
           if (match) {
             if (currentOccurrence === occurrenceIndex) {
-              const middlePart = match[2];
-              const quoteMatch = middlePart.match(/"([^"]*)"/);
-              if (quoteMatch) {
-                currentLabel = quoteMatch[1];
-              } else {
-                const barMatch = middlePart.match(/\|([^|]*)\|/);
-                if (barMatch) {
-                  currentLabel = barMatch[1];
-                }
-              }
+              currentLabel = getLinkLabelFromMiddle(match[2]);
               break;
             }
             currentOccurrence++;
@@ -4297,347 +4290,349 @@ export function LiveMaidEditor({
 
       <div className="relative flex flex-1 min-h-0 min-w-0">
         <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0 min-w-0">
-        {isCodePanelOpen && (
-          <>
-            <ResizablePanel
-              defaultSize={26}
-              minSize={15}
-              className="bg-background flex flex-col border-r border-border"
-            >
-              <EditorCodePanel
-                code={code}
-                handleCodeChange={handleCodeChange}
-                handleEditorDidMount={handleEditorDidMount}
-                parseError={parseError}
-                highlightRange={highlightRange}
-              />
-            </ResizablePanel>
-            <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
-          </>
-        )}
-
-        <ResizablePanel
-          defaultSize={isCodePanelOpen ? 74 : 100}
-          className="bg-white relative overflow-hidden text-zinc-900 min-w-0"
-        >
-          <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
-            <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
-                title={isCodePanelOpen ? "Collapse code section" : "Expand code section"}
+          {isCodePanelOpen && (
+            <>
+              <ResizablePanel
+                defaultSize={26}
+                minSize={15}
+                className="bg-background flex flex-col border-r border-border"
               >
-                {isCodePanelOpen ? (
-                  <PanelLeftClose className="w-4 h-4" />
-                ) : (
-                  <PanelLeftOpen className="w-4 h-4" />
-                )}
-              </Button>
-              <div className="h-5 w-px bg-border" />
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={() => editorRef.current?.trigger("keyboard", "undo", null)}
-                title="Undo"
-              >
-                <Undo2 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
-                onClick={() => editorRef.current?.trigger("keyboard", "redo", null)}
-                title="Redo"
-              >
-                <Redo2 className="w-4 h-4" />
-              </Button>
-              <div className="h-5 w-px bg-border" />
-
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                    >
-                      <div
-                        className={`w-5 h-5 rounded-full border ${currentTheme === "dark" ? "bg-zinc-800 border-zinc-900" : currentTheme === "forest" ? "bg-green-400 border-green-500" : currentTheme === "neutral" ? "bg-slate-200 border-slate-300" : currentTheme === "base" ? "bg-orange-100 border-orange-200" : currentTheme === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"}`}
-                      />
-                    </Button>
-                  }
+                <EditorCodePanel
+                  code={code}
+                  handleCodeChange={handleCodeChange}
+                  handleEditorDidMount={handleEditorDidMount}
+                  parseError={parseError}
+                  highlightRange={highlightRange}
                 />
-                <DropdownMenuContent
-                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
-                  sideOffset={10}
-                  align="start"
+              </ResizablePanel>
+              <ResizableHandle className="w-[1px] bg-slate-200 hover:bg-black transition-colors cursor-col-resize" />
+            </>
+          )}
+
+          <ResizablePanel
+            defaultSize={isCodePanelOpen ? 74 : 100}
+            className="bg-white relative overflow-hidden text-zinc-900 min-w-0"
+          >
+            <div className="absolute top-4 left-4 z-10 flex gap-3 pointer-events-auto">
+              <div className="flex items-center gap-2 rounded-xl bg-background p-2 border border-border shadow-sm">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                  onClick={() => setIsCodePanelOpen(!isCodePanelOpen)}
+                  title={isCodePanelOpen ? "Collapse code section" : "Expand code section"}
                 >
-                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
-                  <div className="flex flex-col">
-                    {["default", "forest", "dark", "neutral", "base", "redux"].map((t) => (
-                      <DropdownMenuItem
-                        key={t}
-                        onClick={() => handleThemeChange(t)}
-                        className="flex items-center gap-3 cursor-pointer"
+                  {isCodePanelOpen ? (
+                    <PanelLeftClose className="w-4 h-4" />
+                  ) : (
+                    <PanelLeftOpen className="w-4 h-4" />
+                  )}
+                </Button>
+                <div className="h-5 w-px bg-border" />
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => editorRef.current?.trigger("keyboard", "undo", null)}
+                  title="Undo"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground"
+                  onClick={() => editorRef.current?.trigger("keyboard", "redo", null)}
+                  title="Redo"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+                <div className="h-5 w-px bg-border" />
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
                       >
                         <div
-                          className={`w-4 h-4 rounded border ${t === "dark" ? "bg-zinc-800 border-zinc-900" : t === "forest" ? "bg-green-200 border-green-300" : t === "neutral" ? "bg-slate-200 border-slate-300" : t === "base" ? "bg-orange-100 border-orange-200" : t === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"} ${currentTheme === t ? "ring-2 ring-indigo-500" : ""}`}
+                          className={`w-5 h-5 rounded-full border ${currentTheme === "dark" ? "bg-zinc-800 border-zinc-900" : currentTheme === "forest" ? "bg-green-400 border-green-500" : currentTheme === "neutral" ? "bg-slate-200 border-slate-300" : currentTheme === "base" ? "bg-orange-100 border-orange-200" : currentTheme === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"}`}
                         />
-                        <span className="capitalize">{t}</span>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                    sideOffset={10}
+                    align="start"
+                  >
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Diagram theme</p>
+                    <div className="flex flex-col">
+                      {["default", "forest", "dark", "neutral", "base", "redux"].map((t) => (
+                        <DropdownMenuItem
+                          key={t}
+                          onClick={() => handleThemeChange(t)}
+                          className="flex items-center gap-3 cursor-pointer"
+                        >
+                          <div
+                            className={`w-4 h-4 rounded border ${t === "dark" ? "bg-zinc-800 border-zinc-900" : t === "forest" ? "bg-green-200 border-green-300" : t === "neutral" ? "bg-slate-200 border-slate-300" : t === "base" ? "bg-orange-100 border-orange-200" : t === "redux" ? "bg-[#4f197b] border-[#4f197b]" : "bg-pink-100 border-pink-200"} ${currentTheme === t ? "ring-2 ring-indigo-500" : ""}`}
+                          />
+                          <span className="capitalize">{t}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className={`shrink-0 rounded-md p-1 h-8 w-8 flex items-center justify-center ${isCommentMode ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300" : "text-foreground hover:bg-accent hover:text-accent-foreground"}`}
-                onClick={() => setIsCommentMode((current) => !current)}
-                title={isCommentMode ? "Exit comment mode" : "Enter comment mode"}
-              >
-                <MessageSquarePlus className="w-4 h-4" />
-              </Button>
-
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
-                    >
-                      <Type className="w-4 h-4" />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent
-                  className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
-                  sideOffset={10}
-                  align="start"
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={`shrink-0 rounded-md p-1 h-8 w-8 flex items-center justify-center ${isCommentMode ? "bg-indigo-500/15 text-indigo-600 dark:text-indigo-300" : "text-foreground hover:bg-accent hover:text-accent-foreground"}`}
+                  onClick={() => setIsCommentMode((current) => !current)}
+                  title={isCommentMode ? "Exit comment mode" : "Enter comment mode"}
                 >
-                  <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
-                  <div className="flex flex-col">
-                    {FONT_OPTIONS.map((f) => (
-                      <DropdownMenuItem
-                        key={f.label}
-                        onClick={() => handleFontChange(f)}
-                        className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? "bg-accent/70" : ""}`}
+                  <MessageSquarePlus className="w-4 h-4" />
+                </Button>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0 rounded-md p-1 h-8 w-8 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center justify-center"
+                      >
+                        <Type className="w-4 h-4" />
+                      </Button>
+                    }
+                  />
+                  <DropdownMenuContent
+                    className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-2"
+                    sideOffset={10}
+                    align="start"
+                  >
+                    <p className="text-xs font-medium text-slate-500 px-2 pt-2">Font Family</p>
+                    <div className="flex flex-col">
+                      {FONT_OPTIONS.map((f) => (
+                        <DropdownMenuItem
+                          key={f.label}
+                          onClick={() => handleFontChange(f)}
+                          className={`flex items-center gap-3 cursor-pointer ${activeFontLabel === f.label ? "bg-accent/70" : ""}`}
+                        >
+                          <span
+                            className={
+                              activeFontLabel === f.label ? "font-bold text-indigo-500" : ""
+                            }
+                          >
+                            {f.label}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {currentType === "sequence" && (
+                  <>
+                    <div className="h-5 w-px bg-border mx-1" />
+                    <div className="flex items-center gap-2 px-2 h-8 select-none">
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+                        <Hash className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+                        <span>Auto number</span>
+                      </span>
+                      <button
+                        onClick={() => {
+                          if (code.match(/autonumber/i)) {
+                            handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ""));
+                          } else {
+                            handleCodeChange(
+                              code.replace(/(sequenceDiagram)/i, "$1\n    autonumber"),
+                            );
+                          }
+                        }}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                          code.match(/autonumber/i)
+                            ? "bg-indigo-600"
+                            : "bg-slate-200 dark:bg-slate-700"
+                        }`}
+                        aria-label="Toggle Autonumber"
                       >
                         <span
-                          className={activeFontLabel === f.label ? "font-bold text-indigo-500" : ""}
-                        >
-                          {f.label}
-                        </span>
-                      </DropdownMenuItem>
-                    ))}
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                          className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+                            code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  </>
+                )}
 
-              {currentType === "sequence" && (
-                <>
-                  <div className="h-5 w-px bg-border mx-1" />
-                  <div className="flex items-center gap-2 px-2 h-8 select-none">
-                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
-                      <Hash className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
-                      <span>Auto number</span>
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (code.match(/autonumber/i)) {
-                          handleCodeChange(code.replace(/\r?\n\s*autonumber/gi, ""));
-                        } else {
-                          handleCodeChange(
-                            code.replace(/(sequenceDiagram)/i, "$1\n    autonumber"),
-                          );
-                        }
-                      }}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                        code.match(/autonumber/i)
-                          ? "bg-indigo-600"
-                          : "bg-slate-200 dark:bg-slate-700"
-                      }`}
-                      aria-label="Toggle Autonumber"
-                    >
-                      <span
-                        className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
-                          code.match(/autonumber/i) ? "translate-x-[18px]" : "translate-x-0.5"
-                        }`}
+                <div className="h-5 w-px bg-border" />
+
+                {DiagramRegistry[currentType] &&
+                  DiagramRegistry[currentType].ToolbarComponent &&
+                  (() => {
+                    const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
+                    return ToolbarComp ? (
+                      <ToolbarComp
+                        code={code}
+                        setCode={handleCodeChange}
+                        editorRef={editorRef}
+                        selectedNodeId={selectedNodeId}
+                        requestConfirm={requestConfirm}
                       />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              <div className="h-5 w-px bg-border" />
-
-              {DiagramRegistry[currentType] &&
-                DiagramRegistry[currentType].ToolbarComponent &&
-                (() => {
-                  const ToolbarComp = DiagramRegistry[currentType].ToolbarComponent;
-                  return ToolbarComp ? (
-                    <ToolbarComp
-                      code={code}
-                      setCode={handleCodeChange}
-                      editorRef={editorRef}
-                      selectedNodeId={selectedNodeId}
-                      requestConfirm={requestConfirm}
-                    />
-                  ) : null;
-                })()}
+                    ) : null;
+                  })()}
+              </div>
             </div>
-          </div>
 
-          <EditorCanvas
-            code={code}
-            parseError={parseError}
-            svgContent={svgContent}
-            isLocked={isLocked}
-            setIsLocked={setIsLocked}
-            containerRef={containerRef}
-            handleSvgClick={handleSvgClick}
-            handleMouseMove={handleMouseMove}
-            handleMouseUp={handleMouseUp}
-            handleSequenceHoverOver={handleSequenceHoverOver}
-            handleSequenceHoverOut={handleSequenceHoverOut}
-            handleEditClick={handleEditClick}
-            isCommentMode={isCommentMode}
-            selectionBox={selectionBox}
-            connectionState={connectionState}
-            setConnectionState={setConnectionState}
-            sequenceLifelineOverlay={sequenceLifelineOverlay}
-            hoveredSequenceActorBox={hoveredSequenceActorBox}
-            hoveredSequenceMessageBox={hoveredSequenceMessageBox}
-            hoveredSequenceNoteBox={hoveredSequenceNoteBox}
-            hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
-            comments={doc?.comments ?? []}
-            activeCommentId={activeCommentId}
-            activeCommentFocusToken={activeCommentFocusToken}
-            onActivateComment={activateCommentThread}
-            onOpenSelectionCommentComposer={openSelectionCommentComposer}
-            commentComposer={commentComposer}
-            commentDraft={commentDraft}
-            setCommentDraft={setCommentDraft}
-            onSubmitCommentComposer={submitCommentComposer}
-            commentReplyDrafts={commentReplyDrafts}
-            onChangeCommentReplyDraft={refreshCommentDraft}
-            onSubmitCommentReply={appendCommentReply}
-            onToggleCommentResolved={toggleCommentResolved}
-            renderIdRef={renderIdRef}
-            commentsRailWidth={isCommentsOpen ? 384 : 0}
-            sequenceMessageEntries={sequenceMessageEntries}
-            getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
-            sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
-            sequenceBlockAreas={sequenceBlockAreas}
-            startSequenceConnection={startSequenceConnection}
-            onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
-            onSequencePlusNote={handleSequencePlusNote}
-            onSequencePlusBlock={handleSequencePlusBlock}
-            currentSequenceNotePosition={currentSequenceNotePosition}
-            isInlineEditing={isInlineEditing}
-            selectedSvgId={selectedSvgId}
-            selectedNodeId={selectedNodeId}
-            currentType={currentType}
-            selectedClass={selectedClass}
-            onApplyClassEdits={handleApplyClassEdits}
-            onCloseClassPanel={handleDeselect}
-            onClassPanelValidityChange={handleClassPanelValidityChange}
-            onAddClassRelationship={handleAddClassRelationship}
-            onLinkNoteToClass={handleLinkNoteToClass}
-            onCreateClassLinked={handleCreateClassLinked}
-            onCreateNoteForClass={handleCreateNoteForClass}
-            onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
-            onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
-            onDeleteClassRelationship={handleDeleteClassRelationship}
-            onDeleteClassNode={handleDeleteClassNode}
-            onDeleteClassNote={handleDeleteClassNote}
-            onDeleteClassNamespace={handleDeleteClassNamespace}
-            onMoveClassToNamespace={handleMoveClassToNamespace}
-            onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
-            onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
-            selectedEntity={selectedEntity}
-            onApplyEntityEdits={handleApplyEntityEdits}
-            onCloseEntityPanel={handleCloseEntityPanel}
-            onEntityPanelValidityChange={handleEntityPanelValidityChange}
-            onDuplicateEntity={handleDuplicateEntity}
-            onDeleteEntity={handleDeleteEntity}
-            onSetEntityStyle={handleSetEntityStyle}
-            onResetEntityStyle={handleResetEntityStyle}
-            currentEntityStyle={currentEntityStyle}
-            onUpdateErRelationshipOperator={handleUpdateErRelationshipOperator}
-            onDeleteErRelationship={handleDeleteErRelationship}
-            onEditErEdgeLabel={handleEditErEdgeLabel}
-            onAddErRelationship={handleAddErRelationship}
-            onCreateErEntityLinked={handleCreateErEntityLinked}
-            onDeleteStateNode={handleDeleteStateNode}
-            onDeleteStateNote={handleDeleteStateNote}
-            onRenameStateNode={handleRenameStateFromToolbar}
-            onSetStateStyle={handleSetStateStyle}
-            onResetStateStyle={handleResetStateStyle}
-            onAddStateNote={handleAddStateNote}
-            onFlipStateNote={handleFlipStateNote}
-            onMoveStateIntoComposite={handleMoveStateIntoComposite}
-            onMoveStateToNewComposite={handleMoveStateToNewComposite}
-            onMoveStateToRoot={handleMoveStateToRoot}
-            onChangeStateShape={handleChangeStateShape}
-            onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
-            onDeleteStateTransition={handleDeleteStateTransition}
-            onAddStateTransition={handleAddStateTransition}
-            onCreateStateShapeLinked={handleCreateStateShapeLinked}
-            handleUpdateStyle={handleUpdateStyle}
-            handleFormatNodeLabel={handleFormatNodeLabel}
-            handleChangeShape={handleChangeShape}
-            handleDuplicateNode={handleDuplicateNode}
-            handleDeleteNode={handleDeleteNode}
-            onAddSequenceNote={handleAddSequenceNote}
-            onMoveSequenceNote={handleMoveSequenceNote}
-            onChangeSequenceMessageType={handleChangeSequenceMessageType}
-            currentSequenceMessageOperator={currentSequenceMessageOperator}
-            onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
-            currentSequenceParticipantType={currentSequenceParticipantType}
-            onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
-            onLinkSequenceNote={handleLinkSequenceNote}
-            setIsInlineEditing={setIsInlineEditing}
-            textBox={textBox}
-            theme={currentTheme}
-            editingText={editingText}
-            setEditingText={setEditingText}
-            handleEditSubmit={handleEditSubmit}
-            inlineInputRef={inlineInputRef}
-            handleAddNodeFromSelected={handleAddNodeFromSelected}
-            onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
-            onHoveredSequenceMessageClick={(index) =>
-              triggerHoveredSequenceMessageSelection(false, index)
-            }
-            onHoveredSequenceMessageDoubleClick={(index) =>
-              triggerHoveredSequenceMessageSelection(true, index)
-            }
-            onHoveredSequenceNoteClick={(index) =>
-              triggerHoveredSequenceNoteSelection(false, index)
-            }
-            onHoveredSequenceNoteDoubleClick={(index) =>
-              triggerHoveredSequenceNoteSelection(true, index)
-            }
-            onReorderSequenceItem={handleReorderSequenceItem}
-            onReorderSequenceLifelines={handleReorderSequenceLifelines}
-            getSequenceLifelines={getSequenceLifelines}
-            onDeselect={handleDeselect}
-            onResetStyle={handleResetStyle}
-            onUpdateEdgeStyle={handleUpdateEdgeStyle}
-            onUpdateEdgeColor={handleUpdateEdgeColor}
-            onUpdateEdgeCurve={handleUpdateEdgeCurve}
-            onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
-            onDeleteEdge={handleDeleteEdge}
-            shapePicker={shapePicker}
-            setShapePicker={setShapePicker}
-          />
-        </ResizablePanel>
+            <EditorCanvas
+              code={code}
+              parseError={parseError}
+              svgContent={svgContent}
+              isLocked={isLocked}
+              setIsLocked={setIsLocked}
+              containerRef={containerRef}
+              handleSvgClick={handleSvgClick}
+              handleMouseMove={handleMouseMove}
+              handleMouseUp={handleMouseUp}
+              handleSequenceHoverOver={handleSequenceHoverOver}
+              handleSequenceHoverOut={handleSequenceHoverOut}
+              handleEditClick={handleEditClick}
+              isCommentMode={isCommentMode}
+              selectionBox={selectionBox}
+              connectionState={connectionState}
+              setConnectionState={setConnectionState}
+              sequenceLifelineOverlay={sequenceLifelineOverlay}
+              hoveredSequenceActorBox={hoveredSequenceActorBox}
+              hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+              hoveredSequenceNoteBox={hoveredSequenceNoteBox}
+              hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
+              comments={doc?.comments ?? []}
+              activeCommentId={activeCommentId}
+              activeCommentFocusToken={activeCommentFocusToken}
+              onActivateComment={activateCommentThread}
+              onOpenSelectionCommentComposer={openSelectionCommentComposer}
+              commentComposer={commentComposer}
+              commentDraft={commentDraft}
+              setCommentDraft={setCommentDraft}
+              onSubmitCommentComposer={submitCommentComposer}
+              commentReplyDrafts={commentReplyDrafts}
+              onChangeCommentReplyDraft={refreshCommentDraft}
+              onSubmitCommentReply={appendCommentReply}
+              onToggleCommentResolved={toggleCommentResolved}
+              renderIdRef={renderIdRef}
+              commentsRailWidth={isCommentsOpen ? 384 : 0}
+              sequenceMessageEntries={sequenceMessageEntries}
+              getSequenceMessageEndpointGeometry={getSequenceMessageEndpointGeometry}
+              sequenceMessageTriggerAreas={sequenceMessageTriggerAreas}
+              sequenceBlockAreas={sequenceBlockAreas}
+              startSequenceConnection={startSequenceConnection}
+              onSequencePlusSelfLoop={handleSequencePlusSelfLoop}
+              onSequencePlusNote={handleSequencePlusNote}
+              onSequencePlusBlock={handleSequencePlusBlock}
+              currentSequenceNotePosition={currentSequenceNotePosition}
+              isInlineEditing={isInlineEditing}
+              selectedSvgId={selectedSvgId}
+              selectedNodeId={selectedNodeId}
+              currentType={currentType}
+              selectedClass={selectedClass}
+              onApplyClassEdits={handleApplyClassEdits}
+              onCloseClassPanel={handleDeselect}
+              onClassPanelValidityChange={handleClassPanelValidityChange}
+              onAddClassRelationship={handleAddClassRelationship}
+              onLinkNoteToClass={handleLinkNoteToClass}
+              onCreateClassLinked={handleCreateClassLinked}
+              onCreateNoteForClass={handleCreateNoteForClass}
+              onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
+              onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
+              onDeleteClassRelationship={handleDeleteClassRelationship}
+              onDeleteClassNode={handleDeleteClassNode}
+              onDeleteClassNote={handleDeleteClassNote}
+              onDeleteClassNamespace={handleDeleteClassNamespace}
+              onMoveClassToNamespace={handleMoveClassToNamespace}
+              onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
+              onRemoveClassFromNamespace={handleRemoveClassFromNamespace}
+              selectedEntity={selectedEntity}
+              onApplyEntityEdits={handleApplyEntityEdits}
+              onCloseEntityPanel={handleCloseEntityPanel}
+              onEntityPanelValidityChange={handleEntityPanelValidityChange}
+              onDuplicateEntity={handleDuplicateEntity}
+              onDeleteEntity={handleDeleteEntity}
+              onSetEntityStyle={handleSetEntityStyle}
+              onResetEntityStyle={handleResetEntityStyle}
+              currentEntityStyle={currentEntityStyle}
+              onUpdateErRelationshipOperator={handleUpdateErRelationshipOperator}
+              onDeleteErRelationship={handleDeleteErRelationship}
+              onEditErEdgeLabel={handleEditErEdgeLabel}
+              onAddErRelationship={handleAddErRelationship}
+              onCreateErEntityLinked={handleCreateErEntityLinked}
+              onDeleteStateNode={handleDeleteStateNode}
+              onDeleteStateNote={handleDeleteStateNote}
+              onRenameStateNode={handleRenameStateFromToolbar}
+              onSetStateStyle={handleSetStateStyle}
+              onResetStateStyle={handleResetStateStyle}
+              onAddStateNote={handleAddStateNote}
+              onFlipStateNote={handleFlipStateNote}
+              onMoveStateIntoComposite={handleMoveStateIntoComposite}
+              onMoveStateToNewComposite={handleMoveStateToNewComposite}
+              onMoveStateToRoot={handleMoveStateToRoot}
+              onChangeStateShape={handleChangeStateShape}
+              onAddStateConcurrencyDivider={handleAddStateConcurrencyDivider}
+              onDeleteStateTransition={handleDeleteStateTransition}
+              onAddStateTransition={handleAddStateTransition}
+              onCreateStateShapeLinked={handleCreateStateShapeLinked}
+              handleUpdateStyle={handleUpdateStyle}
+              handleFormatNodeLabel={handleFormatNodeLabel}
+              handleChangeShape={handleChangeShape}
+              handleDuplicateNode={handleDuplicateNode}
+              handleDeleteNode={handleDeleteNode}
+              onAddSequenceNote={handleAddSequenceNote}
+              onMoveSequenceNote={handleMoveSequenceNote}
+              onChangeSequenceMessageType={handleChangeSequenceMessageType}
+              currentSequenceMessageOperator={currentSequenceMessageOperator}
+              onChangeSequenceParticipantType={handleChangeSequenceParticipantType}
+              currentSequenceParticipantType={currentSequenceParticipantType}
+              onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
+              onLinkSequenceNote={handleLinkSequenceNote}
+              setIsInlineEditing={setIsInlineEditing}
+              textBox={textBox}
+              theme={currentTheme}
+              editingText={editingText}
+              setEditingText={setEditingText}
+              handleEditSubmit={handleEditSubmit}
+              inlineInputRef={inlineInputRef}
+              handleAddNodeFromSelected={handleAddNodeFromSelected}
+              onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
+              onHoveredSequenceMessageClick={(index) =>
+                triggerHoveredSequenceMessageSelection(false, index)
+              }
+              onHoveredSequenceMessageDoubleClick={(index) =>
+                triggerHoveredSequenceMessageSelection(true, index)
+              }
+              onHoveredSequenceNoteClick={(index) =>
+                triggerHoveredSequenceNoteSelection(false, index)
+              }
+              onHoveredSequenceNoteDoubleClick={(index) =>
+                triggerHoveredSequenceNoteSelection(true, index)
+              }
+              onReorderSequenceItem={handleReorderSequenceItem}
+              onReorderSequenceLifelines={handleReorderSequenceLifelines}
+              getSequenceLifelines={getSequenceLifelines}
+              onDeselect={handleDeselect}
+              onResetStyle={handleResetStyle}
+              onUpdateEdgeStyle={handleUpdateEdgeStyle}
+              onUpdateEdgeColor={handleUpdateEdgeColor}
+              onUpdateEdgeCurve={handleUpdateEdgeCurve}
+              onUpdateEdgeAnimation={handleUpdateEdgeAnimation}
+              onDeleteEdge={handleDeleteEdge}
+              shapePicker={shapePicker}
+              setShapePicker={setShapePicker}
+            />
+          </ResizablePanel>
         </ResizablePanelGroup>
 
         {isCommentsOpen && (

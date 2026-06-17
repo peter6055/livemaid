@@ -9,7 +9,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { DiagramComment } from "@/lib/api/storage";
-import { ArrowUpDown, Check, CheckCheck, ChevronDown, MessageSquarePlus, Star, X } from "lucide-react";
+import {
+  ArrowUpDown,
+  Check,
+  CheckCheck,
+  ChevronDown,
+  MessageSquarePlus,
+  Star,
+  X,
+} from "lucide-react";
 
 interface CommentSidebarProps {
   openComments: DiagramComment[];
@@ -26,10 +34,7 @@ interface CommentSidebarProps {
   onToggleStarComment: (commentId: string, starred: boolean) => void;
 }
 
-type CommentSortMode =
-  | "activity-desc"
-  | "activity-asc"
-  | "starred-first";
+type CommentSortMode = "activity-desc" | "activity-asc" | "starred-first";
 
 type CommentCard = {
   id: string;
@@ -42,11 +47,7 @@ type CommentCard = {
 const DEFAULT_SORT_MODE: CommentSortMode = "activity-desc";
 
 function isCommentSortMode(value: string | null): value is CommentSortMode {
-  return (
-    value === "activity-desc" ||
-    value === "activity-asc" ||
-    value === "starred-first"
-  );
+  return value === "activity-desc" || value === "activity-asc" || value === "starred-first";
 }
 
 function formatTimestamp(timestamp: string) {
@@ -144,7 +145,7 @@ function CommentThreadCard({
     <div
       role="button"
       tabIndex={0}
-          className={`relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-colors ${
+      className={`relative w-full cursor-pointer overflow-hidden rounded-xl border text-left transition-colors ${
         active
           ? "border-border bg-indigo-50/70 pl-[15px] dark:border-indigo-500/30 dark:bg-indigo-500/10"
           : "border-border bg-background hover:bg-accent/30"
@@ -169,7 +170,8 @@ function CommentThreadCard({
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
               {comment.messages.length} message
-              {comment.messages.length === 1 ? "" : "s"} · Last activity {formatRelativeTime(timestamp)}
+              {comment.messages.length === 1 ? "" : "s"} · Last activity{" "}
+              {formatRelativeTime(timestamp)}
             </p>
           </div>
         </div>
@@ -320,15 +322,20 @@ export function CommentSidebar({
             </Button>
           </div>
         </div>
+      </div>
 
-        <div className="mt-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
+        <div className="flex items-center justify-between gap-3 px-1 pb-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Open comments
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 w-full justify-between border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent/50"
+                  className="h-9 min-w-[14rem] justify-between border-border bg-background px-3 text-xs font-medium text-foreground hover:bg-accent/50"
                 />
               }
             >
@@ -367,12 +374,6 @@ export function CommentSidebar({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-3">
-        <div className="px-1 pb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Open comments
         </div>
         <div className="space-y-2">
           {sortedOpenCommentCards.length > 0 ? (

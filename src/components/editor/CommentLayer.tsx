@@ -101,8 +101,9 @@ export function CommentLayer({
   const contentHeight = container?.offsetHeight || 1;
   const canMeasure = Boolean(container && containerRect);
   const sidebarRect =
-    container?.ownerDocument?.querySelector<HTMLElement>("[data-comment-sidebar]")?.getBoundingClientRect() ??
-    null;
+    container?.ownerDocument
+      ?.querySelector<HTMLElement>("[data-comment-sidebar]")
+      ?.getBoundingClientRect() ?? null;
 
   const commentPositions = useMemo(() => {
     if (!canMeasure) return new Map<string, { x: number; y: number; missingTarget: boolean }>();
@@ -111,7 +112,9 @@ export function CommentLayer({
     const safeContainerRect = containerRect!;
     const entries = new Map<string, { x: number; y: number; missingTarget: boolean }>();
     const elements = Array.from(safeContainer.querySelectorAll("[id], [data-id]"));
-    const messageTextEls = Array.from(safeContainer.querySelectorAll(".messageText")) as SVGElement[];
+    const messageTextEls = Array.from(
+      safeContainer.querySelectorAll(".messageText"),
+    ) as SVGElement[];
     const messageLineEls = Array.from(
       safeContainer.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
     ) as SVGElement[];
@@ -194,8 +197,34 @@ export function CommentLayer({
         y = comment.anchor.position.y * contentHeight;
       } else if (comment.anchor.type === "shape") {
         const hasSequenceSignature = Boolean(comment.anchor.sequenceMessage);
-        const directSequenceIndex = Number(comment.anchor.shapeId?.match(/^SEQ_MSG_(\d+)$/)?.[1] ?? -1);
-        const directSequenceNoteIndex = Number(comment.anchor.shapeId?.match(/^SEQ_NOTE_(\d+)$/)?.[1] ?? -1);
+        const stateEdgeMatch = comment.anchor.shapeId?.match(/^STATE_EDGE_(edge\d+)$/);
+        if (stateEdgeMatch) {
+          const stateEdge = safeContainer.querySelector(
+            `path.transition[data-id="${stateEdgeMatch[1]}"]`,
+          ) as SVGGraphicsElement | null;
+          if (stateEdge) {
+            const rect = stateEdge.getBoundingClientRect();
+            x = (rect.left + rect.width / 2 - safeContainerRect.left) / scale;
+            y = (rect.top + rect.height / 2 - safeContainerRect.top) / scale;
+            x = Math.min(contentWidth - 16, Math.max(16, x));
+            y = Math.min(contentHeight - 16, Math.max(16, y));
+            entries.set(comment.id, { x, y, missingTarget: false });
+            continue;
+          }
+          if (comment.anchor.fallbackPos) {
+            x = comment.anchor.fallbackPos.x;
+            y = comment.anchor.fallbackPos.y;
+            missingTarget = true;
+            entries.set(comment.id, { x, y, missingTarget });
+            continue;
+          }
+        }
+        const directSequenceIndex = Number(
+          comment.anchor.shapeId?.match(/^SEQ_MSG_(\d+)$/)?.[1] ?? -1,
+        );
+        const directSequenceNoteIndex = Number(
+          comment.anchor.shapeId?.match(/^SEQ_NOTE_(\d+)$/)?.[1] ?? -1,
+        );
         let sequenceIndex =
           Number.isFinite(directSequenceIndex) && directSequenceIndex >= 0
             ? directSequenceIndex
@@ -203,7 +232,7 @@ export function CommentLayer({
               ? findSequenceMessageIndexByAnchor(
                   sequenceMessageEntries,
                   comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
-              )
+                )
               : directSequenceIndex;
 
         if (Number.isFinite(directSequenceNoteIndex) && directSequenceNoteIndex >= 0) {
@@ -237,7 +266,10 @@ export function CommentLayer({
           for (let i = 0; i < sequenceMessageEntries.length; i += 1) {
             const pos = getSequenceMessageCanvasPosition(i);
             if (!pos) continue;
-            const dist = Math.hypot(pos.x - comment.anchor.fallbackPos.x, pos.y - comment.anchor.fallbackPos.y);
+            const dist = Math.hypot(
+              pos.x - comment.anchor.fallbackPos.x,
+              pos.y - comment.anchor.fallbackPos.y,
+            );
             if (dist < bestDist) {
               bestDist = dist;
               bestIndex = i;
@@ -322,10 +354,19 @@ export function CommentLayer({
   ]);
 
   const activeComment = comments.find((comment) => comment.id === activeCommentId) ?? null;
-  const visibleComments = useMemo(() => comments.filter((comment) => !comment.resolved), [comments]);
+  const visibleComments = useMemo(
+    () => comments.filter((comment) => !comment.resolved),
+    [comments],
+  );
 
-  const clampBubblePosition = (preferredLeft: number, preferredTop: number, bubbleWidth: number, bubbleHeight: number) => {
-    const railLeftBound = commentsRailWidth > 0 ? contentWidth - commentsRailWidth - bubbleWidth - 16 : null;
+  const clampBubblePosition = (
+    preferredLeft: number,
+    preferredTop: number,
+    bubbleWidth: number,
+    bubbleHeight: number,
+  ) => {
+    const railLeftBound =
+      commentsRailWidth > 0 ? contentWidth - commentsRailWidth - bubbleWidth - 16 : null;
     const rightBoundFromSidebar =
       sidebarRect && containerRect
         ? sidebarRect.left - containerRect.left - bubbleWidth - 12
@@ -334,7 +375,11 @@ export function CommentLayer({
       Math.max(16, preferredLeft),
       Math.max(
         16,
-        Math.min(contentWidth - bubbleWidth - 16, rightBoundFromSidebar, railLeftBound ?? Number.POSITIVE_INFINITY),
+        Math.min(
+          contentWidth - bubbleWidth - 16,
+          rightBoundFromSidebar,
+          railLeftBound ?? Number.POSITIVE_INFINITY,
+        ),
       ),
     );
     const top = Math.min(

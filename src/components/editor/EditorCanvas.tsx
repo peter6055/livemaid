@@ -47,7 +47,16 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
-import { CSSProperties, RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  CSSProperties,
+  RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
@@ -493,6 +502,85 @@ export function EditorCanvas({
   handleCodeChange,
 }: EditorCanvasProps) {
   const canvasShellRef = useRef<HTMLDivElement | null>(null);
+  const selectedSvgSelector = useMemo(() => {
+    if (!selectedSvgId) return null;
+    const escapeCss =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape
+        : (value: string) => value.replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    return `#${escapeCss(selectedSvgId)}`;
+  }, [selectedSvgId]);
+
+  useLayoutEffect(() => {
+    if (!isInlineEditing || !textBox || !containerRef.current) return;
+
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const scale = containerRect.width / container.offsetWidth;
+    const targetRect = {
+      left: containerRect.left - container.scrollLeft + textBox.x * scale,
+      top: containerRect.top - container.scrollTop + textBox.y * scale,
+      right: containerRect.left - container.scrollLeft + (textBox.x + textBox.width) * scale,
+      bottom: containerRect.top - container.scrollTop + (textBox.y + textBox.height) * scale,
+    };
+    const overlapPad = 6;
+    const elements = new Set<HTMLElement | SVGElement>();
+
+    if (selectedSvgSelector) {
+      try {
+        container
+          .querySelectorAll<
+            HTMLElement | SVGElement
+          >(`${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`)
+          .forEach((el) => elements.add(el));
+      } catch {
+        // Ignore invalid third-party SVG ids; overlap fallback still handles the visible label.
+      }
+    }
+
+    const overlapCandidates =
+      selectedNodeId?.startsWith("SEQ_MSG_") ||
+      selectedNodeId?.startsWith("SEQ_NOTE_") ||
+      isEdgeId(selectedNodeId)
+        ? container.querySelectorAll<HTMLElement | SVGElement>(
+            ".messageText, .noteText, .edgeLabel, .nodeLabel, .cluster-label",
+          )
+        : container.querySelectorAll<HTMLElement | SVGElement>(
+            ".nodeLabel, .cluster-label, .label, text, foreignObject",
+          );
+
+    overlapCandidates.forEach((el) => {
+      const rect = el.getBoundingClientRect();
+      const overlaps =
+        rect.right >= targetRect.left - overlapPad &&
+        rect.left <= targetRect.right + overlapPad &&
+        rect.bottom >= targetRect.top - overlapPad &&
+        rect.top <= targetRect.bottom + overlapPad;
+      if (overlaps) elements.add(el);
+    });
+
+    const previous = Array.from(elements).map((el) => ({
+      el,
+      opacity: el.style.opacity,
+      visibility: el.style.visibility,
+      pointerEvents: el.style.pointerEvents,
+    }));
+
+    previous.forEach(({ el }) => {
+      el.style.opacity = "0";
+      el.style.visibility = "hidden";
+      el.style.pointerEvents = "none";
+    });
+
+    return () => {
+      previous.forEach(({ el, opacity, visibility, pointerEvents }) => {
+        if (!el.isConnected) return;
+        el.style.opacity = opacity;
+        el.style.visibility = visibility;
+        el.style.pointerEvents = pointerEvents;
+      });
+    };
+  }, [containerRef, isInlineEditing, selectedNodeId, selectedSvgSelector, textBox]);
   const [sequencePlusMenu, setSequencePlusMenu] = useState<{
     actorId: string;
     anchorY: number;
@@ -1766,7 +1854,7 @@ export function EditorCanvas({
         }}
       >
         {({ zoomIn, zoomOut, resetTransform, state }) => (
-            <>
+          <>
             <CommentFocusSync
               activeCommentId={activeCommentId}
               activeCommentFocusToken={activeCommentFocusToken ?? 0}
@@ -2187,11 +2275,11 @@ export function EditorCanvas({
                                     y: anchorMenuY,
                                   },
                                   anchorY,
-                                  snapTargetId: snappedActorId ? `SEQ_ACTOR_${snappedActorId}` : null,
+                                  snapTargetId: snappedActorId
+                                    ? `SEQ_ACTOR_${snappedActorId}`
+                                    : null,
                                   snapTargetPos:
-                                    snapX !== null
-                                      ? { x: snapX, y: anchorMenuY }
-                                      : null,
+                                    snapX !== null ? { x: snapX, y: anchorMenuY } : null,
                                 }));
                               }
                             };
@@ -2292,17 +2380,19 @@ export function EditorCanvas({
                     </svg>
                   )}
 
-                {isInlineEditing && selectedSvgId && (
+                {isInlineEditing && selectedSvgSelector && (
                   <style>{`
-                        #${selectedSvgId},
-                        #${selectedSvgId} .label,
-                        #${selectedSvgId} text,
-                        #${selectedSvgId} foreignObject,
-                        #${selectedSvgId} .nodeLabel,
-                        #${selectedSvgId} .cluster-label,
-                        #${selectedSvgId} .messageText,
-                        #${selectedSvgId} .noteText {
+                        ${selectedSvgSelector},
+                        ${selectedSvgSelector} .label,
+                        ${selectedSvgSelector} text,
+                        ${selectedSvgSelector} foreignObject,
+                        ${selectedSvgSelector} .nodeLabel,
+                        ${selectedSvgSelector} .cluster-label,
+                        ${selectedSvgSelector} .messageText,
+                        ${selectedSvgSelector} .noteText {
                             opacity: 0 !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
                         }
                      `}</style>
                 )}
@@ -2325,57 +2415,6 @@ export function EditorCanvas({
                       title="Drag to reorder"
                       onMouseDown={startSeqReorderDrag}
                     />
-                  )}
-
-                {/* Message endpoint drag handles — vertical rounded "bars" (capsules) at the
-                      sender + receiver ends of the selected message. Dragging a handle to another
-                      lifeline reassigns that endpoint in the code; dragging onto the source's own
-                      lifeline morphs the message into a self-loop (and vice-versa). Rendered in
-                      canvas coords inside the TransformComponent so they track pan/zoom;
-                      scale-locked so the on-screen size stays constant. z above the reorder grab
-                      overlay + selection border. */}
-                {currentType === "sequence" &&
-                  selectedSeqMsgEndpoints &&
-                  selectionBox &&
-                  !isLocked &&
-                  !isInlineEditing &&
-                  !connectionState.active &&
-                  !seqReorder &&
-                  !seqEndpointDragging && (
-                    <>
-                      {[
-                        { key: "source" as const, pt: selectedSeqMsgEndpoints.source },
-                        { key: "target" as const, pt: selectedSeqMsgEndpoints.target },
-                      ].map(({ key, pt }) => {
-                        return (
-                          <div
-                            key={`seq-endpoint-${key}`}
-                            data-scale-lock
-                            data-base-transform="translate(-50%, -50%)"
-                            className="seq-endpoint-handle absolute z-[24] pointer-events-auto cursor-grab active:cursor-grabbing rounded-full bg-white border-[3px] border-blue-500 shadow-sm hover:bg-blue-50 transition-colors"
-                            style={{
-                              left: pt.x,
-                              // Center the bar ON the endpoint line (no fixed upward nudge). A constant
-                              // upward offset drifts the bar onto the PREVIOUS message when zoomed out
-                              // (rows pack to a few px apart while the bar keeps a min screen size), so
-                              // it must straddle its own endpoint symmetrically at every zoom level.
-                              top: pt.y,
-                              width: "14px",
-                              height: "44px",
-                              minWidth: "14px",
-                              minHeight: "44px",
-                              transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                            }}
-                            title={
-                              key === "source" ? "Drag to change sender" : "Drag to change receiver"
-                            }
-                            onMouseDown={(e) =>
-                              startSeqEndpointDrag(e, key, selectedSeqMsgEndpoints)
-                            }
-                          />
-                        );
-                      })}
-                    </>
                   )}
 
                 {selectionBox && !isLocked && (
@@ -2834,6 +2873,50 @@ export function EditorCanvas({
                 <Lock className="w-4 h-4 mr-2" /> Diagram Locked
               </div>
             )}
+
+            {/* Sequence message endpoint drag handles — rendered in viewport space
+                  outside TransformComponent so their screen size stays fixed regardless
+                  of zoom. Canvas coordinates are converted to viewport via scale/rects. */}
+            {currentType === "sequence" &&
+              selectedSeqMsgEndpoints &&
+              selectionBox &&
+              !isLocked &&
+              !isInlineEditing &&
+              !connectionState.active &&
+              !seqReorder &&
+              !seqEndpointDragging && (
+                <>
+                  {[
+                    { key: "source" as const, pt: selectedSeqMsgEndpoints.source },
+                    { key: "target" as const, pt: selectedSeqMsgEndpoints.target },
+                  ].map(({ key, pt }) => {
+                    const container = containerRef.current;
+                    const shell = canvasShellRef.current;
+                    if (!container || !shell) return null;
+                    const cRect = container.getBoundingClientRect();
+                    const sRect = shell.getBoundingClientRect();
+                    const vpX = pt.x * state.scale + cRect.left - container.scrollLeft - sRect.left;
+                    const vpY = pt.y * state.scale + cRect.top - container.scrollTop - sRect.top;
+                    return (
+                      <div
+                        key={`seq-endpoint-${key}`}
+                        className="seq-endpoint-handle absolute z-[24] pointer-events-auto cursor-grab active:cursor-grabbing rounded-full bg-white border-2 border-blue-500 shadow-sm hover:bg-blue-50 transition-colors"
+                        style={{
+                          left: vpX,
+                          top: vpY,
+                          width: "14px",
+                          height: "36px",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                        title={
+                          key === "source" ? "Drag to change sender" : "Drag to change receiver"
+                        }
+                        onMouseDown={(e) => startSeqEndpointDrag(e, key, selectedSeqMsgEndpoints)}
+                      />
+                    );
+                  })}
+                </>
+              )}
           </>
         )}
       </TransformWrapper>

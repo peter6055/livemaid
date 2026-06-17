@@ -43,3 +43,6 @@ next-env.d.ts
 # local data
 data/
 
+# opencode agent config
+.opencode/
+

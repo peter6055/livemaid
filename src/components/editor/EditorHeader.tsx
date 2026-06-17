@@ -102,6 +102,27 @@ export function EditorHeader({
     setDraftName(doc?.name || "");
   };
 
+  const handleNewDiagramInNewTab = async () => {
+    if (!doc) return;
+    try {
+      const res = await fetch("/api/diagrams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "New Diagram",
+          code: `graph TD\n    A[Start] --> B[End]`,
+        }),
+      });
+      if (res.ok) {
+        const newDiagram = await res.json();
+        window.open(`/editor/${newDiagram.id}`, "_blank", "noopener,noreferrer");
+      }
+    } catch {
+      // fallback to the existing dialog flow
+      onNewDiagram();
+    }
+  };
+
   const prepareDuplicateLink = (anchor: HTMLAnchorElement) => {
     if (anchor.dataset.duplicatePrepared === "true") return true;
     const duplicateUrl = onDuplicate();
@@ -141,7 +162,10 @@ export function EditorHeader({
           <DropdownMenuContent align="start" className="w-48 bg-background border-border">
             {!isDemo && (
               <DropdownMenuItem
-                onClick={onNewDiagram}
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleNewDiagramInNewTab();
+                }}
                 className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
               >
                 <PlusSquare className="w-4 h-4" />
@@ -344,7 +368,13 @@ export function EditorHeader({
           className={actionButtonClass}
           aria-label="Open comments"
         >
-          <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            viewBox="0 0 24 24"
+            className="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <path d="M21 15a4 4 0 0 1-4 4H8l-5 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
           </svg>
           <span>Comments</span>

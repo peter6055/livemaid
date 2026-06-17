@@ -289,7 +289,9 @@ export function SequenceManipulationToolbar({
                           key={option.position}
                           aria-pressed={isActive}
                           className={`w-full rounded-md px-2 py-2 text-left text-base transition-colors ${
-                            isActive ? "bg-indigo-50 font-semibold text-indigo-700 ring-1 ring-indigo-500" : "hover:bg-accent"
+                            isActive
+                              ? "bg-indigo-50 font-semibold text-indigo-700 ring-1 ring-indigo-500"
+                              : "hover:bg-accent"
                           }`}
                           onClick={() => {
                             onMoveNote(option.position);

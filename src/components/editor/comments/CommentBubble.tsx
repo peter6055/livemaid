@@ -60,7 +60,7 @@ export function CommentBubble(props: CommentBubbleProps) {
       const target = event.target;
       if (!(target instanceof Element)) return;
       if (rootRef.current?.contains(target)) return;
-      if (target.closest('[data-comment-sidebar]')) return;
+      if (target.closest("[data-comment-sidebar]")) return;
       if (target.closest('[id^="comment-pin-"]')) return;
       onClose();
     };
@@ -97,9 +97,7 @@ export function CommentBubble(props: CommentBubbleProps) {
       onWheelCapture={(event) => event.stopPropagation()}
     >
       {kind === "compose" ? (
-        <div
-          className="flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
-        >
+        <div className="flex w-[22rem] flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl">
           <div className="sticky top-0 z-20 border-b border-border bg-background/95 px-3 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -118,7 +116,7 @@ export function CommentBubble(props: CommentBubbleProps) {
                   onClose();
                 }}
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4 text-foreground" />
               </Button>
             </div>
           </div>
@@ -144,12 +142,18 @@ export function CommentBubble(props: CommentBubbleProps) {
             <div className="flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to add</p>
               <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" className="h-8 rounded-lg" onClick={onClose}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 rounded-lg border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted/60 dark:border-border dark:bg-background dark:text-foreground dark:hover:bg-white/5"
+                  onClick={onClose}
+                >
                   Cancel
                 </Button>
                 <Button
+                  variant="default"
                   size="sm"
-                  className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+                  className="h-8 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-indigo-600/40 disabled:text-white/70"
                   onClick={() => props.onSubmit(props.value)}
                   disabled={!props.value.trim()}
                 >
@@ -179,7 +183,9 @@ export function CommentBubble(props: CommentBubbleProps) {
                   {props.comment.messages.length} message
                   {props.comment.messages.length === 1 ? "" : "s"} ·{" "}
                   {props.comment.resolved ? "Resolved" : "Open"} ·{" "}
-                  {props.comment.anchor.type === "canvas" ? "attached to canvas" : "attached to item"}
+                  {props.comment.anchor.type === "canvas"
+                    ? "attached to canvas"
+                    : "attached to item"}
                 </p>
                 {props.missingTarget && (
                   <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-300">
@@ -212,7 +218,7 @@ export function CommentBubble(props: CommentBubbleProps) {
                     onClose();
                   }}
                 >
-                  <X className="h-4 w-4" />
+                  <X className="h-4 w-4 text-foreground" />
                 </Button>
               </div>
             </div>
@@ -260,8 +266,9 @@ export function CommentBubble(props: CommentBubbleProps) {
             <div className="mt-2 flex items-center justify-between gap-3">
               <p className="text-[11px] text-muted-foreground">Cmd/Ctrl + Enter to reply</p>
               <Button
+                variant="default"
                 size="sm"
-                className="h-8 rounded-lg bg-black px-4 text-sm font-semibold text-white hover:bg-zinc-800 disabled:bg-zinc-300 disabled:text-white/70"
+                className="h-8 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white hover:bg-indigo-700 disabled:bg-indigo-600/40 disabled:text-white/70"
                 onClick={props.onSubmitReply}
                 disabled={!props.replyValue.trim()}
               >

@@ -35,7 +35,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Table2, Workflow, ArrowDown, ArrowUp, ArrowRight, ArrowLeft, Check, Type } from "lucide-react";
+import {
+  Table2,
+  Workflow,
+  ArrowDown,
+  ArrowUp,
+  ArrowRight,
+  ArrowLeft,
+  Check,
+  Type,
+} from "lucide-react";
 
 /* -------------------------------------------------------------------------- */
 /* Low-level token helpers                                                     */

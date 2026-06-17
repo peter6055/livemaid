@@ -128,9 +128,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
         if (rawComment && Array.isArray(rawComment.messages)) {
           const rawAnchor = isRecord(rawComment.anchor) ? rawComment.anchor : null;
           const legacySequenceMatch =
-            rawAnchor &&
-            rawAnchor.type === "shape" &&
-            typeof rawAnchor.shapeId === "string"
+            rawAnchor && rawAnchor.type === "shape" && typeof rawAnchor.shapeId === "string"
               ? rawAnchor.shapeId.match(/^SEQ_MSG_(\d+)$/)
               : null;
           const derivedSequenceMessage =
@@ -140,69 +138,76 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
             legacySequenceMatch
               ? buildSequenceMessageAnchor(sequenceMessageEntries, Number(legacySequenceMatch[1]))
               : null;
-          const anchor: DiagramCommentAnchor =
-            rawAnchor
-              ? rawAnchor.type === "shape"
-                ? {
-                    type: "shape",
-                    shapeId:
-                      typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId : undefined,
-                    fallbackPos:
-                      isRecord(rawAnchor.fallbackPos) &&
-                      typeof rawAnchor.fallbackPos.x === "number" &&
-                      typeof rawAnchor.fallbackPos.y === "number"
-                        ? {
-                            x: rawAnchor.fallbackPos.x,
-                            y: rawAnchor.fallbackPos.y,
-                          }
-                        : undefined,
-                    sequenceMessage:
-                      isRecord(rawAnchor.sequenceMessage) &&
-                      typeof rawAnchor.sequenceMessage.sender === "string" &&
-                      typeof rawAnchor.sequenceMessage.receiver === "string" &&
-                      typeof rawAnchor.sequenceMessage.operator === "string" &&
-                      typeof rawAnchor.sequenceMessage.label === "string" &&
-                      typeof rawAnchor.sequenceMessage.occurrence === "number"
-                        ? {
-                            sender: rawAnchor.sequenceMessage.sender,
-                            receiver: rawAnchor.sequenceMessage.receiver,
-                            operator: rawAnchor.sequenceMessage.operator,
-                            label: rawAnchor.sequenceMessage.label,
-                            occurrence: rawAnchor.sequenceMessage.occurrence,
-                          }
-                        : derivedSequenceMessage ?? undefined,
-                  }
-                : {
-                    type: "canvas",
-                    position:
-                      isRecord(rawAnchor.position) &&
-                      typeof rawAnchor.position.x === "number" &&
-                      typeof rawAnchor.position.y === "number"
-                        ? {
-                            x: rawAnchor.position.x,
-                            y: rawAnchor.position.y,
-                          }
-                        : { x: 0.5, y: 0.5 },
-                  }
-              : { type: "canvas", position: { x: 0.5, y: 0.5 } };
+          const anchor: DiagramCommentAnchor = rawAnchor
+            ? rawAnchor.type === "shape"
+              ? {
+                  type: "shape",
+                  shapeId: typeof rawAnchor.shapeId === "string" ? rawAnchor.shapeId : undefined,
+                  fallbackPos:
+                    isRecord(rawAnchor.fallbackPos) &&
+                    typeof rawAnchor.fallbackPos.x === "number" &&
+                    typeof rawAnchor.fallbackPos.y === "number"
+                      ? {
+                          x: rawAnchor.fallbackPos.x,
+                          y: rawAnchor.fallbackPos.y,
+                        }
+                      : undefined,
+                  sequenceMessage:
+                    isRecord(rawAnchor.sequenceMessage) &&
+                    typeof rawAnchor.sequenceMessage.sender === "string" &&
+                    typeof rawAnchor.sequenceMessage.receiver === "string" &&
+                    typeof rawAnchor.sequenceMessage.operator === "string" &&
+                    typeof rawAnchor.sequenceMessage.label === "string" &&
+                    typeof rawAnchor.sequenceMessage.occurrence === "number"
+                      ? {
+                          sender: rawAnchor.sequenceMessage.sender,
+                          receiver: rawAnchor.sequenceMessage.receiver,
+                          operator: rawAnchor.sequenceMessage.operator,
+                          label: rawAnchor.sequenceMessage.label,
+                          occurrence: rawAnchor.sequenceMessage.occurrence,
+                        }
+                      : (derivedSequenceMessage ?? undefined),
+                }
+              : {
+                  type: "canvas",
+                  position:
+                    isRecord(rawAnchor.position) &&
+                    typeof rawAnchor.position.x === "number" &&
+                    typeof rawAnchor.position.y === "number"
+                      ? {
+                          x: rawAnchor.position.x,
+                          y: rawAnchor.position.y,
+                        }
+                      : { x: 0.5, y: 0.5 },
+                }
+            : { type: "canvas", position: { x: 0.5, y: 0.5 } };
           return {
             id: typeof rawComment.id === "string" ? rawComment.id : `comment-${index}`,
             anchor,
             messages: rawComment.messages
               .filter((message) => message && typeof message.content === "string")
               .map((message, messageIndex: number) => ({
-                id: typeof message.id === "string" ? message.id : `comment-${index}-message-${messageIndex}`,
+                id:
+                  typeof message.id === "string"
+                    ? message.id
+                    : `comment-${index}-message-${messageIndex}`,
                 content: message.content,
                 authorId: typeof message.authorId === "string" ? message.authorId : "anonymous",
                 timestamp:
-                  typeof message.timestamp === "string" ? message.timestamp : new Date().toISOString(),
-            })),
+                  typeof message.timestamp === "string"
+                    ? message.timestamp
+                    : new Date().toISOString(),
+              })),
             resolved: Boolean(rawComment.resolved),
             starred: Boolean(rawComment.starred),
             createdAt:
-              typeof rawComment.createdAt === "string" ? rawComment.createdAt : new Date().toISOString(),
+              typeof rawComment.createdAt === "string"
+                ? rawComment.createdAt
+                : new Date().toISOString(),
             updatedAt:
-              typeof rawComment.updatedAt === "string" ? rawComment.updatedAt : new Date().toISOString(),
+              typeof rawComment.updatedAt === "string"
+                ? rawComment.updatedAt
+                : new Date().toISOString(),
           };
         }
 
@@ -212,7 +217,9 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
             ? rawLegacyComment.timestamp
             : new Date().toISOString();
         const content =
-          rawLegacyComment && typeof rawLegacyComment.content === "string" ? rawLegacyComment.content : "";
+          rawLegacyComment && typeof rawLegacyComment.content === "string"
+            ? rawLegacyComment.content
+            : "";
         const id =
           rawLegacyComment && typeof rawLegacyComment.id === "string"
             ? rawLegacyComment.id

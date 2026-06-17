@@ -53,7 +53,9 @@ function normalizeAnchor(anchor: unknown, code: string): DiagramComment["anchor"
         : null;
 
     const rawFallbackPos = isRecord(rawAnchor.fallbackPos) ? rawAnchor.fallbackPos : null;
-    const rawSequenceMessage = isRecord(rawAnchor.sequenceMessage) ? rawAnchor.sequenceMessage : null;
+    const rawSequenceMessage = isRecord(rawAnchor.sequenceMessage)
+      ? rawAnchor.sequenceMessage
+      : null;
 
     return {
       type: "shape",
@@ -81,7 +83,7 @@ function normalizeAnchor(anchor: unknown, code: string): DiagramComment["anchor"
               label: rawSequenceMessage.label,
               occurrence: rawSequenceMessage.occurrence,
             }
-          : derivedSequenceMessage ?? undefined,
+          : (derivedSequenceMessage ?? undefined),
     };
   }
   if (
@@ -137,7 +139,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         {
           id: nanoid(),
           content,
-          authorId: typeof body.authorId === "string" && body.authorId.trim() ? body.authorId : "anonymous",
+          authorId:
+            typeof body.authorId === "string" && body.authorId.trim() ? body.authorId : "anonymous",
           timestamp: now,
         },
       ],
@@ -147,7 +150,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       updatedAt: now,
     };
 
-    const updated = { ...diagram, comments: [...(diagram.comments ?? []), comment], updatedAt: now };
+    const updated = {
+      ...diagram,
+      comments: [...(diagram.comments ?? []), comment],
+      updatedAt: now,
+    };
     await saveDiagram(updated);
     return NextResponse.json(comment, { status: 201 });
   } catch {
