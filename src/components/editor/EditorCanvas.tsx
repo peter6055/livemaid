@@ -23,6 +23,7 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { CommentLayer } from "./CommentLayer";
+import { StableMermaidHtml } from "./StableMermaidHtml";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import {
   classNameFromSvgId,
@@ -79,6 +80,9 @@ interface EditorCanvasProps {
   handleMouseUp: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleSequenceHoverOver: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleSequenceHoverOut: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleSequenceMessageHoverEnter: (index: number) => void;
+  handleSequenceMessageHoverMove: (index: number) => void;
+  handleSequenceMessageHoverLeave: (index: number, e: React.PointerEvent<HTMLDivElement>) => void;
   handleEditClick: (e: React.MouseEvent | Event) => void;
   selectionBox: { x: number; y: number; width: number; height: number } | null;
   connectionState: {
@@ -379,6 +383,9 @@ export function EditorCanvas({
   handleMouseUp,
   handleSequenceHoverOver,
   handleSequenceHoverOut,
+  handleSequenceMessageHoverEnter,
+  handleSequenceMessageHoverMove,
+  handleSequenceMessageHoverLeave,
   handleEditClick,
   selectionBox,
   connectionState,
@@ -1985,9 +1992,9 @@ export function EditorCanvas({
                   />
                 )}
 
-                <div
+                <StableMermaidHtml
+                  html={svgContent}
                   className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
-                  dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
 
                 <CommentLayer
@@ -2019,11 +2026,13 @@ export function EditorCanvas({
                 {currentType === "sequence" &&
                   !isInlineEditing &&
                   !connectionState.active &&
+                  !seqReorder &&
                   sequenceMessageTriggerAreas.map((area) => (
                     <div
-                      key={`seq-msg-trigger-${area.index}`}
+                      key={`seq-msg-hit-${area.index}`}
                       data-seq-msg-hover-trigger="true"
-                      className="absolute pointer-events-none z-[19]"
+                      data-seq-msg-index={area.index}
+                      className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
                       style={{
                         left: area.x,
                         top: area.y,
@@ -2031,17 +2040,24 @@ export function EditorCanvas({
                         height: area.height,
                         background: "transparent",
                       }}
+                      title="Drag to reorder · click to select"
+                      onPointerEnter={() => handleSequenceMessageHoverEnter(area.index)}
+                      onPointerMove={() => handleSequenceMessageHoverMove(area.index)}
+                      onPointerLeave={(e) => handleSequenceMessageHoverLeave(area.index, e)}
+                      onMouseDown={(e) =>
+                        startSeqReorderDrag(e, { kind: "msg", domIndex: area.index })
+                      }
                     />
                   ))}
 
                 {currentType === "sequence" &&
                   hoveredSequenceMessageBox &&
-                  !selectedNodeId?.startsWith("SEQ_MSG_") &&
+                  hoveredSequenceMessageIndex !== null &&
+                  selectedNodeId !== `SEQ_MSG_${hoveredSequenceMessageIndex}` &&
                   !isInlineEditing &&
                   !connectionState.active && (
                     <div
-                      data-seq-msg-hover-trigger="true"
-                      data-scale-lock-border
+                      data-seq-msg-hover-outline
                       data-scale-lock-shadow
                       className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
@@ -2056,35 +2072,7 @@ export function EditorCanvas({
                     />
                   )}
 
-                {/* Hover grab overlay: lets the user drag-to-reorder ANY message directly on
-                      hover (no select-first step), and selects on a plain click. Generously
-                      enlarged vertical grab area so the thin message band is easy to grab.
-                      Rendered for the hovered message REGARDLESS of selection so EVERY message
-                      click flows through the shared timing-based double-click detector (otherwise
-                      clicking a new message while another is selected bypasses it via the SVG path
-                      and double-click-to-edit breaks). */}
-                {currentType === "sequence" &&
-                  hoveredSequenceMessageBox &&
-                  !selectedNodeId?.startsWith("SEQ_MSG_") &&
-                  !isInlineEditing &&
-                  !connectionState.active &&
-                  !seqReorder && (
-                    <div
-                      className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
-                      style={{
-                        left: hoveredSequenceMessageBox.x - 8 / state.scale,
-                        top: hoveredSequenceMessageBox.y - 5 / state.scale,
-                        width: hoveredSequenceMessageBox.width + 16 / state.scale,
-                        height: hoveredSequenceMessageBox.height + 10 / state.scale,
-                      }}
-                      title="Drag to reorder · click to select"
-                      onMouseDown={(e) =>
-                        startSeqReorderDrag(e, hoveredSequenceMessageIndex !== null
-                          ? { kind: "msg", domIndex: hoveredSequenceMessageIndex }
-                          : undefined)
-                      }
-                    />
-                  )}
+                {/* Message hover grab overlay merged into stable hit overlays above. */}
 
                 {currentType === "sequence" &&
                   hoveredSequenceNoteBox &&

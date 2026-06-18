@@ -1,4 +1,11 @@
-import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  MutableRefObject,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import {
   isEdgeId,
   parseEdgeId,
@@ -185,6 +192,23 @@ function findSequenceMessageVisualAtClientPoint(
       );
     }) ?? null
   );
+}
+
+function isSequenceMessageHoverSuppressedByFloatingUi(clientX: number, clientY: number): boolean {
+  if (typeof document === "undefined" || !document.elementsFromPoint) return false;
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    if (!(el instanceof HTMLElement)) continue;
+    // Message hit overlay owns hover — ignore deeper floating UI in the stack.
+    if (el.dataset.seqMsgIndex != null || el.closest("[data-seq-msg-index]")) return false;
+    if (el.closest("[data-seq-msg-hover-outline]")) return false;
+    if (getComputedStyle(el).pointerEvents === "none") continue;
+    return Boolean(
+      el.closest?.("[data-inline-toolbar]") ||
+      el.closest?.("[data-scale-lock]") ||
+      el.closest?.("[data-scale-lock-border]"),
+    );
+  }
+  return false;
 }
 
 export function buildSequenceMessageVisualModel(
@@ -429,14 +453,12 @@ export function useCanvasInteraction({
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(null);
   const hoveredSequenceMessageIndexRef = useRef<number | null>(null);
-  const setHoveredSequenceMessageIndexWithRef = useCallback((idx: number | null) => {
-    setHoveredSequenceMessageIndex(idx);
-    hoveredSequenceMessageIndexRef.current = idx;
-  }, []);
+  const sequenceMessageVisualsRef = useRef<SequenceMessageVisual[]>([]);
   const hoveredSequenceTargetsRef = useRef<{
     labelEls: SVGElement[];
     lineEl: SVGElement | null;
   }>({ labelEls: [], lineEl: null });
+  const lastSequencePointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
   const findNearestLineForText = useCallback(
     (textEl: SVGElement, lineEls: SVGElement[]) =>
@@ -538,6 +560,124 @@ export function useCanvasInteraction({
     [isSequenceMessageLine],
   );
 
+  const applySequenceMessageHoverClasses = useCallback(
+    (index: number | null) => {
+      const selectedId = selectedNodeIdRef.current;
+      const selectedIndex = selectedId?.startsWith("SEQ_MSG_")
+        ? parseInt(selectedId.replace("SEQ_MSG_", ""), 10)
+        : null;
+
+      if (index === null) {
+        hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
+          el.classList.remove("sequence-msg-hover-highlight-text");
+        });
+        hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
+          "sequence-msg-hover-highlight-line",
+        );
+        hoveredSequenceTargetsRef.current = { labelEls: [], lineEl: null };
+        return;
+      }
+
+      if (index === selectedIndex) {
+        hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
+          el.classList.remove("sequence-msg-hover-highlight-text");
+        });
+        hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
+          "sequence-msg-hover-highlight-line",
+        );
+        hoveredSequenceTargetsRef.current = { labelEls: [], lineEl: null };
+        return;
+      }
+
+      const container = containerRef.current;
+      if (!container) return;
+
+      const visuals = buildSequenceMessageVisualModel(
+        container,
+        code,
+        getSequenceMessageEntries,
+        findOwningLineForSequenceLabel,
+      );
+      sequenceMessageVisualsRef.current = visuals;
+      const visual = visuals[index];
+      if (!visual) return;
+
+      const prevLabelEls = hoveredSequenceTargetsRef.current.labelEls;
+      const prevLineEl = hoveredSequenceTargetsRef.current.lineEl;
+      const sameLine = prevLineEl === visual.lineEl;
+      const sameLabels =
+        sameLine &&
+        prevLabelEls.length === visual.labelEls.length &&
+        prevLabelEls.every((el, i) => el === visual.labelEls[i]);
+      if (sameLabels) return;
+
+      prevLabelEls.forEach((el) => {
+        el.classList.remove("sequence-msg-hover-highlight-text");
+      });
+      prevLineEl?.classList.remove("sequence-msg-hover-highlight-line");
+
+      visual.labelEls.forEach((el) => {
+        el.classList.add("sequence-msg-hover-highlight-text");
+      });
+      visual.lineEl?.classList.add("sequence-msg-hover-highlight-line");
+      hoveredSequenceTargetsRef.current = { labelEls: visual.labelEls, lineEl: visual.lineEl };
+    },
+    [containerRef, code, getSequenceMessageEntries],
+  );
+
+  const setHoveredSequenceMessage = useCallback(
+    (index: number | null) => {
+      const prevIndex = hoveredSequenceMessageIndexRef.current;
+
+      if (index === null) {
+        if (prevIndex === null) return;
+        hoveredSequenceMessageIndexRef.current = null;
+        setHoveredSequenceMessageIndex(null);
+        setHoveredSequenceMessageBox(null);
+        applySequenceMessageHoverClasses(null);
+        return;
+      }
+
+      const selectedId = selectedNodeIdRef.current;
+      const selectedIndex = selectedId?.startsWith("SEQ_MSG_")
+        ? parseInt(selectedId.replace("SEQ_MSG_", ""), 10)
+        : null;
+      if (index === selectedIndex) {
+        if (prevIndex !== null) {
+          hoveredSequenceMessageIndexRef.current = null;
+          setHoveredSequenceMessageIndex(null);
+        }
+        setHoveredSequenceMessageBox(null);
+        applySequenceMessageHoverClasses(null);
+        return;
+      }
+
+      let visual = sequenceMessageVisualsRef.current[index];
+      if (!visual) {
+        const container = containerRef.current;
+        if (container) {
+          const visuals = buildSequenceMessageVisualModel(
+            container,
+            code,
+            getSequenceMessageEntries,
+            findOwningLineForSequenceLabel,
+          );
+          sequenceMessageVisualsRef.current = visuals;
+          visual = visuals[index];
+        }
+      }
+
+      const sameIndex = prevIndex === index;
+      hoveredSequenceMessageIndexRef.current = index;
+      if (!sameIndex) {
+        setHoveredSequenceMessageIndex(index);
+      }
+      setHoveredSequenceMessageBox(visual?.selectionBox ?? null);
+      applySequenceMessageHoverClasses(index);
+    },
+    [containerRef, code, getSequenceMessageEntries, applySequenceMessageHoverClasses],
+  );
+
   // Live hit-test: returns the message whose connection band (line + label, with
   // padding) contains the given canvas-space point. Computed directly from the DOM
   // so it is reliable on cold load, independent of any precomputed-areas state.
@@ -577,93 +717,50 @@ export function useCanvasInteraction({
   );
 
   const clearSequenceMessageHoverHighlight = useCallback(() => {
-    hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
-      el.classList.remove("sequence-msg-hover-highlight-text");
+    setHoveredSequenceMessage(null);
+  }, [setHoveredSequenceMessage]);
+
+  useLayoutEffect(() => {
+    const idx = hoveredSequenceMessageIndexRef.current;
+    if (idx === null) return;
+    applySequenceMessageHoverClasses(idx);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      const after = hoveredSequenceMessageIndexRef.current;
+      if (after !== null) applySequenceMessageHoverClasses(after);
+      raf2 = requestAnimationFrame(() => {
+        const after2 = hoveredSequenceMessageIndexRef.current;
+        if (after2 !== null) applySequenceMessageHoverClasses(after2);
+      });
     });
-    hoveredSequenceTargetsRef.current.lineEl?.classList.remove("sequence-msg-hover-highlight-line");
-    hoveredSequenceTargetsRef.current = { labelEls: [], lineEl: null };
-    setHoveredSequenceMessageBox(null);
-    setHoveredSequenceMessageIndexWithRef(null);
-  }, [setHoveredSequenceMessageIndexWithRef]);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [
+    svgContent,
+    hoveredSequenceMessageIndex,
+    selectedNodeId,
+    selectionBox,
+    sequenceMessageTriggerAreas,
+    applySequenceMessageHoverClasses,
+  ]);
 
-  const updateSequenceMessageHoverHighlight = useCallback(
-    (hoveredIndex: number | null) => {
-      const container = containerRef.current;
-      if (!container || hoveredIndex === null) {
-        clearSequenceMessageHoverHighlight();
-        return;
+  const resolveHoveredSequenceMessageIndexAtPoint = useCallback(
+    (clientX: number, clientY: number): number | null => {
+      if (typeof document !== "undefined" && document.elementsFromPoint) {
+        const hitOverlay = document
+          .elementsFromPoint(clientX, clientY)
+          .find(
+            (el): el is HTMLElement =>
+              el instanceof HTMLElement && el.dataset.seqMsgIndex != null,
+          );
+        if (hitOverlay) {
+          const idx = parseInt(hitOverlay.dataset.seqMsgIndex!, 10);
+          if (Number.isFinite(idx)) return idx;
+        }
       }
 
-      const visuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
-      const visual = visuals[hoveredIndex];
-      if (!visual) {
-        clearSequenceMessageHoverHighlight();
-        return;
-      }
-
-      const selectedId = selectedNodeIdRef.current;
-      const selectedIndex = selectedId?.startsWith("SEQ_MSG_")
-        ? parseInt(selectedId.replace("SEQ_MSG_", ""), 10)
-        : null;
-      if (hoveredIndex === selectedIndex) {
-        clearSequenceMessageHoverHighlight();
-        return;
-      }
-
-      const labelEls = visual.labelEls;
-      const lineEl = visual.lineEl;
-
-      const prevLabelEls = hoveredSequenceTargetsRef.current.labelEls;
-      const sameLine = hoveredSequenceTargetsRef.current.lineEl === lineEl;
-      const sameLabels =
-        sameLine &&
-        prevLabelEls.length === labelEls.length &&
-        prevLabelEls.every((el, i) => el === labelEls[i]);
-      if (sameLabels) {
-        return;
-      }
-
-      prevLabelEls.forEach((el) => {
-        el.classList.remove("sequence-msg-hover-highlight-text");
-      });
-      hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
-        "sequence-msg-hover-highlight-line",
-      );
-
-      labelEls.forEach((el) => {
-        el.classList.add("sequence-msg-hover-highlight-text");
-      });
-      lineEl?.classList.add("sequence-msg-hover-highlight-line");
-      hoveredSequenceTargetsRef.current = { labelEls, lineEl };
-
-      setHoveredSequenceMessageBox(visual.selectionBox);
-      setHoveredSequenceMessageIndexWithRef(hoveredIndex);
-    },
-    [
-      containerRef,
-      clearSequenceMessageHoverHighlight,
-      getSequenceMessageEntries,
-      code,
-      setHoveredSequenceMessageIndexWithRef,
-    ],
-  );
-
-  // Resolve the hover target to a message element. When the pointer is over the
-  // empty connection band (not exactly on the line/label), fall back to the band's
-  // messageText so the whole connection stays highlighted — matching note rect.note.
-  // NOTE: This hover handling is wired through React's onMouseOver/onMouseOut props on
-  // the canvas container (see EditorCanvas) rather than a manual addEventListener effect.
-  // A previous addEventListener-in-useEffect approach silently attached to a stale DOM
-  // node whenever the container remounted without the effect's deps changing, leaving the
-  // live container with NO hover listener. React-managed props re-bind automatically on
-  // every remount, so the hover ring stays reliable.
-  const resolveMessageHoverTarget = useCallback(
-    (clientX: number, clientY: number, _rawTarget: EventTarget | null): number | null => {
       const container = containerRef.current;
       if (!container) return null;
       const visual = findSequenceMessageVisualAtClientPoint(
@@ -673,10 +770,76 @@ export function useCanvasInteraction({
         code,
         getSequenceMessageEntries,
       );
-      return visual ? visual.index : null;
+      return visual?.index ?? null;
     },
     [containerRef, code, getSequenceMessageEntries],
   );
+
+  const handleSequenceMessageHoverEnter = useCallback(
+    (index: number) => {
+      if (determineDiagramType(code) !== "sequence" || isInlineEditing) return;
+      setHoveredSequenceMessage(index);
+    },
+    [code, isInlineEditing, setHoveredSequenceMessage],
+  );
+
+  const handleSequenceMessageHoverMove = useCallback(
+    (index: number) => {
+      if (hoveredSequenceMessageIndexRef.current !== index) {
+        setHoveredSequenceMessage(index);
+      }
+    },
+    [setHoveredSequenceMessage],
+  );
+
+  const handleSequenceMessageHoverLeave = useCallback(
+    (index: number, e: React.PointerEvent<HTMLDivElement>) => {
+      const related = e.relatedTarget;
+      if (
+        related instanceof Element &&
+        (related.closest("[data-seq-msg-index]") ||
+          e.currentTarget.contains(related))
+      ) {
+        return;
+      }
+      if (hoveredSequenceMessageIndexRef.current === index) {
+        setHoveredSequenceMessage(null);
+      }
+    },
+    [setHoveredSequenceMessage],
+  );
+
+  const syncSequenceMessageHoverAtPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      const hoveredIndex = resolveHoveredSequenceMessageIndexAtPoint(clientX, clientY);
+      if (hoveredIndex !== null) {
+        setHoveredSequenceMessage(hoveredIndex);
+        return;
+      }
+      if (isSequenceMessageHoverSuppressedByFloatingUi(clientX, clientY)) {
+        setHoveredSequenceMessage(null);
+        return;
+      }
+      setHoveredSequenceMessage(null);
+    },
+    [resolveHoveredSequenceMessageIndexAtPoint, setHoveredSequenceMessage],
+  );
+
+  // Hit overlays remount after selection / Mermaid re-render without a fresh pointerenter.
+  // Re-sync from the last known pointer position so hover does not vanish mid-session.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "sequence") return;
+    const pt = lastSequencePointerRef.current;
+    if (!pt) return;
+    syncSequenceMessageHoverAtPoint(pt.clientX, pt.clientY);
+  }, [
+    sequenceMessageTriggerAreas,
+    selectedNodeId,
+    svgContent,
+    code,
+    syncSequenceMessageHoverAtPoint,
+    determineDiagramType,
+  ]);
 
   // Note hover via the reliable onMouseOver/onMouseOut path (mirrors message hover). Uses a
   // viewport-coordinate hit-test against rect.note boxes so it stays stable even when the note's
@@ -723,43 +886,20 @@ export function useCanvasInteraction({
       // over the toolbar, the grab overlay for the message BEHIND the toolbar renders on
       // top of it and steals the press, starting a reorder that reselects that message.
       // Clear the hover so no overlay covers the toolbar.
-      const overFloatingUi = (() => {
-        const stack =
-          typeof document !== "undefined" && document.elementsFromPoint
-            ? document.elementsFromPoint(e.clientX, e.clientY)
-            : [];
-        return stack.some(
-          (el) =>
-            el.closest?.("[data-inline-toolbar]") ||
-            el.closest?.("[data-scale-lock]") ||
-            el.closest?.("[data-scale-lock-border]"),
-        );
-      })();
+      const overFloatingUi = isSequenceMessageHoverSuppressedByFloatingUi(e.clientX, e.clientY);
       if (overFloatingUi) {
         clearSequenceMessageHoverHighlight();
         setHoveredSequenceNoteBox(null);
         return;
       }
 
-      const resolvedIndex = resolveMessageHoverTarget(e.clientX, e.clientY, e.target);
-
-      // Only update when the hover target changes — prevents flicker when the
-      // pointer moves between child elements within the same message hit area.
-      if (resolvedIndex === hoveredSequenceMessageIndexRef.current) {
-        updateSequenceNoteHover(e.clientX, e.clientY);
-        return;
-      }
-
-      updateSequenceMessageHoverHighlight(resolvedIndex);
       updateSequenceNoteHover(e.clientX, e.clientY);
     },
     [
       code,
       determineDiagramType,
-      updateSequenceMessageHoverHighlight,
       clearSequenceMessageHoverHighlight,
       setHoveredSequenceNoteBox,
-      resolveMessageHoverTarget,
       updateSequenceNoteHover,
     ],
   );
@@ -772,61 +912,75 @@ export function useCanvasInteraction({
         return;
       }
 
-      // mouseout fires for every child-element transition inside the
-      // container. When the relatedTarget is still inside the container,
-      // defer to the mouseover that immediately follows — mouseover will
-      // re-resolve and call updateSequenceMessageHoverHighlight with the
-      // correct index. Clearing here would cause a flash when the coords
-      // happen to land just outside the hitBox edge.
-      const container = containerRef.current;
-      if (e.relatedTarget instanceof Node && container?.contains(e.relatedTarget)) {
-        return;
-      }
-
-      updateSequenceMessageHoverHighlight(
-        resolveMessageHoverTarget(e.clientX, e.clientY, e.relatedTarget),
-      );
       updateSequenceNoteHover(e.clientX, e.clientY);
     },
     [
       code,
       determineDiagramType,
-      updateSequenceMessageHoverHighlight,
       clearSequenceMessageHoverHighlight,
-      resolveMessageHoverTarget,
       updateSequenceNoteHover,
     ],
   );
 
+  // Cold-load race: same as sequenceBlockAreas — containerRef attaches a frame after svgContent
+  // is set, so retry on rAF until the DOM is measurable.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
     if (determineDiagramType(code) !== "sequence") {
       setSequenceMessageTriggerAreas([]);
+      sequenceMessageVisualsRef.current = [];
       return;
     }
 
-    const visuals = buildSequenceMessageVisualModel(
-      container,
-      code,
-      getSequenceMessageEntries,
-      findOwningLineForSequenceLabel,
-    );
+    let rafId = 0;
+    let attempts = 0;
+    const MAX_ATTEMPTS = 150;
 
-    const paddingX = 12;
-    const paddingY = 6;
+    const compute = (): boolean => {
+      const container = containerRef.current;
+      if (!container) return false;
 
-    const areas: Array<{ index: number; x: number; y: number; width: number; height: number }> =
-      visuals.map((v) => ({
-        index: v.index,
-        x: v.hitBox.x - paddingX,
-        y: v.hitBox.y - paddingY,
-        width: Math.max(0, v.hitBox.width + paddingX * 2),
-        height: Math.max(0, v.hitBox.height + paddingY * 2),
-      }));
+      const visuals = buildSequenceMessageVisualModel(
+        container,
+        code,
+        getSequenceMessageEntries,
+        findOwningLineForSequenceLabel,
+      );
+      if (visuals.length === 0) return false;
 
-    setSequenceMessageTriggerAreas(areas);
-  }, [containerRef, code, svgContent, determineDiagramType, findNearestLineForText, getSequenceMessageEntries]);
+      sequenceMessageVisualsRef.current = visuals;
+
+      const paddingX = 8;
+      const paddingY = 5;
+
+      const areas: Array<{ index: number; x: number; y: number; width: number; height: number }> =
+        visuals.map((v) => ({
+          index: v.index,
+          x: v.hitBox.x - paddingX,
+          y: v.hitBox.y - paddingY,
+          width: Math.max(0, v.hitBox.width + paddingX * 2),
+          height: Math.max(0, v.hitBox.height + paddingY * 2),
+        }));
+
+      setSequenceMessageTriggerAreas(areas);
+      return true;
+    };
+
+    const tick = () => {
+      if (compute()) return;
+      attempts += 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        setSequenceMessageTriggerAreas([]);
+        sequenceMessageVisualsRef.current = [];
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [containerRef, code, svgContent, determineDiagramType, getSequenceMessageEntries]);
 
   const getSequenceParticipantEntries = useCallback(() => {
     const participantDecl =
@@ -1295,57 +1449,9 @@ export function useCanvasInteraction({
 
   const triggerSequenceMessageHoverByIndex = useCallback(
     (index: number) => {
-      const container = containerRef.current;
-      if (!container) return;
-      const selectedId = selectedNodeIdRef.current;
-      if (selectedId?.startsWith("SEQ_MSG_")) {
-        const selIdx = parseInt(selectedId.replace("SEQ_MSG_", ""), 10);
-        if (index === selIdx) {
-          clearSequenceMessageHoverHighlight();
-          return;
-        }
-      }
-
-      const messageLineEls = Array.from(
-        container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
-      ) as SVGElement[];
-      const lineEl = messageLineEls[index] || null;
-      if (!lineEl) return;
-
-      const visuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
-      const visual = visuals[index];
-      if (!visual) return;
-
-      const labelEls = visual.labelEls;
-
-      hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
-        el.classList.remove("sequence-msg-hover-highlight-text");
-      });
-      hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
-        "sequence-msg-hover-highlight-line",
-      );
-
-      labelEls.forEach((el) => {
-        el.classList.add("sequence-msg-hover-highlight-text");
-      });
-      lineEl.classList.add("sequence-msg-hover-highlight-line");
-      hoveredSequenceTargetsRef.current = { labelEls, lineEl };
-
-      setHoveredSequenceMessageBox(visual.selectionBox);
-      setHoveredSequenceMessageIndexWithRef(index);
+      setHoveredSequenceMessage(index);
     },
-    [
-      clearSequenceMessageHoverHighlight,
-      containerRef,
-      getSequenceMessageEntries,
-      code,
-      setHoveredSequenceMessageIndexWithRef,
-    ],
+    [setHoveredSequenceMessage],
   );
 
   const parseSequenceMessageActors = useCallback((line: string) => {
@@ -3188,28 +3294,24 @@ export function useCanvasInteraction({
       const mouseY = (e.clientY - containerRectForScale.top + container.scrollTop) / scale;
 
       if (diagramType === "sequence") {
+        lastSequencePointerRef.current = { clientX: e.clientX, clientY: e.clientY };
         // Floating-UI guard (mirror of handleSequenceHoverOver): the mousemove path
         // also drives sequence hover, and unlike onMouseOver it keeps firing while the
         // cursor sits over the inline toolbar. Without this, moving onto the style bar
         // hit-tests the message band BEHIND it and renders that message's hover overlay
         // (the "back connection" accidentally highlighting). Bail and clear hover when
         // the pointer is over any floating UI so the toolbar stays clean.
-        const overFloatingUi =
-          typeof document !== "undefined" && document.elementsFromPoint
-            ? document
-                .elementsFromPoint(e.clientX, e.clientY)
-                .some(
-                  (el) =>
-                    el.closest?.("[data-inline-toolbar]") ||
-                    el.closest?.("[data-scale-lock]") ||
-                    el.closest?.("[data-scale-lock-border]"),
-                )
-            : false;
+        const overFloatingUi = isSequenceMessageHoverSuppressedByFloatingUi(
+          e.clientX,
+          e.clientY,
+        );
         if (overFloatingUi) {
           setHoveredSequenceActorBox(null);
           setHoveredSequenceNoteBox(null);
           setHoveredFlowchartNodeBox(null);
-          clearSequenceMessageHoverHighlight();
+          if (resolveHoveredSequenceMessageIndexAtPoint(e.clientX, e.clientY) === null) {
+            clearSequenceMessageHoverHighlight();
+          }
           return;
         }
         // Actor header hover — COORDINATE hit-test (not e.target.closest). The participant grab
@@ -3295,20 +3397,7 @@ export function useCanvasInteraction({
           setHoveredSequenceNoteBox(null);
         }
         setHoveredFlowchartNodeBox(null);
-        // Message hover: use the visual model's hit-test to find the message index
-        // under the cursor. This avoids nearest-line mismatches for multi-line labels.
-        const visual = findSequenceMessageVisualAtClientPoint(
-          e.clientX,
-          e.clientY,
-          container,
-          code,
-          getSequenceMessageEntries,
-        );
-        if (visual) {
-          updateSequenceMessageHoverHighlight(visual.index);
-        } else {
-          updateSequenceMessageHoverHighlight(null);
-        }
+        syncSequenceMessageHoverAtPoint(e.clientX, e.clientY);
       } else if (diagramType === "flowchart" || diagramType === "graph") {
         setHoveredSequenceActorBox(null);
         setHoveredSequenceNoteBox(null);
@@ -3475,8 +3564,9 @@ export function useCanvasInteraction({
       getSequenceLifelines,
       selectedNodeId,
       getSelectedMessageOverlay,
-      updateSequenceMessageHoverHighlight,
       clearSequenceMessageHoverHighlight,
+      resolveHoveredSequenceMessageIndexAtPoint,
+      syncSequenceMessageHoverAtPoint,
       isInlineEditing,
     ],
   );
@@ -3639,7 +3729,6 @@ export function useCanvasInteraction({
   const handleMouseUp = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const currentConnectionState = connectionStateRef.current;
-      clearSequenceMessageHoverHighlight();
       setHoveredFlowchartNodeBox(null);
       if (currentConnectionState.active && currentConnectionState.startNodeId) {
         const diagramType = determineDiagramType(code);
@@ -3675,6 +3764,12 @@ export function useCanvasInteraction({
         clearConnectionState();
       }
       setSequenceLifelineOverlay(null);
+
+      if (determineDiagramType(code) === "sequence") {
+        syncSequenceMessageHoverAtPoint(e.clientX, e.clientY);
+      } else {
+        clearSequenceMessageHoverHighlight();
+      }
     },
     [
       clearConnectionState,
@@ -3686,6 +3781,7 @@ export function useCanvasInteraction({
       containerRef,
       getSequenceInsertIndexForAnchor,
       clearSequenceMessageHoverHighlight,
+      syncSequenceMessageHoverAtPoint,
     ],
   );
 
@@ -3919,6 +4015,9 @@ export function useCanvasInteraction({
     handleMouseUp,
     handleSequenceHoverOver,
     handleSequenceHoverOut,
+    handleSequenceMessageHoverEnter,
+    handleSequenceMessageHoverMove,
+    handleSequenceMessageHoverLeave,
     handleEditClick,
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,

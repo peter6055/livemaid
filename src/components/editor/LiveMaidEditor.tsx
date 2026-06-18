@@ -401,6 +401,9 @@ export function LiveMaidEditor({
     handleMouseUp,
     handleSequenceHoverOver,
     handleSequenceHoverOut,
+    handleSequenceMessageHoverEnter,
+    handleSequenceMessageHoverMove,
+    handleSequenceMessageHoverLeave,
     handleEditClick,
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,
@@ -4502,6 +4505,9 @@ export function LiveMaidEditor({
               handleMouseUp={handleMouseUp}
               handleSequenceHoverOver={handleSequenceHoverOver}
               handleSequenceHoverOut={handleSequenceHoverOut}
+              handleSequenceMessageHoverEnter={handleSequenceMessageHoverEnter}
+              handleSequenceMessageHoverMove={handleSequenceMessageHoverMove}
+              handleSequenceMessageHoverLeave={handleSequenceMessageHoverLeave}
               handleEditClick={handleEditClick}
               isCommentMode={isCommentMode}
               selectionBox={selectionBox}
