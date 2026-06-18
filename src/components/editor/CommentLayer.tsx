@@ -155,8 +155,10 @@ export function CommentLayer({
         }
       }
 
-      const textEl = messageTextEls[index] ?? null;
-      const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
+      const lineEl = messageLineEls[index] ?? null;
+      const textEl = lineEl
+        ? (messageTextEls.filter((t) => findNearestLineForText(t) === lineEl)[0] ?? null)
+        : messageTextEls[index] ?? null;
       if (!textEl && !lineEl) return null;
 
       const textRect = textEl?.getBoundingClientRect();

@@ -47,7 +47,6 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
-import { getVisibleSequenceMessageTexts } from "@/hooks/useCanvasInteraction";
 import {
   CSSProperties,
   RefObject,
@@ -866,7 +865,23 @@ export function EditorCanvas({
     if (!shell || !container) return;
     const shellRect = shell.getBoundingClientRect();
 
-    const textEls = getVisibleSequenceMessageTexts(container);
+    const textEls = Array.from(
+      (() => {
+        const candidates = container.querySelectorAll(".messageText");
+        const roots = new Set<SVGElement>();
+        for (const el of candidates) {
+          const root =
+            (el.closest("foreignObject.messageText") as SVGElement | null) ||
+            (el.closest("text.messageText") as SVGElement | null) ||
+            el;
+          const rect = root.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            roots.add(root as SVGElement);
+          }
+        }
+        return roots;
+      })(),
+    ) as SVGElement[];
     const noteTextEls = getSortedSequenceNoteTextElements(container);
     if (textEls.length === 0 && noteTextEls.length === 0) return;
     const lineEls = Array.from(
