@@ -12,7 +12,10 @@ import {
   getSequenceNoteRectForText,
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
-import { getVisibleSequenceMessageTexts, findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
+import {
+  getVisibleSequenceMessageTexts,
+  findOwningLineForSequenceLabel,
+} from "@/hooks/useCanvasInteraction";
 
 const SHAPE_COMMENT_OFFSET = 8;
 const SEQUENCE_COMMENT_OFFSET = 10;
@@ -131,8 +134,10 @@ export function CommentLayer({
 
       const lineEl = messageLineEls[index] ?? null;
       const textEl = lineEl
-        ? (messageTextEls.filter((t) => findOwningLineForSequenceLabel(t, messageLineEls) === lineEl)[0] ?? null)
-        : messageTextEls[index] ?? null;
+        ? (messageTextEls.filter(
+            (t) => findOwningLineForSequenceLabel(t, messageLineEls) === lineEl,
+          )[0] ?? null)
+        : (messageTextEls[index] ?? null);
       if (!textEl && !lineEl) return null;
 
       const textRect = textEl?.getBoundingClientRect();
@@ -256,7 +261,9 @@ export function CommentLayer({
         if (Number.isFinite(sequenceIndex) && sequenceIndex >= 0) {
           const index = sequenceIndex;
           const textEl = messageTextEls[index] ?? null;
-          const lineEl = messageLineEls[index] ?? (textEl ? findOwningLineForSequenceLabel(textEl, messageLineEls) : null);
+          const lineEl =
+            messageLineEls[index] ??
+            (textEl ? findOwningLineForSequenceLabel(textEl, messageLineEls) : null);
           if (textEl || lineEl) {
             const pos = getSequenceMessageCanvasPosition(index);
             if (pos) {

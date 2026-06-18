@@ -9,13 +9,7 @@ import { useLayoutEffect, useRef } from "react";
  * sequence-message hover classes. This component only writes innerHTML when `html`
  * actually changes.
  */
-export function StableMermaidHtml({
-  html,
-  className,
-}: {
-  html: string;
-  className?: string;
-}) {
+export function StableMermaidHtml({ html, className }: { html: string; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const lastHtmlRef = useRef<string | null>(null);
 

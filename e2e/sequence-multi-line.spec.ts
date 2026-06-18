@@ -129,9 +129,11 @@ test.describe("Sequence multi-line message selection and hover (PR #74)", () => 
     await page.waitForTimeout(1500);
 
     // Check if an inline edit input/textarea appeared
-    const inlineEdit = page.locator(
-      'input[type="text"], textarea, [contenteditable="true"], .inline-edit-input, [data-inline-edit]'
-    ).first();
+    const inlineEdit = page
+      .locator(
+        'input[type="text"], textarea, [contenteditable="true"], .inline-edit-input, [data-inline-edit]',
+      )
+      .first();
     const editVisible = await inlineEdit.isVisible().catch(() => false);
 
     if (editVisible) {

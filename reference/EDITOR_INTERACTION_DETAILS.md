@@ -107,17 +107,17 @@ truths:
 
 **Approach**
 
-| Layer | Mechanism |
-| ----- | --------- |
-| Stable SVG host | `StableMermaidHtml` writes `innerHTML` only when the `svgContent` string changes, so overlay-driven re-renders do not reset Mermaid DOM. |
-| Canonical index | DOM message-line index (`SEQ_MSG_${domIndex}`) everywhere — hit overlays, selection, reorder. Clicks via `startSeqReorderDrag` pass `explicitIndex`; `triggerHoveredSequenceMessageSelection(false, index)` must not fall back to Y guessing. |
-| Label ↔ line pairing | `getVisibleSequenceMessageTexts` + `getSequenceMessageLabelRoots` + `findOwningLineForSequenceLabel`; `buildSequenceMessageVisualModel` unions all label rows per line for selection/hover geometry. |
-| Single hover owner | `setHoveredSequenceMessage(index)` is the only state entry point. It calls `applySequenceMessageHoverClasses(index)` synchronously to stamp/remove `sequence-msg-hover-highlight-*` on live SVG nodes. |
-| Hit overlays | Precomputed `sequenceMessageTriggerAreas` (RAF retry on cold load) render stable `pointer-events-auto` divs (`data-seq-msg-index`, z-21) with `onPointerEnter` / `onPointerMove` / `onPointerLeave`. Reorder mousedown is merged into these overlays (no separate mount-on-hover grab layer). |
-| Hover outline | React div with `data-seq-msg-hover-outline` (not `data-scale-lock-border`). Shown when `hoveredSequenceMessageIndex !== null` and `selectedNodeId !== SEQ_MSG_${hoveredIndex}`. |
-| Floating-UI guard | `isSequenceMessageHoverSuppressedByFloatingUi` walks `elementsFromPoint` top-down; hit overlay / hover outline own the stack; skips `pointer-events: none` elements before checking toolbar / selection chrome. |
-| Re-apply after layout | `useLayoutEffect` + `requestAnimationFrame` re-call `applySequenceMessageHoverClasses` when hover index, selection, `svgContent`, or trigger areas change — catches late DOM updates after selection. |
-| Pointer re-sync | `lastSequencePointerRef` + `syncSequenceMessageHoverAtPoint` on `selectedNodeId` / trigger-area / `svgContent` changes; `handleMouseUp` re-resolves hover instead of blind clear. |
+| Layer                 | Mechanism                                                                                                                                                                                                                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stable SVG host       | `StableMermaidHtml` writes `innerHTML` only when the `svgContent` string changes, so overlay-driven re-renders do not reset Mermaid DOM.                                                                                                                                                      |
+| Canonical index       | DOM message-line index (`SEQ_MSG_${domIndex}`) everywhere — hit overlays, selection, reorder. Clicks via `startSeqReorderDrag` pass `explicitIndex`; `triggerHoveredSequenceMessageSelection(false, index)` must not fall back to Y guessing.                                                 |
+| Label ↔ line pairing  | `getVisibleSequenceMessageTexts` + `getSequenceMessageLabelRoots` + `findOwningLineForSequenceLabel`; `buildSequenceMessageVisualModel` unions all label rows per line for selection/hover geometry.                                                                                          |
+| Single hover owner    | `setHoveredSequenceMessage(index)` is the only state entry point. It calls `applySequenceMessageHoverClasses(index)` synchronously to stamp/remove `sequence-msg-hover-highlight-*` on live SVG nodes.                                                                                        |
+| Hit overlays          | Precomputed `sequenceMessageTriggerAreas` (RAF retry on cold load) render stable `pointer-events-auto` divs (`data-seq-msg-index`, z-21) with `onPointerEnter` / `onPointerMove` / `onPointerLeave`. Reorder mousedown is merged into these overlays (no separate mount-on-hover grab layer). |
+| Hover outline         | React div with `data-seq-msg-hover-outline` (not `data-scale-lock-border`). Shown when `hoveredSequenceMessageIndex !== null` and `selectedNodeId !== SEQ_MSG_${hoveredIndex}`.                                                                                                               |
+| Floating-UI guard     | `isSequenceMessageHoverSuppressedByFloatingUi` walks `elementsFromPoint` top-down; hit overlay / hover outline own the stack; skips `pointer-events: none` elements before checking toolbar / selection chrome.                                                                               |
+| Re-apply after layout | `useLayoutEffect` + `requestAnimationFrame` re-call `applySequenceMessageHoverClasses` when hover index, selection, `svgContent`, or trigger areas change — catches late DOM updates after selection.                                                                                         |
+| Pointer re-sync       | `lastSequencePointerRef` + `syncSequenceMessageHoverAtPoint` on `selectedNodeId` / trigger-area / `svgContent` changes; `handleMouseUp` re-resolves hover instead of blind clear.                                                                                                             |
 
 **Key files**
 
@@ -135,16 +135,16 @@ truths:
 
 **Branch, commits, and PR** (pushed to `origin/fix/issue-71-sequence-duplicate-selection`)
 
-| Commit | Message |
-| ------ | ------- |
-| `74e27e3` | `fix(editor): fix duplicate selection overlays on multi-line sequence messages` |
+| Commit    | Message                                                                             |
+| --------- | ----------------------------------------------------------------------------------- |
+| `74e27e3` | `fix(editor): fix duplicate selection overlays on multi-line sequence messages`     |
 | `083e396` | `fix(sequence): use message lines as canonical index for multi-line label geometry` |
 | `8da1e59` | `fix(sequence): replace nearest-line mapping with owning-line-below-label resolver` |
-| `7380364` | `fix(sequence): apply hover highlight to all multi-line label elements` |
-| `807cdd8` | `fix(sequence): prevent click-jumping and remove CSS hover flicker` |
-| `f3c2714` | `fix(sequence): use labelTop not labelCenterY in findOwningLineForSequenceLabel` |
-| `69e15c4` | `fix(sequence): align multiline message selection box with clicked label` |
-| `1eb9b60` | `fix(sequence): stabilize message hover highlight after selection` |
+| `7380364` | `fix(sequence): apply hover highlight to all multi-line label elements`             |
+| `807cdd8` | `fix(sequence): prevent click-jumping and remove CSS hover flicker`                 |
+| `f3c2714` | `fix(sequence): use labelTop not labelCenterY in findOwningLineForSequenceLabel`    |
+| `69e15c4` | `fix(sequence): align multiline message selection box with clicked label`           |
+| `1eb9b60` | `fix(sequence): stabilize message hover highlight after selection`                  |
 
 Draft PR: [#74 — fix(sequence): stabilize multi-line message selection and hover](https://github.com/peter6055/livemaid/pull/74)
 

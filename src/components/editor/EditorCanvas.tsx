@@ -910,8 +910,7 @@ export function EditorCanvas({
     // centers (that lands on the upper message's line). Pair text↔line with the SAME scoring
     // heuristic as the hook's findNearestLineForText (a naive nearest-by-center mis-assigns
     // around self-loops / tall arcs and corrupts neighboring bands).
-    const owningLine = (textEl: SVGElement) =>
-      findOwningLineForSequenceLabel(textEl, lineEls);
+    const owningLine = (textEl: SVGElement) => findOwningLineForSequenceLabel(textEl, lineEls);
 
     lineEls.forEach((lineEl, i) => {
       const lr = lineEl.getBoundingClientRect();
@@ -954,9 +953,7 @@ export function EditorCanvas({
 
     if (explicitRow) {
       fromIndex = rows.findIndex(
-        (row) =>
-          row.kind === explicitRow.kind &&
-          row.domIndex === explicitRow.domIndex,
+        (row) => row.kind === explicitRow.kind && row.domIndex === explicitRow.domIndex,
       );
     }
 
@@ -2439,10 +2436,12 @@ export function EditorCanvas({
                       onMouseDown={(e) => {
                         if (selectedNodeId?.startsWith("SEQ_MSG_")) {
                           const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
-                          if (Number.isFinite(idx)) startSeqReorderDrag(e, { kind: "msg", domIndex: idx });
+                          if (Number.isFinite(idx))
+                            startSeqReorderDrag(e, { kind: "msg", domIndex: idx });
                         } else if (selectedNodeId?.startsWith("SEQ_NOTE_")) {
                           const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
-                          if (Number.isFinite(idx)) startSeqReorderDrag(e, { kind: "note", domIndex: idx });
+                          if (Number.isFinite(idx))
+                            startSeqReorderDrag(e, { kind: "note", domIndex: idx });
                         } else {
                           startSeqReorderDrag(e);
                         }

@@ -1,11 +1,4 @@
-import {
-  useState,
-  useCallback,
-  useRef,
-  MutableRefObject,
-  useEffect,
-  useLayoutEffect,
-} from "react";
+import { useState, useCallback, useRef, MutableRefObject, useEffect, useLayoutEffect } from "react";
 import {
   isEdgeId,
   parseEdgeId,
@@ -127,11 +120,7 @@ export function findOwningLineForSequenceLabel(
       };
     })
     .filter((item) => item.lineCenterY >= labelTop - 2)
-    .sort(
-      (a, b) =>
-        a.lineCenterY - b.lineCenterY ||
-        a.horizontalGap - b.horizontalGap,
-    );
+    .sort((a, b) => a.lineCenterY - b.lineCenterY || a.horizontalGap - b.horizontalGap);
 
   if (belowCandidates[0]) return belowCandidates[0].lineEl;
 
@@ -185,10 +174,7 @@ function findSequenceMessageVisualAtClientPoint(
     visuals.find((v) => {
       const b = v.hitBox;
       return (
-        canvasX >= b.x &&
-        canvasX <= b.x + b.width &&
-        canvasY >= b.y &&
-        canvasY <= b.y + b.height
+        canvasX >= b.x && canvasX <= b.x + b.width && canvasY >= b.y && canvasY <= b.y + b.height
       );
     }) ?? null
   );
@@ -451,7 +437,9 @@ export function useCanvasInteraction({
   >([]);
   const sequenceConnectionCommittedRef = useRef(false);
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
-  const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(null);
+  const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(
+    null,
+  );
   const hoveredSequenceMessageIndexRef = useRef<number | null>(null);
   const sequenceMessageVisualsRef = useRef<SequenceMessageVisual[]>([]);
   const hoveredSequenceTargetsRef = useRef<{
@@ -461,8 +449,7 @@ export function useCanvasInteraction({
   const lastSequencePointerRef = useRef<{ clientX: number; clientY: number } | null>(null);
 
   const findNearestLineForText = useCallback(
-    (textEl: SVGElement, lineEls: SVGElement[]) =>
-      findOwningLineForSequenceLabel(textEl, lineEls),
+    (textEl: SVGElement, lineEls: SVGElement[]) => findOwningLineForSequenceLabel(textEl, lineEls),
     [],
   );
 
@@ -698,7 +685,12 @@ export function useCanvasInteraction({
 
       for (const v of visuals) {
         const hb = v.hitBox;
-        if (canvasX >= hb.x && canvasX <= hb.x + hb.width && canvasY >= hb.y && canvasY <= hb.y + hb.height) {
+        if (
+          canvasX >= hb.x &&
+          canvasX <= hb.x + hb.width &&
+          canvasY >= hb.y &&
+          canvasY <= hb.y + hb.height
+        ) {
           const dist = Math.abs(canvasY - (hb.y + hb.height / 2));
           if (dist < bestDist) {
             bestDist = dist;
@@ -752,8 +744,7 @@ export function useCanvasInteraction({
         const hitOverlay = document
           .elementsFromPoint(clientX, clientY)
           .find(
-            (el): el is HTMLElement =>
-              el instanceof HTMLElement && el.dataset.seqMsgIndex != null,
+            (el): el is HTMLElement => el instanceof HTMLElement && el.dataset.seqMsgIndex != null,
           );
         if (hitOverlay) {
           const idx = parseInt(hitOverlay.dataset.seqMsgIndex!, 10);
@@ -797,8 +788,7 @@ export function useCanvasInteraction({
       const related = e.relatedTarget;
       if (
         related instanceof Element &&
-        (related.closest("[data-seq-msg-index]") ||
-          e.currentTarget.contains(related))
+        (related.closest("[data-seq-msg-index]") || e.currentTarget.contains(related))
       ) {
         return;
       }
@@ -914,12 +904,7 @@ export function useCanvasInteraction({
 
       updateSequenceNoteHover(e.clientX, e.clientY);
     },
-    [
-      code,
-      determineDiagramType,
-      clearSequenceMessageHoverHighlight,
-      updateSequenceNoteHover,
-    ],
+    [code, determineDiagramType, clearSequenceMessageHoverHighlight, updateSequenceNoteHover],
   );
 
   // Cold-load race: same as sequenceBlockAreas — containerRef attaches a frame after svgContent
@@ -2210,7 +2195,8 @@ export function useCanvasInteraction({
             ),
           ) as SVGElement[];
 
-          const pairedLine = allMsgLines[idx] || findOwningLineForSequenceLabel(foundElement, allMsgLines);
+          const pairedLine =
+            allMsgLines[idx] || findOwningLineForSequenceLabel(foundElement, allMsgLines);
           const pairedTextEls = getSequenceTextElsForLine(pairedLine, allMsgTexts, allMsgLines);
           const pairedText = pairedTextEls[0] || foundElement;
 
@@ -2792,10 +2778,7 @@ export function useCanvasInteraction({
                 toJSON: () => ({}),
               } as DOMRect;
               textRect = (labelRect || lineRect)!;
-              rawSvgId =
-                pairedTextEl?.id ||
-                visual.lineEl?.id ||
-                rawSvgId;
+              rawSvgId = pairedTextEl?.id || visual.lineEl?.id || rawSvgId;
             }
           }
         }
@@ -3301,10 +3284,7 @@ export function useCanvasInteraction({
         // hit-tests the message band BEHIND it and renders that message's hover overlay
         // (the "back connection" accidentally highlighting). Bail and clear hover when
         // the pointer is over any floating UI so the toolbar stays clean.
-        const overFloatingUi = isSequenceMessageHoverSuppressedByFloatingUi(
-          e.clientX,
-          e.clientY,
-        );
+        const overFloatingUi = isSequenceMessageHoverSuppressedByFloatingUi(e.clientX, e.clientY);
         if (overFloatingUi) {
           setHoveredSequenceActorBox(null);
           setHoveredSequenceNoteBox(null);
