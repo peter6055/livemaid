@@ -47,6 +47,7 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
+import { getVisibleSequenceMessageTexts } from "@/hooks/useCanvasInteraction";
 import {
   CSSProperties,
   RefObject,
@@ -865,7 +866,7 @@ export function EditorCanvas({
     if (!shell || !container) return;
     const shellRect = shell.getBoundingClientRect();
 
-    const textEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+    const textEls = getVisibleSequenceMessageTexts(container);
     const noteTextEls = getSortedSequenceNoteTextElements(container);
     if (textEls.length === 0 && noteTextEls.length === 0) return;
     const lineEls = Array.from(
@@ -892,7 +893,7 @@ export function EditorCanvas({
         const lineY = lr.top + lr.height / 2;
         const dx = textX < lr.left ? lr.left - textX : textX > lr.right ? textX - lr.right : 0;
         const dy = Math.abs(lineY - textY);
-        const underPenalty = lineY < textY ? 60 : 0;
+        const underPenalty = lineY < textY ? 15 : 0;
         const score = dy * 3 + dx + underPenalty;
         if (score < bestScore) {
           bestScore = score;
@@ -2035,6 +2036,7 @@ export function EditorCanvas({
                       and double-click-to-edit breaks). */}
                 {currentType === "sequence" &&
                   hoveredSequenceMessageBox &&
+                  !selectedNodeId?.startsWith("SEQ_MSG_") &&
                   !isInlineEditing &&
                   !connectionState.active &&
                   !seqReorder && (

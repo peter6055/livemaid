@@ -404,6 +404,20 @@ svg[aria-roledescription="error"],
   text-shadow: none !important;
 }
 
+/* Suppress the native CSS :hover highlight on the currently selected sequence message.
+   When a message is selected, its .messageText / .messageLine children receive
+   `data-seq-selected="true"` so the browser's :hover pseudo-class does NOT produce
+   a second, independent highlight alongside the React selection overlay. */
+.mermaid-container [data-seq-selected="true"].messageText:hover {
+  fill: inherit !important;
+  font-weight: inherit !important;
+}
+.mermaid-container [data-seq-selected="true"][class*="messageLine"]:hover line,
+.mermaid-container [data-seq-selected="true"][class*="messageLine"]:hover path {
+  stroke: inherit !important;
+  stroke-width: inherit !important;
+}
+
 .mermaid-container .note:hover rect {
   stroke: #6366f1 !important;
   stroke-width: 2px !important;

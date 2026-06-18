@@ -12,6 +12,7 @@ import {
   getSequenceNoteRectForText,
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
+import { getVisibleSequenceMessageTexts } from "@/hooks/useCanvasInteraction";
 
 const SHAPE_COMMENT_OFFSET = 8;
 const SEQUENCE_COMMENT_OFFSET = 10;
@@ -112,9 +113,7 @@ export function CommentLayer({
     const safeContainerRect = containerRect!;
     const entries = new Map<string, { x: number; y: number; missingTarget: boolean }>();
     const elements = Array.from(safeContainer.querySelectorAll("[id], [data-id]"));
-    const messageTextEls = Array.from(
-      safeContainer.querySelectorAll(".messageText"),
-    ) as SVGElement[];
+    const messageTextEls = getVisibleSequenceMessageTexts(safeContainer);
     const messageLineEls = Array.from(
       safeContainer.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
     ) as SVGElement[];

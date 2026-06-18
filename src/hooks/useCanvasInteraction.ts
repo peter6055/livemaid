@@ -41,6 +41,19 @@ function unionClientRects(elements: SVGElement[]): DOMRect | null {
   } as DOMRect;
 }
 
+// Mermaid renders multi-line sequence messages using a <switch> element containing both
+// a visible <foreignObject class="messageText"> and multiple invisible <text class="messageText">
+// elements (one per line via byTspan fallback). querySelectorAll(".messageText") returns ALL of
+// them, breaking the 1:1 message-to-element mapping. This helper filters to only visible elements
+// (non-zero bounding rect), restoring the correct count.
+export function getVisibleSequenceMessageTexts(container: HTMLElement): SVGElement[] {
+  const allTexts = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+  return allTexts.filter((el) => {
+    const rect = el.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  });
+}
+
 // A parsed sequence block fragment (loop/alt/opt/par/critical/break) or `rect` highlight, with its
 // source-line range, nesting depth, internal section dividers, and computed canvas geometry.
 export type SequenceBlockType = "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect";
@@ -202,7 +215,11 @@ export function useCanvasInteraction({
       const dy = Math.abs(lineY - textY);
 
       // Prefer lines at/under the text and with horizontal overlap.
-      const underPenalty = lineY < textY ? 60 : 0;
+      // Keep the penalty small (15 vs original 60) so that multi-line message text
+      // elements (which Mermaid renders as separate .messageText per line via
+      // `byTspan`) still pair to their correct message line even when one of the
+      // text rows sits slightly below the arrow and is equidistant from two lines.
+      const underPenalty = lineY < textY ? 15 : 0;
       const score = dy * 3 + dx + underPenalty;
 
       if (score < best) {
@@ -261,7 +278,7 @@ export function useCanvasInteraction({
       if (!container) return null;
       const containerRect = container.getBoundingClientRect();
       const scale = containerRect.width / container.offsetWidth;
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+      const messageTextEls = getVisibleSequenceMessageTexts(container);
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
@@ -320,7 +337,7 @@ export function useCanvasInteraction({
         return;
       }
 
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+      const messageTextEls = getVisibleSequenceMessageTexts(container);
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
@@ -344,6 +361,30 @@ export function useCanvasInteraction({
       } else if (messageLineEl) {
         nextLineEl = messageLineEl;
         nextTextEl = findNearestTextForLine(nextLineEl, messageTextEls);
+      }
+
+      // Suppress hover highlight when the hovered message is the currently selected one.
+      // Uses getSequenceTextElsForLine to group all text rows (multi-line messages render
+      // several .messageText elements via Mermaid's byTspan) so the guard covers every
+      // line of a multi-line label.
+      const selectedId = selectedNodeIdRef.current;
+      if (selectedId?.startsWith("SEQ_MSG_")) {
+        const selIdx = parseInt(selectedId.replace("SEQ_MSG_", ""), 10);
+        const selLine = messageLineEls[selIdx];
+        if (selLine && nextTextEl) {
+          const selTextEls = getSequenceTextElsForLine(selLine, messageTextEls, messageLineEls);
+          if (selTextEls.includes(nextTextEl)) {
+            hoveredSequenceTargetsRef.current.textEl?.classList.remove(
+              "sequence-msg-hover-highlight-text",
+            );
+            hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
+              "sequence-msg-hover-highlight-line",
+            );
+            hoveredSequenceTargetsRef.current = { textEl: null, lineEl: null };
+            setHoveredSequenceMessageBox(null);
+            return;
+          }
+        }
       }
 
       if (
@@ -416,6 +457,7 @@ export function useCanvasInteraction({
       clearSequenceMessageHoverHighlight,
       findNearestLineForText,
       findNearestTextForLine,
+      getSequenceTextElsForLine,
     ],
   );
 
@@ -556,7 +598,7 @@ export function useCanvasInteraction({
       return;
     }
 
-    const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+    const messageTextEls = getVisibleSequenceMessageTexts(container);
     const messageLineEls = Array.from(
       container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
     ) as SVGElement[];
@@ -924,7 +966,7 @@ export function useCanvasInteraction({
       const scale = containerRect.width / container.offsetWidth;
       const toY = (v: number) => (v - containerRect.top + container.scrollTop) / scale;
 
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+      const messageTextEls = getVisibleSequenceMessageTexts(container);
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
@@ -1043,8 +1085,9 @@ export function useCanvasInteraction({
     (startInlineEdit = false, explicitIndex?: number) => {
       const container = containerRef.current;
       if (!container) return;
+      clearSequenceMessageHoverHighlight();
 
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+      const messageTextEls = getVisibleSequenceMessageTexts(container);
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
@@ -1110,8 +1153,8 @@ export function useCanvasInteraction({
         lineRect?.bottom ?? Number.NEGATIVE_INFINITY,
         textRect?.bottom ?? Number.NEGATIVE_INFINITY,
       );
-      const paddingX = 12;
-      const paddingY = 3;
+      const paddingX = SEQ_MSG_SELECTION_PADDING.x;
+      const paddingY = SEQ_MSG_SELECTION_PADDING.y;
 
       if (
         Number.isFinite(left) &&
@@ -1150,10 +1193,12 @@ export function useCanvasInteraction({
       }
     },
     [
+      clearSequenceMessageHoverHighlight,
       containerRef,
       getSequenceMessageLineByIndex,
       findNearestLineForText,
       getSequenceTextElsForLine,
+      setSelectedNodeIdWithRef,
     ],
   );
 
@@ -1161,7 +1206,15 @@ export function useCanvasInteraction({
     (index: number) => {
       const container = containerRef.current;
       if (!container) return;
-      const messageTextEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+      const selectedId = selectedNodeIdRef.current;
+      if (selectedId?.startsWith("SEQ_MSG_")) {
+        const selIdx = parseInt(selectedId.replace("SEQ_MSG_", ""), 10);
+        if (index === selIdx) {
+          clearSequenceMessageHoverHighlight();
+          return;
+        }
+      }
+      const messageTextEls = getVisibleSequenceMessageTexts(container);
       const messageLineEls = Array.from(
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
@@ -1214,7 +1267,7 @@ export function useCanvasInteraction({
         height: Math.max(0, (bottom - top) / scale + SEQ_MSG_SELECTION_PADDING.y * 2),
       });
     },
-    [containerRef, findNearestLineForText],
+    [clearSequenceMessageHoverHighlight, containerRef, findNearestLineForText],
   );
 
   const parseSequenceMessageActors = useCallback((line: string) => {
@@ -1623,11 +1676,7 @@ export function useCanvasInteraction({
       const baseYs =
         messageYsFromLines.length > 0
           ? messageYsFromLines
-          : (
-              Array.from(
-                containerRef.current.querySelectorAll(".messageText"),
-              ) as SVGGraphicsElement[]
-            )
+          : getVisibleSequenceMessageTexts(containerRef.current)
               .map((m) => {
                 const rect = m.getBoundingClientRect();
                 return (
@@ -1837,7 +1886,7 @@ export function useCanvasInteraction({
       }
     } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
-      const allMsgs = Array.from(containerRef.current.querySelectorAll(".messageText"));
+      const allMsgs = getVisibleSequenceMessageTexts(containerRef.current);
       if (allMsgs[idx]) {
         foundElement = allMsgs[idx] as SVGElement;
         if (!foundElement.id) foundElement.id = `seq-msg-${idx}`;
@@ -1964,9 +2013,7 @@ export function useCanvasInteraction({
       if (selectedNodeId.startsWith("SEQ_MSG_")) {
         const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
         if (Number.isFinite(idx) && idx >= 0) {
-          const allMsgTexts = Array.from(
-            containerRef.current.querySelectorAll(".messageText"),
-          ) as SVGElement[];
+          const allMsgTexts = getVisibleSequenceMessageTexts(containerRef.current);
           const allMsgLines = Array.from(
             containerRef.current.querySelectorAll(
               '[class^="messageLine"], [class*=" messageLine"]',
@@ -2063,6 +2110,43 @@ export function useCanvasInteraction({
     resolveSequenceDisplayNameFromActorId,
     getSequenceLifelines,
   ]);
+
+  // When a sequence message is selected, mark its SVG elements with
+  // `data-seq-selected="true"` so CSS can suppress the native :hover
+  // highlight (which would otherwise create a duplicate visual indicator
+  // alongside the React selection overlay).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // Clear previous selection markers
+    container
+      .querySelectorAll('[data-seq-selected="true"]')
+      .forEach((el) => el.removeAttribute("data-seq-selected"));
+
+    if (!selectedNodeId?.startsWith("SEQ_MSG_")) return;
+
+    const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+    if (!Number.isFinite(idx) || idx < 0) return;
+
+    const allMsgTexts = getVisibleSequenceMessageTexts(container);
+    const allMsgLines = Array.from(
+      container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
+    ) as SVGElement[];
+
+    const lineEl = allMsgLines[idx];
+    if (!lineEl) return;
+
+    // Mark all text elements paired with this message line (handles multi-line labels)
+    const pairedTexts = getSequenceTextElsForLine(lineEl, allMsgTexts, allMsgLines);
+    pairedTexts.forEach((el) => el.setAttribute("data-seq-selected", "true"));
+
+    // Mark the line element and its child strokes
+    lineEl.setAttribute("data-seq-selected", "true");
+    lineEl.querySelectorAll("line, path").forEach((el) => {
+      el.setAttribute("data-seq-selected", "true");
+    });
+  }, [selectedNodeId, containerRef, getSequenceTextElsForLine, svgContent]);
 
   // Effect to recalculate selection on code or svgContent (re-render) change
   useEffect(() => {
@@ -2476,9 +2560,7 @@ export function useCanvasInteraction({
         // For sequence messages, always select text + underlying connection together.
         if (cleanId && cleanId.startsWith("SEQ_MSG_")) {
           const idx = parseInt(cleanId.replace("SEQ_MSG_", ""), 10);
-          const allMsgTexts = Array.from(
-            containerRef.current.querySelectorAll(".messageText"),
-          ) as SVGElement[];
+          const allMsgTexts = getVisibleSequenceMessageTexts(containerRef.current);
           const allMsgLines = Array.from(
             containerRef.current.querySelectorAll(
               '[class^="messageLine"], [class*=" messageLine"]',
@@ -2922,6 +3004,7 @@ export function useCanvasInteraction({
 
       if (clicked) {
         debugLog("select", clicked.cleanId);
+        clearSequenceMessageHoverHighlight();
         setSelectedNodeIdWithRef(clicked.cleanId);
         setSelectedSvgId(clicked.rawSvgId);
         setSelectionBox(clicked.newSelectionBox);
@@ -2937,6 +3020,7 @@ export function useCanvasInteraction({
             const bandClicked = getClickedNode(band.el);
             if (bandClicked) {
               debugLog("select-band", bandClicked.cleanId);
+              clearSequenceMessageHoverHighlight();
               setSelectedNodeIdWithRef(bandClicked.cleanId);
               setSelectedSvgId(bandClicked.rawSvgId);
               setSelectionBox(bandClicked.newSelectionBox);
@@ -2958,6 +3042,7 @@ export function useCanvasInteraction({
       }
     },
     [
+      clearSequenceMessageHoverHighlight,
       getClickedNode,
       isLocked,
       isInlineEditing,
