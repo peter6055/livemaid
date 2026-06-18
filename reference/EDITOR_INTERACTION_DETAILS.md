@@ -148,49 +148,6 @@ truths:
 
 Draft PR: [#74 — fix(sequence): stabilize multi-line message selection and hover](https://github.com/peter6055/livemaid/pull/74)
 
-### 5.1 Multi-line message selection & hover (branch `fix/issue-71-sequence-duplicate-selection`, PR #74)
-
-**Problems addressed**
-
-- **#71 — duplicate selection overlays:** Multiline messages rendered multiple `.messageText`
-  nodes; selection geometry and click routing could target the wrong label row or stack
-  multiple overlays.
-- **#59 — hover flicker / missing purple highlight:** Hover outline (React state) could show
-  while line/label classes were absent, especially after selecting another message. Root cause:
-  `dangerouslySetInnerHTML` on the mermaid container re-applied the SVG subtree on unrelated
-  canvas re-renders (selection box, toolbar, hover outline), wiping `classList` mutations on
-  message lines and labels.
-
-**Approach**
-
-| Layer | Mechanism |
-| ----- | --------- |
-| SVG stability | `StableMermaidHtml` — only writes `innerHTML` when `svgContent` string changes, so selection/hover overlay re-renders do not replace live SVG nodes. |
-| Index model | DOM message-line index (`messageLineEls[i]`) is canonical for `SEQ_MSG_${i}`, hit overlays, and `buildSequenceMessageVisualModel`. |
-| Label ↔ line pairing | `findOwningLineForSequenceLabel` scores lines below the label (`labelTop`, not center-Y) with a fallback for byTspan rows. |
-| Hover owner | Stable per-message hit overlays (`data-seq-msg-index`, `pointer-events-auto`, z-21) drive `onPointerEnter/Move/Leave`; merged with reorder mousedown. Single `setHoveredSequenceMessage` + `applySequenceMessageHoverClasses`. |
-| Class application | `applySequenceMessageHoverClasses` rebuilds visuals, then clears/re-applies `sequence-msg-hover-highlight-*` on live DOM; skips when hovering the selected message; `useLayoutEffect` + RAF re-apply after `svgContent`, selection, or layout changes. |
-| Floating UI guard | `isSequenceMessageHoverSuppressedByFloatingUi` walks `elementsFromPoint` top-down; hit overlay / hover outline own the stack; does not clear hover when pointer is still over a message band. |
-| Outline vs classes | Hover outline uses `data-seq-msg-hover-outline` (not `data-scale-lock-border`) and hides only when hovering the **selected** message, not whenever any message is selected. |
-
-**Agent testing**
-
-- Use `npm run dev:agent` (port **3434**) for automated browser tests. Do **not** kill the
-  user's dev server on port 3005 — Next.js allows only one dev instance per repo.
-
-**Commits pushed** (`origin/fix/issue-71-sequence-duplicate-selection` → draft PR #74)
-
-| Commit | Message |
-| ------ | ------- |
-| `74e27e3` | `fix(editor): fix duplicate selection overlays on multi-line sequence messages` |
-| `083e396` | `fix(sequence): use message lines as canonical index for multi-line label geometry` |
-| `8da1e59` | `fix(sequence): replace nearest-line mapping with owning-line-below-label resolver` |
-| `7380364` | `fix(sequence): apply hover highlight to all multi-line label elements` |
-| `807cdd8` | `fix(sequence): prevent click-jumping and remove CSS hover flicker` |
-| `f3c2714` | `fix(sequence): use labelTop not labelCenterY in findOwningLineForSequenceLabel` |
-| `69e15c4` | `fix(sequence): align multiline message selection box with clicked label` |
-| `1eb9b60` | `fix(sequence): stabilize message hover highlight after selection` |
-
 ## 6. Canvas-to-Code Highlighting
 
 - Canvas selection highlights the corresponding Monaco source range.
