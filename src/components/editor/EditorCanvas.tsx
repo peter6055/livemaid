@@ -791,6 +791,7 @@ export function EditorCanvas({
           el.closest?.("[data-inline-toolbar]") ||
           el.closest?.("[data-scale-lock-border]") ||
           el.closest?.("[data-scale-lock-shadow]") ||
+          el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
         ),
@@ -2192,16 +2193,17 @@ export function EditorCanvas({
                   !connectionState.active &&
                   !selectedSeqMsgEndpoints &&
                   sequenceLifelineOverlay && (
-                    <div className="absolute inset-0 pointer-events-none z-20">
+                    <div className="absolute inset-0 pointer-events-none z-25">
                       {sequenceLifelineOverlay.slots.map((slotY) => (
                         <button
                           key={`${sequenceLifelineOverlay.actorId}-${slotY}`}
                           data-seq-plus-actor-id={sequenceLifelineOverlay.actorId}
                           data-seq-plus-anchor-x={String(sequenceLifelineOverlay.x)}
                           data-seq-plus-anchor-y={String(slotY)}
+                          data-seq-plus-handle="true"
                           data-scale-lock
                           data-base-transform="translate(-50%, -50%)"
-                          className="seq-connect-btn absolute pointer-events-auto cursor-pointer w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
+                          className="seq-connect-btn absolute pointer-events-auto cursor-pointer w-7 h-7 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                           style={{
                             left: sequenceLifelineOverlay.x,
                             top: slotY,
