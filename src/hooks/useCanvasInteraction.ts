@@ -1387,7 +1387,7 @@ export function useCanvasInteraction({
         container.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
       ) as SVGElement[];
 
-      let messageIndex =
+      const messageIndex =
         typeof explicitIndex === "number"
           ? explicitIndex
           : (() => {
