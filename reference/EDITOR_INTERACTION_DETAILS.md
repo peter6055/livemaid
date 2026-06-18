@@ -61,6 +61,10 @@ truths:
   tolerate Mermaid reflow.
 - Message mapping must use the nearest rendered message line, not raw `.messageText` index,
   because multiline messages render multiple text nodes.
+- Multiline sequence-message selection must union ALL visible rendered label rows for the
+  owning message (including Mermaid's separate wrapped/byTspan `.messageText` nodes), and a
+  click routed through the hover/reorder overlay with an explicit message index must honor
+  that index directly rather than falling back to Y-position guessing.
 - Hover and selection geometry for sequence messages must stay pixel-identical, differing only
   in emphasis, not in box size or position.
 - Hover listeners must remain attached through React-managed props on the live canvas

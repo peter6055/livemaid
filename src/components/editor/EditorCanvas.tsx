@@ -953,7 +953,7 @@ export function EditorCanvas({
       );
     }
 
-    if (fromIndex < 0) {
+    if (fromIndex < 0 && !explicitRow) {
       const cy0 = e.clientY - shellRect.top;
       let bestD = Number.POSITIVE_INFINITY;
       rows.forEach((r, i) => {
@@ -965,8 +965,15 @@ export function EditorCanvas({
         }
       });
     }
-    if (fromIndex < 0) return;
-    const draggedRow = rows[fromIndex];
+
+    const draggedRow: Row | null =
+      fromIndex >= 0
+        ? rows[fromIndex]
+        : explicitRow
+          ? { kind: explicitRow.kind, domIndex: explicitRow.domIndex, top: 0, bottom: 0 }
+          : null;
+
+    if (!draggedRow) return;
     const draggedKey = `${draggedRow.kind}:${draggedRow.domIndex}`;
 
     // If a DIFFERENT row is currently selected, cancel that selection now so its stale selection
@@ -1013,13 +1020,18 @@ export function EditorCanvas({
       if (k <= 0 || k >= N) return endMargin * 2;
       return Math.max(0, rows[k].top - rows[k - 1].bottom);
     };
+    const reorderFromIndex = fromIndex;
+    const canReorderDrag = reorderFromIndex >= 0;
+
     const slots: Array<{ slot: number; y: number; h: number }> = [];
-    for (let k = 0; k <= N; k += 1) {
-      if (k === fromIndex || k === fromIndex + 1) continue; // skip current position
-      const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
-      slots.push({ slot: k, y: slotY(k), h });
+    if (canReorderDrag) {
+      for (let k = 0; k <= N; k += 1) {
+        if (k === reorderFromIndex || k === reorderFromIndex + 1) continue; // skip current position
+        const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
+        slots.push({ slot: k, y: slotY(k), h });
+      }
+      if (slots.length === 0) return;
     }
-    if (slots.length === 0) return;
 
     const startClientX = e.clientX;
     const startClientY = e.clientY;
@@ -1049,6 +1061,7 @@ export function EditorCanvas({
     };
 
     const onMove = (ev: MouseEvent) => {
+      if (!canReorderDrag) return;
       if (
         !dragging &&
         (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
@@ -1060,7 +1073,7 @@ export function EditorCanvas({
       const cursorX = ev.clientX - shellRect.left;
       const cursorY = ev.clientY - shellRect.top;
       setSeqReorder({
-        fromIndex,
+        fromIndex: reorderFromIndex,
         left,
         width,
         slots,

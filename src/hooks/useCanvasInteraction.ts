@@ -96,11 +96,12 @@ export function findOwningLineForSequenceLabel(
   labelEl: SVGElement,
   lineEls: SVGElement[],
 ): SVGElement | null {
+  if (lineEls.length === 0) return null;
   const labelRect = labelEl.getBoundingClientRect();
   const labelCenterX = labelRect.left + labelRect.width / 2;
   const labelTop = labelRect.top;
 
-  const candidates = lineEls
+  const belowCandidates = lineEls
     .map((lineEl) => {
       const rect = lineEl.getBoundingClientRect();
       const lineCenterY = rect.top + rect.height / 2;
@@ -125,8 +126,32 @@ export function findOwningLineForSequenceLabel(
         a.horizontalGap - b.horizontalGap,
     );
 
-  if (candidates[0]) return candidates[0].lineEl;
-  return null;
+  if (belowCandidates[0]) return belowCandidates[0].lineEl;
+
+  // Fallback for multi-line byTspan rows that sit slightly below their own arrow line:
+  // the filter above excludes that arrow (lineCenterY < labelTop), so score all lines.
+  const textX = labelRect.left + labelRect.width / 2;
+  const textY = labelRect.top + labelRect.height / 2;
+  let nearest = lineEls[0];
+  let best = Number.POSITIVE_INFINITY;
+  for (const lineEl of lineEls) {
+    const lineRect = lineEl.getBoundingClientRect();
+    const lineY = lineRect.top + lineRect.height / 2;
+    const dx =
+      textX < lineRect.left
+        ? lineRect.left - textX
+        : textX > lineRect.right
+          ? textX - lineRect.right
+          : 0;
+    const dy = Math.abs(lineY - textY);
+    const underPenalty = lineY < textY ? 15 : 0;
+    const score = dy * 3 + dx + underPenalty;
+    if (score < best) {
+      best = score;
+      nearest = lineEl;
+    }
+  }
+  return nearest;
 }
 
 function findSequenceMessageVisualAtClientPoint(
@@ -176,6 +201,7 @@ export function buildSequenceMessageVisualModel(
   ) as SVGElement[];
 
   const labelRoots = getSequenceMessageLabelRoots(container);
+  const visibleTexts = getVisibleSequenceMessageTexts(container);
 
   const containerRect = container.getBoundingClientRect();
   const scale = containerRect.width / container.offsetWidth;
@@ -198,19 +224,14 @@ export function buildSequenceMessageVisualModel(
     const entry = entries[i];
     const lineRect = lineEl.getBoundingClientRect();
 
-    const labelEls = labelRoots.filter(
-      (labelEl) => findOwningLine(labelEl, messageLineEls) === lineEl,
-    );
+    const labelEls = [
+      ...new Set([
+        ...labelRoots.filter((labelEl) => findOwningLine(labelEl, messageLineEls) === lineEl),
+        ...visibleTexts.filter((labelEl) => findOwningLine(labelEl, messageLineEls) === lineEl),
+      ]),
+    ];
 
-    const labelRect =
-      labelEls.length > 0
-        ? unionClientRects(labelEls)
-        : labelRoots.length > 0
-          ? (() => {
-              const fallback = labelRoots[i];
-              return fallback ? fallback.getBoundingClientRect() : null;
-            })()
-          : null;
+    const labelRect = labelEls.length > 0 ? unionClientRects(labelEls) : null;
 
     const srcLineRect = lineRect ? toCanvasRect(lineRect)! : null;
     const srcLabelRect = labelRect ? toCanvasRect(labelRect) : null;
@@ -407,44 +428,21 @@ export function useCanvasInteraction({
   const sequenceConnectionCommittedRef = useRef(false);
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(null);
+  const hoveredSequenceMessageIndexRef = useRef<number | null>(null);
+  const setHoveredSequenceMessageIndexWithRef = useCallback((idx: number | null) => {
+    setHoveredSequenceMessageIndex(idx);
+    hoveredSequenceMessageIndexRef.current = idx;
+  }, []);
   const hoveredSequenceTargetsRef = useRef<{
     labelEls: SVGElement[];
     lineEl: SVGElement | null;
   }>({ labelEls: [], lineEl: null });
 
-  const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
-    if (lineEls.length === 0) return null;
-    const textRect = textEl.getBoundingClientRect();
-    const textX = textRect.left + textRect.width / 2;
-    const textY = textRect.top + textRect.height / 2;
-    let nearest = lineEls[0];
-    let best = Number.POSITIVE_INFINITY;
-    for (const lineEl of lineEls) {
-      const lineRect = lineEl.getBoundingClientRect();
-      const lineY = lineRect.top + lineRect.height / 2;
-      const dx =
-        textX < lineRect.left
-          ? lineRect.left - textX
-          : textX > lineRect.right
-            ? textX - lineRect.right
-            : 0;
-      const dy = Math.abs(lineY - textY);
-
-      // Prefer lines at/under the text and with horizontal overlap.
-      // Keep the penalty small (15 vs original 60) so that multi-line message text
-      // elements (which Mermaid renders as separate .messageText per line via
-      // `byTspan`) still pair to their correct message line even when one of the
-      // text rows sits slightly below the arrow and is equidistant from two lines.
-      const underPenalty = lineY < textY ? 15 : 0;
-      const score = dy * 3 + dx + underPenalty;
-
-      if (score < best) {
-        best = score;
-        nearest = lineEl;
-      }
-    }
-    return nearest;
-  }, []);
+  const findNearestLineForText = useCallback(
+    (textEl: SVGElement, lineEls: SVGElement[]) =>
+      findOwningLineForSequenceLabel(textEl, lineEls),
+    [],
+  );
 
   const findNearestTextForLine = useCallback((lineEl: SVGElement, textEls: SVGElement[]) => {
     if (textEls.length === 0) return null;
@@ -585,8 +583,8 @@ export function useCanvasInteraction({
     hoveredSequenceTargetsRef.current.lineEl?.classList.remove("sequence-msg-hover-highlight-line");
     hoveredSequenceTargetsRef.current = { labelEls: [], lineEl: null };
     setHoveredSequenceMessageBox(null);
-    setHoveredSequenceMessageIndex(null);
-  }, []);
+    setHoveredSequenceMessageIndexWithRef(null);
+  }, [setHoveredSequenceMessageIndexWithRef]);
 
   const updateSequenceMessageHoverHighlight = useCallback(
     (hoveredIndex: number | null) => {
@@ -644,13 +642,14 @@ export function useCanvasInteraction({
       hoveredSequenceTargetsRef.current = { labelEls, lineEl };
 
       setHoveredSequenceMessageBox(visual.selectionBox);
-      setHoveredSequenceMessageIndex(hoveredIndex);
+      setHoveredSequenceMessageIndexWithRef(hoveredIndex);
     },
     [
       containerRef,
       clearSequenceMessageHoverHighlight,
       getSequenceMessageEntries,
       code,
+      setHoveredSequenceMessageIndexWithRef,
     ],
   );
 
@@ -741,9 +740,17 @@ export function useCanvasInteraction({
         setHoveredSequenceNoteBox(null);
         return;
       }
-      updateSequenceMessageHoverHighlight(
-        resolveMessageHoverTarget(e.clientX, e.clientY, e.target),
-      );
+
+      const resolvedIndex = resolveMessageHoverTarget(e.clientX, e.clientY, e.target);
+
+      // Only update when the hover target changes — prevents flicker when the
+      // pointer moves between child elements within the same message hit area.
+      if (resolvedIndex === hoveredSequenceMessageIndexRef.current) {
+        updateSequenceNoteHover(e.clientX, e.clientY);
+        return;
+      }
+
+      updateSequenceMessageHoverHighlight(resolvedIndex);
       updateSequenceNoteHover(e.clientX, e.clientY);
     },
     [
@@ -764,6 +771,18 @@ export function useCanvasInteraction({
         setHoveredSequenceNoteBox(null);
         return;
       }
+
+      // mouseout fires for every child-element transition inside the
+      // container. When the relatedTarget is still inside the container,
+      // defer to the mouseover that immediately follows — mouseover will
+      // re-resolve and call updateSequenceMessageHoverHighlight with the
+      // correct index. Clearing here would cause a flash when the coords
+      // happen to land just outside the hitBox edge.
+      const container = containerRef.current;
+      if (e.relatedTarget instanceof Node && container?.contains(e.relatedTarget)) {
+        return;
+      }
+
       updateSequenceMessageHoverHighlight(
         resolveMessageHoverTarget(e.clientX, e.clientY, e.relatedTarget),
       );
@@ -1318,13 +1337,14 @@ export function useCanvasInteraction({
       hoveredSequenceTargetsRef.current = { labelEls, lineEl };
 
       setHoveredSequenceMessageBox(visual.selectionBox);
-      setHoveredSequenceMessageIndex(index);
+      setHoveredSequenceMessageIndexWithRef(index);
     },
     [
       clearSequenceMessageHoverHighlight,
       containerRef,
       getSequenceMessageEntries,
       code,
+      setHoveredSequenceMessageIndexWithRef,
     ],
   );
 
@@ -2990,7 +3010,8 @@ export function useCanvasInteraction({
 
       if (isLocked) return;
 
-      const target = e.target as HTMLElement;
+      const target = e.target;
+      if (!(target instanceof Element)) return;
       const container = containerRef.current;
       const containerRect = container?.getBoundingClientRect() ?? null;
       const scale = container && containerRect ? containerRect.width / container.offsetWidth : 1;
