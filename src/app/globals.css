@@ -366,11 +366,19 @@ svg[aria-roledescription="error"],
   stroke-width: 3px !important;
 }
 
+.mermaid-container text.sequence-msg-hover-highlight-text,
+.mermaid-container text.sequence-msg-hover-highlight-text tspan,
 .mermaid-container .sequence-msg-hover-highlight-text,
 .mermaid-container .sequence-msg-hover-highlight-text:hover {
   fill: #6366f1 !important;
   font-weight: 700 !important;
   text-shadow: none !important;
+}
+
+.mermaid-container foreignObject.sequence-msg-hover-highlight-text,
+.mermaid-container foreignObject.sequence-msg-hover-highlight-text * {
+  color: #6366f1 !important;
+  font-weight: 700 !important;
 }
 
 /* Enable pointer events on sequence diagram interactive elements (Mermaid disables them by default) */

@@ -398,9 +398,9 @@ export function useCanvasInteraction({
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(null);
   const hoveredSequenceTargetsRef = useRef<{
-    textEl: SVGElement | null;
+    labelEls: SVGElement[];
     lineEl: SVGElement | null;
-  }>({ textEl: null, lineEl: null });
+  }>({ labelEls: [], lineEl: null });
 
   const findNearestLineForText = useCallback((textEl: SVGElement, lineEls: SVGElement[]) => {
     if (lineEls.length === 0) return null;
@@ -569,9 +569,11 @@ export function useCanvasInteraction({
   );
 
   const clearSequenceMessageHoverHighlight = useCallback(() => {
-    hoveredSequenceTargetsRef.current.textEl?.classList.remove("sequence-msg-hover-highlight-text");
+    hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
+      el.classList.remove("sequence-msg-hover-highlight-text");
+    });
     hoveredSequenceTargetsRef.current.lineEl?.classList.remove("sequence-msg-hover-highlight-line");
-    hoveredSequenceTargetsRef.current = { textEl: null, lineEl: null };
+    hoveredSequenceTargetsRef.current = { labelEls: [], lineEl: null };
     setHoveredSequenceMessageBox(null);
     setHoveredSequenceMessageIndex(null);
   }, []);
@@ -605,26 +607,31 @@ export function useCanvasInteraction({
         return;
       }
 
-      const textEl = visual.labelEls[0] || null;
+      const labelEls = visual.labelEls;
       const lineEl = visual.lineEl;
 
-      if (
-        hoveredSequenceTargetsRef.current.textEl === textEl &&
-        hoveredSequenceTargetsRef.current.lineEl === lineEl
-      ) {
+      const prevLabelEls = hoveredSequenceTargetsRef.current.labelEls;
+      const sameLine = hoveredSequenceTargetsRef.current.lineEl === lineEl;
+      const sameLabels =
+        sameLine &&
+        prevLabelEls.length === labelEls.length &&
+        prevLabelEls.every((el, i) => el === labelEls[i]);
+      if (sameLabels) {
         return;
       }
 
-      hoveredSequenceTargetsRef.current.textEl?.classList.remove(
-        "sequence-msg-hover-highlight-text",
-      );
+      prevLabelEls.forEach((el) => {
+        el.classList.remove("sequence-msg-hover-highlight-text");
+      });
       hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
         "sequence-msg-hover-highlight-line",
       );
 
-      textEl?.classList.add("sequence-msg-hover-highlight-text");
+      labelEls.forEach((el) => {
+        el.classList.add("sequence-msg-hover-highlight-text");
+      });
       lineEl?.classList.add("sequence-msg-hover-highlight-line");
-      hoveredSequenceTargetsRef.current = { textEl, lineEl };
+      hoveredSequenceTargetsRef.current = { labelEls, lineEl };
 
       setHoveredSequenceMessageBox(visual.selectionBox);
       setHoveredSequenceMessageIndex(hoveredIndex);
@@ -1206,7 +1213,7 @@ export function useCanvasInteraction({
                 const idx = messageLineEls.indexOf(hoverLine);
                 return idx >= 0 ? idx : -1;
               }
-              const hoverText = hoveredSequenceTargetsRef.current.textEl;
+              const hoverText = hoveredSequenceTargetsRef.current.labelEls[0];
               if (hoverText) {
                 const nearestLine = findNearestLineForText(hoverText, messageLineEls);
                 if (nearestLine) {
@@ -1285,18 +1292,20 @@ export function useCanvasInteraction({
       const visual = visuals[index];
       if (!visual) return;
 
-      const textEl = visual.labelEls[0] || null;
+      const labelEls = visual.labelEls;
 
-      hoveredSequenceTargetsRef.current.textEl?.classList.remove(
-        "sequence-msg-hover-highlight-text",
-      );
+      hoveredSequenceTargetsRef.current.labelEls.forEach((el) => {
+        el.classList.remove("sequence-msg-hover-highlight-text");
+      });
       hoveredSequenceTargetsRef.current.lineEl?.classList.remove(
         "sequence-msg-hover-highlight-line",
       );
 
-      textEl?.classList.add("sequence-msg-hover-highlight-text");
+      labelEls.forEach((el) => {
+        el.classList.add("sequence-msg-hover-highlight-text");
+      });
       lineEl.classList.add("sequence-msg-hover-highlight-line");
-      hoveredSequenceTargetsRef.current = { textEl, lineEl };
+      hoveredSequenceTargetsRef.current = { labelEls, lineEl };
 
       setHoveredSequenceMessageBox(visual.selectionBox);
       setHoveredSequenceMessageIndex(index);
