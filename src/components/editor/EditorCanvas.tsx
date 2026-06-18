@@ -23,6 +23,7 @@ import { InlineTextEditor } from "./InlineTextEditor";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import { ClassConnectMenu, type ClassConnectMenuState } from "./ClassConnectMenu";
 import { CommentLayer } from "./CommentLayer";
+import { StableMermaidHtml } from "./StableMermaidHtml";
 import { isEdgeId } from "@/lib/diagrams/utils";
 import {
   classNameFromSvgId,
@@ -47,6 +48,7 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
+import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
 import {
   CSSProperties,
   RefObject,
@@ -78,6 +80,9 @@ interface EditorCanvasProps {
   handleMouseUp: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleSequenceHoverOver: (e: React.MouseEvent<HTMLDivElement>) => void;
   handleSequenceHoverOut: (e: React.MouseEvent<HTMLDivElement>) => void;
+  handleSequenceMessageHoverEnter: (index: number) => void;
+  handleSequenceMessageHoverMove: (index: number) => void;
+  handleSequenceMessageHoverLeave: (index: number, e: React.PointerEvent<HTMLDivElement>) => void;
   handleEditClick: (e: React.MouseEvent | Event) => void;
   selectionBox: { x: number; y: number; width: number; height: number } | null;
   connectionState: {
@@ -94,6 +99,7 @@ interface EditorCanvasProps {
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
   hoveredSequenceActorBox: { x: number; y: number; width: number; height: number } | null;
   hoveredSequenceMessageBox: { x: number; y: number; width: number; height: number } | null;
+  hoveredSequenceMessageIndex: number | null;
   hoveredSequenceNoteBox: { x: number; y: number; width: number; height: number } | null;
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
   comments?: DiagramComment[];
@@ -377,6 +383,9 @@ export function EditorCanvas({
   handleMouseUp,
   handleSequenceHoverOver,
   handleSequenceHoverOut,
+  handleSequenceMessageHoverEnter,
+  handleSequenceMessageHoverMove,
+  handleSequenceMessageHoverLeave,
   handleEditClick,
   selectionBox,
   connectionState,
@@ -384,6 +393,7 @@ export function EditorCanvas({
   sequenceLifelineOverlay,
   hoveredSequenceActorBox,
   hoveredSequenceMessageBox,
+  hoveredSequenceMessageIndex,
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   comments = [],
@@ -857,7 +867,10 @@ export function EditorCanvas({
   // lifeline `+` drag pattern. Panning is suppressed via the `seq-msg-reorder-handle` class
   // (panning.excluded) plus the `seqReorder` disabled flag. Messages and notes share one unified
   // ordered row list so a row can be dropped into ANY gap (message- or note-adjacent).
-  const startSeqReorderDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+  const startSeqReorderDrag = (
+    e: React.MouseEvent<HTMLDivElement>,
+    explicitRow?: { kind: "msg" | "note"; domIndex: number },
+  ) => {
     e.stopPropagation();
     seqDidDragRef.current = false;
     const shell = canvasShellRef.current;
@@ -865,7 +878,23 @@ export function EditorCanvas({
     if (!shell || !container) return;
     const shellRect = shell.getBoundingClientRect();
 
-    const textEls = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
+    const textEls = Array.from(
+      (() => {
+        const candidates = container.querySelectorAll(".messageText");
+        const roots = new Set<SVGElement>();
+        for (const el of candidates) {
+          const root =
+            (el.closest("foreignObject.messageText") as SVGElement | null) ||
+            (el.closest("text.messageText") as SVGElement | null) ||
+            el;
+          const rect = root.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            roots.add(root as SVGElement);
+          }
+        }
+        return roots;
+      })(),
+    ) as SVGElement[];
     const noteTextEls = getSortedSequenceNoteTextElements(container);
     if (textEls.length === 0 && noteTextEls.length === 0) return;
     const lineEls = Array.from(
@@ -881,30 +910,11 @@ export function EditorCanvas({
     // centers (that lands on the upper message's line). Pair text↔line with the SAME scoring
     // heuristic as the hook's findNearestLineForText (a naive nearest-by-center mis-assigns
     // around self-loops / tall arcs and corrupts neighboring bands).
-    const nearestLineForText = (textEl: SVGElement) => {
-      const tr = textEl.getBoundingClientRect();
-      const textX = tr.left + tr.width / 2;
-      const textY = tr.top + tr.height / 2;
-      let bestLine: SVGElement | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-      for (const lineEl of lineEls) {
-        const lr = lineEl.getBoundingClientRect();
-        const lineY = lr.top + lr.height / 2;
-        const dx = textX < lr.left ? lr.left - textX : textX > lr.right ? textX - lr.right : 0;
-        const dy = Math.abs(lineY - textY);
-        const underPenalty = lineY < textY ? 60 : 0;
-        const score = dy * 3 + dx + underPenalty;
-        if (score < bestScore) {
-          bestScore = score;
-          bestLine = lineEl;
-        }
-      }
-      return bestLine;
-    };
+    const owningLine = (textEl: SVGElement) => findOwningLineForSequenceLabel(textEl, lineEls);
 
     lineEls.forEach((lineEl, i) => {
       const lr = lineEl.getBoundingClientRect();
-      const pairedTexts = textEls.filter((textEl) => nearestLineForText(textEl) === lineEl);
+      const pairedTexts = textEls.filter((textEl) => owningLine(textEl) === lineEl);
       const textRects = pairedTexts.map((textEl) => textEl.getBoundingClientRect());
       const top = Math.min(lr.top, ...textRects.map((r) => r.top));
       const bottom = Math.max(lr.bottom, ...textRects.map((r) => r.bottom));
@@ -936,20 +946,38 @@ export function EditorCanvas({
     const N = rows.length;
     if (N === 0) return;
 
-    // Resolve which row is being dragged: the one whose band center is nearest the cursor.
-    const cy0 = e.clientY - shellRect.top;
+    // Resolve which row is being dragged: if an explicit row is provided (from a trigger
+    // area or selection overlay), use it directly. Otherwise fall back to cursor-Y-based
+    // resolution for legacy/direct SVG interactions.
     let fromIndex = -1;
-    let bestD = Number.POSITIVE_INFINITY;
-    rows.forEach((r, i) => {
-      const c = (r.top + r.bottom) / 2;
-      const d = Math.abs(c - cy0);
-      if (d < bestD) {
-        bestD = d;
-        fromIndex = i;
-      }
-    });
-    if (fromIndex < 0) return;
-    const draggedRow = rows[fromIndex];
+
+    if (explicitRow) {
+      fromIndex = rows.findIndex(
+        (row) => row.kind === explicitRow.kind && row.domIndex === explicitRow.domIndex,
+      );
+    }
+
+    if (fromIndex < 0 && !explicitRow) {
+      const cy0 = e.clientY - shellRect.top;
+      let bestD = Number.POSITIVE_INFINITY;
+      rows.forEach((r, i) => {
+        const c = (r.top + r.bottom) / 2;
+        const d = Math.abs(c - cy0);
+        if (d < bestD) {
+          bestD = d;
+          fromIndex = i;
+        }
+      });
+    }
+
+    const draggedRow: Row | null =
+      fromIndex >= 0
+        ? rows[fromIndex]
+        : explicitRow
+          ? { kind: explicitRow.kind, domIndex: explicitRow.domIndex, top: 0, bottom: 0 }
+          : null;
+
+    if (!draggedRow) return;
     const draggedKey = `${draggedRow.kind}:${draggedRow.domIndex}`;
 
     // If a DIFFERENT row is currently selected, cancel that selection now so its stale selection
@@ -996,13 +1024,18 @@ export function EditorCanvas({
       if (k <= 0 || k >= N) return endMargin * 2;
       return Math.max(0, rows[k].top - rows[k - 1].bottom);
     };
+    const reorderFromIndex = fromIndex;
+    const canReorderDrag = reorderFromIndex >= 0;
+
     const slots: Array<{ slot: number; y: number; h: number }> = [];
-    for (let k = 0; k <= N; k += 1) {
-      if (k === fromIndex || k === fromIndex + 1) continue; // skip current position
-      const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
-      slots.push({ slot: k, y: slotY(k), h });
+    if (canReorderDrag) {
+      for (let k = 0; k <= N; k += 1) {
+        if (k === reorderFromIndex || k === reorderFromIndex + 1) continue; // skip current position
+        const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
+        slots.push({ slot: k, y: slotY(k), h });
+      }
+      if (slots.length === 0) return;
     }
-    if (slots.length === 0) return;
 
     const startClientX = e.clientX;
     const startClientY = e.clientY;
@@ -1032,6 +1065,7 @@ export function EditorCanvas({
     };
 
     const onMove = (ev: MouseEvent) => {
+      if (!canReorderDrag) return;
       if (
         !dragging &&
         (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
@@ -1043,7 +1077,7 @@ export function EditorCanvas({
       const cursorX = ev.clientX - shellRect.left;
       const cursorY = ev.clientY - shellRect.top;
       setSeqReorder({
-        fromIndex,
+        fromIndex: reorderFromIndex,
         left,
         width,
         slots,
@@ -1955,9 +1989,9 @@ export function EditorCanvas({
                   />
                 )}
 
-                <div
+                <StableMermaidHtml
+                  html={svgContent}
                   className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
-                  dangerouslySetInnerHTML={{ __html: svgContent }}
                 />
 
                 <CommentLayer
@@ -1989,11 +2023,13 @@ export function EditorCanvas({
                 {currentType === "sequence" &&
                   !isInlineEditing &&
                   !connectionState.active &&
+                  !seqReorder &&
                   sequenceMessageTriggerAreas.map((area) => (
                     <div
-                      key={`seq-msg-trigger-${area.index}`}
+                      key={`seq-msg-hit-${area.index}`}
                       data-seq-msg-hover-trigger="true"
-                      className="absolute pointer-events-none z-[19]"
+                      data-seq-msg-index={area.index}
+                      className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
                       style={{
                         left: area.x,
                         top: area.y,
@@ -2001,17 +2037,24 @@ export function EditorCanvas({
                         height: area.height,
                         background: "transparent",
                       }}
+                      title="Drag to reorder · click to select"
+                      onPointerEnter={() => handleSequenceMessageHoverEnter(area.index)}
+                      onPointerMove={() => handleSequenceMessageHoverMove(area.index)}
+                      onPointerLeave={(e) => handleSequenceMessageHoverLeave(area.index, e)}
+                      onMouseDown={(e) =>
+                        startSeqReorderDrag(e, { kind: "msg", domIndex: area.index })
+                      }
                     />
                   ))}
 
                 {currentType === "sequence" &&
                   hoveredSequenceMessageBox &&
-                  !selectedNodeId?.startsWith("SEQ_MSG_") &&
+                  hoveredSequenceMessageIndex !== null &&
+                  selectedNodeId !== `SEQ_MSG_${hoveredSequenceMessageIndex}` &&
                   !isInlineEditing &&
                   !connectionState.active && (
                     <div
-                      data-seq-msg-hover-trigger="true"
-                      data-scale-lock-border
+                      data-seq-msg-hover-outline
                       data-scale-lock-shadow
                       className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
@@ -2026,30 +2069,7 @@ export function EditorCanvas({
                     />
                   )}
 
-                {/* Hover grab overlay: lets the user drag-to-reorder ANY message directly on
-                      hover (no select-first step), and selects on a plain click. Generously
-                      enlarged vertical grab area so the thin message band is easy to grab.
-                      Rendered for the hovered message REGARDLESS of selection so EVERY message
-                      click flows through the shared timing-based double-click detector (otherwise
-                      clicking a new message while another is selected bypasses it via the SVG path
-                      and double-click-to-edit breaks). */}
-                {currentType === "sequence" &&
-                  hoveredSequenceMessageBox &&
-                  !isInlineEditing &&
-                  !connectionState.active &&
-                  !seqReorder && (
-                    <div
-                      className="seq-msg-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer"
-                      style={{
-                        left: hoveredSequenceMessageBox.x - 8 / state.scale,
-                        top: hoveredSequenceMessageBox.y - 5 / state.scale,
-                        width: hoveredSequenceMessageBox.width + 16 / state.scale,
-                        height: hoveredSequenceMessageBox.height + 10 / state.scale,
-                      }}
-                      title="Drag to reorder · click to select"
-                      onMouseDown={(e) => startSeqReorderDrag(e)}
-                    />
-                  )}
+                {/* Message hover grab overlay merged into stable hit overlays above. */}
 
                 {currentType === "sequence" &&
                   hoveredSequenceNoteBox &&
@@ -2413,7 +2433,19 @@ export function EditorCanvas({
                         height: selectionBox.height + 10 / state.scale,
                       }}
                       title="Drag to reorder"
-                      onMouseDown={startSeqReorderDrag}
+                      onMouseDown={(e) => {
+                        if (selectedNodeId?.startsWith("SEQ_MSG_")) {
+                          const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+                          if (Number.isFinite(idx))
+                            startSeqReorderDrag(e, { kind: "msg", domIndex: idx });
+                        } else if (selectedNodeId?.startsWith("SEQ_NOTE_")) {
+                          const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
+                          if (Number.isFinite(idx))
+                            startSeqReorderDrag(e, { kind: "note", domIndex: idx });
+                        } else {
+                          startSeqReorderDrag(e);
+                        }
+                      }}
                     />
                   )}
 

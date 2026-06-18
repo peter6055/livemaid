@@ -390,6 +390,7 @@ export function LiveMaidEditor({
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredSequenceMessageIndex,
     hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
@@ -400,6 +401,9 @@ export function LiveMaidEditor({
     handleMouseUp,
     handleSequenceHoverOver,
     handleSequenceHoverOut,
+    handleSequenceMessageHoverEnter,
+    handleSequenceMessageHoverMove,
+    handleSequenceMessageHoverLeave,
     handleEditClick,
     handleAddNodeFromSelected,
     triggerHoveredSequenceMessageSelection,
@@ -4501,6 +4505,9 @@ export function LiveMaidEditor({
               handleMouseUp={handleMouseUp}
               handleSequenceHoverOver={handleSequenceHoverOver}
               handleSequenceHoverOut={handleSequenceHoverOut}
+              handleSequenceMessageHoverEnter={handleSequenceMessageHoverEnter}
+              handleSequenceMessageHoverMove={handleSequenceMessageHoverMove}
+              handleSequenceMessageHoverLeave={handleSequenceMessageHoverLeave}
               handleEditClick={handleEditClick}
               isCommentMode={isCommentMode}
               selectionBox={selectionBox}
@@ -4509,6 +4516,7 @@ export function LiveMaidEditor({
               sequenceLifelineOverlay={sequenceLifelineOverlay}
               hoveredSequenceActorBox={hoveredSequenceActorBox}
               hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+              hoveredSequenceMessageIndex={hoveredSequenceMessageIndex}
               hoveredSequenceNoteBox={hoveredSequenceNoteBox}
               hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
               comments={doc?.comments ?? []}

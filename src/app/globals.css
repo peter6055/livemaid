@@ -343,14 +343,8 @@ svg[aria-roledescription="error"],
   cursor: crosshair !important;
 }
 
-/* Hover highlights for sequence diagram message connections */
-.mermaid-container [class*="messageLine"]:hover line,
-.mermaid-container [class*="messageLine"]:hover path,
-.mermaid-container .messageLine:hover line,
-.mermaid-container .messageLine:hover path {
-  stroke: #7c3aed !important;
-  stroke-width: 4px !important;
-}
+/* Hover highlights for sequence diagram message connections are managed by React
+   via sequence-msg-hover-highlight-* classes. No native CSS :hover rules here. */
 
 /* Synchronized sequence connection hover (line + label) */
 .mermaid-container .sequence-msg-hover-highlight-line,
@@ -366,11 +360,19 @@ svg[aria-roledescription="error"],
   stroke-width: 3px !important;
 }
 
+.mermaid-container text.sequence-msg-hover-highlight-text,
+.mermaid-container text.sequence-msg-hover-highlight-text tspan,
 .mermaid-container .sequence-msg-hover-highlight-text,
 .mermaid-container .sequence-msg-hover-highlight-text:hover {
   fill: #6366f1 !important;
   font-weight: 700 !important;
   text-shadow: none !important;
+}
+
+.mermaid-container foreignObject.sequence-msg-hover-highlight-text,
+.mermaid-container foreignObject.sequence-msg-hover-highlight-text * {
+  color: #6366f1 !important;
+  font-weight: 700 !important;
 }
 
 /* Enable pointer events on sequence diagram interactive elements (Mermaid disables them by default) */
@@ -398,10 +400,18 @@ svg[aria-roledescription="error"],
   stroke-linejoin: round !important;
 }
 
-.mermaid-container .messageText:hover {
-  fill: #6366f1 !important;
-  font-weight: 800 !important;
-  text-shadow: none !important;
+/* Suppress the native CSS :hover highlight on the currently selected sequence message.
+   When a message is selected, its .messageText / .messageLine children receive
+   `data-seq-selected="true"` so the browser's :hover pseudo-class does NOT produce
+   a second, independent highlight alongside the React selection overlay. */
+.mermaid-container [data-seq-selected="true"].messageText:hover {
+  fill: inherit !important;
+  font-weight: inherit !important;
+}
+.mermaid-container [data-seq-selected="true"][class*="messageLine"]:hover line,
+.mermaid-container [data-seq-selected="true"][class*="messageLine"]:hover path {
+  stroke: inherit !important;
+  stroke-width: inherit !important;
 }
 
 .mermaid-container .note:hover rect {

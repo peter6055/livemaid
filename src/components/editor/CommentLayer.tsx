@@ -12,6 +12,10 @@ import {
   getSequenceNoteRectForText,
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
+import {
+  getVisibleSequenceMessageTexts,
+  findOwningLineForSequenceLabel,
+} from "@/hooks/useCanvasInteraction";
 
 const SHAPE_COMMENT_OFFSET = 8;
 const SEQUENCE_COMMENT_OFFSET = 10;
@@ -112,39 +116,11 @@ export function CommentLayer({
     const safeContainerRect = containerRect!;
     const entries = new Map<string, { x: number; y: number; missingTarget: boolean }>();
     const elements = Array.from(safeContainer.querySelectorAll("[id], [data-id]"));
-    const messageTextEls = Array.from(
-      safeContainer.querySelectorAll(".messageText"),
-    ) as SVGElement[];
+    const messageTextEls = getVisibleSequenceMessageTexts(safeContainer);
     const messageLineEls = Array.from(
       safeContainer.querySelectorAll('[class^="messageLine"], [class*=" messageLine"]'),
     ) as SVGElement[];
     const noteTextEls = getSortedSequenceNoteTextElements(safeContainer);
-
-    const findNearestLineForText = (textEl: SVGElement) => {
-      if (messageLineEls.length === 0) return null;
-      const textRect = textEl.getBoundingClientRect();
-      const textX = textRect.left + textRect.width / 2;
-      const textY = textRect.top + textRect.height / 2;
-      let nearest = messageLineEls[0];
-      let best = Number.POSITIVE_INFINITY;
-      for (const lineEl of messageLineEls) {
-        const lineRect = lineEl.getBoundingClientRect();
-        const lineY = lineRect.top + lineRect.height / 2;
-        const dx =
-          textX < lineRect.left
-            ? lineRect.left - textX
-            : textX > lineRect.right
-              ? textX - lineRect.right
-              : 0;
-        const dy = Math.abs(textY - lineY);
-        const dist = Math.hypot(dx, dy);
-        if (dist < best) {
-          best = dist;
-          nearest = lineEl;
-        }
-      }
-      return nearest;
-    };
 
     const getSequenceMessageCanvasPosition = (index: number) => {
       if (getSequenceMessageEndpointGeometry) {
@@ -156,8 +132,12 @@ export function CommentLayer({
         }
       }
 
-      const textEl = messageTextEls[index] ?? null;
-      const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
+      const lineEl = messageLineEls[index] ?? null;
+      const textEl = lineEl
+        ? (messageTextEls.filter(
+            (t) => findOwningLineForSequenceLabel(t, messageLineEls) === lineEl,
+          )[0] ?? null)
+        : (messageTextEls[index] ?? null);
       if (!textEl && !lineEl) return null;
 
       const textRect = textEl?.getBoundingClientRect();
@@ -281,7 +261,9 @@ export function CommentLayer({
         if (Number.isFinite(sequenceIndex) && sequenceIndex >= 0) {
           const index = sequenceIndex;
           const textEl = messageTextEls[index] ?? null;
-          const lineEl = messageLineEls[index] ?? (textEl ? findNearestLineForText(textEl) : null);
+          const lineEl =
+            messageLineEls[index] ??
+            (textEl ? findOwningLineForSequenceLabel(textEl, messageLineEls) : null);
           if (textEl || lineEl) {
             const pos = getSequenceMessageCanvasPosition(index);
             if (pos) {

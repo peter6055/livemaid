@@ -9,6 +9,10 @@ coverage/
 next-env.d.ts
 package-lock.json
 
+# Playwright artifacts
+playwright-report/
+test-results/
+
 # Data fixtures (user-generated diagram JSON, not source)
 data/
 demo/

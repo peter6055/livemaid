@@ -108,3 +108,25 @@ To ensure we can safely rollback changes if anything goes wrong, you MUST follow
    - This is enforced automatically by the `ci/pr-title` workflow (`.github/workflows/pr-title.yml`), which uses [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request).
 8. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
 <!-- END:git-workflow-rules -->
+
+<!-- BEGIN:prepush-agent-rules -->
+
+# Pre-Push Validation
+
+Before committing or pushing any changes, you MUST run the `prepush` script defined in `package.json`:
+
+```bash
+npm run prepush
+```
+
+This runs:
+
+1. `typecheck` — TypeScript type checking
+2. `lint` — ESLint
+3. `format:check` — Prettier formatting check
+4. `test` — Vitest unit tests
+5. `build` — Next.js production build
+
+If any step fails, fix the errors before pushing. Do not bypass failures.
+
+<!-- END:prepush-agent-rules -->
