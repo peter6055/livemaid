@@ -69,16 +69,26 @@ export interface SequenceMessageVisual {
 function getSequenceMessageLabelRoots(container: HTMLElement): SVGElement[] {
   const candidates = Array.from(container.querySelectorAll(".messageText")) as SVGElement[];
   const roots = new Set<SVGElement>();
+
   for (const el of candidates) {
-    const root =
-      (el.closest("foreignObject.messageText") as SVGElement | null) ||
-      (el.closest("text.messageText") as SVGElement | null) ||
-      el;
-    const rect = root.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      roots.add(root);
+    const foreignObject = el.closest("foreignObject.messageText") as SVGElement | null;
+    if (foreignObject) {
+      const rect = foreignObject.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        roots.add(foreignObject);
+      }
+      continue;
+    }
+
+    const textEl = el.closest("text.messageText") as SVGElement | null;
+    if (textEl) {
+      const rect = textEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        roots.add(textEl);
+      }
     }
   }
+
   return [...roots];
 }
 
@@ -88,7 +98,7 @@ export function findOwningLineForSequenceLabel(
 ): SVGElement | null {
   const labelRect = labelEl.getBoundingClientRect();
   const labelCenterX = labelRect.left + labelRect.width / 2;
-  const labelCenterY = labelRect.top + labelRect.height / 2;
+  const labelTop = labelRect.top;
 
   const candidates = lineEls
     .map((lineEl) => {
@@ -108,7 +118,7 @@ export function findOwningLineForSequenceLabel(
         horizontalGap,
       };
     })
-    .filter((item) => item.lineCenterY >= labelCenterY - 2)
+    .filter((item) => item.lineCenterY >= labelTop - 2)
     .sort(
       (a, b) =>
         a.lineCenterY - b.lineCenterY ||
@@ -1215,9 +1225,9 @@ export function useCanvasInteraction({
               }
               const hoverText = hoveredSequenceTargetsRef.current.labelEls[0];
               if (hoverText) {
-                const nearestLine = findNearestLineForText(hoverText, messageLineEls);
-                if (nearestLine) {
-                  return messageLineEls.indexOf(nearestLine);
+                const owningLine = findOwningLineForSequenceLabel(hoverText, messageLineEls);
+                if (owningLine) {
+                  return messageLineEls.indexOf(owningLine);
                 }
               }
               return -1;
@@ -2074,7 +2084,7 @@ export function useCanvasInteraction({
             ),
           ) as SVGElement[];
 
-          const pairedLine = allMsgLines[idx] || findNearestLineForText(foundElement, allMsgLines);
+          const pairedLine = allMsgLines[idx] || findOwningLineForSequenceLabel(foundElement, allMsgLines);
           const pairedTextEls = getSequenceTextElsForLine(pairedLine, allMsgTexts, allMsgLines);
           const pairedText = pairedTextEls[0] || foundElement;
 
