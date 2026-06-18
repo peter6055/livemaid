@@ -47,6 +47,7 @@ import {
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
+import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
 import {
   CSSProperties,
   RefObject,
@@ -897,30 +898,12 @@ export function EditorCanvas({
     // centers (that lands on the upper message's line). Pair text↔line with the SAME scoring
     // heuristic as the hook's findNearestLineForText (a naive nearest-by-center mis-assigns
     // around self-loops / tall arcs and corrupts neighboring bands).
-    const nearestLineForText = (textEl: SVGElement) => {
-      const tr = textEl.getBoundingClientRect();
-      const textX = tr.left + tr.width / 2;
-      const textY = tr.top + tr.height / 2;
-      let bestLine: SVGElement | null = null;
-      let bestScore = Number.POSITIVE_INFINITY;
-      for (const lineEl of lineEls) {
-        const lr = lineEl.getBoundingClientRect();
-        const lineY = lr.top + lr.height / 2;
-        const dx = textX < lr.left ? lr.left - textX : textX > lr.right ? textX - lr.right : 0;
-        const dy = Math.abs(lineY - textY);
-        const underPenalty = lineY < textY ? 15 : 0;
-        const score = dy * 3 + dx + underPenalty;
-        if (score < bestScore) {
-          bestScore = score;
-          bestLine = lineEl;
-        }
-      }
-      return bestLine;
-    };
+    const owningLine = (textEl: SVGElement) =>
+      findOwningLineForSequenceLabel(textEl, lineEls);
 
     lineEls.forEach((lineEl, i) => {
       const lr = lineEl.getBoundingClientRect();
-      const pairedTexts = textEls.filter((textEl) => nearestLineForText(textEl) === lineEl);
+      const pairedTexts = textEls.filter((textEl) => owningLine(textEl) === lineEl);
       const textRects = pairedTexts.map((textEl) => textEl.getBoundingClientRect());
       const top = Math.min(lr.top, ...textRects.map((r) => r.top));
       const bottom = Math.max(lr.bottom, ...textRects.map((r) => r.bottom));
