@@ -1657,7 +1657,7 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
-      return resolveSequenceDisplayName(actorId);
+      return actorId;
     }
 
     if (selectedNodeId.startsWith("SEQ_MSG_")) {
@@ -1667,7 +1667,7 @@ export function LiveMaidEditor({
         /^(\S+)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/,
       );
       if (actorMatch?.[1]) {
-        return resolveSequenceDisplayName(actorMatch[1]);
+        return actorMatch[1];
       }
       return null;
     }
@@ -1679,13 +1679,7 @@ export function LiveMaidEditor({
     }
 
     return null;
-  }, [
-    code,
-    getSequenceMessageEntries,
-    getSequenceNoteEntries,
-    resolveSequenceDisplayName,
-    selectedNodeId,
-  ]);
+  }, [code, getSequenceMessageEntries, getSequenceNoteEntries, selectedNodeId]);
 
   const handleAddSequenceNote = useCallback(
     (position: "left" | "right" | "over") => {
@@ -1735,18 +1729,12 @@ export function LiveMaidEditor({
   const handleSequencePlusNote = useCallback(
     (actorId: string, anchorY: number, position: "left" | "right" | "over") => {
       if (!actorId || !Number.isFinite(anchorY)) return;
-      const participant = resolveSequenceDisplayName(actorId);
+      const participant = actorId;
       const insertIndex = getSequenceInsertIndexForAnchor(anchorY);
       const updatedCode = insertSequenceNoteAtIndex(code, position, participant, insertIndex);
       handleCodeChange(updatedCode);
     },
-    [
-      code,
-      getSequenceInsertIndexForAnchor,
-      handleCodeChange,
-      insertSequenceNoteAtIndex,
-      resolveSequenceDisplayName,
-    ],
+    [code, getSequenceInsertIndexForAnchor, handleCodeChange, insertSequenceNoteAtIndex],
   );
 
   // Insert a logic block fragment (loop/alt/opt/par/critical/break) or a `rect` highlight at the

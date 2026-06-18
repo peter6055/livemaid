@@ -1096,6 +1096,55 @@ export function useCanvasInteraction({
     return lifelines;
   }, [containerRef, resolveSequenceActorIdFromDisplayName, getSvgTextDisplayName]);
 
+  // If a candidate element is a broad actor wrapper whose bounds span header + lifeline +
+  // footer, resolve to the compact visible header element nearest the selection. Otherwise
+  // retain the candidate unchanged.
+  const resolveCompactActorElement = (
+    container: HTMLElement | null,
+    candidate: Element | null,
+    candidateSvgId: string | null,
+  ): Element | null => {
+    if (!container || !candidate) return candidate;
+    const candidateBounds = candidate.getBoundingClientRect();
+    if (candidateBounds.width <= 0 || candidateBounds.height <= 0) return candidate;
+
+    const lifelines = container.querySelectorAll("line.actor-line");
+    let containsLifeline = false;
+    for (const line of lifelines) {
+      const lineBounds = line.getBoundingClientRect();
+      if (
+        lineBounds.top >= candidateBounds.top - 1 &&
+        lineBounds.bottom <= candidateBounds.bottom + 1 &&
+        lineBounds.left >= candidateBounds.left - 1 &&
+        lineBounds.right <= candidateBounds.right + 1
+      ) {
+        containsLifeline = true;
+        break;
+      }
+    }
+    if (!containsLifeline) return candidate;
+
+    const compactElements = Array.from(
+      container.querySelectorAll("rect.actor, g.actor-man"),
+    ).filter((el) => {
+      const r = el.getBoundingClientRect();
+      return (
+        r.top >= candidateBounds.top - 1 &&
+        r.bottom <= candidateBounds.bottom + 1 &&
+        r.left >= candidateBounds.left - 1 &&
+        r.right <= candidateBounds.right + 1
+      );
+    });
+    if (compactElements.length === 0) return candidate;
+
+    if (candidateSvgId) {
+      const matched = compactElements.find((el) => el.id === candidateSvgId);
+      if (matched) return matched;
+    }
+    compactElements.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    return compactElements[0];
+  };
+
   const findNearestSlot = useCallback((slots: number[], y: number) => {
     let nearest = slots[0] ?? y;
     let bestDistance = Math.abs(nearest - y);
@@ -2163,6 +2212,26 @@ export function useCanvasInteraction({
       }
     }
 
+    // For sequence actors, ensure the resolved element is a compact header (not a broad
+    // wrapper spanning header + lifeline + footer) so selectedSvgId preserves the exact
+    // top/header instance and the selection box hugs the visible header shape.
+    if (selectedNodeId.startsWith("SEQ_ACTOR_") && foundElement && containerRef.current) {
+      const resolved = resolveCompactActorElement(
+        containerRef.current,
+        foundElement,
+        selectedSvgId,
+      );
+      if (resolved !== foundElement) {
+        foundElement = resolved as SVGElement;
+        if (!foundElement.id) {
+          const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
+          const b = foundElement.getBoundingClientRect();
+          foundElement.id = `seq-actor-${actorId.replace(/[^a-zA-Z0-9_]/g, "")}-${Math.round(b.left)}-${Math.round(b.top)}`;
+        }
+        foundRawSvgId = foundElement.id || null;
+      }
+    }
+
     if (foundElement && containerRef.current) {
       let rect = foundElement.getBoundingClientRect();
       const containerRect = containerRef.current.getBoundingClientRect();
@@ -2621,6 +2690,12 @@ export function useCanvasInteraction({
         }
 
         if (cleanId && cleanId.startsWith("SEQ_ACTOR_") && !currentNode.id) {
+          const resolved = containerRef.current
+            ? resolveCompactActorElement(containerRef.current, currentNode, null)
+            : currentNode;
+          if (resolved !== currentNode) {
+            currentNode = resolved as SVGElement;
+          }
           const b = currentNode.getBoundingClientRect();
           const actorKey = cleanId.replace("SEQ_ACTOR_", "").replace(/[^a-zA-Z0-9_]/g, "");
           currentNode.id = `seq-actor-${actorKey}-${Math.round(b.left)}-${Math.round(b.top)}`;
