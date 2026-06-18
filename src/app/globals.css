@@ -343,14 +343,8 @@ svg[aria-roledescription="error"],
   cursor: crosshair !important;
 }
 
-/* Hover highlights for sequence diagram message connections */
-.mermaid-container [class*="messageLine"]:hover line,
-.mermaid-container [class*="messageLine"]:hover path,
-.mermaid-container .messageLine:hover line,
-.mermaid-container .messageLine:hover path {
-  stroke: #7c3aed !important;
-  stroke-width: 4px !important;
-}
+/* Hover highlights for sequence diagram message connections are managed by React
+   via sequence-msg-hover-highlight-* classes. No native CSS :hover rules here. */
 
 /* Synchronized sequence connection hover (line + label) */
 .mermaid-container .sequence-msg-hover-highlight-line,
@@ -404,12 +398,6 @@ svg[aria-roledescription="error"],
   stroke-width: 12px !important;
   stroke-linecap: round !important;
   stroke-linejoin: round !important;
-}
-
-.mermaid-container .messageText:hover {
-  fill: #6366f1 !important;
-  font-weight: 800 !important;
-  text-shadow: none !important;
 }
 
 /* Suppress the native CSS :hover highlight on the currently selected sequence message.

@@ -390,6 +390,7 @@ export function LiveMaidEditor({
     sequenceLifelineOverlay,
     hoveredSequenceActorBox,
     hoveredSequenceMessageBox,
+    hoveredSequenceMessageIndex,
     hoveredSequenceNoteBox,
     hoveredFlowchartNodeBox,
     sequenceMessageTriggerAreas,
@@ -4509,6 +4510,7 @@ export function LiveMaidEditor({
               sequenceLifelineOverlay={sequenceLifelineOverlay}
               hoveredSequenceActorBox={hoveredSequenceActorBox}
               hoveredSequenceMessageBox={hoveredSequenceMessageBox}
+              hoveredSequenceMessageIndex={hoveredSequenceMessageIndex}
               hoveredSequenceNoteBox={hoveredSequenceNoteBox}
               hoveredFlowchartNodeBox={hoveredFlowchartNodeBox}
               comments={doc?.comments ?? []}

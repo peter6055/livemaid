@@ -95,6 +95,7 @@ interface EditorCanvasProps {
   sequenceLifelineOverlay: { actorId: string; x: number; slots: number[] } | null;
   hoveredSequenceActorBox: { x: number; y: number; width: number; height: number } | null;
   hoveredSequenceMessageBox: { x: number; y: number; width: number; height: number } | null;
+  hoveredSequenceMessageIndex: number | null;
   hoveredSequenceNoteBox: { x: number; y: number; width: number; height: number } | null;
   hoveredFlowchartNodeBox: { x: number; y: number; width: number; height: number } | null;
   comments?: DiagramComment[];
@@ -385,6 +386,7 @@ export function EditorCanvas({
   sequenceLifelineOverlay,
   hoveredSequenceActorBox,
   hoveredSequenceMessageBox,
+  hoveredSequenceMessageIndex,
   hoveredSequenceNoteBox,
   hoveredFlowchartNodeBox,
   comments = [],
@@ -858,7 +860,10 @@ export function EditorCanvas({
   // lifeline `+` drag pattern. Panning is suppressed via the `seq-msg-reorder-handle` class
   // (panning.excluded) plus the `seqReorder` disabled flag. Messages and notes share one unified
   // ordered row list so a row can be dropped into ANY gap (message- or note-adjacent).
-  const startSeqReorderDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+  const startSeqReorderDrag = (
+    e: React.MouseEvent<HTMLDivElement>,
+    explicitRow?: { kind: "msg" | "note"; domIndex: number },
+  ) => {
     e.stopPropagation();
     seqDidDragRef.current = false;
     const shell = canvasShellRef.current;
@@ -935,18 +940,31 @@ export function EditorCanvas({
     const N = rows.length;
     if (N === 0) return;
 
-    // Resolve which row is being dragged: the one whose band center is nearest the cursor.
-    const cy0 = e.clientY - shellRect.top;
+    // Resolve which row is being dragged: if an explicit row is provided (from a trigger
+    // area or selection overlay), use it directly. Otherwise fall back to cursor-Y-based
+    // resolution for legacy/direct SVG interactions.
     let fromIndex = -1;
-    let bestD = Number.POSITIVE_INFINITY;
-    rows.forEach((r, i) => {
-      const c = (r.top + r.bottom) / 2;
-      const d = Math.abs(c - cy0);
-      if (d < bestD) {
-        bestD = d;
-        fromIndex = i;
-      }
-    });
+
+    if (explicitRow) {
+      fromIndex = rows.findIndex(
+        (row) =>
+          row.kind === explicitRow.kind &&
+          row.domIndex === explicitRow.domIndex,
+      );
+    }
+
+    if (fromIndex < 0) {
+      const cy0 = e.clientY - shellRect.top;
+      let bestD = Number.POSITIVE_INFINITY;
+      rows.forEach((r, i) => {
+        const c = (r.top + r.bottom) / 2;
+        const d = Math.abs(c - cy0);
+        if (d < bestD) {
+          bestD = d;
+          fromIndex = i;
+        }
+      });
+    }
     if (fromIndex < 0) return;
     const draggedRow = rows[fromIndex];
     const draggedKey = `${draggedRow.kind}:${draggedRow.domIndex}`;
@@ -2047,7 +2065,11 @@ export function EditorCanvas({
                         height: hoveredSequenceMessageBox.height + 10 / state.scale,
                       }}
                       title="Drag to reorder · click to select"
-                      onMouseDown={(e) => startSeqReorderDrag(e)}
+                      onMouseDown={(e) =>
+                        startSeqReorderDrag(e, hoveredSequenceMessageIndex !== null
+                          ? { kind: "msg", domIndex: hoveredSequenceMessageIndex }
+                          : undefined)
+                      }
                     />
                   )}
 
@@ -2413,7 +2435,17 @@ export function EditorCanvas({
                         height: selectionBox.height + 10 / state.scale,
                       }}
                       title="Drag to reorder"
-                      onMouseDown={startSeqReorderDrag}
+                      onMouseDown={(e) => {
+                        if (selectedNodeId?.startsWith("SEQ_MSG_")) {
+                          const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
+                          if (Number.isFinite(idx)) startSeqReorderDrag(e, { kind: "msg", domIndex: idx });
+                        } else if (selectedNodeId?.startsWith("SEQ_NOTE_")) {
+                          const idx = parseInt(selectedNodeId.replace("SEQ_NOTE_", ""), 10);
+                          if (Number.isFinite(idx)) startSeqReorderDrag(e, { kind: "note", domIndex: idx });
+                        } else {
+                          startSeqReorderDrag(e);
+                        }
+                      }}
                     />
                   )}
 
