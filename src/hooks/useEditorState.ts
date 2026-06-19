@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import mermaid from "mermaid";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 
-const DEBOUNCE_MS = 1000;
+const DEBOUNCE_MS = 1500;
 const VALID_MERMAID_THEMES = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
 
 // `isDemo` is passed in from the (runtime-rendered) editor page rather than read

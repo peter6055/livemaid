@@ -2171,7 +2171,7 @@ export function useCanvasInteraction({
 
         for (const candidate of candidatesList) {
           let nodeId = candidate.id;
-          if (!nodeId && candidate.classList?.contains("edgeLabel")) {
+          if (candidate.classList?.contains("edgeLabel")) {
             const dataIdEl = candidate.querySelector("[data-id]");
             if (dataIdEl) {
               const rawId = dataIdEl.getAttribute("data-id");
@@ -2451,24 +2451,31 @@ export function useCanvasInteraction({
           currentNode.classList?.contains("edgeLabel")
         ) {
           foundNodeClass = true;
-          nodeId = currentNode.id;
-          if (!nodeId) {
-            if (currentNode.classList?.contains("edgeLabel")) {
-              const rawId =
-                currentNode.getAttribute("data-id") ??
-                currentNode.querySelector("[data-id]")?.getAttribute("data-id") ??
-                null;
-              if (rawId) {
-                const canonical = normalizeId(rawId);
-                const paths = Array.from(
-                  containerRef.current?.querySelectorAll(
-                    "path.flowchart-link:not(.flowchart-link-hit-target)",
-                  ) || [],
-                );
-                const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
-                if (path && path.id) nodeId = path.id;
-              }
-            } else {
+          if (currentNode.classList?.contains("edgeLabel")) {
+            const rawId =
+              currentNode.getAttribute("data-id") ??
+              currentNode.querySelector("[data-id]")?.getAttribute("data-id") ??
+              null;
+            if (rawId) {
+              const canonical = normalizeId(rawId);
+              const paths = Array.from(
+                containerRef.current?.querySelectorAll(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ) || [],
+              );
+              const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+              if (path && path.id) nodeId = path.id;
+            }
+            if (!nodeId) {
+              const path =
+                currentNode.parentElement?.querySelector(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ) || currentNode.closest(".edgeLabel")?.previousElementSibling;
+              if (path && path.id) nodeId = path.id;
+            }
+          } else {
+            nodeId = currentNode.id;
+            if (!nodeId) {
               const path =
                 currentNode.parentElement?.querySelector(
                   "path.flowchart-link:not(.flowchart-link-hit-target)",
@@ -2918,6 +2925,15 @@ export function useCanvasInteraction({
   // Set to true when click(detail=2) already handled the dblclick gesture so the capture-phase
   // native dblclick listener knows to skip — prevents double-invocation of handleEditClick.
   const dblClickHandledRef = useRef(false);
+  // When handleSvgClick resolves a node via bounding-box heuristics (e.g. off-center edge labels
+  // where elementsFromPoint hits the SVG background), we stash it here so handleEditClick can
+  // use the resolved result instead of re-resolving via elementsFromPoint.
+  const pendingEditTargetRef = useRef<{
+    cleanId: string | null;
+    rawSvgId: string;
+    newSelectionBox: { x: number; y: number; width: number; height: number };
+    newTextBox: { x: number; y: number; width: number; height: number };
+  } | null>(null);
   // requestAnimationFrame handle for throttling mousemove
   const mouseMoveRafRef = useRef<number | null>(null);
   const mouseMoveInnerRef = useRef<
@@ -2938,9 +2954,16 @@ export function useCanvasInteraction({
       // over the toolbar — NOT the diagram element — so elementsFromPoint would resolve to whatever
       // SVG sits behind the toolbar (e.g. an actor header) and edit the WRONG element. In that case
       // we keep the currently-selected node and its existing selection/text boxes.
+      // SECOND EXCEPTION: when invoked from handleSvgClick's double-click detection, the caller
+      // may already have resolved the target via bounding-box heuristics (e.g. off-center edge
+      // labels). We prefer that resolved result over elementsFromPoint since elementsFromPoint
+      // bypasses pointer-events: none elements and hits the SVG background instead.
       const fromToolbar = Boolean(
         (e.target as Element | null)?.closest?.("[data-inline-toolbar], [data-scale-lock]"),
       );
+      const pendingResult = pendingEditTargetRef.current;
+      pendingEditTargetRef.current = null;
+
       let targetElement = e.target as Element;
       if (!fromToolbar && "clientX" in e && "clientY" in e) {
         const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
@@ -3008,16 +3031,21 @@ export function useCanvasInteraction({
         return;
       }
 
-      const result = fromToolbar ? null : getClickedNode(targetElement);
+      const result = pendingResult ?? (fromToolbar ? null : getClickedNode(targetElement));
       // Use ref for selectedNodeId to avoid stale closure
       let targetNodeId = selectedNodeIdRef.current;
 
       // STATE MACHINE: handle EDIT_MODE → EDIT_MODE transitions (cross-element or empty-space double-click)
       if (isInlineEditing) {
         if (!result) {
-          // Double-click on empty space while editing → commit and go to IDLE
-          commitEditRef.current?.();
-          setIsInlineEditing(false);
+          // For flowcharts/graphs, a null result on empty-space double-click is not meaningful
+          // (it may happen when onDoubleClick fires after handleSvgClick already entered edit
+          // mode and the click resolved to the SVG background). Only commit+exit for sequence.
+          if (currentType === "sequence") {
+            commitEditRef.current?.();
+            setIsInlineEditing(false);
+            return;
+          }
           return;
         }
         if (result.cleanId === selectedNodeIdRef.current) {
@@ -3034,6 +3062,41 @@ export function useCanvasInteraction({
         setSelectedNodeIdWithRef(result.cleanId);
         setSelectedSvgId(result.rawSvgId);
         targetNodeId = result.cleanId;
+      } else if (targetNodeId && containerRef.current && !fromToolbar) {
+        // Edge label fallback: when the click resolved to the SVG background (because the
+        // edgeLabel has pointer-events: none), we still have the valid targetNodeId from
+        // the initial selection. Verify it exists in the DOM for text extraction, but
+        // DON'T recompute selectionBox/textBox since they are already correct from the
+        // prior selection (or will be restored by InlineTextEditor if needed).
+        const candidates = Array.from(
+          containerRef.current.querySelectorAll(
+            ".node, .cluster, path.flowchart-link:not(.flowchart-link-hit-target), .edgeLabel",
+          ),
+        ) as SVGElement[];
+        let foundMatch = false;
+        for (const candidate of candidates) {
+          let candidateId = candidate.id;
+          if (candidate.classList?.contains("edgeLabel")) {
+            const dataIdEl = candidate.querySelector("[data-id]");
+            if (dataIdEl) {
+              const rawId = dataIdEl.getAttribute("data-id");
+              if (rawId) {
+                const canonical = normalizeId(rawId);
+                if (canonical === targetNodeId) {
+                  candidateId = targetNodeId;
+                }
+              }
+            }
+          }
+          if (candidateId && normalizeId(candidateId) === targetNodeId) {
+            foundMatch = true;
+            break;
+          }
+        }
+        // If we can't find the candidate, targetNodeId is stale and we should bail
+        if (!foundMatch) {
+          return;
+        }
       }
 
       if (!targetNodeId) return;
@@ -3222,6 +3285,7 @@ export function useCanvasInteraction({
       ) {
         debugLog("enter-edit-mode-double-click", clicked.cleanId);
         lastClickRef.current = null;
+        pendingEditTargetRef.current = clicked;
         handleEditClick(e);
         return;
       }
@@ -3231,9 +3295,28 @@ export function useCanvasInteraction({
       // State transition rule:
       // - Same element while editing: keep editing.
       // - Different element/background while editing: commit current edit, then continue selection flow.
+      // - For flowcharts, an empty-space result (!clicked) is never a meaningful "double-click on
+      //   empty space" interaction because editing is always initiated from an explicit double-click
+      //   or toolbar action. The result may be null when the click resolved to the svg background
+      //   instead of a specific element (common when clicking off-centre on edge labels), so we
+      //   skip the commit-and-exit for non-sequence diagrams.
       if (isInlineEditing) {
         if (clicked && clicked.cleanId === selectedNodeIdRef.current) {
           debugLog("stay-in-edit-mode", clicked.cleanId);
+          // Prevent this mousedown from reaching document-level listeners (e.g.
+          // InlineTextEditor's handleClickOutside) which would commit the edit and
+          // close the editor immediately after opening it via the double-click.
+          if ("stopPropagation" in e) e.stopPropagation();
+          return;
+        }
+        if (!clicked && currentDiagramType !== "sequence") {
+          debugLog("stay-in-edit-mode-null-result");
+          return;
+        }
+        if (!clicked) {
+          debugLog("commit-edit-on-empty-space");
+          commitEditRef.current?.();
+          setIsInlineEditing(false);
           return;
         }
         debugLog("commit-edit-before-transition", {

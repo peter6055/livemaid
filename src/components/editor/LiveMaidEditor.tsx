@@ -3656,14 +3656,14 @@ export function LiveMaidEditor({
 
   const handleNavigate = useCallback(
     (url: string, message: string, skipConfirm: boolean = false) => {
-      if (skipConfirm) {
+      if (skipConfirm || !hasUnsavedChangesRef.current) {
         performNavigation(url, message);
       } else {
         setPendingNavigation({ url, message });
         setIsExitConfirmOpen(true);
       }
     },
-    [performNavigation],
+    [performNavigation, hasUnsavedChangesRef],
   );
 
   const handleConfirmExitNavigation = useCallback(() => {
@@ -3912,6 +3912,12 @@ export function LiveMaidEditor({
     const handlePopState = () => {
       if (allowBrowserBackRef.current) {
         allowBrowserBackRef.current = false;
+        return;
+      }
+
+      if (!hasUnsavedChangesRef.current) {
+        allowBrowserBackRef.current = true;
+        window.history.back();
         return;
       }
 
