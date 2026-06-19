@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Boxes, FolderInput, FolderOutput, Plus, Check } from "lucide-react";
+import { Pencil, Trash2, Boxes, FolderInput, FolderOutput, Plus, Check } from "lucide-react";
 
 interface ClassNodeToolbarProps {
   /** Which kind of element is selected — drives the available actions + tooltips. */
@@ -15,6 +15,8 @@ interface ClassNodeToolbarProps {
   onMoveToNamespace?: (target: string) => void;
   onMoveToNewNamespace?: () => void;
   onRemoveFromNamespace?: () => void;
+  /** Open the property panel for the selected class. */
+  onRename?: () => void;
 }
 
 /**
@@ -36,6 +38,7 @@ export function ClassNodeToolbar({
   onMoveToNamespace,
   onMoveToNewNamespace,
   onRemoveFromNamespace,
+  onRename,
 }: ClassNodeToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [moveOpen, setMoveOpen] = useState(false);
@@ -88,6 +91,24 @@ export function ClassNodeToolbar({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="flex w-max items-center gap-1 rounded-xl border border-border bg-background px-1.5 py-1 shadow-lg">
+        {kind === "class" && onRename && (
+          <>
+            <button
+              type="button"
+              className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              title="Edit class properties"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRename();
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </button>
+            <div className="mx-0.5 h-4 w-px bg-border" />
+          </>
+        )}
         {kind === "class" && (
           <div className="relative">
             <button

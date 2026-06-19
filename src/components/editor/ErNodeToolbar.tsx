@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Copy, Palette, Check } from "lucide-react";
+import { Pencil, Trash2, Copy, Palette, Check } from "lucide-react";
 import { PRESET_COLORS } from "@/lib/diagrams/constants";
 
 interface ErNodeToolbarProps {
@@ -14,6 +14,8 @@ interface ErNodeToolbarProps {
   onSetStyle: (patch: Record<string, string>) => void;
   /** Remove the entity's whole `style` line (revert to the active theme). */
   onResetStyle: () => void;
+  /** Open the property panel for the selected entity. */
+  onRename?: () => void;
 }
 
 /** Border line styles offered in the style popover (US5: Solid / Dashed / Dotted / Large Dashed). */
@@ -41,6 +43,7 @@ export function ErNodeToolbar({
   onDelete,
   onSetStyle,
   onResetStyle,
+  onRename,
 }: ErNodeToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [styleOpen, setStyleOpen] = useState(false);
@@ -134,6 +137,24 @@ export function ErNodeToolbar({
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="flex w-max items-center gap-1 rounded-xl border border-border bg-background px-1.5 py-1 shadow-lg">
+        {onRename && (
+          <>
+            <button
+              type="button"
+              className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+              title="Edit entity properties"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onRename();
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </button>
+            <div className="mx-0.5 h-4 w-px bg-border" />
+          </>
+        )}
         <button
           type="button"
           className="pointer-events-auto flex h-8 items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"

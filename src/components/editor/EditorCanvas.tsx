@@ -168,9 +168,13 @@ interface EditorCanvasProps {
   onUpdateClassRelationshipType?: (operator: string) => void;
   onSetClassRelationshipCardinality?: (sourceCard: string, targetCard: string) => void;
   onDeleteClassRelationship?: () => void;
+  /** Class-diagram relationship-edge toolbar: enter inline label editing. */
+  onEditClassEdgeLabel?: () => void;
   /** Class-diagram node toolbar (single-click): delete a class / note. */
   onDeleteClassNode?: (name: string) => void;
   onDeleteClassNote?: (noteIndex: number) => void;
+  /** Class-diagram node toolbar: open the property panel for the selected class. */
+  onEditClassNode?: (name: string) => void;
   /** Class-diagram namespace containers: delete (unwrap) + relocate classes between namespaces. */
   onDeleteClassNamespace?: (name: string) => void;
   onMoveClassToNamespace?: (className: string, target: string) => void;
@@ -184,6 +188,8 @@ interface EditorCanvasProps {
   /** ER-diagram node toolbar (single-click): duplicate / style / delete the entity. */
   onDuplicateEntity?: (name: string) => void;
   onDeleteEntity?: (name: string) => void;
+  /** ER-diagram node toolbar: open the property panel for the selected entity. */
+  onEditEntityNode?: (name: string) => void;
   onSetEntityStyle?: (name: string, patch: Record<string, string>) => void;
   onResetEntityStyle?: (name: string) => void;
   /** The selected entity's current `style` property map (for the style popover's active states). */
@@ -445,8 +451,10 @@ export function EditorCanvas({
   onUpdateClassRelationshipType,
   onSetClassRelationshipCardinality,
   onDeleteClassRelationship,
+  onEditClassEdgeLabel,
   onDeleteClassNode,
   onDeleteClassNote,
+  onEditClassNode,
   onDeleteClassNamespace,
   onMoveClassToNamespace,
   onMoveClassToNewNamespace,
@@ -457,6 +465,7 @@ export function EditorCanvas({
   onEntityPanelValidityChange,
   onDuplicateEntity,
   onDeleteEntity,
+  onEditEntityNode,
   onSetEntityStyle,
   onResetEntityStyle,
   currentEntityStyle,
@@ -1953,6 +1962,13 @@ export function EditorCanvas({
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
+                        console.log(
+                          "[onDblClick] fired, elementsFromPoint:",
+                          document
+                            .elementsFromPoint(e.clientX, e.clientY)
+                            .slice(0, 3)
+                            .map((el) => el.tagName + (el.id ? "#" + el.id : "")),
+                        );
                         // Ignore double-clicks that land on a floating toolbar / overlay control so
                         // they never enter the underlying element's edit mode. This guard lives on the
                         // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
@@ -2496,6 +2512,9 @@ export function EditorCanvas({
                           onUpdateRelationshipType={onUpdateClassRelationshipType || (() => {})}
                           onSetCardinality={onSetClassRelationshipCardinality || (() => {})}
                           onDeleteRelationship={onDeleteClassRelationship || (() => {})}
+                          onEditLabel={
+                            onEditClassEdgeLabel ? (e) => onEditClassEdgeLabel() : undefined
+                          }
                         />
                       ) : selectedNodeId && selectedNodeId.startsWith("ER_EDGE_") ? (
                         <ErEdgeToolbar
@@ -2560,6 +2579,11 @@ export function EditorCanvas({
                           currentNamespace={
                             connectSourceClass ? getClassNamespace(code, connectSourceClass) : null
                           }
+                          onRename={
+                            onEditClassNode && connectSourceClass
+                              ? () => onEditClassNode!(connectSourceClass!)
+                              : undefined
+                          }
                           onMoveToNamespace={(target) => {
                             if (connectSourceClass)
                               onMoveClassToNamespace?.(connectSourceClass, target);
@@ -2582,6 +2606,11 @@ export function EditorCanvas({
                         <ErNodeToolbar
                           scale={state.scale}
                           currentStyle={currentEntityStyle ?? {}}
+                          onRename={
+                            onEditEntityNode
+                              ? () => onEditEntityNode!(connectSourceEntity!)
+                              : undefined
+                          }
                           onDuplicate={() => onDuplicateEntity?.(connectSourceEntity)}
                           onDelete={() => onDeleteEntity?.(connectSourceEntity)}
                           onSetStyle={(patch) => onSetEntityStyle?.(connectSourceEntity, patch)}

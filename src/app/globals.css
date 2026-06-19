@@ -288,21 +288,12 @@ svg[aria-roledescription="error"],
   stroke-width: 2.5px !important;
 }
 
-/* ER-diagram relationship edges: pointer cursor + indigo hover highlight, driven by the wide
-   transparent `er-relation-hit-target` clone (the immediately-preceding sibling of the real
-   `path.relationshipLine`). Mirrors the class-diagram relationship treatment. */
+/* ER-diagram relationship edges: pointer cursor only (no visible hover effect).
+   The wide transparent `er-relation-hit-target` clone provides a generous clickable area.
+   Mirrors the class-diagram relationship treatment for cursor affordance. */
 .mermaid-container path.relationshipLine,
 .mermaid-container path.er-relation-hit-target {
   cursor: pointer !important;
-  transition:
-    stroke 0.2s,
-    stroke-width 0.2s;
-}
-
-.mermaid-container path.relationshipLine:hover,
-.mermaid-container path.er-relation-hit-target:hover + path.relationshipLine {
-  stroke: #6366f1 !important;
-  stroke-width: 2.5px !important;
 }
 
 /* ER-diagram connection handle (the purple +): crosshair cursor to signal drag-to-connect. */

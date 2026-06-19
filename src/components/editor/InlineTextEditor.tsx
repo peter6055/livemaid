@@ -93,10 +93,17 @@ export function InlineTextEditor({
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
   const offsetCanvas = 4 / scale;
-  const relativeNodeX = textBox.x - (selectionBox.x - offsetCanvas);
-  const relativeNodeY = textBox.y - (selectionBox.y - offsetCanvas);
-  const centerX = relativeNodeX + textBox.width / 2;
-  const centerY = relativeNodeY + textBox.height / 2;
+  let centerX = 0,
+    centerY = 0;
+  try {
+    const relativeNodeX = textBox.x - (selectionBox.x - offsetCanvas);
+    const relativeNodeY = textBox.y - (selectionBox.y - offsetCanvas);
+    centerX = relativeNodeX + textBox.width / 2;
+    centerY = relativeNodeY + textBox.height / 2;
+  } catch (e) {
+    console.error("[InlineTextEditor] calc error:", e);
+    return null;
+  }
 
   const fontSize = 14;
   const measuredTextWidth = estimateTextWidth(editingText, fontSize);

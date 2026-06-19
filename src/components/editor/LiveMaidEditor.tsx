@@ -1305,6 +1305,37 @@ export function LiveMaidEditor({
     handleDeselect();
   }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
 
+  // Class-diagram edge toolbar pencil: open the inline label editor for the selected relationship.
+  // Positions the editor over the rendered relationship path (or a fallback viewport point).
+  const handleEditClassEdgeLabel = useCallback(() => {
+    if (!selectedNodeId?.startsWith("CLASS_EDGE_")) return;
+    const dataId = selectedNodeId.replace("CLASS_EDGE_", "");
+    const rel = classRelationshipFromEdgeDataId(code, dataId);
+    if (!rel) return;
+    const container = document.querySelector(".mermaid-container");
+    const pathEl = container?.querySelector(`path.relation[data-id="${dataId}"]`) ?? null;
+    const hitTarget =
+      container?.querySelector(`path.class-relation-hit-target[data-id="${dataId}"]`) ?? null;
+    const el = pathEl ?? hitTarget;
+    let clientX: number, clientY: number;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      clientX = r.left + r.width / 2;
+      clientY = r.top + r.height / 2;
+    } else {
+      clientX = window.innerWidth / 2;
+      clientY = window.innerHeight / 2;
+    }
+    setSelectedClassName(null);
+    setClassTextEdit({
+      kind: "relationship",
+      noteIndex: -1,
+      value: rel.label,
+      rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
+      rel: { source: rel.source, target: rel.target, occurrence: rel.occurrence },
+    });
+  }, [code, selectedNodeId, setSelectedClassName, setClassTextEdit]);
+
   // Class-diagram node toolbar (single-click) delete handlers → route through handleCodeChange.
   const handleDeleteClassNode = useCallback(
     (name: string) => {
@@ -1323,6 +1354,14 @@ export function LiveMaidEditor({
       handleDeselect();
     },
     [code, handleCodeChange, handleDeselect],
+  );
+
+  // Class-diagram node toolbar pencil: open the property panel for the selected class.
+  const handleEditClassNodeFromToolbar = useCallback(
+    (name: string) => {
+      setSelectedClassName(name);
+    },
+    [setSelectedClassName],
   );
 
   // Namespace container toolbar: delete (unwrap, preserving inner classes) + relocate a class
@@ -1403,6 +1442,14 @@ export function LiveMaidEditor({
       handleDeselect();
     },
     [code, handleCodeChange, handleDeselect, selectedEntityName],
+  );
+
+  // ER-diagram node toolbar pencil: open the property panel for the selected entity.
+  const handleEditEntityFromToolbar = useCallback(
+    (name: string) => {
+      setSelectedEntityName(name);
+    },
+    [setSelectedEntityName],
   );
 
   const handleSetEntityStyle = useCallback(
@@ -3609,14 +3656,14 @@ export function LiveMaidEditor({
 
   const handleNavigate = useCallback(
     (url: string, message: string, skipConfirm: boolean = false) => {
-      if (skipConfirm) {
+      if (skipConfirm || !hasUnsavedChangesRef.current) {
         performNavigation(url, message);
       } else {
         setPendingNavigation({ url, message });
         setIsExitConfirmOpen(true);
       }
     },
-    [performNavigation],
+    [performNavigation, hasUnsavedChangesRef],
   );
 
   const handleConfirmExitNavigation = useCallback(() => {
@@ -3865,6 +3912,12 @@ export function LiveMaidEditor({
     const handlePopState = () => {
       if (allowBrowserBackRef.current) {
         allowBrowserBackRef.current = false;
+        return;
+      }
+
+      if (!hasUnsavedChangesRef.current) {
+        allowBrowserBackRef.current = true;
+        window.history.back();
         return;
       }
 
@@ -4522,8 +4575,10 @@ export function LiveMaidEditor({
               onUpdateClassRelationshipType={handleUpdateClassRelationshipType}
               onSetClassRelationshipCardinality={handleSetClassRelationshipCardinality}
               onDeleteClassRelationship={handleDeleteClassRelationship}
+              onEditClassEdgeLabel={handleEditClassEdgeLabel}
               onDeleteClassNode={handleDeleteClassNode}
               onDeleteClassNote={handleDeleteClassNote}
+              onEditClassNode={handleEditClassNodeFromToolbar}
               onDeleteClassNamespace={handleDeleteClassNamespace}
               onMoveClassToNamespace={handleMoveClassToNamespace}
               onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
@@ -4534,6 +4589,7 @@ export function LiveMaidEditor({
               onEntityPanelValidityChange={handleEntityPanelValidityChange}
               onDuplicateEntity={handleDuplicateEntity}
               onDeleteEntity={handleDeleteEntity}
+              onEditEntityNode={handleEditEntityFromToolbar}
               onSetEntityStyle={handleSetEntityStyle}
               onResetEntityStyle={handleResetEntityStyle}
               currentEntityStyle={currentEntityStyle}
