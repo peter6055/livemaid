@@ -333,7 +333,7 @@ export function ErPropertyPanel({
   const colType = "w-28 shrink-0";
   const colName = "w-44 shrink-0";
   const colKeys = "w-40 shrink-0";
-  const colComment = "flex-1 min-w-0";
+  const colComment = "flex-1 min-w-[10rem]";
   const colActions = "w-[3.25rem] shrink-0";
 
   return (
@@ -342,7 +342,7 @@ export function ErPropertyPanel({
       data-er-property-panel
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
-      className="absolute right-3 top-20 z-30 flex max-h-[82vh] w-[52rem] max-w-[calc(100vw-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
+      className="absolute right-3 top-20 z-30 flex max-h-[82vh] w-[34rem] max-w-[calc(100vw-1.5rem)] flex-col gap-4 overflow-y-auto rounded-xl border border-border bg-white p-5 text-foreground shadow-xl dark:bg-[#100f1b]"
     >
       <div className="flex items-center justify-between">
         <span className="text-base font-semibold text-foreground">Entity Properties</span>
@@ -385,132 +385,134 @@ export function ErPropertyPanel({
       </div>
 
       {/* Structured attribute grid: Data Type | Name | Keys | Comment + row actions. */}
-      <div className="overflow-hidden rounded-lg border border-border">
-        <div className="flex border-b border-border bg-muted/70 text-sm font-semibold text-muted-foreground">
-          <div className={`${colType} whitespace-nowrap border-r border-border px-2.5 py-2`}>
-            Data Type
-          </div>
-          <div className={`${colName} border-r border-border px-2.5 py-2`}>Name</div>
-          <div className={`${colKeys} border-r border-border px-2.5 py-2`}>Keys</div>
-          <div className={`${colComment} border-r border-border px-2.5 py-2`}>Comment</div>
-          <div className={colActions} />
-        </div>
-
-        {rows.map((row, i) => {
-          const isDropTarget = dragOver === i && dragFrom !== null && dragFrom !== i;
-          const rowError = rowErrors[i];
-          // Highlight the specific field at fault: its own grammar error, OR (when the other field
-          // is filled but this one is blank) the "needs a type and a name" rule.
-          const typeInvalid =
-            !!typeFieldErrors[i] || (row.name.trim() !== "" && row.type.trim() === "");
-          const nameInvalid =
-            !!nameFieldErrors[i] || (row.type.trim() !== "" && row.name.trim() === "");
-          return (
-            <div key={`attr-${i}`} className="border-b border-border last:border-b-0">
-              <div
-                data-member-row
-                onDragOver={(e) => {
-                  if (dragFrom === null) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = "move";
-                  if (dragOver !== i) setDragOver(i);
-                }}
-                onDrop={(e) => {
-                  if (dragFrom === null) return;
-                  e.preventDefault();
-                  reorderRows(dragFrom, i);
-                  setDragFrom(null);
-                  setDragOver(null);
-                }}
-                className={`group flex items-stretch ${
-                  isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
-                } ${rowError ? "bg-red-500/5 ring-1 ring-inset ring-red-500/50" : "hover:bg-accent/40"} ${
-                  dragFrom === i ? "opacity-40" : ""
-                }`}
-              >
-                <div className={`${colType} flex items-stretch border-r border-border`}>
-                  <GridTextarea
-                    value={row.type}
-                    invalid={typeInvalid}
-                    placeholder="type"
-                    onChange={(v) => updateRow(i, { type: v })}
-                    onBlur={flush}
-                  />
-                </div>
-                <div className={`${colName} flex items-stretch border-r border-border`}>
-                  <GridTextarea
-                    value={row.name}
-                    invalid={nameInvalid}
-                    placeholder="name"
-                    onChange={(v) => updateRow(i, { name: v })}
-                    onBlur={flush}
-                  />
-                </div>
-                <div className={`${colKeys} border-r border-border`}>
-                  <KeysDropdown
-                    value={row.keys}
-                    onChange={(v) => updateRow(i, { keys: v }, true)}
-                  />
-                </div>
-                <div className={`${colComment} flex items-stretch border-r border-border`}>
-                  <GridTextarea
-                    value={row.comment}
-                    mono={false}
-                    placeholder="comment"
-                    onChange={(v) => updateRow(i, { comment: v })}
-                    onBlur={flush}
-                  />
-                </div>
-                <div className={`${colActions} flex items-center justify-end gap-0.5 pr-1.5`}>
-                  <button
-                    type="button"
-                    onClick={() => deleteRow(i)}
-                    onMouseDown={(e) => e.preventDefault()}
-                    title="Delete row"
-                    aria-label="Delete row"
-                    className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-500 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:hover:text-red-400"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    draggable
-                    onDragStart={(e) => {
-                      setDragFrom(i);
-                      e.dataTransfer.effectAllowed = "move";
-                      e.dataTransfer.setData("text/plain", String(i));
-                      const rowEl = (e.currentTarget as HTMLElement).closest("[data-member-row]");
-                      if (rowEl) e.dataTransfer.setDragImage(rowEl as Element, 20, 16);
-                    }}
-                    onDragEnd={() => {
-                      setDragFrom(null);
-                      setDragOver(null);
-                    }}
-                    title="Drag to reorder"
-                    aria-label="Drag to reorder"
-                    className="flex h-6 w-5 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors active:cursor-grabbing focus-visible:outline-none group-hover:text-indigo-500 dark:group-hover:text-indigo-400"
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-              {rowError && (
-                <p className="px-2.5 pb-1.5 text-xs leading-snug text-red-600 dark:text-red-400">
-                  {rowError}
-                </p>
-              )}
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <div className="min-w-max">
+          <div className="flex border-b border-border bg-muted/70 text-sm font-semibold text-muted-foreground">
+            <div className={colActions} />
+            <div className={`${colType} whitespace-nowrap border-r border-border px-2.5 py-2`}>
+              Data Type
             </div>
-          );
-        })}
+            <div className={`${colName} border-r border-border px-2.5 py-2`}>Name</div>
+            <div className={`${colKeys} border-r border-border px-2.5 py-2`}>Keys</div>
+            <div className={`${colComment} border-r border-border px-2.5 py-2`}>Comment</div>
+          </div>
 
-        <button
-          type="button"
-          onClick={addRow}
-          className="flex w-full items-center justify-center gap-1.5 bg-muted/40 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-indigo-600 dark:hover:text-indigo-400"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add attribute
-        </button>
+          {rows.map((row, i) => {
+            const isDropTarget = dragOver === i && dragFrom !== null && dragFrom !== i;
+            const rowError = rowErrors[i];
+            // Highlight the specific field at fault: its own grammar error, OR (when the other field
+            // is filled but this one is blank) the "needs a type and a name" rule.
+            const typeInvalid =
+              !!typeFieldErrors[i] || (row.name.trim() !== "" && row.type.trim() === "");
+            const nameInvalid =
+              !!nameFieldErrors[i] || (row.type.trim() !== "" && row.name.trim() === "");
+            return (
+              <div key={`attr-${i}`} className="border-b border-border last:border-b-0">
+                <div
+                  data-member-row
+                  onDragOver={(e) => {
+                    if (dragFrom === null) return;
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    if (dragOver !== i) setDragOver(i);
+                  }}
+                  onDrop={(e) => {
+                    if (dragFrom === null) return;
+                    e.preventDefault();
+                    reorderRows(dragFrom, i);
+                    setDragFrom(null);
+                    setDragOver(null);
+                  }}
+                  className={`group flex items-stretch ${
+                    isDropTarget ? "bg-indigo-500/10 ring-1 ring-inset ring-indigo-500/60" : ""
+                  } ${rowError ? "bg-red-500/5 ring-1 ring-inset ring-red-500/50" : "hover:bg-accent/40"} ${
+                    dragFrom === i ? "opacity-40" : ""
+                  }`}
+                >
+                  <div className={`${colActions} flex items-center justify-start gap-0.5 pl-1.5`}>
+                    <button
+                      type="button"
+                      onClick={() => deleteRow(i)}
+                      onMouseDown={(e) => e.preventDefault()}
+                      title="Delete row"
+                      aria-label="Delete row"
+                      className="flex h-6 w-6 items-center justify-center rounded text-muted-foreground opacity-0 transition-all hover:bg-accent hover:text-red-500 focus:opacity-100 focus-visible:outline-none group-hover:opacity-100 dark:hover:text-red-400"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      draggable
+                      onDragStart={(e) => {
+                        setDragFrom(i);
+                        e.dataTransfer.effectAllowed = "move";
+                        e.dataTransfer.setData("text/plain", String(i));
+                        const rowEl = (e.currentTarget as HTMLElement).closest("[data-member-row]");
+                        if (rowEl) e.dataTransfer.setDragImage(rowEl as Element, 20, 16);
+                      }}
+                      onDragEnd={() => {
+                        setDragFrom(null);
+                        setDragOver(null);
+                      }}
+                      title="Drag to reorder"
+                      aria-label="Drag to reorder"
+                      className="flex h-6 w-5 cursor-grab items-center justify-center text-muted-foreground/60 transition-colors active:cursor-grabbing focus-visible:outline-none group-hover:text-indigo-500 dark:group-hover:text-indigo-400"
+                    >
+                      <GripVertical className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className={`${colType} flex items-stretch border-r border-border`}>
+                    <GridTextarea
+                      value={row.type}
+                      invalid={typeInvalid}
+                      placeholder="type"
+                      onChange={(v) => updateRow(i, { type: v })}
+                      onBlur={flush}
+                    />
+                  </div>
+                  <div className={`${colName} flex items-stretch border-r border-border`}>
+                    <GridTextarea
+                      value={row.name}
+                      invalid={nameInvalid}
+                      placeholder="name"
+                      onChange={(v) => updateRow(i, { name: v })}
+                      onBlur={flush}
+                    />
+                  </div>
+                  <div className={`${colKeys} border-r border-border`}>
+                    <KeysDropdown
+                      value={row.keys}
+                      onChange={(v) => updateRow(i, { keys: v }, true)}
+                    />
+                  </div>
+                  <div className={`${colComment} flex items-stretch border-r border-border`}>
+                    <GridTextarea
+                      value={row.comment}
+                      mono={false}
+                      placeholder="comment"
+                      onChange={(v) => updateRow(i, { comment: v })}
+                      onBlur={flush}
+                    />
+                  </div>
+                </div>
+                {rowError && (
+                  <p className="px-2.5 pb-1.5 text-xs leading-snug text-red-600 dark:text-red-400">
+                    {rowError}
+                  </p>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={addRow}
+            className="flex w-full items-center justify-center gap-1.5 bg-muted/40 px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-indigo-600 dark:hover:text-indigo-400"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add attribute
+          </button>
+        </div>
       </div>
 
       <p className="text-xs leading-snug text-muted-foreground">

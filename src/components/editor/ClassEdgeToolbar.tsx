@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, GitBranch, Hash } from "lucide-react";
+import { Pencil, Trash2, GitBranch, Hash } from "lucide-react";
 import {
   CLASS_END_MARKERS,
   ClassEndMarker,
@@ -18,6 +18,8 @@ interface ClassEdgeToolbarProps {
   onUpdateRelationshipType: (operator: string) => void;
   onSetCardinality: (sourceCard: string, targetCard: string) => void;
   onDeleteRelationship: () => void;
+  /** Enter inline label editing for this edge (mirrors the ER edge toolbar's pencil). */
+  onEditLabel?: (e: React.MouseEvent) => void;
 }
 
 // Cardinality presets ("" renders as the clear/none chip).
@@ -39,6 +41,7 @@ export function ClassEdgeToolbar({
   onUpdateRelationshipType,
   onSetCardinality,
   onDeleteRelationship,
+  onEditLabel,
 }: ClassEdgeToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Menu-first UX: the bar shows only the Relationship / Cardinality choices; clicking one opens
@@ -306,6 +309,13 @@ export function ClassEdgeToolbar({
           </div>
 
           <div className="mx-0.5 h-5 w-px bg-border" />
+
+          {onEditLabel && (
+            <button type="button" className={btnCls} title="Edit label" onClick={onEditLabel}>
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+
           <button
             type="button"
             className={`${btnCls} hover:bg-red-500/10 hover:text-red-500`}
