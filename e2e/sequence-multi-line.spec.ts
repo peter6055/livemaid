@@ -198,4 +198,51 @@ test.describe("Sequence multi-line message selection and hover (PR #74)", () => 
     const highlightCount = await highlightedTexts.count();
     expect(highlightCount).toBeGreaterThanOrEqual(1);
   });
+
+  test("T8: Select message shows endpoint handles, not plus menu", async ({ page }) => {
+    const hitOverlays = page.locator("[data-seq-msg-index]");
+    const count = await hitOverlays.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    // Select a message
+    await hitOverlays.first().click();
+    await page.waitForTimeout(800);
+
+    // Assert two endpoint handles appear
+    await expect(page.locator(".seq-endpoint-handle")).toHaveCount(2);
+
+    // Assert no plus-actor-id elements appear
+    await expect(page.locator("[data-seq-plus-actor-id]")).toHaveCount(0);
+  });
+
+  test("T9: Drag-reorder overlay appears only after 3px threshold", async ({ page }) => {
+    const hitOverlays = page.locator("[data-seq-msg-index]");
+    const count = await hitOverlays.count();
+    expect(count).toBeGreaterThanOrEqual(2);
+
+    const overlay = hitOverlays.first();
+    const box = await overlay.boundingBox();
+    expect(box).not.toBeNull();
+
+    if (box) {
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+
+      // Mouse down without movement — overlay should not appear
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.waitForTimeout(100);
+      await expect(page.locator("[data-seq-reorder-overlay]")).toHaveCount(0);
+
+      // Move more than 3px while held — overlay should appear
+      await page.mouse.move(cx, cy + 8, { steps: 5 });
+      await page.waitForTimeout(100);
+      await expect(page.locator("[data-seq-reorder-overlay]")).toHaveCount(1);
+
+      // Mouse up — overlay should disappear
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      await expect(page.locator("[data-seq-reorder-overlay]")).toHaveCount(0);
+    }
+  });
 });

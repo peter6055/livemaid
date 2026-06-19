@@ -49,6 +49,7 @@ import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDia
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
+import { findSeqReorderTargetSlot } from "@/lib/diagrams/sequenceReorder";
 import {
   CSSProperties,
   RefObject,
@@ -791,6 +792,7 @@ export function EditorCanvas({
           el.closest?.("[data-inline-toolbar]") ||
           el.closest?.("[data-scale-lock-border]") ||
           el.closest?.("[data-scale-lock-shadow]") ||
+          el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
         ),
@@ -1027,42 +1029,13 @@ export function EditorCanvas({
     const reorderFromIndex = fromIndex;
     const canReorderDrag = reorderFromIndex >= 0;
 
-    const slots: Array<{ slot: number; y: number; h: number }> = [];
-    if (canReorderDrag) {
-      for (let k = 0; k <= N; k += 1) {
-        if (k === reorderFromIndex || k === reorderFromIndex + 1) continue; // skip current position
-        const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
-        slots.push({ slot: k, y: slotY(k), h });
-      }
-      if (slots.length === 0) return;
-    }
-
     const startClientX = e.clientX;
     const startClientY = e.clientY;
     let dragging = false;
+    let dragSlots: Array<{ slot: number; y: number; h: number }> | null = null;
+    let dragFindTarget: ((cx: number, cy: number) => number | null) | null = null;
 
-    // Strict hitbox detection: a drop only counts when the cursor falls INSIDE a drop zone's
-    // bounding box (the drawn band, expanded by a small grab tolerance) AND within the zone's
-    // horizontal extent. Dropping in the dead space between zones, near the original position,
-    // or off to the side returns null → the drag aborts and the row snaps back.
-    const HIT_TOL_Y = 6; // px of vertical grab tolerance around the drawn band
-    const HIT_TOL_X = 24; // px of horizontal slack beyond the lifelines
-    const findTarget = (cursorX: number, cursorY: number): number | null => {
-      if (cursorX < left - HIT_TOL_X || cursorX > left + width + HIT_TOL_X) return null;
-      let best: number | null = null;
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const s of slots) {
-        const halfH = s.h / 2 + HIT_TOL_Y;
-        if (cursorY >= s.y - halfH && cursorY <= s.y + halfH) {
-          const d = Math.abs(s.y - cursorY);
-          if (d < bestDist) {
-            bestDist = d;
-            best = s.slot;
-          }
-        }
-      }
-      return best;
-    };
+    const HIT_TOL_X = 24;
 
     const onMove = (ev: MouseEvent) => {
       if (!canReorderDrag) return;
@@ -1070,41 +1043,61 @@ export function EditorCanvas({
         !dragging &&
         (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
       ) {
+        // Compute Y positions for ALL slots (0..N) for accurate midpoint zone boundaries,
+        // including the excluded no-op slots. Eligible slots are computed separately for
+        // rendering. The target finder then uses ALL-slot midpoints but returns a slot
+        // number only if it is eligible (not excluded).
+        const allSlotYs: number[] = [];
+        for (let k = 0; k <= N; k += 1) {
+          allSlotYs.push(slotY(k));
+        }
+        const eligibleSlots = new Set<number>();
+        const newSlots: Array<{ slot: number; y: number; h: number }> = [];
+        for (let k = 0; k <= N; k += 1) {
+          if (k === reorderFromIndex || k === reorderFromIndex + 1) continue;
+          eligibleSlots.add(k);
+          const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
+          newSlots.push({ slot: k, y: slotY(k), h });
+        }
+        if (newSlots.length === 0) return;
+        dragSlots = newSlots;
+        dragFindTarget = (cursorX: number, cursorY: number): number | null => {
+          if (cursorX < left - HIT_TOL_X || cursorX > left + width + HIT_TOL_X) return null;
+          return findSeqReorderTargetSlot(allSlotYs, eligibleSlots, cursorY);
+        };
         dragging = true;
         seqDidDragRef.current = true;
       }
       if (!dragging) return;
       const cursorX = ev.clientX - shellRect.left;
       const cursorY = ev.clientY - shellRect.top;
+      const newTargetSlot = dragFindTarget!(cursorX, cursorY);
       setSeqReorder({
         fromIndex: reorderFromIndex,
         left,
         width,
-        slots,
+        slots: dragSlots!,
         cursorY,
-        targetSlot: findTarget(cursorX, cursorY),
+        targetSlot: newTargetSlot,
       });
     };
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (dragging) {
+        // Mouseup position is authoritative: recompute from the final cursor position
+        // and commit only when that result is non-null. Releasing in an excluded zone
+        // or outside the hit area cancels rather than committing a stale prior target.
         const cursorX = ev.clientX - shellRect.left;
         const cursorY = ev.clientY - shellRect.top;
-        const targetSlot = findTarget(cursorX, cursorY);
-        // Strict: only reorder when the drop lands inside a valid zone. Otherwise abort (snap back).
-        if (targetSlot !== null) {
+        const finalTargetSlot = dragFindTarget!(cursorX, cursorY);
+        if (finalTargetSlot !== null) {
           onReorderSequenceItem?.(
             { kind: draggedRow.kind, index: draggedRow.domIndex },
-            targetSlot,
+            finalTargetSlot,
           );
         }
       } else {
-        // No drag → treat as a click on the grabbed row. We resolve select-vs-edit HERE on mouseup
-        // (a window listener) instead of the overlay's React onClick, because the overlay DOM node
-        // is re-rendered between mousedown and mouseup (selection mounts the second handle / hover
-        // churns), so the browser never fires a native `click` on a single stable node. Double-
-        // click is detected by timing (≤ 350ms on the same row key), which survives that swap.
         const now = Date.now();
         const prev = seqLastClickRef.current;
         const isBrowserDoubleClick = e.detail >= 2 && selectedKey === draggedKey;
@@ -1140,6 +1133,12 @@ export function EditorCanvas({
     // svgContent/code are intentional deps: re-resolve geometry after the diagram re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentType, selectedNodeId, getSequenceMessageEndpointGeometry, svgContent, code]);
+
+  useEffect(() => {
+    if (selectedSeqMsgEndpoints && sequencePlusMenu) {
+      setSequencePlusMenu(null);
+    }
+  }, [selectedSeqMsgEndpoints, sequencePlusMenu]);
 
   // Begin dragging a message endpoint (sender or receiver) across lifelines. Runs entirely in
   // viewport/shell space (canvasShellRef-relative) — mirroring the lifeline `+` connection drag —
@@ -2194,17 +2193,19 @@ export function EditorCanvas({
                   !isLocked &&
                   !isInlineEditing &&
                   !connectionState.active &&
+                  !selectedSeqMsgEndpoints &&
                   sequenceLifelineOverlay && (
-                    <div className="absolute inset-0 pointer-events-none z-20">
+                    <div className="absolute inset-0 pointer-events-none z-25">
                       {sequenceLifelineOverlay.slots.map((slotY) => (
                         <button
                           key={`${sequenceLifelineOverlay.actorId}-${slotY}`}
                           data-seq-plus-actor-id={sequenceLifelineOverlay.actorId}
                           data-seq-plus-anchor-x={String(sequenceLifelineOverlay.x)}
                           data-seq-plus-anchor-y={String(slotY)}
+                          data-seq-plus-handle="true"
                           data-scale-lock
                           data-base-transform="translate(-50%, -50%)"
-                          className="seq-connect-btn absolute pointer-events-auto cursor-pointer w-6 h-6 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
+                          className="seq-connect-btn absolute pointer-events-auto cursor-pointer w-7 h-7 rounded-full bg-indigo-600 text-white ring-2 ring-white/90 shadow-lg hover:bg-indigo-700 transition-colors"
                           style={{
                             left: sequenceLifelineOverlay.x,
                             top: slotY,
@@ -3217,17 +3218,22 @@ export function EditorCanvas({
       {/* Sequence message reorder drop zones + drag ghost — rendered at canvasShell level
             (viewport-relative, outside TransformWrapper) so pan/zoom never shifts them. */}
       {seqReorder && (
-        <div className="absolute inset-0 pointer-events-none z-30">
+        <div
+          className="absolute inset-0 pointer-events-none z-30"
+          data-seq-reorder-overlay
+          data-seq-reorder-from={seqReorder.fromIndex}
+          data-seq-reorder-target={seqReorder.targetSlot ?? "none"}
+        >
           {seqReorder.slots.map((s) => {
             const active = seqReorder.targetSlot === s.slot;
             const alpha = active ? 0.38 : 0.16;
-            // Center each band on the interstitial midpoint; height is pre-sized to the
-            // local gap so it never overlaps the adjacent message line/label.
             const h = active ? Math.min(s.h + 4, s.h * 1.5 + 2) : s.h;
             return (
               <div
                 key={`seq-drop-${s.slot}`}
                 className="absolute rounded-md"
+                data-seq-drop-slot={s.slot}
+                data-seq-drop-active={active ? "true" : "false"}
                 style={{
                   left: seqReorder.left,
                   width: seqReorder.width,
