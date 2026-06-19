@@ -1,7 +1,8 @@
 export function getSortedSequenceNoteTextElements(container: ParentNode | null | undefined) {
   if (!container) return [];
-  const allTextEls = Array.from(container.querySelectorAll(".noteText"))
-    .filter((el): el is SVGElement => el instanceof SVGElement);
+  const allTextEls = Array.from(container.querySelectorAll(".noteText")).filter(
+    (el): el is SVGElement => el instanceof SVGElement,
+  );
 
   // Deduplicate wrapped notes: when Mermaid wraps a long note it creates multiple .noteText
   // elements for a single rendered note. Use the associated rect.note as identity key, falling

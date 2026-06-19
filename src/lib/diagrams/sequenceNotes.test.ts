@@ -112,9 +112,7 @@ describe("sequenceNotes", () => {
       const root = new FakeSVGElement("svg");
       root.append(g);
 
-      const result = getSortedSequenceNoteTextElements(
-        root as unknown as ParentNode,
-      );
+      const result = getSortedSequenceNoteTextElements(root as unknown as ParentNode);
       expect(result).toHaveLength(1);
       expect(result[0]).toBe(t1);
     });
@@ -133,9 +131,7 @@ describe("sequenceNotes", () => {
       const root = new FakeSVGElement("svg");
       root.append(g1, g2);
 
-      const result = getSortedSequenceNoteTextElements(
-        root as unknown as ParentNode,
-      );
+      const result = getSortedSequenceNoteTextElements(root as unknown as ParentNode);
       expect(result).toHaveLength(2);
     });
 
@@ -152,9 +148,7 @@ describe("sequenceNotes", () => {
       const root = new FakeSVGElement("svg");
       root.append(g);
 
-      const result = getSortedSequenceNoteTextElements(
-        root as unknown as ParentNode,
-      );
+      const result = getSortedSequenceNoteTextElements(root as unknown as ParentNode);
       expect(result).toHaveLength(1);
     });
 
@@ -172,9 +166,7 @@ describe("sequenceNotes", () => {
       const root = new FakeSVGElement("svg");
       root.append(g1, g2);
 
-      const result = getSortedSequenceNoteTextElements(
-        root as unknown as ParentNode,
-      );
+      const result = getSortedSequenceNoteTextElements(root as unknown as ParentNode);
       expect(result).toHaveLength(2);
       expect(result[0].getBoundingClientRect().top).toBe(100);
       expect(result[1].getBoundingClientRect().top).toBe(300);
@@ -187,9 +179,7 @@ describe("sequenceNotes", () => {
 
     it("returns empty array when no noteText elements exist", () => {
       const root = new FakeSVGElement("svg");
-      expect(
-        getSortedSequenceNoteTextElements(root as unknown as ParentNode),
-      ).toEqual([]);
+      expect(getSortedSequenceNoteTextElements(root as unknown as ParentNode)).toEqual([]);
     });
   });
 
@@ -205,12 +195,8 @@ describe("sequenceNotes", () => {
       const root = new FakeSVGElement("svg");
       root.append(g);
 
-      expect(
-        getSequenceNoteTextElementAtIndex(root as unknown as ParentNode, 0),
-      ).not.toBeNull();
-      expect(
-        getSequenceNoteTextElementAtIndex(root as unknown as ParentNode, 1),
-      ).toBeNull();
+      expect(getSequenceNoteTextElementAtIndex(root as unknown as ParentNode, 0)).not.toBeNull();
+      expect(getSequenceNoteTextElementAtIndex(root as unknown as ParentNode, 1)).toBeNull();
     });
   });
 
@@ -221,9 +207,7 @@ describe("sequenceNotes", () => {
       const text = new FakeSVGElement("text", "noteText");
       g.append(rect, text);
 
-      const result = getSequenceNoteRectForText(
-        text as unknown as SVGElement,
-      );
+      const result = getSequenceNoteRectForText(text as unknown as SVGElement);
       expect(result!.getAttribute("class")).toBe("note");
     });
 
@@ -235,9 +219,7 @@ describe("sequenceNotes", () => {
       innerG.append(text);
       outerG.append(rect, innerG);
 
-      const result = getSequenceNoteRectForText(
-        text as unknown as SVGElement,
-      );
+      const result = getSequenceNoteRectForText(text as unknown as SVGElement);
       expect(result!.getAttribute("class")).toBe("note");
     });
 
@@ -246,9 +228,7 @@ describe("sequenceNotes", () => {
       const text = new FakeSVGElement("text", "noteText");
       g.append(text);
 
-      const result = getSequenceNoteRectForText(
-        text as unknown as SVGElement,
-      );
+      const result = getSequenceNoteRectForText(text as unknown as SVGElement);
       expect(result).toBeNull();
     });
   });
