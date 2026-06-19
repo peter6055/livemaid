@@ -1719,7 +1719,7 @@ export function useCanvasInteraction({
 
       if (startInlineEdit) {
         const noteEntry = getSequenceNoteEntries(code)[index];
-        setEditingText(noteEntry?.text || "");
+        setEditingText((noteEntry?.text || "").replace(/<br\s*\/?>/gi, "\n"));
         setIsInlineEditing(true);
       }
     },

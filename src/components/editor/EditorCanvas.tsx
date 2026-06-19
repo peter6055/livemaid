@@ -49,6 +49,7 @@ import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDia
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
+import { findSeqReorderTargetSlot } from "@/lib/diagrams/sequenceReorder";
 import {
   CSSProperties,
   RefObject,
@@ -1034,7 +1035,6 @@ export function EditorCanvas({
     let dragSlots: Array<{ slot: number; y: number; h: number }> | null = null;
     let dragFindTarget: ((cx: number, cy: number) => number | null) | null = null;
 
-    const HIT_TOL_Y = 6;
     const HIT_TOL_X = 24;
 
     const onMove = (ev: MouseEvent) => {
@@ -1043,9 +1043,19 @@ export function EditorCanvas({
         !dragging &&
         (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
       ) {
+        // Compute Y positions for ALL slots (0..N) for accurate midpoint zone boundaries,
+        // including the excluded no-op slots. Eligible slots are computed separately for
+        // rendering. The target finder then uses ALL-slot midpoints but returns a slot
+        // number only if it is eligible (not excluded).
+        const allSlotYs: number[] = [];
+        for (let k = 0; k <= N; k += 1) {
+          allSlotYs.push(slotY(k));
+        }
+        const eligibleSlots = new Set<number>();
         const newSlots: Array<{ slot: number; y: number; h: number }> = [];
         for (let k = 0; k <= N; k += 1) {
           if (k === reorderFromIndex || k === reorderFromIndex + 1) continue;
+          eligibleSlots.add(k);
           const h = Math.max(5, Math.min(14, emptyGap(k) * 0.7));
           newSlots.push({ slot: k, y: slotY(k), h });
         }
@@ -1053,19 +1063,7 @@ export function EditorCanvas({
         dragSlots = newSlots;
         dragFindTarget = (cursorX: number, cursorY: number): number | null => {
           if (cursorX < left - HIT_TOL_X || cursorX > left + width + HIT_TOL_X) return null;
-          let best: number | null = null;
-          let bestDist = Number.POSITIVE_INFINITY;
-          for (const s of dragSlots!) {
-            const halfH = s.h / 2 + HIT_TOL_Y;
-            if (cursorY >= s.y - halfH && cursorY <= s.y + halfH) {
-              const d = Math.abs(s.y - cursorY);
-              if (d < bestDist) {
-                bestDist = d;
-                best = s.slot;
-              }
-            }
-          }
-          return best;
+          return findSeqReorderTargetSlot(allSlotYs, eligibleSlots, cursorY);
         };
         dragging = true;
         seqDidDragRef.current = true;
@@ -1073,26 +1071,30 @@ export function EditorCanvas({
       if (!dragging) return;
       const cursorX = ev.clientX - shellRect.left;
       const cursorY = ev.clientY - shellRect.top;
+      const newTargetSlot = dragFindTarget!(cursorX, cursorY);
       setSeqReorder({
         fromIndex: reorderFromIndex,
         left,
         width,
         slots: dragSlots!,
         cursorY,
-        targetSlot: dragFindTarget!(cursorX, cursorY),
+        targetSlot: newTargetSlot,
       });
     };
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (dragging) {
+        // Mouseup position is authoritative: recompute from the final cursor position
+        // and commit only when that result is non-null. Releasing in an excluded zone
+        // or outside the hit area cancels rather than committing a stale prior target.
         const cursorX = ev.clientX - shellRect.left;
         const cursorY = ev.clientY - shellRect.top;
-        const targetSlot = dragFindTarget!(cursorX, cursorY);
-        if (targetSlot !== null) {
+        const finalTargetSlot = dragFindTarget!(cursorX, cursorY);
+        if (finalTargetSlot !== null) {
           onReorderSequenceItem?.(
             { kind: draggedRow.kind, index: draggedRow.domIndex },
-            targetSlot,
+            finalTargetSlot,
           );
         }
       } else {
@@ -3216,17 +3218,22 @@ export function EditorCanvas({
       {/* Sequence message reorder drop zones + drag ghost — rendered at canvasShell level
             (viewport-relative, outside TransformWrapper) so pan/zoom never shifts them. */}
       {seqReorder && (
-        <div className="absolute inset-0 pointer-events-none z-30" data-seq-reorder-overlay>
+        <div
+          className="absolute inset-0 pointer-events-none z-30"
+          data-seq-reorder-overlay
+          data-seq-reorder-from={seqReorder.fromIndex}
+          data-seq-reorder-target={seqReorder.targetSlot ?? "none"}
+        >
           {seqReorder.slots.map((s) => {
             const active = seqReorder.targetSlot === s.slot;
             const alpha = active ? 0.38 : 0.16;
-            // Center each band on the interstitial midpoint; height is pre-sized to the
-            // local gap so it never overlaps the adjacent message line/label.
             const h = active ? Math.min(s.h + 4, s.h * 1.5 + 2) : s.h;
             return (
               <div
                 key={`seq-drop-${s.slot}`}
                 className="absolute rounded-md"
+                data-seq-drop-slot={s.slot}
+                data-seq-drop-active={active ? "true" : "false"}
                 style={{
                   left: seqReorder.left,
                   width: seqReorder.width,

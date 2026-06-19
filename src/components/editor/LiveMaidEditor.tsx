@@ -22,6 +22,7 @@ import {
   findSequenceParticipantLine,
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
+import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -3237,46 +3238,21 @@ export function LiveMaidEditor({
         kind: "note" as const,
         domIndex: i,
       }));
-      const unified = [...msgs, ...notes].sort((a, b) => a.srcIndex - b.srcIndex);
+      const unified: UnifiedRow[] = [...msgs, ...notes].sort((a, b) => a.srcIndex - b.srcIndex);
       const N = unified.length;
       const fromPos = unified.findIndex((u) => u.kind === item.kind && u.domIndex === item.index);
       if (fromPos < 0) return;
       const slot = Math.max(0, Math.min(N, toSlot));
-      // Dropping into its own position is a no-op.
       if (slot === fromPos || slot === fromPos + 1) return;
 
       const lines = code.split("\n");
       const srcIdx = unified[fromPos].srcIndex;
       const movedLine = lines[srcIdx];
+      const insertAt = computeInsertionIndex(unified, fromPos, slot);
 
-      // The row that should immediately FOLLOW the moved one is original unified[slot] — for BOTH
-      // up- and down-moves. (No +1 for down-moves: `slot` indexes the original array; the source
-      // line shift from removal is compensated below via `refOrigIndex > srcIdx`.)
-      let refOrigIndex: number | null = null;
-      if (slot < N) {
-        refOrigIndex = unified[slot].srcIndex;
-      }
-
-      lines.splice(srcIdx, 1); // remove source line first
-
-      let insertAt: number;
-      if (refOrigIndex !== null) {
-        insertAt = refOrigIndex > srcIdx ? refOrigIndex - 1 : refOrigIndex;
-      } else {
-        // Insert after the last remaining row.
-        const remaining = unified.filter((_, i) => i !== fromPos);
-        const last = remaining[remaining.length - 1];
-        const lastIdx = last.srcIndex > srcIdx ? last.srcIndex - 1 : last.srcIndex;
-        insertAt = lastIdx + 1;
-      }
-
+      lines.splice(srcIdx, 1);
       lines.splice(insertAt, 0, movedLine);
 
-      // Moving a message/note OUT of a block can leave that block empty (e.g. dragging the sole
-      // message out of a `rect … end` highlight). An empty block (`rect`/`loop`/`opt`/`alt`/`par`/
-      // `critical`/`break` whose body has no message/note, only section dividers) parses but CRASHES
-      // Mermaid's sequence renderer during bounds calc, breaking the whole diagram. Prune any block
-      // left truly empty by the move so the reorder never produces an unrenderable diagram.
       const pruned = pruneEmptySequenceBlocks(lines);
       handleCodeChange(pruned.join("\n"));
       setSelectionBox(null);
