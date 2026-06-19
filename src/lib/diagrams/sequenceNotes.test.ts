@@ -96,7 +96,7 @@ class FakeSVGElement {
 }
 
 if (typeof SVGElement === "undefined") {
-  (globalThis as any).SVGElement = FakeSVGElement;
+  (globalThis as { SVGElement: typeof FakeSVGElement }).SVGElement = FakeSVGElement;
 }
 
 describe("sequenceNotes", () => {
