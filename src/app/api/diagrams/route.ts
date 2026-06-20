@@ -17,13 +17,15 @@ export async function GET(request: Request) {
       diagrams = diagrams.filter((d) => d.name.toLowerCase().includes(lowerSearch));
     }
 
+    const total = diagrams.length;
+
     if (limitStr !== null && offsetStr !== null) {
       const limit = parseInt(limitStr, 10);
       const offset = parseInt(offsetStr, 10);
       diagrams = diagrams.slice(offset, offset + limit);
     }
 
-    return NextResponse.json(diagrams);
+    return NextResponse.json({ items: diagrams, total });
   } catch (error) {
     return NextResponse.json({ error: "Failed to fetch diagrams" }, { status: 500 });
   }

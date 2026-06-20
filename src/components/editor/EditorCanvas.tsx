@@ -1829,7 +1829,7 @@ export function EditorCanvas({
         }}
       />
       <TransformWrapper
-        initialScale={DEFAULT_CANVAS_INITIAL_SCALE}
+        initialScale={1.5}
         minScale={0.5}
         maxScale={50}
         centerOnInit={true}
