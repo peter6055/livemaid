@@ -70,7 +70,13 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 // new folders inherit the current folder as parent and the folder "Move to" menu reappears.
 const ALLOW_NESTED_FOLDERS = false;
 
-export default function Dashboard({ isDemo = false, appVersion }: { isDemo?: boolean; appVersion?: string }) {
+export default function Dashboard({
+  isDemo = false,
+  appVersion,
+}: {
+  isDemo?: boolean;
+  appVersion?: string;
+}) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
