@@ -25,7 +25,7 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Set NEXT_PUBLIC_APP_VERSION from latest tag
+      - name: Set version and deploy
         run: |
           TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
           if [ -n "$TAG" ]; then
@@ -33,12 +33,9 @@ jobs:
             echo "Detected version: $VERSION"
             railway variables set "NEXT_PUBLIC_APP_VERSION=$VERSION"
           else
-            echo "No semver tag found — skipping variable set (UI will show 0.0.0)"
+            echo "No semver tag found — skipping variable set (UI will show dev build)"
           fi
-
-      - name: Deploy to Railway
-        run: |
           railway up --detach --service "$RAILWAY_SERVICE"
         env:
-          RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
           RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || github.event.repository.name }}
