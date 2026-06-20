@@ -19,13 +19,25 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need tags for version detection
 
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
+      - name: Set NEXT_PUBLIC_APP_VERSION from latest tag
+        run: |
+          TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
+          if [ -n "$TAG" ]; then
+            VERSION="${TAG#v}"
+            echo "Detected version: $VERSION"
+            railway variables set "NEXT_PUBLIC_APP_VERSION=$VERSION"
+          else
+            echo "No semver tag found — skipping variable set (UI will show 0.0.0)"
+          fi
+
       - name: Deploy to Railway
         run: |
-          export RAILWAY_TOKEN="$RAILWAY_PROJECT_TOKEN"
           railway up --detach --service "$RAILWAY_SERVICE"
         env:
           RAILWAY_PROJECT_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
