@@ -694,7 +694,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
             </div>
           </div>
 
-          {/* Sidebar footer: theme toggle */}
+          {/* Sidebar footer: theme toggle + version */}
           <div className="border-t border-border p-3 shrink-0">
             <button
               onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -722,6 +722,11 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 />
               </div>
             </button>
+            <div className="mt-2 text-center text-[10px] text-muted-foreground/50 select-none">
+              {process.env.NEXT_PUBLIC_APP_VERSION
+                ? `v${process.env.NEXT_PUBLIC_APP_VERSION}`
+                : "dev"}
+            </div>
           </div>
         </aside>
 
