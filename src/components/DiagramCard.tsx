@@ -13,9 +13,9 @@ import {
   FolderInput,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useState } from "react";
-import mermaid from "mermaid";
+import { useEffect, useRef } from "react";
 import { determineDiagramType, diagramTypeLabel } from "@/lib/diagrams/utils";
+import { useMermaidPreview } from "@/hooks/useMermaidPreview";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -27,6 +27,14 @@ import {
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+
+function StableSvgHtml({ html, className }: { html: string; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.innerHTML = html;
+  }, [html]);
+  return <div ref={ref} className={className} />;
+}
 
 export interface DiagramDocument {
   id: string;
@@ -57,38 +65,12 @@ export function DiagramCard({
   isDemo?: boolean;
   view?: "grid" | "list";
 }) {
-  const [svgContent, setSvgContent] = useState<string>("");
-  const [isCompiling, setIsCompiling] = useState<boolean>(true);
-  const [previewError, setPreviewError] = useState<string | null>(null);
+  const {
+    svg: svgContent,
+    loading: isCompiling,
+    error: previewError,
+  } = useMermaidPreview(diagram.code, diagram.id);
   const showPreviewLoader = Boolean(diagram.code) && isCompiling;
-
-  useEffect(() => {
-    if (diagram.code) {
-      const renderPreview = async () => {
-        setIsCompiling(true);
-        setPreviewError(null);
-        try {
-          mermaid.initialize({
-            startOnLoad: false,
-            securityLevel: "loose",
-            flowchart: { htmlLabels: true },
-          });
-          await mermaid.parse(diagram.code!, { suppressErrors: true });
-          const { svg } = await mermaid.render(`preview-${diagram.id}`, diagram.code!);
-          setSvgContent(svg);
-        } catch (error) {
-          // Keep the preview card resilient, but explain why it failed when possible.
-          setSvgContent("");
-          setPreviewError(
-            error instanceof Error && error.message.trim() ? error.message : "Syntax error",
-          );
-        } finally {
-          setIsCompiling(false);
-        }
-      };
-      renderPreview();
-    }
-  }, [diagram.code, diagram.id]);
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
   const isSupported =
@@ -264,6 +246,7 @@ export function DiagramCard({
         draggable={!!onMove}
         onDragStart={handleDragStart}
         onClick={() => onNavigate(`/editor/${diagram.id}`)}
+        style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
         className="flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer"
       >
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
@@ -294,6 +277,7 @@ export function DiagramCard({
     <Card
       draggable={!!onMove}
       onDragStart={handleDragStart}
+      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
       className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
     >
       <CardHeader className="pb-2">
@@ -342,8 +326,8 @@ export function DiagramCard({
                 </div>
               </div>
             ) : svgContent ? (
-              <div
-                dangerouslySetInnerHTML={{ __html: svgContent }}
+              <StableSvgHtml
+                html={svgContent}
                 className="w-full h-full object-contain flex items-center justify-center opacity-70 pointer-events-none transform scale-50 text-zinc-900"
               />
             ) : (

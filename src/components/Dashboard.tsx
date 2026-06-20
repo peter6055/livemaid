@@ -554,16 +554,12 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return sorted;
   }, [diagrams, searchQuery, isSearching, currentFolderId, sortBy]);
 
-  // Lazy-load tuning + state. Shows 12 items at a time, with a brief spinner delay so scrolling
-  // reveals content gradually rather than popping in a big chunk; `loadingMore` guards against
-  // firing again while a batch is "loading" so each scroll-to-bottom yields exactly one batch.
+  // Lazy-load: show 12 items at a time, reveal next batch via IntersectionObserver.
   const LAZY_BATCH = 12;
-  const LAZY_DELAY_MS = 650;
+  const LAZY_DELAY_MS = 1500;
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Reset lazy-load state when the scope changes (folder / search / sort) so a mid-flight batch
-  // timer never carries over and the new scope starts from the first page.
   useEffect(() => {
     setDisplayCount(12);
     setLoadingMore(false);
@@ -574,11 +570,6 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return filteredDiagrams.slice(0, displayCount);
   }, [filteredDiagrams, displayCount]);
 
-  // Lazy loading intersection observer — loads the next batch with a deliberate delay + spinner so
-  // scrolling reveals content gradually (no sudden bulk pop-in). NOTE: `loading`/`folderLoading` are
-  // in the deps because the sentinel element only mounts once the skeleton grid is gone — without
-  // them the effect wouldn't re-run when the real grid appears, leaving the observer detached and
-  // "load more" dead after returning from a folder view.
   useEffect(() => {
     if (loading || folderLoading || searchLoading) return;
     const sentinel = sentinelRef.current;
@@ -602,7 +593,6 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return () => observer.disconnect();
   }, [displayCount, filteredDiagrams.length, loadingMore, loading, folderLoading, searchLoading]);
 
-  // Clean up the lazy-load timer on unmount.
   useEffect(
     () => () => {
       if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
@@ -1109,37 +1099,34 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   </div>
                 )}
 
+                {/** Diagrams section header (only shown when folders are also visible) */}
+                {filteredDiagrams.length > 0 && visibleFolders.length > 0 && (
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                    Diagrams{" "}
+                    <span className="text-muted-foreground/60">({filteredDiagrams.length})</span>
+                  </h2>
+                )}
                 {filteredDiagrams.length > 0 && (
-                  <div>
-                    {visibleFolders.length > 0 && (
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                        Diagrams{" "}
-                        <span className="text-muted-foreground/60">
-                          ({filteredDiagrams.length})
-                        </span>
-                      </h2>
-                    )}
-                    <div
-                      className={
-                        viewMode === "list"
-                          ? "flex flex-col gap-2"
-                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                      }
-                    >
-                      {displayedDiagrams.map((diagram) => (
-                        <DiagramCard
-                          key={diagram.id}
-                          diagram={diagram}
-                          onRename={openRenameDialog}
-                          onDelete={openDeleteDialog}
-                          onNavigate={handleNavigate}
-                          onMove={requestMoveDiagram}
-                          moveTargets={moveTargets}
-                          isDemo={isDemo}
-                          view={viewMode}
-                        />
-                      ))}
-                    </div>
+                  <div
+                    className={
+                      viewMode === "list"
+                        ? "flex flex-col gap-2"
+                        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    }
+                  >
+                    {displayedDiagrams.map((diagram) => (
+                      <DiagramCard
+                        key={diagram.id}
+                        diagram={diagram}
+                        onRename={openRenameDialog}
+                        onDelete={openDeleteDialog}
+                        onNavigate={handleNavigate}
+                        onMove={requestMoveDiagram}
+                        moveTargets={moveTargets}
+                        isDemo={isDemo}
+                        view={viewMode}
+                      />
+                    ))}
                   </div>
                 )}
                 {displayCount < filteredDiagrams.length && (
