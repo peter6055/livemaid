@@ -7,5 +7,6 @@ export default async function Home() {
   // into the static bundle at build time.
   await connection();
   const isDemo = process.env.DEMO_MODE === "true";
-  return <Dashboard isDemo={isDemo} />;
+  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+  return <Dashboard isDemo={isDemo} appVersion={appVersion} />;
 }
