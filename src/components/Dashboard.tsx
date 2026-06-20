@@ -722,10 +722,16 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                 />
               </div>
             </button>
-            <div className="mt-2 text-center text-[10px] text-muted-foreground/50 select-none">
-              {process.env.NEXT_PUBLIC_APP_VERSION
-                ? `v${process.env.NEXT_PUBLIC_APP_VERSION}`
-                : "dev"}
+            <div className="mt-1.5 px-2 text-xs text-muted-foreground/70 select-none flex items-center justify-between">
+              <span>Version: {process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}</span>
+              <a
+                href={`https://github.com/peter6055/livemaid/releases/tag/v${process.env.NEXT_PUBLIC_APP_VERSION ?? "0.0.0"}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-muted-foreground/80 transition-colors"
+              >
+                Changelogs
+              </a>
             </div>
           </div>
         </aside>
