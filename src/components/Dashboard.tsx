@@ -28,6 +28,7 @@ import {
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
+import { useUserPreferences } from "@/hooks/useUserPreferences";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -80,21 +81,11 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const isDark = resolvedTheme === "dark";
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const { prefs: userPrefs, hydrated, update: setUserPref } = useUserPreferences();
+  const { viewMode, sortBy, currentFolderId: savedFolderId } = userPrefs;
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderLoading, setFolderLoading] = useState(false);
   const folderSwitchTimer = useRef<NodeJS.Timeout | null>(null);
-  const [sortBy, setSortBy] = useState<"edited" | "created" | "name">("edited");
-  // File-viewer layout: "grid" (preview cards) or "list" (compact rows). Persisted to localStorage
-  // so the user's preference survives reloads. Hydrated in an effect (client-only) to avoid an
-  // SSR/hydration mismatch — the server always renders the default "grid".
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  useEffect(() => {
-    const saved = window.localStorage.getItem("livemaid:viewMode");
-    if (saved === "list" || saved === "grid") setViewMode(saved);
-  }, []);
-  useEffect(() => {
-    window.localStorage.setItem("livemaid:viewMode", viewMode);
-  }, [viewMode]);
   // `searchInput` is the raw, instant value bound to the text field; `searchQuery` is the DEBOUNCED
   // value that actually drives filtering. `searchLoading` is true during the debounce window so the
   // grid shows a brief loading state instead of filtering on every keystroke.
@@ -104,7 +95,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
-  const [displayCount, setDisplayCount] = useState(6);
+  const [displayCount, setDisplayCount] = useState(12);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
@@ -150,17 +141,23 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
   }, []);
 
   // Hydrate the current folder from the URL (`?folder=<id>`) on mount so deep-links and page
-  // refreshes restore the folder view. Done in an effect (client-only) rather than a lazy initial
-  // state to avoid SSR/hydration mismatch. If the folder no longer exists, the existing validation
-  // effect falls back to root and the URL is cleared by the sync effect below.
+  // refreshes restore the folder view. If no URL param is present, restore from saved preferences.
+  // Done in an effect (client-only) rather than a lazy initial state to avoid SSR/hydration
+  // mismatch. If the folder no longer exists, the existing validation effect falls back to root
+  // and the URL is cleared by the sync effect below.
   useEffect(() => {
     const f = new URLSearchParams(window.location.search).get("folder");
-    if (f) setCurrentFolderId(f);
+    if (f) {
+      setCurrentFolderId(f);
+    } else if (savedFolderId && hydrated) {
+      setCurrentFolderId(savedFolderId);
+    }
     didHydrateFolderRef.current = true;
-  }, []);
+  }, [hydrated, savedFolderId]);
 
   // Keep the URL in sync with the selected folder using replaceState (no Next navigation / re-fetch
   // and no history spam — folder switches stay bookmarkable/refresh-safe without polluting history).
+  // Also persist the selection to user preferences so it survives browser restart.
   useEffect(() => {
     if (!didHydrateFolderRef.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -168,7 +165,8 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     else params.delete("folder");
     const qs = params.toString();
     window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
-  }, [currentFolderId]);
+    setUserPref("currentFolderId", currentFolderId);
+  }, [currentFolderId, setUserPref]);
 
   const fetchData = async () => {
     try {
@@ -178,14 +176,14 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
         fetch("/api/folders"),
       ]);
       if (!diagRes.ok) throw new Error("Failed to fetch");
-      const data = await diagRes.json();
+      const { items } = await diagRes.json();
       const folderData = folderRes.ok ? await folderRes.json() : [];
 
       const elapsedTime = Date.now() - startTime;
       if (elapsedTime < 600) {
         await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
       }
-      setDiagrams(data);
+      setDiagrams(items);
       setFolders(folderData);
     } catch (error) {
       toast.error("Failed to load diagrams");
@@ -556,18 +554,14 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return sorted;
   }, [diagrams, searchQuery, isSearching, currentFolderId, sortBy]);
 
-  // Lazy-load tuning + state. A small batch size (3) plus an ~650ms throttle reveals diagrams
-  // gradually on scroll instead of popping in a big chunk; `loadingMore` guards against firing
-  // again while a batch is "loading" so each scroll-to-bottom yields exactly one batch.
-  const LAZY_BATCH = 3;
-  const LAZY_DELAY_MS = 650;
+  // Lazy-load: show 12 items at a time, reveal next batch via IntersectionObserver.
+  const LAZY_BATCH = 12;
+  const LAZY_DELAY_MS = 1500;
   const [loadingMore, setLoadingMore] = useState(false);
   const loadMoreTimer = useRef<NodeJS.Timeout | null>(null);
 
-  // Reset lazy-load state when the scope changes (folder / search / sort) so a mid-flight batch
-  // timer never carries over and the new scope starts from the first page.
   useEffect(() => {
-    setDisplayCount(6);
+    setDisplayCount(12);
     setLoadingMore(false);
     if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
   }, [currentFolderId, searchQuery, sortBy]);
@@ -576,11 +570,6 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return filteredDiagrams.slice(0, displayCount);
   }, [filteredDiagrams, displayCount]);
 
-  // Lazy loading intersection observer — loads the next batch with a deliberate delay + spinner so
-  // scrolling reveals content gradually (no sudden bulk pop-in). NOTE: `loading`/`folderLoading` are
-  // in the deps because the sentinel element only mounts once the skeleton grid is gone — without
-  // them the effect wouldn't re-run when the real grid appears, leaving the observer detached and
-  // "load more" dead after returning from a folder view.
   useEffect(() => {
     if (loading || folderLoading || searchLoading) return;
     const sentinel = sentinelRef.current;
@@ -604,7 +593,6 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
     return () => observer.disconnect();
   }, [displayCount, filteredDiagrams.length, loadingMore, loading, folderLoading, searchLoading]);
 
-  // Clean up the lazy-load timer on unmount.
   useEffect(
     () => () => {
       if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
@@ -882,19 +870,19 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
                         <DropdownMenuItem
-                          onClick={() => setSortBy("edited")}
+                          onClick={() => setUserPref("sortBy", "edited")}
                           className="cursor-pointer"
                         >
                           Last edited
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => setSortBy("created")}
+                          onClick={() => setUserPref("sortBy", "created")}
                           className="cursor-pointer"
                         >
                           Date created
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => setSortBy("name")}
+                          onClick={() => setUserPref("sortBy", "name")}
                           className="cursor-pointer"
                         >
                           Name
@@ -906,7 +894,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                     <div className="flex h-10 items-center rounded-md border border-border p-0.5">
                       <button
                         type="button"
-                        onClick={() => setViewMode("grid")}
+                        onClick={() => setUserPref("viewMode", "grid")}
                         aria-label="Grid view"
                         aria-pressed={viewMode === "grid"}
                         title="Grid view"
@@ -920,7 +908,7 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setViewMode("list")}
+                        onClick={() => setUserPref("viewMode", "list")}
                         aria-label="List view"
                         aria-pressed={viewMode === "list"}
                         title="List view"
@@ -1111,37 +1099,34 @@ export default function Dashboard({ isDemo = false }: { isDemo?: boolean }) {
                   </div>
                 )}
 
+                {/** Diagrams section header (only shown when folders are also visible) */}
+                {filteredDiagrams.length > 0 && visibleFolders.length > 0 && (
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+                    Diagrams{" "}
+                    <span className="text-muted-foreground/60">({filteredDiagrams.length})</span>
+                  </h2>
+                )}
                 {filteredDiagrams.length > 0 && (
-                  <div>
-                    {visibleFolders.length > 0 && (
-                      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-                        Diagrams{" "}
-                        <span className="text-muted-foreground/60">
-                          ({filteredDiagrams.length})
-                        </span>
-                      </h2>
-                    )}
-                    <div
-                      className={
-                        viewMode === "list"
-                          ? "flex flex-col gap-2"
-                          : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-                      }
-                    >
-                      {displayedDiagrams.map((diagram) => (
-                        <DiagramCard
-                          key={diagram.id}
-                          diagram={diagram}
-                          onRename={openRenameDialog}
-                          onDelete={openDeleteDialog}
-                          onNavigate={handleNavigate}
-                          onMove={requestMoveDiagram}
-                          moveTargets={moveTargets}
-                          isDemo={isDemo}
-                          view={viewMode}
-                        />
-                      ))}
-                    </div>
+                  <div
+                    className={
+                      viewMode === "list"
+                        ? "flex flex-col gap-2"
+                        : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    }
+                  >
+                    {displayedDiagrams.map((diagram) => (
+                      <DiagramCard
+                        key={diagram.id}
+                        diagram={diagram}
+                        onRename={openRenameDialog}
+                        onDelete={openDeleteDialog}
+                        onNavigate={handleNavigate}
+                        onMove={requestMoveDiagram}
+                        moveTargets={moveTargets}
+                        isDemo={isDemo}
+                        view={viewMode}
+                      />
+                    ))}
                   </div>
                 )}
                 {displayCount < filteredDiagrams.length && (

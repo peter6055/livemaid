@@ -58,6 +58,47 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 7. **Iterate**: You are expected to extend your session and perform as many test/fix iterations as necessary. Your ultimate goal is to present a product to the user that is as bug-free as possible. Do not consider the task complete until this is achieved.
 <!-- END:testing-agent-rules -->
 
+<!-- BEGIN:dev-server-rules -->
+
+# Dev Server Management
+
+When you need to start the Next.js dev server for testing, you MUST monitor it and retry on timeout.
+
+## Startup Loop
+
+```bash
+pkill -f "next dev" 2>/dev/null; sleep 1
+cd /path/to/project && npm run dev > /tmp/livemaid-dev.log 2>&1 &
+for i in $(seq 1 30); do
+  if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+    echo "Dev server ready after ${i}s"
+    break
+  fi
+  sleep 1
+done
+# If still not ready after 30s, log and retry once
+if ! curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+  echo "First attempt timed out, retrying..."
+  pkill -f "next dev" 2>/dev/null; sleep 2
+  npm run dev > /tmp/livemaid-dev.log 2>&1 &
+  for i in $(seq 1 30); do
+    if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+      echo "Dev server ready on retry after ${i}s"
+      break
+    fi
+    sleep 1
+  done
+fi
+```
+
+- Always kill the old dev server (`pkill -f "next dev"`) before starting a new one.
+- Poll `http://localhost:3000` until it responds with any HTTP status.
+- If not responding after 30s, kill and retry once.
+- Do not proceed with browser tests until the server is confirmed ready.
+- When done testing, kill the dev server: `pkill -f "next dev"`.
+
+<!-- END:dev-server-rules -->
+
 <!-- BEGIN:verification-planning-rules -->
 
 # How to Write a Verification Plan (Testplan)
