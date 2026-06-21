@@ -131,6 +131,9 @@ export function CommentBubble(props: CommentBubbleProps) {
                 if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
                   event.preventDefault();
                   props.onSubmit(props.value);
+                } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+                  event.preventDefault();
+                  composeInputRef.current?.select();
                 }
               }}
               onPointerDownCapture={(event) => event.stopPropagation()}
@@ -257,6 +260,9 @@ export function CommentBubble(props: CommentBubbleProps) {
                   if (props.replyValue.trim()) {
                     props.onSubmitReply();
                   }
+                } else if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+                  event.preventDefault();
+                  replyInputRef.current?.select();
                 }
               }}
               onPointerDownCapture={(event) => event.stopPropagation()}

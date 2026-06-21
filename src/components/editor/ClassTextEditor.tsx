@@ -118,6 +118,9 @@ export function ClassTextEditor({
           } else if (e.key === "Escape") {
             e.preventDefault();
             cancel();
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            ref.current?.select();
           }
         }}
         placeholder={
