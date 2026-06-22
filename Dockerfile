@@ -8,23 +8,25 @@ RUN npm install
 # Rebuild the source code only when needed
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache git
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public
 
 # Next.js telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
-ARG VERSION=0.0.0
+ARG VERSION
+ARG APP_VERSION
 
-RUN npm run build
+RUN VERSION="${VERSION:-$APP_VERSION}" npm run build
 
 # Production image, copy all the files and run next
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -47,8 +49,8 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
+ENV PORT=3000
 # set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]

@@ -25,8 +25,17 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Deploy
-        run: railway up --detach --service "$RAILWAY_SERVICE"
+      - name: Bake version from release tag and deploy
+        run: |
+          TAG=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$TAG" ]; then
+            echo "No release tag points at workflow commit ${{ github.event.workflow_run.head_sha }}"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          printf '%s\n' "$VERSION" > .build-version
+          echo "Baking version ${VERSION} from release tag ${TAG}"
+          railway up --detach --service "$RAILWAY_SERVICE"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
           RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || github.event.repository.name }}

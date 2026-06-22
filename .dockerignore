@@ -1,0 +1,11 @@
+node_modules
+.next
+
+data
+output
+playwright-report
+test-results
+
+.config
+*.log
+tsconfig.tsbuildinfo
