@@ -15,7 +15,7 @@ RUN mkdir -p public
 # Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED 1
 
-ARG VERSION=0.0.0
+ARG VERSION
 
 RUN npm run build
 

@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 
 function getVersion(): string {
-  if (process.env.VERSION) return process.env.VERSION;
+  if (process.env.VERSION && process.env.VERSION !== "0.0.0") return process.env.VERSION;
 
   try {
     const tag = execSync("git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1", {
@@ -13,6 +13,13 @@ function getVersion(): string {
     if (tag) return tag.replace(/^v/, "");
   } catch {
     // git not available or not a repo
+  }
+
+  // preserve existing non-zero version if already written (e.g. by Railway CI)
+  const existing = path.resolve(__dirname, "../src/lib/version.ts");
+  if (fs.existsSync(existing)) {
+    const match = fs.readFileSync(existing, "utf-8").match(/APP_VERSION\s*=\s*"([^"]+)"/);
+    if (match && match[1] !== "0.0.0") return match[1];
   }
 
   return "0.0.0";
