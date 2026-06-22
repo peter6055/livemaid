@@ -25,16 +25,16 @@ jobs:
       - name: Install Railway CLI
         run: npm install -g @railway/cli
 
-      - name: Inject version and deploy
+      - name: Bake version from release tag and deploy
         run: |
-          TAG="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)"
-          if [ -n "$TAG" ]; then
-            VERSION="${TAG#v}"
-          else
-            VERSION="0.0.0"
+          TAG=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if ! echo "$TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+            echo "No valid release tag points at workflow commit ${{ github.event.workflow_run.head_sha }}"
+            exit 1
           fi
-          echo "export const APP_VERSION = \"${VERSION}\";" > src/lib/version.ts
-          echo "Injected version: ${VERSION}"
+          APP_VERSION="${TAG#v}"
+          printf '// Auto-generated during release deploy; do not edit manually.\nexport const APP_VERSION = "%s";\n' "$APP_VERSION" > src/lib/version.ts
+          echo "Baking APP_VERSION=${APP_VERSION} from release tag ${TAG}"
           railway up --detach --service "$RAILWAY_SERVICE"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
