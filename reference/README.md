@@ -3,16 +3,17 @@
 This folder is the source of truth for LiveMaid's architecture, design, and implemented
 features. Read the relevant document before planning or implementing changes.
 
-| Document                                                                       | Purpose                                                                               |
-| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md)                                         | High-level system architecture, tech stack, and conventions.                          |
-| [`DESIGN.md`](./DESIGN.md)                                                     | UI/UX design specification: color tokens, typography, components, interaction polish. |
-| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md)                           | **Read first.** Compact invariant map and mandatory reading entrypoint.               |
-| [`EDITOR_INTERACTION_DETAILS.md`](./EDITOR_INTERACTION_DETAILS.md)             | Detailed canvas, overlay, hover, inline-edit, drag, and sequence interaction truths.  |
-| [`DIAGRAM_PLUGIN_DETAILS.md`](./DIAGRAM_PLUGIN_DETAILS.md)                     | Detailed class / ER / state plugin truths and plugin-specific mutation rules.         |
-| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement.     |
-| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md)     | Template/process for writing a verification (test) plan.                              |
-| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md)         | Template/process for writing a regression plan.                                       |
+| Document                                                                       | Purpose                                                                                |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| [`ARCHITECTURE.md`](./ARCHITECTURE.md)                                         | High-level system architecture, tech stack, and conventions.                           |
+| [`DESIGN.md`](./DESIGN.md)                                                     | UI/UX design specification: color tokens, typography, components, interaction polish.  |
+| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md)                           | **Read first.** Compact invariant map and mandatory reading entrypoint.                |
+| [`EDITOR_INTERACTION_DETAILS.md`](./EDITOR_INTERACTION_DETAILS.md)             | Detailed canvas, overlay, hover, inline-edit, drag, and sequence interaction truths.   |
+| [`DIAGRAM_PLUGIN_DETAILS.md`](./DIAGRAM_PLUGIN_DETAILS.md)                     | Detailed class / ER / state plugin truths and plugin-specific mutation rules.          |
+| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement.      |
+| [`OPENCODE_WORKFLOW_GUIDE.md`](./OPENCODE_WORKFLOW_GUIDE.md)                   | Operating guide for efficient OpenCode orchestration, model routing, and token saving. |
+| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md)     | Template/process for writing a verification (test) plan.                               |
+| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md)         | Template/process for writing a regression plan.                                        |
 
 > **RULE:** All reference documentation for AI agents or developers MUST live in this
 > `reference/` folder. Do not place docs at the repo root (keep the root clean).

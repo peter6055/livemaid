@@ -10,6 +10,8 @@ const nextConfig: NextConfig = {
     "127.0.0.1",
     "localhost",
     "0.0.0.0",
+    "100.118.120.*",
+    "100.104.12.35",
   ],
   turbopack: {
     root: process.cwd(),
