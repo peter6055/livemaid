@@ -64,11 +64,20 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 
 When you need to start the Next.js dev server for testing, you MUST monitor it and retry on timeout.
 
-## Startup Loop
+## Startup (OpenCode-compatible)
+
+> **Note**: OpenCode's bash tool may hang when backgrounding processes with `&`.  
+> Use `tmux` to fully decouple the server from the tool's process tree.
 
 ```bash
+# Kill any existing server
 pkill -f "next dev" 2>/dev/null; sleep 1
-cd /path/to/project && setsid npm run dev </dev/null >/tmp/livemaid-dev.log 2>&1 &
+tmux kill-session -t livemaid 2>/dev/null
+
+# Start server in a detached tmux session
+cd /path/to/project && tmux new-session -d -s livemaid 'npm run dev'
+
+# Poll until ready
 for i in $(seq 1 30); do
   if curl -s -o /dev/null --max-time 2 http://localhost:3434 2>/dev/null; then
     echo "Dev server ready after ${i}s"
@@ -76,11 +85,12 @@ for i in $(seq 1 30); do
   fi
   sleep 1
 done
-# If still not ready after 30s, log and retry once
+
+# Retry once if needed
 if ! curl -s -o /dev/null --max-time 2 http://localhost:3434 2>/dev/null; then
   echo "First attempt timed out, retrying..."
-  pkill -f "next dev" 2>/dev/null; sleep 2
-  setsid npm run dev </dev/null >/tmp/livemaid-dev.log 2>&1 &
+  tmux kill-session -t livemaid 2>/dev/null
+  tmux new-session -d -s livemaid 'npm run dev'
   for i in $(seq 1 30); do
     if curl -s -o /dev/null --max-time 2 http://localhost:3434 2>/dev/null; then
       echo "Dev server ready on retry after ${i}s"
@@ -91,13 +101,13 @@ if ! curl -s -o /dev/null --max-time 2 http://localhost:3434 2>/dev/null; then
 fi
 ```
 
-- Always kill the old dev server (`pkill -f "next dev"`) before starting a new one.
-- Use `setsid` to fully detach the server process from the shell session. Without it, the shell may block waiting for child processes (Turbopack spawns subprocesses that inherit the session). Always include `</dev/null` to close stdin or the process may hang waiting for input.
+- Always kill the old dev server before starting a new one.
+- Use `tmux new-session -d` to fully detach the server process. This avoids OpenCode's `&` limitation where backgrounded child processes cause the bash tool to hang.
 - Use `--max-time` (not `--connect-timeout`) on curl. `--connect-timeout` only limits the TCP handshake; if the server accepts the connection but hangs before sending a response, curl will still block. `--max-time` caps the entire operation.
 - Poll `http://localhost:3434` until it responds with any HTTP status.
 - If not responding after 30s, kill and retry once.
 - Do not proceed with browser tests until the server is confirmed ready.
-- When done testing, kill the dev server: `pkill -f "next dev"`.
+- When done testing, kill the dev server: `tmux kill-session -t livemaid`.
 
 <!-- END:dev-server-rules -->
 
