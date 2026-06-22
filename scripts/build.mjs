@@ -1,5 +1,5 @@
-import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { resolveVersion } from "./resolve-version.mjs";
 
 const version = resolveVersion();

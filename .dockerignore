@@ -1,7 +1,9 @@
 node_modules
+.github
 .next
 
 data
+demo
 output
 playwright-report
 test-results
