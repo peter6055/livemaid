@@ -1,0 +1,14 @@
+.git
+.github
+.next
+node_modules
+
+data
+demo
+output
+playwright-report
+test-results
+
+.config
+*.log
+tsconfig.tsbuildinfo

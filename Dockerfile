@@ -13,9 +13,13 @@ COPY . .
 RUN mkdir -p public
 
 # Next.js telemetry
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
-ARG VERSION=0.0.0
+ARG APP_VERSION
+
+RUN if [ -n "$APP_VERSION" ]; then \
+      printf '// Auto-generated during image build; do not edit manually.\nexport const APP_VERSION = "%s";\n' "$APP_VERSION" > src/lib/version.ts; \
+    fi
 
 RUN npm run build
 
@@ -23,8 +27,8 @@ RUN npm run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
@@ -47,8 +51,8 @@ USER nextjs
 
 EXPOSE 3000
 
-ENV PORT 3000
+ENV PORT=3000
 # set hostname to localhost
-ENV HOSTNAME "0.0.0.0"
+ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]

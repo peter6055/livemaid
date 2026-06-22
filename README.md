@@ -68,8 +68,6 @@ LiveMaid is containerized and available on the GitHub Container Registry. Since 
 1. Create a `docker-compose.yml` file on your server:
 
    ```yaml
-   version: "3.8"
-
    services:
      livemaid:
        image: ghcr.io/peter6055/livemaid:latest
