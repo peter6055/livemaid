@@ -62,27 +62,41 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 
 # Dev Server Management
 
-When you need to start the Next.js dev server for testing, you MUST monitor it and retry on timeout.
+## Two-Server Protocol
 
-## Startup Loop
+- **User's server** (port **3434**): runs via `npm run dev`. Never touch this.
+- **Agent's test server** (port **3435**): runs via `npm run test:dev`. Agent starts/stops ONLY this.
+
+**CRITICAL**: Never kill or interact with the user's server (port 3434, tmux session `livemaid`). The agent uses a separate port and tmux session (`livemaid-test`).
+
+## Agent Test Server Startup
+
+> **Note**: OpenCode's bash tool may hang when backgrounding processes with `&`.  
+> Use `tmux` to fully decouple the server from the tool's process tree.
 
 ```bash
-pkill -f "next dev" 2>/dev/null; sleep 1
-cd /path/to/project && npm run dev > /tmp/livemaid-dev.log 2>&1 &
+# Kill only the agent's old test server (NOT the user's server on 3434)
+tmux kill-session -t livemaid-test 2>/dev/null
+
+# Start agent's test server on port 3435 in a detached tmux session
+cd /path/to/project && tmux new-session -d -s livemaid-test 'npm run test:dev'
+
+# Poll until ready
 for i in $(seq 1 30); do
-  if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+  if curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
     echo "Dev server ready after ${i}s"
     break
   fi
   sleep 1
 done
-# If still not ready after 30s, log and retry once
-if ! curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+
+# Retry once if needed
+if ! curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
   echo "First attempt timed out, retrying..."
-  pkill -f "next dev" 2>/dev/null; sleep 2
-  npm run dev > /tmp/livemaid-dev.log 2>&1 &
+  tmux kill-session -t livemaid-test 2>/dev/null
+  tmux new-session -d -s livemaid-test 'npm run test:dev'
   for i in $(seq 1 30); do
-    if curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
+    if curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
       echo "Dev server ready on retry after ${i}s"
       break
     fi
@@ -91,11 +105,11 @@ if ! curl -s -o /dev/null http://localhost:3000 2>/dev/null; then
 fi
 ```
 
-- Always kill the old dev server (`pkill -f "next dev"`) before starting a new one.
-- Poll `http://localhost:3000` until it responds with any HTTP status.
+- Use `tmux new-session -d -s livemaid-test 'npm run test:dev'` to start the agent's server.
+- Poll `http://localhost:3435` until it responds with any HTTP status.
 - If not responding after 30s, kill and retry once.
-- Do not proceed with browser tests until the server is confirmed ready.
-- When done testing, kill the dev server: `pkill -f "next dev"`.
+- When done testing, kill ONLY the agent's server: `tmux kill-session -t livemaid-test`.
+- Never run `pkill -f "next dev"` — it would kill the user's server too.
 
 <!-- END:dev-server-rules -->
 

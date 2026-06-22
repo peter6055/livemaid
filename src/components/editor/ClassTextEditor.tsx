@@ -46,8 +46,10 @@ export function ClassTextEditor({
   useEffect(() => {
     const el = ref.current;
     if (el) {
-      el.focus();
-      el.select();
+      setTimeout(() => {
+        el.focus();
+        el.select();
+      }, 10);
     }
   }, []);
 
@@ -118,6 +120,9 @@ export function ClassTextEditor({
           } else if (e.key === "Escape") {
             e.preventDefault();
             cancel();
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            ref.current?.select();
           }
         }}
         placeholder={

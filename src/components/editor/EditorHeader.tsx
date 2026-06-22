@@ -310,6 +310,9 @@ export function EditorHeader({
                     } else if (e.key === "Escape") {
                       e.preventDefault();
                       cancelEditingName();
+                    } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+                      e.preventDefault();
+                      nameInputRef.current?.select();
                     }
                   }}
                   className="h-7 min-w-[8rem] max-w-[20rem] rounded-md border border-border bg-background px-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-indigo-500"

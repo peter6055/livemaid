@@ -125,6 +125,9 @@ export function InlineTextEditor({
         } else if (e.key === "Escape") {
           e.preventDefault();
           setIsInlineEditing(false);
+        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+          e.preventDefault();
+          inlineInputRef.current?.select();
         }
         e.stopPropagation();
       }}

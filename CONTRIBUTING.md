@@ -78,7 +78,7 @@ Start the local development server:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the dashboard.
+Open [http://localhost:3434](http://localhost:3434) with your browser to see the dashboard.
 
 The application auto-updates as you edit the files in the `src/` directory.
 

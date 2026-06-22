@@ -3829,6 +3829,26 @@ export function LiveMaidEditor({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isLocked) return;
+
+      // Intercept Ctrl+A / Cmd+A globally when ANY inline text editor is active.
+      // This is a belt-and-suspenders guard: even if the textarea lost focus
+      // (e.g. due to a re-render race), select-all is confined to the active
+      // editor textarea instead of selecting everything on the page.
+      const isAnyInlineEditing =
+        isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+      if (isAnyInlineEditing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        e.stopPropagation();
+        const textarea =
+          document.querySelector("textarea[data-scale-lock]") ||
+          document.querySelector("[data-class-text-editor] textarea");
+        if (textarea instanceof HTMLTextAreaElement) {
+          textarea.focus();
+          textarea.select();
+        }
+        return;
+      }
+
       if (isInlineEditing) return;
 
       // Ignore keydown if the user is typing in any text input, textarea, or Monaco editor
@@ -3883,11 +3903,38 @@ export function LiveMaidEditor({
   }, [
     isLocked,
     isInlineEditing,
+    classTextEdit,
+    stateTextEdit,
+    erTitleEdit,
+    erEdgeLabelEdit,
     selectedNodeId,
     handleDeleteEdge,
     handleDeleteNode,
     handleGlobalBoldItalic,
   ]);
+
+  useEffect(() => {
+    const onKeyDownCapture = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        const isAnyInlineEditing =
+          isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+        if (!isAnyInlineEditing) return;
+        e.preventDefault();
+        const textarea =
+          document.querySelector("textarea[data-scale-lock]") ||
+          document.querySelector("[data-class-text-editor] textarea");
+        if (textarea instanceof HTMLTextAreaElement) {
+          textarea.focus();
+          textarea.select();
+        }
+        // Clear any page-level selection the browser may have created before
+        // our handler fired (e.g. if the textarea momentarily lost focus).
+        window.getSelection()?.removeAllRanges();
+      }
+    };
+    document.addEventListener("keydown", onKeyDownCapture, true);
+    return () => document.removeEventListener("keydown", onKeyDownCapture, true);
+  }, [isInlineEditing, classTextEdit, stateTextEdit, erTitleEdit, erEdgeLabelEdit]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
