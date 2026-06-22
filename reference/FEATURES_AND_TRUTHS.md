@@ -75,6 +75,18 @@ These are the high-value truths that apply across the editor:
 
 ## 6. Testing and Verification Expectations
 
+### 6a. Test File Conventions
+
+- **All tests must be written in TypeScript.** No Python, JavaScript, or other languages.
+- All test files live in a single directory: **`src/test/`**.
+- **Unit tests** use Vitest with the **`.test.ts`** extension. Run: `npx vitest run` (or `npm run test`).
+- **E2E / browser tests** use Playwright (`@playwright/test`) with the **`.spec.ts`** extension. Run: `npm run test:e2e`.
+- **Playwright config** (`playwright.config.ts`) must set `testMatch: "**/*.spec.ts"` so it never picks up unit test files.
+- **Do not** create test files outside `src/test/` (no co-located tests, no `__tests__/` directories).
+- **Do not** add Python, shell, or ad-hoc test scripts anywhere in the repository.
+
+### 6b. Verification Loop
+
 - After UI or interaction changes, run an interactive browser test against the real flow.
 - Capture screenshots at meaningful checkpoints when verifying visual behavior.
 - Fix every issue discovered during that verification loop before considering the task done.

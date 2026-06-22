@@ -1,5 +1,6 @@
 import Dashboard from "@/components/Dashboard";
 import { connection } from "next/server";
+import { APP_VERSION } from "@/lib/version";
 
 export default async function Home() {
   // Opt out of build-time prerendering so DEMO_MODE is read from the live
@@ -7,6 +8,5 @@ export default async function Home() {
   // into the static bundle at build time.
   await connection();
   const isDemo = process.env.DEMO_MODE === "true";
-  const appVersion = process.env.NEXT_PUBLIC_APP_VERSION;
-  return <Dashboard isDemo={isDemo} appVersion={appVersion} />;
+  return <Dashboard isDemo={isDemo} appVersion={APP_VERSION} />;
 }

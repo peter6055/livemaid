@@ -118,6 +118,12 @@ jobs:
             type=raw,value=latest
             type=raw,value=${{ needs.version.outputs.version }}
 
+      - name: Set version build arg (strip v prefix)
+        id: version_arg
+        run: |
+          V="${{ needs.version.outputs.version }}"
+          echo "version=${V#v}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -125,6 +131,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version_arg.outputs.version }}
 
       - name: Save Docker image as tar
         run: |
