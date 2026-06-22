@@ -1468,6 +1468,12 @@ export function useCanvasInteraction({
         const label = colonIdx !== -1 && msgLine ? msgLine.substring(colonIdx + 1).trim() : "";
         setEditingText(label.replace(/<br\s*\/?>/gi, "\n"));
         setIsInlineEditing(true);
+        setTimeout(() => {
+          if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            inlineInputRef.current.select();
+          }
+        }, 10);
       }
     },
     [
@@ -1721,6 +1727,12 @@ export function useCanvasInteraction({
         const noteEntry = getSequenceNoteEntries(code)[index];
         setEditingText((noteEntry?.text || "").replace(/<br\s*\/?>/gi, "\n"));
         setIsInlineEditing(true);
+        setTimeout(() => {
+          if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            inlineInputRef.current.select();
+          }
+        }, 10);
       }
     },
     [containerRef, code, getSequenceNoteEntries],
