@@ -6,7 +6,7 @@
     "dev": "next dev --hostname 0.0.0.0 -p 3434",
     "test:dev": "next dev --hostname 0.0.0.0 -p 3435",
     "dev:agent": "next dev --hostname 0.0.0.0 --port 3434",
-    "build": "next build",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",
     "lint:fix": "eslint --fix",

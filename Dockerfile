@@ -8,6 +8,7 @@ RUN npm install
 # Rebuild the source code only when needed
 FROM node:20-alpine AS builder
 WORKDIR /app
+RUN apk add --no-cache git
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p public
@@ -15,13 +16,10 @@ RUN mkdir -p public
 # Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED=1
 
+ARG VERSION
 ARG APP_VERSION
 
-RUN if [ -n "$APP_VERSION" ]; then \
-      printf '// Auto-generated during image build; do not edit manually.\nexport const APP_VERSION = "%s";\n' "$APP_VERSION" > src/lib/version.ts; \
-    fi
-
-RUN npm run build
+RUN VERSION="${VERSION:-$APP_VERSION}" npm run build
 
 # Production image, copy all the files and run next
 FROM node:20-alpine AS runner

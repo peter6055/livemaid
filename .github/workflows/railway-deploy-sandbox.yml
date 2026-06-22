@@ -28,13 +28,13 @@ jobs:
       - name: Bake version from release tag and deploy
         run: |
           TAG=$(git tag --points-at "${{ github.event.workflow_run.head_sha }}" --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
-          if ! echo "$TAG" | grep -Eq '^v?[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
-            echo "No valid release tag points at workflow commit ${{ github.event.workflow_run.head_sha }}"
+          if [ -z "$TAG" ]; then
+            echo "No release tag points at workflow commit ${{ github.event.workflow_run.head_sha }}"
             exit 1
           fi
-          APP_VERSION="${TAG#v}"
-          printf '// Auto-generated during release deploy; do not edit manually.\nexport const APP_VERSION = "%s";\n' "$APP_VERSION" > src/lib/version.ts
-          echo "Baking APP_VERSION=${APP_VERSION} from release tag ${TAG}"
+          VERSION="${TAG#v}"
+          printf '%s\n' "$VERSION" > .build-version
+          echo "Baking version ${VERSION} from release tag ${TAG}"
           railway up --detach --service "$RAILWAY_SERVICE"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
