@@ -2074,9 +2074,9 @@ export function EditorCanvas({
                       data-scale-lock-shadow
                       className="absolute pointer-events-none z-20 border-indigo-500"
                       style={{
-                        left: hoveredSequenceMessageBox.x - 1 / state.scale,
+                        left: hoveredSequenceMessageBox.x,
                         top: hoveredSequenceMessageBox.y - 1 / state.scale,
-                        width: hoveredSequenceMessageBox.width + 2 / state.scale,
+                        width: hoveredSequenceMessageBox.width,
                         height: hoveredSequenceMessageBox.height + 2 / state.scale,
                         borderRadius: `${6 / state.scale}px`,
                         borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
@@ -2480,13 +2480,13 @@ export function EditorCanvas({
                     style={{
                       left:
                         selectionBox.x -
-                        (selectedNodeId?.startsWith("SEQ_MSG_") ? 1 : 4) / state.scale,
+                        (selectedNodeId?.startsWith("SEQ_MSG_") ? 0 : 4) / state.scale,
                       top:
                         selectionBox.y -
                         (selectedNodeId?.startsWith("SEQ_MSG_") ? 1 : 4) / state.scale,
                       width:
                         selectionBox.width +
-                        (selectedNodeId?.startsWith("SEQ_MSG_") ? 2 : 8) / state.scale,
+                        (selectedNodeId?.startsWith("SEQ_MSG_") ? 0 : 8) / state.scale,
                       height:
                         selectionBox.height +
                         (selectedNodeId?.startsWith("SEQ_MSG_") ? 2 : 8) / state.scale,
@@ -2728,10 +2728,12 @@ export function EditorCanvas({
                         type="button"
                         data-scale-lock
                         data-inline-toolbar
-                        data-base-transform="translate(100%, -50%)"
+                        // Keep this affordance fully outside sequence selection outlines. Do not
+                        // use selection geometry or CommentLayer pin offsets to position it.
+                        data-base-transform="translate(60%, -50%)"
                         className="absolute right-0 top-0 z-[23] flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background text-indigo-600 shadow-lg transition-colors hover:bg-indigo-50 pointer-events-auto dark:bg-zinc-900 dark:text-indigo-300 dark:hover:bg-zinc-800"
                         style={{
-                          transform: `translate(100%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          transform: `translate(60%, -50%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
                         }}
                         title="Add comment to selection"
                         onMouseDown={(e) => e.stopPropagation()}

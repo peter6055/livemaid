@@ -15,11 +15,11 @@ import {
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
 // MUST both use this exact value so they stay pixel-identical (one single border box).
-const SEQ_MSG_SELECTION_PADDING = { x: 2, y: 1 };
+const SEQ_MSG_SELECTION_PADDING = { x: 0, y: 1 };
 // Padding (canvas units) for the clickable/hoverable hit-test band. Kept SMALLER than the
 // visible box padding (especially vertically) so the interactive area is tighter than the
 // drawn box, preventing accidental clicks on adjacent message rows.
-const SEQ_MSG_HITTEST_PADDING = { x: 2, y: 1 };
+const SEQ_MSG_HITTEST_PADDING = { x: 0, y: 1 };
 
 function unionClientRects(elements: SVGElement[]): DOMRect | null {
   if (elements.length === 0) return null;
@@ -988,7 +988,7 @@ export function useCanvasInteraction({
 
       sequenceMessageVisualsRef.current = visuals;
 
-      const areas = buildSequenceMessageTriggerAreas(visuals, { x: 8, y: 5 });
+      const areas = buildSequenceMessageTriggerAreas(visuals, { x: 0, y: 5 });
 
       setSequenceMessageTriggerAreas(areas);
       return true;

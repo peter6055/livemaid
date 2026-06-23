@@ -89,6 +89,10 @@ truths:
   before the transformed container is ready.
 - Toolbar hit areas, hover suppression, and stacking order must keep floating sequence UI from
   reselecting or highlighting content behind it.
+- The selected-message comment button is a child overlay of the selection outline in
+  `EditorCanvas.tsx`, but its position must be adjusted only with the button's own transform.
+  Do not change sequence selection, hover, hit-test, or stored comment-pin geometry just to move
+  that indigo button.
 
 ### 5.1 Multi-line message hover and selection (`fix/issue-71-sequence-duplicate-selection`)
 
@@ -147,6 +151,47 @@ truths:
 | `1eb9b60` | `fix(sequence): stabilize message hover highlight after selection`                  |
 
 Draft PR: [#74 — fix(sequence): stabilize multi-line message selection and hover](https://github.com/peter6055/livemaid/pull/74)
+
+### 5.2 Sequence Selection Comment Button Placement (`#96` / `#97` guardrail)
+
+The small indigo "Add comment to selection" button for a selected sequence message is rendered
+inside the selection-outline overlay in `src/components/editor/EditorCanvas.tsx`. Its visual
+placement is controlled by its own `translate(...) scale(...)` transform, not by the selection
+box dimensions.
+
+**Invariant**
+
+- Moving the selected-message comment button must not modify `selectionBox`,
+  `hoveredSequenceMessageBox`, `sequenceMessageTriggerAreas`, `SEQ_MSG_SELECTION_PADDING`, or
+  `SEQ_MSG_HITTEST_PADDING` in `src/hooks/useCanvasInteraction.ts`. Change hit-test constants only
+  when the task is explicitly about the invisible hit/reorder area.
+- Moving that button must not modify `SEQUENCE_COMMENT_OFFSET` in
+  `src/components/editor/CommentLayer.tsx`. That constant positions persisted comment pins and
+  active comment-thread anchors, not the selection affordance button.
+- Hover and selection geometry for sequence messages must remain pixel-identical after the button
+  move; only the button's own transform may change.
+- Sequence message selection intentionally uses no extra horizontal model padding and no extra
+  horizontal render inflation; keep left/right edges tight while preserving vertical breathing room.
+
+**Current fix**
+
+- Non-sequence selections keep the existing `translate(100%, -50%)` placement.
+- The selected-comment button uses `translate(60%, -50%)`, keeping the affordance anchored to the
+  selection's right edge without changing selection, hit-area, or stored comment pin geometry.
+- Sequence message hit areas use no extra horizontal padding beyond the line+label bounds. Keep
+  vertical trigger padding for reliable row targeting, but do not widen the invisible hit overlay
+  left/right.
+
+**Regression checks**
+
+- Select a sequence message and verify the indigo comment button sits fully outside the selection
+  outline.
+- Verify the purple selection outline still tightly matches the message line + label and does not
+  jump compared with hover.
+- Verify the transparent reorder/hit band still covers the intended message row vertically without
+  extending farther left/right than the message line+label bounds.
+- Add a comment and verify the persisted comment pin/thread anchor still appears at the expected
+  sequence-message anchor.
 
 ## 6. Canvas-to-Code Highlighting
 
