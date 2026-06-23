@@ -35,6 +35,7 @@ jobs:
           VERSION="${TAG#v}"
           printf '%s\n' "$VERSION" > .build-version
           echo "Baking version ${VERSION} from release tag ${TAG}"
+          railway variable set "VERSION=$VERSION" --service "$RAILWAY_SERVICE"
           railway up --detach --service "$RAILWAY_SERVICE"
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_PROJECT_TOKEN }}
