@@ -47,9 +47,6 @@ next-env.d.ts
 # local data
 data/
 
-# generated build-time version file (used by Railway CI handoff)
-.build-version
-
 # opencode agent config
 .opencode/
 
