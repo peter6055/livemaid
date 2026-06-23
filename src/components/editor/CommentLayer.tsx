@@ -17,8 +17,8 @@ import {
   findOwningLineForSequenceLabel,
 } from "@/hooks/useCanvasInteraction";
 
-const SHAPE_COMMENT_OFFSET = 8;
-const SEQUENCE_COMMENT_OFFSET = 10;
+const SHAPE_COMMENT_OFFSET = 4;
+const SEQUENCE_COMMENT_OFFSET = 5;
 type CommentComposerState = {
   anchor: DiagramCommentAnchor;
   position: { x: number; y: number };
