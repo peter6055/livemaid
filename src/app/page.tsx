@@ -2,9 +2,9 @@ import Dashboard from "@/components/Dashboard";
 import { connection } from "next/server";
 
 function getModeSuffix(): string {
-  if (process.env.NODE_ENV === "development") return "Dev";
-  if (process.env.DEMO_MODE === "true") return "Prod Demo";
-  return "Prod";
+  const mode = process.env.NODE_ENV === "development" ? "Dev" : "Prod";
+  const demo = process.env.DEMO_MODE === "true" ? " Demo" : "";
+  return `${mode}${demo}`;
 }
 
 export default async function Home() {
