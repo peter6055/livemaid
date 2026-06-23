@@ -73,9 +73,11 @@ const ALLOW_NESTED_FOLDERS = false;
 export default function Dashboard({
   isDemo = false,
   appVersion,
+  rawVersion,
 }: {
   isDemo?: boolean;
   appVersion?: string;
+  rawVersion?: string;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
@@ -731,7 +733,7 @@ export default function Dashboard({
             <div className="mt-1.5 px-2 text-xs text-muted-foreground/70 select-none flex items-center justify-between">
               <span>Version: {appVersion ?? "0.0.0"}</span>
               <a
-                href={`https://github.com/peter6055/livemaid/releases/tag/v${appVersion ?? "0.0.0"}`}
+                href={`https://github.com/peter6055/livemaid/releases/tag/v${rawVersion ?? appVersion ?? "0.0.0"}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="hover:text-muted-foreground/80 transition-colors"
