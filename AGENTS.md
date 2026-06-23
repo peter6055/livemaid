@@ -140,6 +140,7 @@ To ensure we can safely rollback changes if anything goes wrong, you MUST follow
 1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
 2. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the _current request_, unless previously agreed upon.
 3. **Conventional Commits**: You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows: `<type>[optional scope]: <description>`
+   - Do NOT add emoji to commit messages.
    - `fix`: patches a bug in your codebase.
    - `feat`: introduces a new feature to the codebase.
    - `BREAKING CHANGE`: introduces a breaking API change.
