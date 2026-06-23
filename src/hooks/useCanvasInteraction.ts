@@ -156,6 +156,7 @@ function findSequenceMessageVisualAtClientPoint(
   container: HTMLElement,
   code: string,
   getSequenceMessageEntries: (sourceCode: string) => Array<{ index: number; line: string }>,
+  existingVisuals?: SequenceMessageVisual[],
 ): SequenceMessageVisual | null {
   const rect = container.getBoundingClientRect();
   const scale = rect.width / container.offsetWidth;
@@ -163,12 +164,14 @@ function findSequenceMessageVisualAtClientPoint(
   const canvasX = (clientX - rect.left + container.scrollLeft) / scale;
   const canvasY = (clientY - rect.top + container.scrollTop) / scale;
 
-  const visuals = buildSequenceMessageVisualModel(
-    container,
-    code,
-    getSequenceMessageEntries,
-    findOwningLineForSequenceLabel,
-  );
+  const visuals =
+    existingVisuals ??
+    buildSequenceMessageVisualModel(
+      container,
+      code,
+      getSequenceMessageEntries,
+      findOwningLineForSequenceLabel,
+    );
 
   return (
     visuals.find((v) => {
@@ -298,6 +301,47 @@ export function buildSequenceMessageVisualModel(
   }
 
   return visuals;
+}
+
+export function buildSequenceMessageTriggerAreas(
+  visuals: SequenceMessageVisual[],
+  padding: { x: number; y: number },
+): Array<{ index: number; x: number; y: number; width: number; height: number }> {
+  const expanded = visuals.map((v) => {
+    const base = v.hitBox;
+    return {
+      index: v.index,
+      x: base.x - padding.x,
+      y: base.y - padding.y,
+      width: Math.max(0, base.width + padding.x * 2),
+      height: Math.max(0, base.height + padding.y * 2),
+    };
+  });
+
+  const sorted = [...expanded].sort((a, b) => {
+    const aCenter = a.y + a.height / 2;
+    const bCenter = b.y + b.height / 2;
+    return aCenter - bCenter || a.index - b.index;
+  });
+
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const current = sorted[i];
+    const next = sorted[i + 1];
+    const currentBottom = current.y + current.height;
+    if (currentBottom <= next.y) continue;
+
+    const currentCenter = current.y + current.height / 2;
+    const nextCenter = next.y + next.height / 2;
+    const boundary = (currentCenter + nextCenter) / 2;
+    const clampedBoundary = Math.min(Math.max(boundary, current.y), next.y + next.height);
+
+    current.height = Math.max(0, clampedBoundary - current.y);
+    const nextBottom = next.y + next.height;
+    next.y = clampedBoundary;
+    next.height = Math.max(0, nextBottom - next.y);
+  }
+
+  return expanded;
 }
 
 // A parsed sequence block fragment (loop/alt/opt/par/critical/break) or `rect` highlight, with its
@@ -579,13 +623,16 @@ export function useCanvasInteraction({
       const container = containerRef.current;
       if (!container) return;
 
-      const visuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
-      sequenceMessageVisualsRef.current = visuals;
+      let visuals = sequenceMessageVisualsRef.current;
+      if (visuals.length === 0) {
+        visuals = buildSequenceMessageVisualModel(
+          container,
+          code,
+          getSequenceMessageEntries,
+          findOwningLineForSequenceLabel,
+        );
+        sequenceMessageVisualsRef.current = visuals;
+      }
       const visual = visuals[index];
       if (!visual) return;
 
@@ -673,12 +720,16 @@ export function useCanvasInteraction({
       const container = containerRef.current;
       if (!container) return null;
 
-      const visuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
+      let visuals = sequenceMessageVisualsRef.current;
+      if (visuals.length === 0) {
+        visuals = buildSequenceMessageVisualModel(
+          container,
+          code,
+          getSequenceMessageEntries,
+          findOwningLineForSequenceLabel,
+        );
+        sequenceMessageVisualsRef.current = visuals;
+      }
 
       let bestVisual: SequenceMessageVisual | null = null;
       let bestDist = Number.POSITIVE_INFINITY;
@@ -760,6 +811,9 @@ export function useCanvasInteraction({
         container,
         code,
         getSequenceMessageEntries,
+        sequenceMessageVisualsRef.current.length > 0
+          ? sequenceMessageVisualsRef.current
+          : undefined,
       );
       return visual?.index ?? null;
     },
@@ -934,17 +988,7 @@ export function useCanvasInteraction({
 
       sequenceMessageVisualsRef.current = visuals;
 
-      const paddingX = 8;
-      const paddingY = 5;
-
-      const areas: Array<{ index: number; x: number; y: number; width: number; height: number }> =
-        visuals.map((v) => ({
-          index: v.index,
-          x: v.hitBox.x - paddingX,
-          y: v.hitBox.y - paddingY,
-          width: Math.max(0, v.hitBox.width + paddingX * 2),
-          height: Math.max(0, v.hitBox.height + paddingY * 2),
-        }));
+      const areas = buildSequenceMessageTriggerAreas(visuals, { x: 8, y: 5 });
 
       setSequenceMessageTriggerAreas(areas);
       return true;
@@ -1299,12 +1343,15 @@ export function useCanvasInteraction({
 
       const noteTextEls = getSortedNoteTextEls(container);
 
-      const msgVisuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
+      const msgVisuals =
+        sequenceMessageVisualsRef.current.length > 0
+          ? sequenceMessageVisualsRef.current
+          : buildSequenceMessageVisualModel(
+              container,
+              code,
+              getSequenceMessageEntries,
+              findOwningLineForSequenceLabel,
+            );
 
       const codeLines = code.split("\n");
       const noteSrcLines = codeLines
@@ -1442,12 +1489,16 @@ export function useCanvasInteraction({
 
       if (messageIndex < 0) return;
 
-      const visuals = buildSequenceMessageVisualModel(
-        container,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
+      let visuals = sequenceMessageVisualsRef.current;
+      if (visuals.length === 0) {
+        visuals = buildSequenceMessageVisualModel(
+          container,
+          code,
+          getSequenceMessageEntries,
+          findOwningLineForSequenceLabel,
+        );
+        sequenceMessageVisualsRef.current = visuals;
+      }
       const visual = visuals[messageIndex];
       if (!visual) return;
 
@@ -2116,12 +2167,15 @@ export function useCanvasInteraction({
       }
     } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const idx = parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10);
-      const visuals = buildSequenceMessageVisualModel(
-        containerRef.current,
-        code,
-        getSequenceMessageEntries,
-        findOwningLineForSequenceLabel,
-      );
+      const visuals =
+        sequenceMessageVisualsRef.current.length > 0
+          ? sequenceMessageVisualsRef.current
+          : buildSequenceMessageVisualModel(
+              containerRef.current,
+              code,
+              getSequenceMessageEntries,
+              findOwningLineForSequenceLabel,
+            );
       const visual = visuals[idx];
       if (visual) {
         foundElement = (visual.labelEls[0] || visual.lineEl) as SVGElement;
@@ -2830,12 +2884,15 @@ export function useCanvasInteraction({
         // For sequence messages, always select text + underlying connection together.
         if (cleanId && cleanId.startsWith("SEQ_MSG_")) {
           const idx = parseInt(cleanId.replace("SEQ_MSG_", ""), 10);
-          const visuals = buildSequenceMessageVisualModel(
-            containerRef.current,
-            code,
-            getSequenceMessageEntries,
-            findOwningLineForSequenceLabel,
-          );
+          const visuals =
+            sequenceMessageVisualsRef.current.length > 0
+              ? sequenceMessageVisualsRef.current
+              : buildSequenceMessageVisualModel(
+                  containerRef.current,
+                  code,
+                  getSequenceMessageEntries,
+                  findOwningLineForSequenceLabel,
+                );
           const visual = visuals[idx];
           if (visual) {
             const pairedTextEl = visual.labelEls[0] || null;

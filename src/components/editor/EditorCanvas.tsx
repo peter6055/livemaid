@@ -689,6 +689,7 @@ export function EditorCanvas({
   // different DOM nodes), so we time clicks ourselves keyed by message index.
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
   const fallbackRenderIdRef = useRef<string | null>(null);
+  const lastScaleRef = useRef(0);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
@@ -1863,6 +1864,7 @@ export function EditorCanvas({
         limitToBounds={false}
         doubleClick={{ disabled: true }}
         onInit={(ref) => {
+          lastScaleRef.current = ref.state.scale;
           if (containerRef.current) {
             containerRef.current.style.setProperty("--zoom-scale", String(ref.state.scale));
             containerRef.current.style.setProperty(
@@ -1873,17 +1875,16 @@ export function EditorCanvas({
           }
         }}
         onTransform={(_ref, state) => {
-          setStateConnectMenu((menu) => (menu ? null : menu));
           if (containerRef.current) {
             containerRef.current.style.setProperty("--zoom-scale", String(state.scale));
             containerRef.current.style.setProperty("--zoom-inverse-scale", String(1 / state.scale));
-            updateScaleLockedElements(containerRef.current, state.scale);
+            if (Math.abs(state.scale - lastScaleRef.current) > 0.001) {
+              lastScaleRef.current = state.scale;
+              updateScaleLockedElements(containerRef.current, state.scale);
+            }
           }
         }}
         onPanningStart={() => {
-          setStateConnectMenu((menu) => (menu ? null : menu));
-        }}
-        onPanning={() => {
           setStateConnectMenu((menu) => (menu ? null : menu));
         }}
         onZoomStart={() => {
