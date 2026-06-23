@@ -1,11 +1,19 @@
 import Dashboard from "@/components/Dashboard";
 import { connection } from "next/server";
 
+function getModeSuffix(): string {
+  if (process.env.NODE_ENV === "development") return "Dev";
+  if (process.env.DEMO_MODE === "true") return "Prod Demo";
+  return "Prod";
+}
+
 export default async function Home() {
   // Opt out of build-time prerendering so DEMO_MODE is read from the live
   // runtime environment (e.g. Railway service variables) instead of being baked
   // into the static bundle at build time.
   await connection();
   const isDemo = process.env.DEMO_MODE === "true";
-  return <Dashboard isDemo={isDemo} appVersion={process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0"} />;
+  const rawVersion = process.env.NEXT_PUBLIC_APP_VERSION || "0.0.0";
+  const displayVersion = `${rawVersion} (${getModeSuffix()})`;
+  return <Dashboard isDemo={isDemo} appVersion={displayVersion} rawVersion={rawVersion} />;
 }
