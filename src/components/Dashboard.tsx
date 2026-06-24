@@ -711,7 +711,6 @@ export default function Dashboard({
               onClick={() => setTheme(isDark ? "light" : "dark")}
               className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
             >
-              {/* Render theme-dependent labels/icons only after mount to avoid hydration mismatch. */}
               <span className="flex items-center gap-2">
                 {mounted ? (
                   <>
@@ -730,6 +729,22 @@ export default function Dashboard({
               >
                 <div
                   className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${mounted && isDark ? "left-4" : "left-1"}`}
+                />
+              </div>
+            </button>
+            <button
+              onClick={() => setTelemetryEnabled(!telemetryEnabled)}
+              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Telemetry
+              </span>
+              <div
+                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${telemetryEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
+              >
+                <div
+                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${telemetryEnabled ? "left-4" : "left-1"}`}
                 />
               </div>
             </button>
