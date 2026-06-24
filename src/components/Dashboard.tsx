@@ -24,11 +24,14 @@ import {
   FileText,
   LayoutGrid,
   List,
+  Activity,
+  CircleAlert,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -80,6 +83,7 @@ export default function Dashboard({
   rawVersion?: string;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
+  const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetry();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
   const [mounted, setMounted] = useState(false);
@@ -708,7 +712,6 @@ export default function Dashboard({
               onClick={() => setTheme(isDark ? "light" : "dark")}
               className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
             >
-              {/* Render theme-dependent labels/icons only after mount to avoid hydration mismatch. */}
               <span className="flex items-center gap-2">
                 {mounted ? (
                   <>
@@ -727,6 +730,31 @@ export default function Dashboard({
               >
                 <div
                   className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${mounted && isDark ? "left-4" : "left-1"}`}
+                />
+              </div>
+            </button>
+            <button
+              onClick={() => setTelemetryEnabled(!telemetryEnabled)}
+              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Activity className="w-4 h-4" />
+                Telemetry
+                <a
+                  href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-muted-foreground/50 hover:text-foreground transition-colors"
+                >
+                  <CircleAlert className="w-3.5 h-3.5" />
+                </a>
+              </span>
+              <div
+                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${telemetryEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
+              >
+                <div
+                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${telemetryEnabled ? "left-4" : "left-1"}`}
                 />
               </div>
             </button>
@@ -769,6 +797,24 @@ export default function Dashboard({
                   className="cursor-pointer gap-2"
                 >
                   <Moon className="w-4 h-4" /> Toggle Theme
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setTelemetryEnabled(!telemetryEnabled);
+                  }}
+                  className="cursor-pointer gap-2"
+                >
+                  <Activity className="w-4 h-4" /> Telemetry {telemetryEnabled ? "ON" : "OFF"}
+                  <a
+                    href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-muted-foreground/50 hover:text-foreground transition-colors ml-auto"
+                  >
+                    <CircleAlert className="w-3.5 h-3.5" />
+                  </a>
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
