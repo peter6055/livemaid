@@ -1,5 +1,6 @@
 "use client";
 
+import { getTelemetry } from "@/lib/telemetry";
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import {
@@ -3758,6 +3759,12 @@ export function LiveMaidEditor({
   };
 
   const handleExport = async () => {
+    getTelemetry()?.addBreadcrumb({
+      category: "export",
+      message: "Export triggered",
+      data: { format: exportFormat, background: exportBg },
+    });
+
     let finalSvgContent = svgContent;
 
     // Inject background if needed for SVG/PNG
@@ -3811,6 +3818,9 @@ export function LiveMaidEditor({
         a.click();
       } catch (err) {
         console.error("PNG export error", err);
+        getTelemetry()?.captureError(err instanceof Error ? err : new Error("PNG export failed"), {
+          format: exportFormat,
+        });
         toast.error("Failed to export PNG");
       }
     } else if (exportFormat === "MMD") {
@@ -3864,6 +3874,7 @@ export function LiveMaidEditor({
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
         if (isInputActive) return; // let Monaco handle it natively
         e.preventDefault();
+        getTelemetry()?.addBreadcrumb({ category: "editor", message: "Undo" });
         editorRef.current?.trigger("keyboard", "undo", null);
         return;
       }
@@ -3873,6 +3884,7 @@ export function LiveMaidEditor({
       ) {
         if (isInputActive) return;
         e.preventDefault();
+        getTelemetry()?.addBreadcrumb({ category: "editor", message: "Redo" });
         editorRef.current?.trigger("keyboard", "redo", null);
         return;
       }

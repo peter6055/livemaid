@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { getTelemetry } from "@/lib/telemetry";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import mermaid from "mermaid";
@@ -90,7 +91,14 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
         onResetSelection();
       }
     } catch (e) {
-      setParseError(e instanceof Error ? e.message : "Syntax Error");
+      const errorMessage = e instanceof Error ? e.message : "Syntax Error";
+      setParseError(errorMessage);
+      getTelemetry()?.addBreadcrumb({
+        category: "render",
+        message: "Mermaid render failed",
+        level: "error",
+        data: { documentId },
+      });
     }
   }, []);
 
@@ -105,6 +113,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
           setDoc(data);
           setCode(data.code);
           renderMermaid(data.code);
+          getTelemetry()?.addBreadcrumb({
+            category: "editor",
+            message: "Diagram loaded",
+            data: { documentId },
+          });
         } else if (res.status === 404) {
           // The requested diagram does not exist — surface a dedicated not-found screen
           // instead of silently rendering an empty editor.
@@ -118,6 +131,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
         }
       } catch {
         toast.error("Failed to load diagram");
+        getTelemetry()?.captureMessage("Failed to load diagram", "error", { documentId });
       } finally {
         setLoading(false);
       }
@@ -139,10 +153,15 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
 
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
-        // The server has persisted this code — nothing left to lose on unload.
         hasUnsavedChangesRef.current = false;
+        getTelemetry()?.addBreadcrumb({
+          category: "editor",
+          message: "Auto-save succeeded",
+          data: { documentId },
+        });
       } catch {
         toast.error("Failed to auto-save");
+        getTelemetry()?.captureMessage("Auto-save failed", "error", { documentId });
         // Keep the dirty flag set so the unload guard still protects the unsaved edit.
       } finally {
         setSaving(false);

@@ -1,3 +1,4 @@
+import { getTelemetry } from "@/lib/telemetry";
 import { useEffect, useState } from "react";
 import mermaid from "mermaid";
 import { ensureMermaidInitialized } from "@/lib/mermaid-client";
@@ -61,6 +62,12 @@ export function useMermaidPreview(code: string | undefined, id: string) {
         if (!cancelled) {
           setSvg("");
           setError(e instanceof Error && e.message.trim() ? e.message : "Syntax error");
+          getTelemetry()?.addBreadcrumb({
+            category: "preview",
+            message: "Preview render failed",
+            level: "error",
+            data: { id },
+          });
         }
       } finally {
         if (!cancelled) setLoading(false);

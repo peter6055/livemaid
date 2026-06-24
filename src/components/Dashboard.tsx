@@ -24,11 +24,13 @@ import {
   FileText,
   LayoutGrid,
   List,
+  Activity,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -80,6 +82,7 @@ export default function Dashboard({
   rawVersion?: string;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
+  const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetry();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
   const [mounted, setMounted] = useState(false);
@@ -769,6 +772,15 @@ export default function Dashboard({
                   className="cursor-pointer gap-2"
                 >
                   <Moon className="w-4 h-4" /> Toggle Theme
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setTelemetryEnabled(!telemetryEnabled);
+                  }}
+                  className="cursor-pointer gap-2"
+                >
+                  <Activity className="w-4 h-4" /> Telemetry {telemetryEnabled ? "ON" : "OFF"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>

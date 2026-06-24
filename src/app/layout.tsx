@@ -14,6 +14,8 @@ const geistMono = Geist_Mono({
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { TelemetryProvider } from "@/lib/telemetry/telemetryProvider";
+import { getTelemetryConfig } from "@/lib/telemetry/config";
 
 export const metadata: Metadata = {
   title: "LiveMaid | The WYSIWYG Mermaid Editor",
@@ -33,15 +35,17 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-background text-foreground">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <TelemetryProvider config={getTelemetryConfig()}>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </TelemetryProvider>
       </body>
     </html>
   );
