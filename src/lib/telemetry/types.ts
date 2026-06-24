@@ -1,7 +1,7 @@
 export interface TelemetryBreadcrumb {
   category: string;
   message: string;
-  level?: 'info' | 'warning' | 'error';
+  level?: "info" | "warning" | "error";
   data?: Record<string, unknown>;
 }
 
@@ -15,7 +15,7 @@ export interface TelemetryAdapter {
   captureError(error: Error, context?: Record<string, unknown>): void;
   captureMessage(
     message: string,
-    level: 'info' | 'warning' | 'error',
+    level: "info" | "warning" | "error",
     context?: Record<string, unknown>,
   ): string | undefined;
   addBreadcrumb(breadcrumb: TelemetryBreadcrumb): void;

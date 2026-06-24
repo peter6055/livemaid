@@ -1,4 +1,9 @@
-import type { TelemetryAdapter, TelemetryBreadcrumb, TelemetryConfig, TelemetryStatus } from "./types";
+import type {
+  TelemetryAdapter,
+  TelemetryBreadcrumb,
+  TelemetryConfig,
+  TelemetryStatus,
+} from "./types";
 import { createNoopAdapter } from "./noopAdapter";
 import { createSentryAdapter } from "./sentryAdapter";
 
@@ -13,7 +18,11 @@ export class Telemetry {
   private diagnosticSessionId: string;
   private reportCount = 0;
 
-  constructor(adapter: TelemetryAdapter, config: { usageAnalytics: boolean; debugReporting: boolean }, sessionId: string) {
+  constructor(
+    adapter: TelemetryAdapter,
+    config: { usageAnalytics: boolean; debugReporting: boolean },
+    sessionId: string,
+  ) {
     this.adapter = adapter;
     this.usageAnalytics = config.usageAnalytics;
     this.debugReporting = config.debugReporting;
@@ -110,9 +119,7 @@ export function initTelemetry(config: TelemetryConfig): Telemetry {
     };
   }
 
-  console.info(
-    `[LiveMaid Telemetry] Session: ${sessionId} | Usage: OFF | Debug: OFF`,
-  );
+  console.info(`[LiveMaid Telemetry] Session: ${sessionId} | Usage: OFF | Debug: OFF`);
 
   return instance;
 }

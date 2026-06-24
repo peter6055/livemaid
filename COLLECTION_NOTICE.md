@@ -69,16 +69,16 @@ This sends a single event with current sanitised state and returns a report ID. 
 
 Open **Settings > Privacy** in the Dashboard sidebar. You'll find two independent toggles:
 
-| Toggle | Default | Contains content? |
-|---|---|---|
-| Usage Data | OFF | No |
-| Debug Data | OFF | May contain error snippets |
+| Toggle     | Default | Contains content?          |
+| ---------- | ------- | -------------------------- |
+| Usage Data | OFF     | No                         |
+| Debug Data | OFF     | May contain error snippets |
 
 You can also control both from the browser console:
 
 ```js
-LiveMaidDiagnostics.setUsageAnalytics(false)  // disable usage data
-LiveMaidDiagnostics.setDebugReporting(true)   // enable debug data
+LiveMaidDiagnostics.setUsageAnalytics(false); // disable usage data
+LiveMaidDiagnostics.setDebugReporting(true); // enable debug data
 ```
 
 ---
