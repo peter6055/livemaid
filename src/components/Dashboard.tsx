@@ -805,8 +805,7 @@ export default function Dashboard({
                   }}
                   className="cursor-pointer gap-2"
                 >
-                  <Activity className="w-4 h-4" /> Telemetry{" "}
-                  {telemetryEnabled ? "ON" : "OFF"}
+                  <Activity className="w-4 h-4" /> Telemetry {telemetryEnabled ? "ON" : "OFF"}
                   <a
                     href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
                     target="_blank"
