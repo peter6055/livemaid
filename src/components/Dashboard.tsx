@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useTheme } from "next-themes";
+import Link from "next/link";
 import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
@@ -750,14 +751,22 @@ export default function Dashboard({
             </button>
             <div className="mt-1.5 px-2 text-xs text-muted-foreground/70 select-none flex items-center justify-between">
               <span>Version: {appVersion ?? "0.0.0"}</span>
-              <a
-                href={`https://github.com/peter6055/livemaid/releases/tag/v${rawVersion ?? appVersion ?? "0.0.0"}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:text-muted-foreground/80 transition-colors"
-              >
-                Changelogs
-              </a>
+              <span className="flex items-center gap-2">
+                <Link
+                  href="/web"
+                  className="hover:text-muted-foreground/80 transition-colors"
+                >
+                  Privacy
+                </Link>
+                <a
+                  href={`https://github.com/peter6055/livemaid/releases/tag/v${rawVersion ?? appVersion ?? "0.0.0"}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-muted-foreground/80 transition-colors"
+                >
+                  Changelogs
+                </a>
+              </span>
             </div>
           </div>
         </aside>
