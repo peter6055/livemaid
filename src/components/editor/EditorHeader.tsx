@@ -28,9 +28,7 @@ import {
   PencilLine,
   Moon,
   LayoutDashboard,
-  Activity,
 } from "lucide-react";
-import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
@@ -65,7 +63,6 @@ export function EditorHeader({
   // doesn't reflect the actual dark/light in effect. Use the resolved value so the toggle's state
   // and action stay correct even before the user has explicitly picked a theme.
   const { resolvedTheme, setTheme } = useTheme();
-  const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetry();
   const [isEditingName, setIsEditingName] = useState(false);
   const [draftName, setDraftName] = useState("");
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -230,25 +227,6 @@ export function EditorHeader({
               >
                 <div
                   className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${resolvedTheme === "dark" ? "left-4" : "left-1"}`}
-                />
-              </div>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.preventDefault();
-                setTelemetryEnabled(!telemetryEnabled);
-              }}
-              className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex justify-between items-center w-full"
-            >
-              <span className="flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                <span>Telemetry</span>
-              </span>
-              <div
-                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${telemetryEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
-              >
-                <div
-                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${telemetryEnabled ? "left-4" : "left-1"}`}
                 />
               </div>
             </DropdownMenuItem>
