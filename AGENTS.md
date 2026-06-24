@@ -67,6 +67,8 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 - **User's server** (port **3434**): runs via `npm run dev`. Never touch this.
 - **Agent's test server** (port **3435**): runs via `npm run test:dev`. Agent starts/stops ONLY this.
 
+Both `npm run dev` and `npm run test:dev` now automatically kill any existing process on their respective port before starting, so stale servers are cleaned up automatically.
+
 **CRITICAL**: Never kill or interact with the user's server (port 3434, tmux session `livemaid`). The agent uses a separate port and tmux session (`livemaid-test`).
 
 ## Agent Test Server Startup
@@ -79,6 +81,7 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 tmux kill-session -t livemaid-test 2>/dev/null
 
 # Start agent's test server on port 3435 in a detached tmux session
+# (port 3435 is automatically freed by the `test:dev` script)
 cd /path/to/project && tmux new-session -d -s livemaid-test 'npm run test:dev'
 
 # Poll until ready
