@@ -5,15 +5,17 @@ import { Telemetry, initTelemetry, getTelemetry } from "./index";
 import type { TelemetryConfig } from "./types";
 
 interface TelemetryContextValue {
-  telemetry: Telemetry | null;
-  enabled: boolean;
-  setEnabled: (enabled: boolean) => void;
+  usageAnalytics: boolean;
+  debugReporting: boolean;
+  setUsageAnalytics: (enabled: boolean) => void;
+  setDebugReporting: (enabled: boolean) => void;
 }
 
 const TelemetryContext = createContext<TelemetryContextValue>({
-  telemetry: null,
-  enabled: false,
-  setEnabled: () => {},
+  usageAnalytics: false,
+  debugReporting: false,
+  setUsageAnalytics: () => {},
+  setDebugReporting: () => {},
 });
 
 export function useTelemetry() {
@@ -27,21 +29,27 @@ export function TelemetryProvider({
   children: ReactNode;
   config: TelemetryConfig;
 }) {
-  const [enabled, setEnabledState] = useState(config.enabled);
+  const [usageAnalytics, setUsageAnalyticsState] = useState(false);
+  const [debugReporting, setDebugReportingState] = useState(false);
 
   useEffect(() => {
-    initTelemetry({ ...config, enabled });
-    // Only run once on mount — telemetry is a singleton
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    initTelemetry(config);
   }, []);
 
-  const setEnabled = (value: boolean) => {
-    setEnabledState(value);
-    getTelemetry()?.setEnabled(value);
+  const setUsageAnalytics = (value: boolean) => {
+    setUsageAnalyticsState(value);
+    getTelemetry()?.setUsageAnalytics(value);
+  };
+
+  const setDebugReporting = (value: boolean) => {
+    setDebugReportingState(value);
+    getTelemetry()?.setDebugReporting(value);
   };
 
   return (
-    <TelemetryContext.Provider value={{ telemetry: getTelemetry(), enabled, setEnabled }}>
+    <TelemetryContext.Provider
+      value={{ usageAnalytics, debugReporting, setUsageAnalytics, setDebugReporting }}
+    >
       {children}
     </TelemetryContext.Provider>
   );

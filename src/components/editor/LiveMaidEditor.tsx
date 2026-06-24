@@ -239,6 +239,23 @@ export function LiveMaidEditor({
   // must NOT open.
   const isLockedRef = useRef(isLocked);
   isLockedRef.current = isLocked;
+  const editCountRef = useRef(0);
+  const prevEditCodeRef = useRef("");
+  // Track code edits at session level (every 30 edits)
+  useEffect(() => {
+    if (!code) return;
+    // Only count when code actually changes (not on every render)
+    if (code === prevEditCodeRef.current) return;
+    prevEditCodeRef.current = code;
+    editCountRef.current += 1;
+    if (editCountRef.current % 30 === 0) {
+      getTelemetry()?.addBreadcrumb({
+        category: "syntax",
+        message: "Code edits milestone",
+        data: { totalEdits: editCountRef.current, diagramType: determineDiagramType(code) },
+      });
+    }
+  }, [code]);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
     isNavigating: boolean;
@@ -1941,6 +1958,11 @@ export function LiveMaidEditor({
     const healedCode = rebuildLinkStyles(code, updatedCode);
     handleCodeChange(healedCode);
     handleDeselect();
+    getTelemetry()?.addBreadcrumb({
+      category: "interaction",
+      message: "Edge deleted",
+      data: { diagramType: determineDiagramType(code) },
+    });
   }, [code, handleCodeChange, selectedNodeId, handleDeselect]);
 
   const editorRef = useRef<MonacoCodeEditor | null>(null);
@@ -3634,6 +3656,11 @@ export function LiveMaidEditor({
     }
 
     handleCodeChange(newCode);
+    getTelemetry()?.addBreadcrumb({
+      category: "interaction",
+      message: "Node deleted",
+      data: { diagramType: determineDiagramType(code) },
+    });
     setSelectionBox(null);
     setSelectedNodeId(null);
   }, [
@@ -3994,6 +4021,22 @@ export function LiveMaidEditor({
     };
   }, []);
 
+  const prevTypeRef = useRef("");
+
+  // Track diagram type changes
+  useEffect(() => {
+    const t = determineDiagramType(code);
+    if (!t) return;
+    if (prevTypeRef.current && prevTypeRef.current !== t) {
+      getTelemetry()?.addBreadcrumb({
+        category: "interaction",
+        message: "Diagram type changed",
+        data: { from: prevTypeRef.current, to: t },
+      });
+    }
+    prevTypeRef.current = t;
+  }, [code]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background text-zinc-500 flex-col gap-4 transition-all duration-300">
@@ -4023,6 +4066,7 @@ export function LiveMaidEditor({
   }
 
   const currentType = determineDiagramType(code);
+
   const sortedHistory = [...(doc?.versionHistory ?? [])].sort(
     (a, b) =>
       Number(Boolean(b.starred)) - Number(Boolean(a.starred)) ||
@@ -4061,9 +4105,29 @@ export function LiveMaidEditor({
           setIsRenameOpen(true);
         }}
         onRenameInline={renameDiagram}
-        onExport={() => setIsExportOpen(true)}
-        onVersionHistory={() => setIsHistoryOpen(true)}
-        onComments={() => setIsCommentsOpen((current) => !current)}
+        onExport={() => {
+          getTelemetry()?.addBreadcrumb({
+            category: "interaction",
+            message: "Export panel opened",
+            data: { diagramType: determineDiagramType(code) },
+          });
+          setIsExportOpen(true);
+        }}
+        onVersionHistory={() => {
+          getTelemetry()?.addBreadcrumb({
+            category: "interaction",
+            message: "Version history panel opened",
+          });
+          setIsHistoryOpen(true);
+        }}
+        onComments={() => {
+          getTelemetry()?.addBreadcrumb({
+            category: "interaction",
+            message: "Comments panel toggled",
+            data: { open: !isCommentsOpen },
+          });
+          setIsCommentsOpen((current) => !current);
+        }}
       />
 
       {IS_DEMO_MODE && <DemoBanner />}

@@ -18,6 +18,8 @@ export function createNoopAdapter(): TelemetryAdapter {
 
     setTags(_tags: Record<string, string>) {},
 
+    setDebugReporting(_enabled: boolean) {},
+
     async flush() {},
   };
 }

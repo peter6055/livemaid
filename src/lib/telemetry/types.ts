@@ -6,7 +6,6 @@ export interface TelemetryBreadcrumb {
 }
 
 export interface TelemetryConfig {
-  enabled: boolean;
   dsn?: string;
   environment?: string;
   release?: string;
@@ -22,11 +21,13 @@ export interface TelemetryAdapter {
   addBreadcrumb(breadcrumb: TelemetryBreadcrumb): void;
   setUser(user: { id: string } | null): void;
   setTags(tags: Record<string, string>): void;
+  setDebugReporting(enabled: boolean): void;
   flush(): Promise<void>;
 }
 
 export interface TelemetryStatus {
-  enabled: boolean;
+  usageAnalytics: boolean;
+  debugReporting: boolean;
   adapter: string;
   sessionId: string;
   reportCount: number;
