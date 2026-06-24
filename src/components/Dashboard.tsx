@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useTheme } from "next-themes";
+import Link from "next/link";
 import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
@@ -24,18 +25,17 @@ import {
   FileText,
   LayoutGrid,
   List,
-  Activity,
-  CircleAlert,
+  Settings,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { DiagramRegistry } from "@/lib/diagrams/registry";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
-import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
+import { SettingsDialog } from "@/components/SettingsDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,7 +83,6 @@ export default function Dashboard({
   rawVersion?: string;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
-  const { enabled: telemetryEnabled, setEnabled: setTelemetryEnabled } = useTelemetry();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
   const [mounted, setMounted] = useState(false);
@@ -91,6 +90,10 @@ export default function Dashboard({
     setMounted(true);
   }, []);
   const isDark = resolvedTheme === "dark";
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  const openSettings = () => setSettingsOpen(true);
+  const closeSettings = () => setSettingsOpen(false);
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const { prefs: userPrefs, hydrated, update: setUserPref } = useUserPreferences();
@@ -706,57 +709,14 @@ export default function Dashboard({
             </div>
           </div>
 
-          {/* Sidebar footer: theme toggle + version */}
+          {/* Sidebar footer: settings + version */}
           <div className="border-t border-border p-3 shrink-0">
             <button
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
+              onClick={openSettings}
+              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors w-full text-left"
             >
-              <span className="flex items-center gap-2">
-                {mounted ? (
-                  <>
-                    {isDark ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                    {isDark ? "Dark mode" : "Light mode"}
-                  </>
-                ) : (
-                  <>
-                    <Sun className="w-4 h-4 opacity-0" />
-                    <span className="opacity-0">Theme</span>
-                  </>
-                )}
-              </span>
-              <div
-                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${mounted && isDark ? "bg-indigo-500" : "bg-slate-300"}`}
-              >
-                <div
-                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${mounted && isDark ? "left-4" : "left-1"}`}
-                />
-              </div>
-            </button>
-            <button
-              onClick={() => setTelemetryEnabled(!telemetryEnabled)}
-              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors"
-            >
-              <span className="flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Telemetry
-                <a
-                  href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-muted-foreground/50 hover:text-foreground transition-colors"
-                >
-                  <CircleAlert className="w-3.5 h-3.5" />
-                </a>
-              </span>
-              <div
-                className={`w-8 h-4 rounded-full transition-colors flex items-center relative ${telemetryEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
-              >
-                <div
-                  className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${telemetryEnabled ? "left-4" : "left-1"}`}
-                />
-              </div>
+              <Settings className="w-4 h-4" />
+              Settings
             </button>
             <div className="mt-1.5 px-2 text-xs text-muted-foreground/70 select-none flex items-center justify-between">
               <span>Version: {appVersion ?? "0.0.0"}</span>
@@ -801,20 +761,11 @@ export default function Dashboard({
                 <DropdownMenuItem
                   onClick={(e) => {
                     e.preventDefault();
-                    setTelemetryEnabled(!telemetryEnabled);
+                    openSettings();
                   }}
                   className="cursor-pointer gap-2"
                 >
-                  <Activity className="w-4 h-4" /> Telemetry {telemetryEnabled ? "ON" : "OFF"}
-                  <a
-                    href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-muted-foreground/50 hover:text-foreground transition-colors ml-auto"
-                  >
-                    <CircleAlert className="w-3.5 h-3.5" />
-                  </a>
+                  <Settings className="w-4 h-4" /> Settings
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1408,6 +1359,8 @@ export default function Dashboard({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 }

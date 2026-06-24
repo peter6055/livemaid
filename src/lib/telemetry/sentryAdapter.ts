@@ -1,4 +1,5 @@
-import * as Sentry from "@sentry/browser";
+import * as Sentry from "@sentry/nextjs";
+import { replayIntegration } from "@sentry/replay";
 import type { TelemetryAdapter, TelemetryBreadcrumb } from "./types";
 import { sanitizeString, sanitizeContext } from "./sanitizer";
 
@@ -9,14 +10,25 @@ interface SentryAdapterOptions {
 }
 
 let sentryInitialized = false;
+let replay: ReturnType<typeof replayIntegration> | null = null;
 
 export function createSentryAdapter(options: SentryAdapterOptions): TelemetryAdapter {
   if (!sentryInitialized) {
+    replay = replayIntegration({
+      replaysSessionSampleRate: 0.1,
+      replaysOnErrorSampleRate: 1.0,
+    } as Parameters<typeof replayIntegration>[0]);
+
     Sentry.init({
       dsn: options.dsn,
       environment: options.environment || "development",
       release: options.release,
       sampleRate: 1.0,
+      enableLogs: true,
+      integrations: [
+        replay,
+        Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+      ],
       beforeSend(event) {
         if (event.exception?.values) {
           for (const value of event.exception.values) {
@@ -102,6 +114,16 @@ export function createSentryAdapter(options: SentryAdapterOptions): TelemetryAda
         sanitized[sanitizeString(key)] = sanitizeString(value);
       }
       Sentry.setTags(sanitized);
+    },
+
+    setDebugReporting(enabled: boolean) {
+      if (replay) {
+        if (enabled) {
+          replay.start();
+        } else {
+          replay.stop();
+        }
+      }
     },
 
     async flush() {

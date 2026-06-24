@@ -1,29 +1,29 @@
-import type {
-  TelemetryAdapter,
-  TelemetryBreadcrumb,
-  TelemetryConfig,
-  TelemetryStatus,
-} from "./types";
+import type { TelemetryAdapter, TelemetryBreadcrumb, TelemetryConfig, TelemetryStatus } from "./types";
 import { createNoopAdapter } from "./noopAdapter";
 import { createSentryAdapter } from "./sentryAdapter";
 
 let instance: Telemetry | null = null;
 
+const DEBUG_CATEGORIES = new Set(["render", "preview"]);
+
 export class Telemetry {
   private adapter: TelemetryAdapter;
-  private enabled: boolean;
+  usageAnalytics: boolean;
+  debugReporting: boolean;
   private diagnosticSessionId: string;
   private reportCount = 0;
 
-  constructor(adapter: TelemetryAdapter, enabled: boolean, sessionId: string) {
+  constructor(adapter: TelemetryAdapter, config: { usageAnalytics: boolean; debugReporting: boolean }, sessionId: string) {
     this.adapter = adapter;
-    this.enabled = enabled;
+    this.usageAnalytics = config.usageAnalytics;
+    this.debugReporting = config.debugReporting;
     this.diagnosticSessionId = sessionId;
     this.adapter.setTags({ sessionId });
+    this.adapter.setDebugReporting(config.debugReporting);
   }
 
   captureError(error: Error, context?: Record<string, unknown>) {
-    if (!this.enabled) return;
+    if (!this.debugReporting) return;
     this.adapter.captureError(error, { ...context, sessionId: this.diagnosticSessionId });
   }
 
@@ -32,7 +32,11 @@ export class Telemetry {
     level: "info" | "warning" | "error" = "info",
     context?: Record<string, unknown>,
   ): string | undefined {
-    if (!this.enabled) return undefined;
+    if (level === "error" || level === "warning") {
+      if (!this.debugReporting) return undefined;
+    } else {
+      if (!this.usageAnalytics) return undefined;
+    }
     return this.adapter.captureMessage(message, level, {
       ...context,
       sessionId: this.diagnosticSessionId,
@@ -40,7 +44,11 @@ export class Telemetry {
   }
 
   addBreadcrumb(breadcrumb: TelemetryBreadcrumb) {
-    if (!this.enabled) return;
+    if (breadcrumb.level === "error" || DEBUG_CATEGORIES.has(breadcrumb.category)) {
+      if (!this.debugReporting) return;
+    } else {
+      if (!this.usageAnalytics) return;
+    }
     this.adapter.addBreadcrumb(breadcrumb);
   }
 
@@ -56,21 +64,25 @@ export class Telemetry {
 
   getStatus(): TelemetryStatus {
     return {
-      enabled: this.enabled,
-      adapter: this.enabled ? "sentry" : "none",
+      usageAnalytics: this.usageAnalytics,
+      debugReporting: this.debugReporting,
+      adapter: "sentry",
       sessionId: this.diagnosticSessionId,
       reportCount: this.reportCount,
     };
   }
 
-  setEnabled(enabled: boolean) {
-    this.enabled = enabled;
+  setUsageAnalytics(enabled: boolean) {
+    this.usageAnalytics = enabled;
+  }
+
+  setDebugReporting(enabled: boolean) {
+    this.debugReporting = enabled;
+    this.adapter.setDebugReporting(enabled);
   }
 
   async flush() {
-    if (this.enabled) {
-      await this.adapter.flush();
-    }
+    await this.adapter.flush();
   }
 }
 
@@ -78,31 +90,28 @@ export function initTelemetry(config: TelemetryConfig): Telemetry {
   if (instance) return instance;
 
   const sessionId = generateSessionId();
-  let adapter: TelemetryAdapter;
+  const adapter = config.dsn
+    ? createSentryAdapter({
+        dsn: config.dsn,
+        environment: config.environment || "development",
+        release: config.release || "0.0.0",
+      })
+    : createNoopAdapter();
 
-  if (config.enabled && config.dsn) {
-    adapter = createSentryAdapter({
-      dsn: config.dsn,
-      environment: config.environment || "development",
-      release: config.release || "0.0.0",
-    });
-  } else {
-    adapter = createNoopAdapter();
-  }
-
-  instance = new Telemetry(adapter, config.enabled, sessionId);
+  instance = new Telemetry(adapter, { usageAnalytics: false, debugReporting: false }, sessionId);
 
   if (typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).LiveMaidDiagnostics = {
       reportIssue: (reason: string, context?: Record<string, unknown>) =>
         instance!.reportIssue(reason, context),
       getStatus: () => instance!.getStatus(),
-      setEnabled: (enabled: boolean) => instance!.setEnabled(enabled),
+      setUsageAnalytics: (enabled: boolean) => instance!.setUsageAnalytics(enabled),
+      setDebugReporting: (enabled: boolean) => instance!.setDebugReporting(enabled),
     };
   }
 
   console.info(
-    `[LiveMaid Telemetry] ${config.enabled ? "Enabled" : "Disabled"} | Session: ${sessionId}`,
+    `[LiveMaid Telemetry] Session: ${sessionId} | Usage: OFF | Debug: OFF`,
   );
 
   return instance;

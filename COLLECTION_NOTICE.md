@@ -2,63 +2,92 @@
 
 **Last updated: June 2026**
 
-## What We Collect
+LiveMaid has two independent data collection tiers. You control each in **Settings > Privacy**.
 
-When telemetry is enabled, LiveMaid collects anonymised diagnostic data to help identify bugs, performance issues, and usability problems. This includes:
+---
 
-- Error stack traces (sanitised — no source code, URLs, or credentials)
+## Usage Data (Privacy-Safe)
+
+Collected when **Usage Data** is enabled. Disabled by default.
+
+### What is collected
+
 - App version, browser, OS, and viewport size
 - Current route and diagram type (e.g. flowchart, sequenceDiagram)
-- Action breadcrumbs: diagram loaded, render failed, auto-save, export, undo/redo
+- Feature usage: diagram loaded, auto-saved, exported, undo/redo
 - Non-sensitive metrics: render duration, node/edge counts (bucketed)
 - Anonymous session ID (random, generated locally — not tied to your identity)
 
-## What We Do NOT Collect
-
-We explicitly never collect:
+### What is NOT collected
 
 - Your Mermaid diagram source code
 - Diagram names, folder names, or file paths
+- Any content you type or edit
 - Comments or version history contents
 - Exported images or raw SVG/PNG data
-- Clipboard contents or keystroke-level logging
-- Full session replays
-- Personal information (name, email, IP address)
-- Authentication tokens or credentials
 
-## How We Use It
+This tier is **safe to enable** — it never contains your diagram content.
 
-The sole purpose of telemetry is to improve LiveMaid. We use the data to:
+---
 
-- Detect and fix crashes and rendering bugs
-- Identify diagram types or features that cause parse errors
-- Monitor performance regressions (render times, save latency)
-- Understand feature usage to prioritise development
-- Respond to user-reported issues (via support report IDs)
+## Debug Data (May Contain Content)
 
-## How to Control It
+Collected when **Debug Data** is enabled. Disabled by default.
 
-You can enable or disable telemetry at any time:
+### What is collected
 
-- **Dashboard sidebar** — Toggle the "Telemetry" switch at the bottom of the left sidebar.
-- **Console** — Run `LiveMaidDiagnostics.setEnabled(false)` in the browser developer tools.
-- **Environment** — Set `NEXT_PUBLIC_TELEMETRY_ENABLED=false` before starting the server.
+- Error stack traces and exception messages
+- Mermaid parse/render failure messages (may contain code snippets)
+- Auto-save and load failures
+- Breadcrumbs for render errors and preview failures
 
-Telemetry is off by default when running locally unless explicitly enabled. When disabled, no data is sent — the telemetry SDK loads but remains inactive.
+### Important
 
-## Support Reports
+Mermaid parser error messages sometimes include the diagram code that caused the failure. While we sanitise URLs, credentials, and email addresses, **code snippets inside error texts are not stripped**. Enabling this tier means you accept that small portions of your diagram may be transmitted during errors.
 
-If you encounter a strange bug, you can manually create a support report. Open the browser console and run:
+### When to enable
+
+- You are comfortable sharing error context that may include diagram fragments
+- You want to help us identify and fix rendering bugs
+- You are reporting a specific issue and want us to have richer diagnostic data
+
+---
+
+## Support Reports (Always Available)
+
+Regardless of the above tiers, you can manually create a support report from the browser console:
 
 ```
 LiveMaidDiagnostics.reportIssue("canvas selection stopped working")
 ```
 
-This captures the current sanitised state and returns a report ID. Share that ID with the LiveMaid team so they can investigate. No diagram content is included.
+This sends a single event with current sanitised state and returns a report ID. Share that ID with the LiveMaid team so they can investigate.
+
+---
+
+## How to Control It
+
+Open **Settings > Privacy** in the Dashboard sidebar. You'll find two independent toggles:
+
+| Toggle | Default | Contains content? |
+|---|---|---|
+| Usage Data | OFF | No |
+| Debug Data | OFF | May contain error snippets |
+
+You can also control both from the browser console:
+
+```js
+LiveMaidDiagnostics.setUsageAnalytics(false)  // disable usage data
+LiveMaidDiagnostics.setDebugReporting(true)   // enable debug data
+```
+
+---
 
 ## Data Processor
 
 Diagnostic data is processed by [Sentry](https://sentry.io/privacy/) (Functional Software, Inc.). Data is stored in the US region. Sentry's privacy policy applies to the processing of this data. We do not sell or share this data with any third party beyond Sentry.
+
+---
 
 ## Questions
 
