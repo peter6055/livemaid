@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  // Set via BASE_PATH env var when behind a reverse proxy that prefixes the path
+  basePath: process.env.BASE_PATH || "",
   output: "standalone",
   allowedDevOrigins: [
     "*.tail1f8d1a.ts.net",
