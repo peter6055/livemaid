@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sun, Lock, Info, Palette, ExternalLink } from "lucide-react";
+import { Lock, Info, Palette, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 const categories = [
@@ -43,10 +43,7 @@ function AppearancePanel() {
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-4">Theme</h3>
         <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
-          <div className="flex items-center gap-3">
-            <Sun className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm">Colour mode</span>
-          </div>
+          <span className="text-sm font-medium">Colour mode</span>
           <Select value={theme} onValueChange={(v) => v && setTheme(v)}>
             <SelectTrigger className="w-32">
               <SelectValue />
@@ -127,7 +124,7 @@ function AboutPanel() {
       <div>
         <h3 className="text-sm font-semibold text-foreground mb-4">Application</h3>
         <div className="p-4 rounded-lg bg-muted/50 border border-border flex justify-between items-center text-sm">
-          <span className="text-muted-foreground">Version</span>
+          <span className="text-sm font-medium text-foreground">Version</span>
           <span className="font-mono text-xs text-foreground">{getDisplayVersion()}</span>
         </div>
         <a
