@@ -2,7 +2,7 @@
  * State Diagram (stateDiagram-v2) plugin — modular, self-contained.
  *
  * Everything state-diagram-specific lives in this file so the feature is a drop-in plugin per the
- * project's Composition / Plugin Architecture (see reference/ARCHITECTURE.md §6). The only wiring
+ * project's Composition / Plugin Architecture (see reference/architecture/plugins.md). The only wiring
  * outside this file is the registry entry in `registry.ts`, the Dashboard create-dialog type picker,
  * and the EditorCanvas / LiveMaidEditor canvas-interaction hooks.
  *
@@ -15,7 +15,7 @@
  * pre-marked `@/components/ui/*` client components (as ER/class do) and lucide icons.
  *
  * Mermaid state-diagram syntax reference (verified against mermaid 11.15 via headless parse + real
- * render — see reference/DIAGRAM_PLUGIN_DETAILS.md):
+ * render — see reference/features/diagrams/overview.md):
  *  - header:        `stateDiagram-v2`
  *  - direction:     statement line `direction TB|BT|LR|RL` (also valid inside a composite)
  *  - bare state:    `s1`

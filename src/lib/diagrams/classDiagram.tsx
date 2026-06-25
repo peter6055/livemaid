@@ -2,8 +2,8 @@
  * Class Diagram plugin (modular, self-contained).
  *
  * Everything class-diagram-specific lives in this file so the feature is a drop-in
- * plugin per the project's Composition / Plugin Architecture (see reference/ARCHITECTURE.md
- * §6). The only wiring outside this file is the registry entry in `registry.ts`.
+ * plugin per the project's Composition / Plugin Architecture (see reference/architecture/plugins.md
+ *). The only wiring outside this file is the registry entry in `registry.ts`.
  *
  * NOTE: this module intentionally omits the `"use client"` directive (mirroring
  * `flowchart.tsx`). The registry is imported by the server-side `POST /api/diagrams`
