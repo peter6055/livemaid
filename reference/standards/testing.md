@@ -7,6 +7,7 @@
 - E2E: Playwright `*.spec.ts` — `npm run test:e2e`.
 - `playwright.config.ts` uses `testMatch: "**/*.spec.ts"`.
 - No co-located tests, no `__tests__/`, no Python/shell ad-hoc test scripts.
+- **Commit rule**: Only general, reusable tests are committed to the repo. Verification tests written for a specific one-off fix must be discarded after the fix is verified.
 
 ## UI Verification Loop
 
