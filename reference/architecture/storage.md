@@ -26,4 +26,3 @@ All persistence goes through a single **`StorageAdapter` interface**, never the 
 > (splitting `versionHistory` into its own `versions` collection) are documented in
 > [`reference/architecture/mongodb-migration.md`](./mongodb-migration.md). Execute that when we decide
 > to move to MongoDB.
-

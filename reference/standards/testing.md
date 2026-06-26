@@ -20,10 +20,10 @@ After UI or interaction changes:
 
 ## Dev Servers
 
-| Server | Port | Command | Owner |
-| --- | --- | --- | --- |
-| User dev | 3434 | `npm run dev` | Human (tmux `livemaid`) — **never touch** |
-| Agent test | 3435 | `npm run test:dev` | Agent (tmux `livemaid-test`) |
+| Server     | Port | Command            | Owner                                     |
+| ---------- | ---- | ------------------ | ----------------------------------------- |
+| User dev   | 3434 | `npm run dev`      | Human (tmux `livemaid`) — **never touch** |
+| Agent test | 3435 | `npm run test:dev` | Agent (tmux `livemaid-test`)              |
 
 Never run `pkill -f "next dev"` — it kills both servers.
 

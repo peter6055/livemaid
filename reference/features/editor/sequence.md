@@ -139,6 +139,3 @@ box dimensions.
   extending farther left/right than the message line+label bounds.
 - Add a comment and verify the persisted comment pin/thread anchor still appears at the expected
   sequence-message anchor.
-
-
-

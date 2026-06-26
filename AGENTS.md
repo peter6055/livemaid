@@ -14,16 +14,16 @@ Then read the deep-dive linked from the reading map for your subsystem (e.g. `fe
 
 > **RULE:** All agent/developer reference docs live under `reference/` in the appropriate subfolder. Do not add docs at the repo root.
 
-| Topic | Doc |
-| --- | --- |
-| Command output caps | [`reference/standards/command-output.md`](reference/standards/command-output.md) |
-| Next.js caveats | [`reference/standards/nextjs.md`](reference/standards/nextjs.md) |
-| Mermaid syntax | [`reference/standards/mermaid.md`](reference/standards/mermaid.md) |
-| Testing & dev servers | [`reference/standards/testing.md`](reference/standards/testing.md) |
-| Git workflow | [`reference/git/workflow.md`](reference/git/workflow.md) |
-| Pre-push validation | [`reference/git/prepush.md`](reference/git/prepush.md) |
-| Verification plans | [`reference/plans/verification-plan.md`](reference/plans/verification-plan.md) |
-| Regression plans | [`reference/plans/regression-plan.md`](reference/plans/regression-plan.md) |
+| Topic                  | Doc                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| Command output caps    | [`reference/standards/command-output.md`](reference/standards/command-output.md) |
+| Next.js caveats        | [`reference/standards/nextjs.md`](reference/standards/nextjs.md)                 |
+| Mermaid syntax         | [`reference/standards/mermaid.md`](reference/standards/mermaid.md)               |
+| Testing & dev servers  | [`reference/standards/testing.md`](reference/standards/testing.md)               |
+| Git workflow           | [`reference/git/workflow.md`](reference/git/workflow.md)                         |
+| Pre-push validation    | [`reference/git/prepush.md`](reference/git/prepush.md)                           |
+| Verification plans     | [`reference/plans/verification-plan.md`](reference/plans/verification-plan.md)   |
+| Regression plans       | [`reference/plans/regression-plan.md`](reference/plans/regression-plan.md)       |
 | OpenCode orchestration | [`reference/skills/opencode-workflow.md`](reference/skills/opencode-workflow.md) |
 
 <!-- END:livemaid-architecture-rules -->

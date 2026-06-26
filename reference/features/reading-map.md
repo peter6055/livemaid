@@ -12,15 +12,15 @@ Always read before modifying editor behavior:
 
 Then read the relevant deep-dive:
 
-| If you are changing… | Read next |
-| --- | --- |
+| If you are changing…                                                         | Read next                                                                                    |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Canvas selection, pan/zoom, overlays, hover, inline editing, drag-to-connect | [`editor/overview.md`](./editor/overview.md), [`editor/quick-add.md`](./editor/quick-add.md) |
-| Flowchart edge/node interaction | [`editor/flowchart.md`](./editor/flowchart.md) |
-| Sequence messages, hover, reorder, logic blocks | [`editor/sequence.md`](./editor/sequence.md) |
-| Sequence lifeline `+` placement | [`editor/sequence-plus-placement.md`](./editor/sequence-plus-placement.md) |
-| Class / ER / state plugin behavior | [`diagrams/overview.md`](./diagrams/overview.md) + type-specific doc |
-| Verification plan writing | [`plans/verification-plan.md`](../plans/verification-plan.md) |
-| Regression plan writing | [`plans/regression-plan.md`](../plans/regression-plan.md) |
+| Flowchart edge/node interaction                                              | [`editor/flowchart.md`](./editor/flowchart.md)                                               |
+| Sequence messages, hover, reorder, logic blocks                              | [`editor/sequence.md`](./editor/sequence.md)                                                 |
+| Sequence lifeline `+` placement                                              | [`editor/sequence-plus-placement.md`](./editor/sequence-plus-placement.md)                   |
+| Class / ER / state plugin behavior                                           | [`diagrams/overview.md`](./diagrams/overview.md) + type-specific doc                         |
+| Verification plan writing                                                    | [`plans/verification-plan.md`](../plans/verification-plan.md)                                |
+| Regression plan writing                                                      | [`plans/regression-plan.md`](../plans/regression-plan.md)                                    |
 
 ## Support Matrix
 

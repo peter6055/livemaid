@@ -4,14 +4,14 @@ High-level system reference. For focused topics, read the split docs below.
 
 ## Quick Links
 
-| Topic | Doc |
-| --- | --- |
-| Storage & adapter seam | [`storage.md`](./storage.md) |
-| Split-screen editor model | [`editor-split.md`](./editor-split.md) |
-| Tech stack & aesthetics | [`tech-stack.md`](./tech-stack.md) |
-| Development workflow | [`development-workflow.md`](./development-workflow.md) |
-| Diagram plugins | [`plugins.md`](./plugins.md) |
-| MongoDB migration (deferred) | [`mongodb-migration.md`](./mongodb-migration.md) |
+| Topic                        | Doc                                                    |
+| ---------------------------- | ------------------------------------------------------ |
+| Storage & adapter seam       | [`storage.md`](./storage.md)                           |
+| Split-screen editor model    | [`editor-split.md`](./editor-split.md)                 |
+| Tech stack & aesthetics      | [`tech-stack.md`](./tech-stack.md)                     |
+| Development workflow         | [`development-workflow.md`](./development-workflow.md) |
+| Diagram plugins              | [`plugins.md`](./plugins.md)                           |
+| MongoDB migration (deferred) | [`mongodb-migration.md`](./mongodb-migration.md)       |
 
 ## Summary
 
