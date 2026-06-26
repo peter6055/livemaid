@@ -9,13 +9,13 @@ export default defineConfig({
   workers: 1,
   reporter: [["html", { outputFolder: "playwright-report" }]],
   use: {
-    baseURL: "http://localhost:3434",
+    baseURL: "http://localhost:3435",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: "npm run dev -- -p 3434",
-    port: 3434,
+    command: "npm run test:dev",
+    port: 3435,
     reuseExistingServer: true,
     timeout: 120000,
   },
