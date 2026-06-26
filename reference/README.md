@@ -1,50 +1,72 @@
-# Reference Documentation Index
+# Reference Documentation
 
-This folder is the source of truth for LiveMaid's architecture, design, and implemented
-features. Read the relevant document before planning or implementing changes.
+Source of truth for LiveMaid architecture, design, and features. **Read only what your task needs.**
 
-| Document                                                                       | Purpose                                                                                |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md)                                         | High-level system architecture, tech stack, and conventions.                           |
-| [`DESIGN.md`](./DESIGN.md)                                                     | UI/UX design specification: color tokens, typography, components, interaction polish.  |
-| [`FEATURES_AND_TRUTHS.md`](./FEATURES_AND_TRUTHS.md)                           | **Read first.** Compact invariant map and mandatory reading entrypoint.                |
-| [`EDITOR_INTERACTION_DETAILS.md`](./EDITOR_INTERACTION_DETAILS.md)             | Detailed canvas, overlay, hover, inline-edit, drag, and sequence interaction truths.   |
-| [`DIAGRAM_PLUGIN_DETAILS.md`](./DIAGRAM_PLUGIN_DETAILS.md)                     | Detailed class / ER / state plugin truths and plugin-specific mutation rules.          |
-| [`SEQUENCE_PLUS_PLACEMENT_SOLUTION.md`](./SEQUENCE_PLUS_PLACEMENT_SOLUTION.md) | Model + regression guards for the sequence-diagram lifeline `+` button placement.      |
-| [`OPENCODE_WORKFLOW_GUIDE.md`](./OPENCODE_WORKFLOW_GUIDE.md)                   | Operating guide for efficient OpenCode orchestration, model routing, and token saving. |
-| [`HOW_TO_WRITE_VERIFICATION_PLAN.md`](./HOW_TO_WRITE_VERIFICATION_PLAN.md)     | Template/process for writing a verification (test) plan.                               |
-| [`HOW_TO_WRITE_REGRESSION_PLAN.md`](./HOW_TO_WRITE_REGRESSION_PLAN.md)         | Template/process for writing a regression plan.                                        |
+> All agent/developer reference docs live under `reference/`. Do not add docs at the repo root.
 
-> **RULE:** All reference documentation for AI agents or developers MUST live in this
-> `reference/` folder. Do not place docs at the repo root (keep the root clean).
+## Start Here
 
----
+| Doc                                                      | When to read                             |
+| -------------------------------------------------------- | ---------------------------------------- |
+| [`features/reading-map.md`](./features/reading-map.md)   | **Always first** for editor/feature work |
+| [`architecture/overview.md`](./architecture/overview.md) | System structure, storage, editor model  |
+| [`standards/design.md`](./standards/design.md)           | UI/UX tokens, layout, interaction polish |
 
-## Mermaid Syntax: Do Not Guess
+## By Subfolder
 
-When you need to understand how Mermaid syntax works in order to implement or plan support
-for a new diagram type (e.g. Class Diagrams, Entity Relationship diagrams, State diagrams),
-**do not guess the syntax.** Read the official Mermaid documentation:
+### `features/` — Product behavior & editor truths
 
-**URL:** [https://github.com/mermaid-js/mermaid/tree/develop/docs](https://github.com/mermaid-js/mermaid/tree/develop/docs)
+| Doc                                                                                 | Topic                                   |
+| ----------------------------------------------------------------------------------- | --------------------------------------- |
+| [`reading-map.md`](./features/reading-map.md)                                       | Invariants, support matrix, reading map |
+| [`editor/overview.md`](./features/editor/overview.md)                               | Canvas selection, overlays              |
+| [`editor/quick-add.md`](./features/editor/quick-add.md)                             | `+` button, drag-to-connect             |
+| [`editor/flowchart.md`](./features/editor/flowchart.md)                             | Flowchart interaction                   |
+| [`editor/sequence.md`](./features/editor/sequence.md)                               | Sequence messages, hover, reorder       |
+| [`editor/sequence-plus-placement.md`](./features/editor/sequence-plus-placement.md) | Lifeline `+` slot model                 |
+| [`editor/canvas-highlighting.md`](./features/editor/canvas-highlighting.md)         | Canvas-to-Monaco highlight              |
+| [`editor/demo-chrome.md`](./features/editor/demo-chrome.md)                         | Demo mode, header chrome                |
+| [`diagrams/overview.md`](./features/diagrams/overview.md)                           | All diagram plugins                     |
+| [`diagrams/class.md`](./features/diagrams/class.md)                                 | Class diagram                           |
+| [`diagrams/er.md`](./features/diagrams/er.md)                                       | ER diagram                              |
+| [`diagrams/state.md`](./features/diagrams/state.md)                                 | State diagram                           |
 
-### How LiveMaid parses & serializes
+### `architecture/` — System design
 
-LiveMaid does **not** use a structured graph model (e.g. React Flow). The text code in the
-editor is the single source of truth, and visual edits are applied with **regex-based string
-mutation** of the raw Mermaid code. The relevant helpers live in
-[`src/lib/diagrams/utils.ts`](../src/lib/diagrams/utils.ts), for example:
+| Doc                                                           | Topic                             |
+| ------------------------------------------------------------- | --------------------------------- |
+| [`overview.md`](./architecture/overview.md)                   | Full architecture reference       |
+| [`storage.md`](./architecture/storage.md)                     | Local-first storage, adapter seam |
+| [`editor-split.md`](./architecture/editor-split.md)           | Split-screen WYSIWYG model        |
+| [`plugins.md`](./architecture/plugins.md)                     | Diagram plugin architecture       |
+| [`mongodb-migration.md`](./architecture/mongodb-migration.md) | Deferred MongoDB plan             |
 
-- `determineDiagramType(code)` — detects the diagram type from the code.
-- `updateLinkStyleAndLabel`, `updateLinkColor`, `updateLinkAnimation`, `updateMermaidCurve`,
-  `deleteLink`, `rebuildLinkStyles` — flowchart edge mutations.
-- `CONNECTOR_PATTERN` — the ordered alternation of every Mermaid connector token.
+### `standards/` — Conventions & rules
 
-Per-diagram behavior is registered as a `DiagramPlugin` in
-[`src/lib/diagrams/registry.ts`](../src/lib/diagrams/registry.ts). To add a new diagram type:
+| Doc                                                  | Topic                                    |
+| ---------------------------------------------------- | ---------------------------------------- |
+| [`design.md`](./standards/design.md)                 | Design specification                     |
+| [`testing.md`](./standards/testing.md)               | Tests, browser verification, dev servers |
+| [`mermaid.md`](./standards/mermaid.md)               | Mermaid syntax rules                     |
+| [`nextjs.md`](./standards/nextjs.md)                 | Next.js version caveats                  |
+| [`command-output.md`](./standards/command-output.md) | Shell output byte caps                   |
 
-1. Read the official syntax docs for that type.
-2. Inspect the actual SVG DOM Mermaid generates for it (IDs/class names differ per type).
-3. Add a `<type>.tsx` plugin and register it in `registry.ts`.
-4. Write resilient regex mutators for the code serializer. Do not implement before you fully
-   understand the official syntax.
+### `git/` — Version control
+
+| Doc                                | Topic                  |
+| ---------------------------------- | ---------------------- |
+| [`workflow.md`](./git/workflow.md) | Branches, commits, PRs |
+| [`prepush.md`](./git/prepush.md)   | Pre-push validation    |
+
+### `plans/` — Verification writing
+
+| Doc                                                    | Topic                         |
+| ------------------------------------------------------ | ----------------------------- |
+| [`verification-plan.md`](./plans/verification-plan.md) | How to write test plans       |
+| [`regression-plan.md`](./plans/regression-plan.md)     | How to write regression plans |
+
+### `skills/` — Agent workflows
+
+| Doc                                                     | Topic                  |
+| ------------------------------------------------------- | ---------------------- |
+| [`opencode-workflow.md`](./skills/opencode-workflow.md) | OpenCode orchestration |

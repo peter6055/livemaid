@@ -5,7 +5,6 @@
   "scripts": {
     "dev": "fuser -k 3434/tcp 2>/dev/null; next dev --hostname 0.0.0.0 -p 3434",
     "test:dev": "fuser -k 3435/tcp 2>/dev/null; next dev --hostname 0.0.0.0 -p 3435",
-    "dev:agent": "fuser -k 3434/tcp 2>/dev/null; next dev --hostname 0.0.0.0 --port 3434",
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",

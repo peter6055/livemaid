@@ -149,6 +149,6 @@ deleteVersions(diagramId: string): Promise<void>;
 
 ## 6. Reconciliation note
 
-`reference/ARCHITECTURE.md` §1 previously stated the app runs "without a traditional database … e.g.
+`reference/architecture/overview.md` §1 previously stated the app runs "without a traditional database … e.g.
 MongoDB". That has been updated to "Local-First Today, Document-DB Ready" with the adapter seam
 described in §1a. This file is the detailed companion for the eventual migration.

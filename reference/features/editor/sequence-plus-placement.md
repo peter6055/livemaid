@@ -108,4 +108,4 @@ not line numbers (line numbers drift).
 2. `src/components/editor/EditorCanvas.tsx` — `+` button render and SVG overlays.
 
 For the full sequence-interaction feature set (drag-to-connect, message/note reorder, hover
-rings, etc.) see `reference/FEATURES_AND_TRUTHS.md` § 15.
+rings, etc.) see `reference/features/reading-map.md` § 15.
