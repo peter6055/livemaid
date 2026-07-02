@@ -2479,6 +2479,11 @@ export function useCanvasInteraction({
     return () => clearTimeout(timeoutId);
   }, [code, svgContent, selectedNodeId, recalculateSelection]);
 
+  const recalculateSelectionRef = useRef(recalculateSelection);
+  useEffect(() => {
+    recalculateSelectionRef.current = recalculateSelection;
+  }, [recalculateSelection]);
+
   // Effect to recalculate sequence geometry on container or mermaid-container resize
   // (e.g. dragging panel splitter or window resize). Sequence overlays cache DOM-derived
   // canvas coordinates, so resize must invalidate the visual model even when code/svg are unchanged.
@@ -2492,7 +2497,7 @@ export function useCanvasInteraction({
       rafId = requestAnimationFrame(() => {
         sequenceMessageVisualsRef.current = [];
         setSequenceLayoutVersion((version) => version + 1);
-        recalculateSelection();
+        recalculateSelectionRef.current();
       });
     });
 
@@ -2507,7 +2512,7 @@ export function useCanvasInteraction({
       if (rafId) cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [containerRef, recalculateSelection, svgContent]);
+  }, [containerRef, svgContent]);
 
   const getClickedNode = useCallback(
     (target: Element) => {

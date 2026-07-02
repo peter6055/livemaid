@@ -13,16 +13,15 @@ let replay: ReturnType<typeof Sentry.replayIntegration> | null = null;
 
 export function createSentryAdapter(options: SentryAdapterOptions): TelemetryAdapter {
   if (!sentryInitialized) {
-    replay = Sentry.replayIntegration({
-      replaysSessionSampleRate: 0.1,
-      replaysOnErrorSampleRate: 1.0,
-    } as Parameters<typeof Sentry.replayIntegration>[0]);
+    replay = Sentry.replayIntegration();
 
     Sentry.init({
       dsn: options.dsn,
       environment: options.environment || "development",
       release: options.release,
       sampleRate: 1.0,
+      replaysSessionSampleRate: 0.1,
+      replaysOnErrorSampleRate: 1.0,
       enableLogs: true,
       integrations: [
         replay,
