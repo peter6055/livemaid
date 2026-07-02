@@ -479,6 +479,7 @@ export function useCanvasInteraction({
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<
     Array<{ index: number; x: number; y: number; width: number; height: number }>
   >([]);
+  const [sequenceLayoutVersion, setSequenceLayoutVersion] = useState(0);
   const sequenceConnectionCommittedRef = useRef(false);
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(
@@ -1009,7 +1010,14 @@ export function useCanvasInteraction({
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [containerRef, code, svgContent, determineDiagramType, getSequenceMessageEntries]);
+  }, [
+    containerRef,
+    code,
+    svgContent,
+    sequenceLayoutVersion,
+    determineDiagramType,
+    getSequenceMessageEntries,
+  ]);
 
   const getSequenceParticipantEntries = useCallback(() => {
     const participantDecl =
@@ -1580,8 +1588,8 @@ export function useCanvasInteraction({
       const scale = containerRect.width / container.offsetWidth;
       if (!Number.isFinite(scale) || scale <= 0) return null;
 
-      const toCanvasX = (vx: number) => (vx - containerRect.left + container.scrollLeft) / scale;
       const toCanvasY = (vy: number) => (vy - containerRect.top + container.scrollTop) / scale;
+      void sequenceLayoutVersion;
 
       const messageEntry = getSequenceMessageEntries(code)[messageIndex];
       if (!messageEntry) return null;
@@ -1636,6 +1644,7 @@ export function useCanvasInteraction({
     [
       containerRef,
       code,
+      sequenceLayoutVersion,
       getSequenceMessageEntries,
       parseSequenceMessageActors,
       getSequenceLifelines,
@@ -2470,25 +2479,40 @@ export function useCanvasInteraction({
     return () => clearTimeout(timeoutId);
   }, [code, svgContent, selectedNodeId, recalculateSelection]);
 
-  // Effect to recalculate selection on container or mermaid-container resize (e.g. dragging panel splitter or window resize)
+  const recalculateSelectionRef = useRef(recalculateSelection);
   useEffect(() => {
-    if (!selectedNodeId || !containerRef.current) return;
+    recalculateSelectionRef.current = recalculateSelection;
+  }, [recalculateSelection]);
 
+  // Effect to recalculate sequence geometry on container or mermaid-container resize
+  // (e.g. dragging panel splitter or window resize). Sequence overlays cache DOM-derived
+  // canvas coordinates, so resize must invalidate the visual model even when code/svg are unchanged.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let rafId = 0;
     const observer = new ResizeObserver(() => {
-      recalculateSelection();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        sequenceMessageVisualsRef.current = [];
+        setSequenceLayoutVersion((version) => version + 1);
+        recalculateSelectionRef.current();
+      });
     });
 
-    const mermaidContainer = containerRef.current.querySelector(".mermaid-container");
+    const mermaidContainer = container.querySelector(".mermaid-container");
 
-    observer.observe(containerRef.current);
+    observer.observe(container);
     if (mermaidContainer) {
       observer.observe(mermaidContainer);
     }
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [selectedNodeId, containerRef, recalculateSelection, svgContent]);
+  }, [containerRef, svgContent]);
 
   const getClickedNode = useCallback(
     (target: Element) => {
