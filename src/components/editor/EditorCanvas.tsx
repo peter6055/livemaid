@@ -549,9 +549,9 @@ export function EditorCanvas({
     if (selectedSvgSelector) {
       try {
         container
-          .querySelectorAll<HTMLElement | SVGElement>(
-            `${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`,
-          )
+          .querySelectorAll<
+            HTMLElement | SVGElement
+          >(`${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`)
           .forEach((el) => elements.add(el));
       } catch {
         // Ignore invalid third-party SVG ids; overlap fallback still handles the visible label.
