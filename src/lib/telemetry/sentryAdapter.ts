@@ -1,5 +1,4 @@
 import * as Sentry from "@sentry/nextjs";
-import { replayIntegration } from "@sentry/replay";
 import type { TelemetryAdapter, TelemetryBreadcrumb } from "./types";
 import { sanitizeString, sanitizeContext } from "./sanitizer";
 
@@ -10,14 +9,14 @@ interface SentryAdapterOptions {
 }
 
 let sentryInitialized = false;
-let replay: ReturnType<typeof replayIntegration> | null = null;
+let replay: ReturnType<typeof Sentry.replayIntegration> | null = null;
 
 export function createSentryAdapter(options: SentryAdapterOptions): TelemetryAdapter {
   if (!sentryInitialized) {
-    replay = replayIntegration({
+    replay = Sentry.replayIntegration({
       replaysSessionSampleRate: 0.1,
       replaysOnErrorSampleRate: 1.0,
-    } as Parameters<typeof replayIntegration>[0]);
+    } as Parameters<typeof Sentry.replayIntegration>[0]);
 
     Sentry.init({
       dsn: options.dsn,
