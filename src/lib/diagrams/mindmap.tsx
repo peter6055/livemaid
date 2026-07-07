@@ -106,7 +106,7 @@ export function formatMindmapNodeText(
   syntaxId: string | null,
   fallbackLine: number,
 ): string {
-  const cleanLabel = label.trim() || "New Element 1";
+  const cleanLabel = label.replace(/[\r\n]+/g, " ").trim() || "New Element 1";
   if (shape === "default") return cleanLabel;
   const id = syntaxId || safeSyntaxId(cleanLabel, fallbackLine);
   if (shape === "square") return `${id}[${cleanLabel}]`;
@@ -200,7 +200,7 @@ export function addRootMindmapNode(code: string, label = "Root"): { code: string
   const lines = source.split("\n");
   const parsed = parseMindmap(source);
   const insertAt = parsed.headerLineIndex >= 0 ? parsed.headerLineIndex + 1 : lines.length;
-  const line = `${" ".repeat(DEFAULT_INDENT)}${label}`;
+  const line = `${" ".repeat(DEFAULT_INDENT)}${formatMindmapNodeText(label, "default", null, insertAt)}`;
   lines.splice(insertAt, 0, line);
   return { code: lines.join("\n"), nodeId: mindmapNodeIdForLine(insertAt) };
 }
@@ -216,7 +216,11 @@ export function addMindmapChild(
   const lines = code.split("\n");
   const insertAt = descendantEndLine(lines, parent.sourceLineIndex) + 1;
   const indent = insertionIndentForChild(parsed, parent);
-  lines.splice(insertAt, 0, `${" ".repeat(indent)}${label}`);
+  lines.splice(
+    insertAt,
+    0,
+    `${" ".repeat(indent)}${formatMindmapNodeText(label, "default", null, insertAt)}`,
+  );
   return { code: lines.join("\n"), nodeId: mindmapNodeIdForLine(insertAt) };
 }
 
@@ -262,8 +266,19 @@ function mindmapRenderedNodes(container: Element): Element[] {
   const groups = candidates
     .map((el) => el.closest("g") ?? el)
     .filter((el, index, arr) => arr.indexOf(el) === index)
-    .filter((el) => el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0);
+    .filter((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
   return groups;
+}
+
+function mindmapRenderedNodeIndex(element: Element): number | null {
+  const rawId = element.getAttribute("data-id") || element.id || "";
+  const match = rawId.match(/(?:^|[-_])node[_-](\d+)(?:$|\D)/);
+  if (!match) return null;
+  const index = Number(match[1]);
+  return Number.isFinite(index) ? index : null;
 }
 
 export function mindmapNodeIdFromSvgElement(
@@ -273,9 +288,8 @@ export function mindmapNodeIdFromSvgElement(
 ): string | null {
   const group = element.closest("g.mindmap-node, g.node, g[class*='mindmap']");
   if (!group) return null;
-  const rendered = mindmapRenderedNodes(container);
-  const index = rendered.indexOf(group.closest("g") ?? group);
-  if (index < 0) return null;
+  const index = mindmapRenderedNodeIndex(group);
+  if (index === null) return null;
   return parseMindmap(code).nodes[index]?.id ?? null;
 }
 
@@ -286,7 +300,11 @@ export function findMindmapSvgElementByNodeId(
 ): SVGElement | null {
   const index = parseMindmap(code).nodes.findIndex((node) => node.id === nodeId);
   if (index < 0) return null;
-  return (mindmapRenderedNodes(container)[index] as SVGElement | undefined) ?? null;
+  return (
+    (mindmapRenderedNodes(container).find((node) => mindmapRenderedNodeIndex(node) === index) as
+      | SVGElement
+      | undefined) ?? null
+  );
 }
 
 function MindmapHeaderToolbar({ code, setCode }: EditorContext) {

@@ -61,6 +61,12 @@ describe("mindmap mutations", () => {
     expect(second.code).toBe("mindmap\n  Root\n    New Element 1\n    New Element 2");
   });
 
+  it("normalizes multiline labels before inserting source lines", () => {
+    const root = parseMindmap("mindmap\n  Root").nodes[0];
+    const result = addMindmapChild("mindmap\n  Root", root.id, "First\nSecond\rThird");
+    expect(result.code).toBe("mindmap\n  Root\n    First Second Third");
+  });
+
   it("adds a child under a nested node after its descendants", () => {
     const code = "mindmap\n  Root\n    A\n      B\n    C";
     const nodeA = parseMindmap(code).nodes.find((node) => node.label === "A")!;
