@@ -1187,6 +1187,7 @@ export default function Dashboard({
                   { id: "classDiagram", label: "Class" },
                   { id: "erDiagram", label: "ER" },
                   { id: "stateDiagram", label: "State" },
+                  { id: "mindmap", label: "Mindmap" },
                 ].map((t) => (
                   <button
                     key={t.id}
