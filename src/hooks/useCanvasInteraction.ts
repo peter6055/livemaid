@@ -11,6 +11,7 @@ import {
   getSequenceNoteTextElementAtIndex,
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
+import { findMindmapSvgElementByNodeId, mindmapNodeIdFromSvgElement } from "@/lib/diagrams/mindmap";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -2001,6 +2002,7 @@ export function useCanvasInteraction({
       if (id.startsWith("ER_EDGE_")) return id;
       // State-diagram transition edge ids are kept verbatim too (`STATE_EDGE_edge<N>`).
       if (id.startsWith("STATE_EDGE_")) return id;
+      if (id.startsWith("MINDMAP_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -2076,6 +2078,12 @@ export function useCanvasInteraction({
       if (path) {
         foundElement = path;
         foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("MINDMAP_")) {
+      const node = findMindmapSvgElementByNodeId(code, containerRef.current, selectedNodeId);
+      if (node) {
+        foundElement = node;
+        foundRawSvgId = node.id || null;
       }
     } else if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
@@ -2524,8 +2532,22 @@ export function useCanvasInteraction({
       let currentNode: SVGElement | null = target as SVGElement;
       let foundNodeClass = false;
       let nodeId = null;
+      const currentDiagramType = determineDiagramType(code);
 
       while (currentNode && currentNode.tagName !== "svg") {
+        if (currentDiagramType === "mindmap") {
+          const mindmapNodeId = containerRef.current
+            ? mindmapNodeIdFromSvgElement(code, containerRef.current, currentNode)
+            : null;
+          if (mindmapNodeId) {
+            const group = currentNode.closest("g.mindmap-node, g.node, g[class*='mindmap']");
+            foundNodeClass = true;
+            nodeId = mindmapNodeId;
+            currentNode = (group?.closest("g") ?? group ?? currentNode) as SVGElement;
+            break;
+          }
+        }
+
         if (
           currentNode.classList?.contains("node") ||
           currentNode.classList?.contains("cluster") ||
@@ -2750,7 +2772,8 @@ export function useCanvasInteraction({
           ? nodeId.startsWith("SEQ_") ||
             nodeId.startsWith("CLASS_EDGE_") ||
             nodeId.startsWith("ER_EDGE_") ||
-            nodeId.startsWith("STATE_EDGE_")
+            nodeId.startsWith("STATE_EDGE_") ||
+            nodeId.startsWith("MINDMAP_")
             ? nodeId
             : normalizeId(nodeId)
           : null;
@@ -2997,6 +3020,8 @@ export function useCanvasInteraction({
     },
     [
       containerRef,
+      code,
+      determineDiagramType,
       normalizeId,
       resolveSequenceActorIdFromDisplayName,
       getSequenceLifelines,

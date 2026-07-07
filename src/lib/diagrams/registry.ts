@@ -4,6 +4,7 @@ import { SequencePlugin } from "./sequence";
 import { ClassDiagramPlugin } from "./classDiagram";
 import { ErDiagramPlugin } from "./erDiagram";
 import { StateDiagramPlugin } from "./stateDiagram";
+import { MindmapPlugin } from "./mindmap";
 
 export const DiagramRegistry: Record<string, DiagramPlugin> = {
   flowchart: FlowchartPlugin,
@@ -11,4 +12,5 @@ export const DiagramRegistry: Record<string, DiagramPlugin> = {
   classDiagram: ClassDiagramPlugin,
   erDiagram: ErDiagramPlugin,
   stateDiagram: StateDiagramPlugin,
+  mindmap: MindmapPlugin,
 };

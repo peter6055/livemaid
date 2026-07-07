@@ -151,6 +151,13 @@ import {
   setStateNodeShape,
 } from "@/lib/diagrams/stateDiagram";
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import {
+  addMindmapChild,
+  changeMindmapNodeShape,
+  deleteMindmapNode,
+  mindmapLineFromNodeId,
+  type MindmapShapeKind,
+} from "@/lib/diagrams/mindmap";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -459,6 +466,35 @@ export function LiveMaidEditor({
     setIsInlineEditing(false);
     setSelectedClassName(null);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  const handleAddMindmapChild = useCallback(
+    (nodeId: string) => {
+      const result = addMindmapChild(code, nodeId);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleDeleteMindmapNode = useCallback(
+    (nodeId: string) => {
+      const newCode = deleteMindmapNode(code, nodeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleChangeMindmapShape = useCallback(
+    (nodeId: string, shape: MindmapShapeKind) => {
+      const newCode = changeMindmapNodeShape(code, nodeId, shape);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
 
   // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
   // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
@@ -2057,6 +2093,10 @@ export function LiveMaidEditor({
       const tokenRe = new RegExp(`(^|[^A-Za-z0-9_-])${esc}([^A-Za-z0-9_-]|$)`);
       const msg = getSequenceMessageEntries(code).find((e) => tokenRe.test(e.line));
       return msg ? toRange(msg.index) : null;
+    }
+
+    if (selectedNodeId.startsWith("MINDMAP_")) {
+      return toRange(mindmapLineFromNodeId(selectedNodeId) ?? -1);
     }
 
     if (isEdgeId(selectedNodeId)) {
@@ -4736,6 +4776,9 @@ export function LiveMaidEditor({
               onDeleteStateTransition={handleDeleteStateTransition}
               onAddStateTransition={handleAddStateTransition}
               onCreateStateShapeLinked={handleCreateStateShapeLinked}
+              onAddMindmapChild={handleAddMindmapChild}
+              onDeleteMindmapNode={handleDeleteMindmapNode}
+              onChangeMindmapShape={handleChangeMindmapShape}
               handleUpdateStyle={handleUpdateStyle}
               handleFormatNodeLabel={handleFormatNodeLabel}
               handleChangeShape={handleChangeShape}
