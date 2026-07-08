@@ -199,11 +199,11 @@ export function FolderCard({
       {/* Top-right actions: keep the star fixed; reveal the menu to its left on hover. */}
       {!isDemo && (
         <>
-          <div className="absolute top-2 right-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute top-4 right-4 shrink-0" onClick={(e) => e.stopPropagation()}>
             {starButton}
           </div>
           <div
-            className="absolute top-2 right-10 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute top-4 right-12 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
             onClick={(e) => e.stopPropagation()}
           >
             {menu}
