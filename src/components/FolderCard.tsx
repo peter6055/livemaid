@@ -192,7 +192,7 @@ export function FolderCard({
     <Card
       onClick={() => onOpen(folder.id)}
       {...dropProps}
-      className={`group relative flex flex-col items-center justify-center text-center gap-3 p-6 h-full min-h-[140px] cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 ${
+      className={`group relative flex flex-col items-center justify-center text-center gap-3 px-4 py-6 h-full min-h-[140px] cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 ${
         isDragOver ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/5" : ""
       }`}
     >
