@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
+import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/CreateDiagramDialog";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/BrandLogo";
 import {
@@ -28,12 +29,6 @@ import {
   Star,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  DIAGRAM_CATALOG,
-  DIAGRAM_TEMPLATES,
-  getDiagramCatalogItem,
-  getDiagramTemplate,
-} from "@/lib/diagrams/catalog";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,6 +107,7 @@ export default function Dashboard({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [displayCount, setDisplayCount] = useState(12);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -119,8 +115,6 @@ export default function Dashboard({
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [createMode, setCreateMode] = useState<"templates" | "scratch" | "code-only">("templates");
-  const [createChoiceId, setCreateChoiceId] = useState(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
   const [quickView, setQuickView] = useState<"all" | "recent" | "starred" | null>(null);
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
@@ -213,30 +207,22 @@ export default function Dashboard({
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
-    setCreateMode("templates");
-    setCreateChoiceId(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
     setIsCreateOpen(true);
   };
 
-  const handleCreateSubmit = async () => {
-    if (!createName.trim()) return;
+  const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
+    if (!payload.name.trim()) return;
     setIsCreateOpen(false);
-
-    const template = createMode === "templates" ? getDiagramTemplate(createChoiceId) : null;
-    const catalogItem =
-      createMode === "scratch"
-        ? getDiagramCatalogItem("blank")
-        : getDiagramCatalogItem(createChoiceId);
 
     try {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: createName,
-          type: template?.type ?? catalogItem.id,
-          templateId: template?.id,
-          code: template ? undefined : catalogItem.defaultCode,
+          name: payload.name,
+          type: payload.type,
+          templateId: payload.templateId,
+          code: payload.code,
           folderId: currentFolderId,
         }),
       });
@@ -519,6 +505,37 @@ export default function Dashboard({
     setSearchLoading(false);
   };
 
+  useEffect(() => {
+    const handleSearchShortcut = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isTypingTarget =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable;
+
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey && !isTypingTarget) {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+
+      if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
+        if (searchInput.trim() || searchQuery.trim()) {
+          e.preventDefault();
+          if (searchTimer.current) clearTimeout(searchTimer.current);
+          setSearchInput("");
+          setSearchQuery("");
+          setSearchLoading(false);
+        } else {
+          searchInputRef.current?.blur();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleSearchShortcut);
+    return () => document.removeEventListener("keydown", handleSearchShortcut);
+  }, [searchInput, searchQuery]);
+
   // Breadcrumb ancestor chain for the current folder (root → … → current).
   const breadcrumb = useMemo(() => {
     const chain: Folder[] = [];
@@ -604,26 +621,26 @@ export default function Dashboard({
     [],
   );
 
-  // Folders shown in the current view. While searching, match by name across ALL folders.
+  // Folders shown in the current view. Searching filters within that same view so the search scope
+  // matches the selected sidebar/folder context.
   const visibleFolders = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const list = isSearching
-      ? folders.filter((f) => f.name.toLowerCase().includes(q))
-      : quickView === "starred"
+    const inScope =
+      quickView === "starred"
         ? folders.filter((f) => f.starred)
         : quickView === "recent"
           ? []
           : quickView === "all"
             ? folders
             : folders.filter((f) => (f.parentId ?? null) === currentFolderId);
+    const list = isSearching ? inScope.filter((f) => f.name.toLowerCase().includes(q)) : inScope;
     return list.sort((a, b) => a.name.localeCompare(b.name));
   }, [folders, currentFolderId, isSearching, searchQuery, quickView]);
 
   const filteredDiagrams = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const inScope = isSearching
-      ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
-      : quickView === "starred"
+    const inScope =
+      quickView === "starred"
         ? diagrams.filter((d) => d.starred)
         : quickView === "recent"
           ? [...diagrams]
@@ -635,7 +652,9 @@ export default function Dashboard({
               // diagrams that live directly at this level (unfiled at root, or owned by the current
               // folder). Diagrams moved into a folder leave the root view and surface inside that folder.
               diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
-    const sorted = [...inScope];
+    const sorted = isSearching
+      ? inScope.filter((d) => d.name.toLowerCase().includes(q))
+      : [...inScope];
     if (sortBy === "name") {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortBy === "created") {
@@ -661,25 +680,6 @@ export default function Dashboard({
   const displayedDiagrams = useMemo(() => {
     return filteredDiagrams.slice(0, displayCount);
   }, [filteredDiagrams, displayCount]);
-
-  const codeOnlyCreateTypes = useMemo(
-    () => DIAGRAM_CATALOG.filter((item) => item.group === "code-only"),
-    [],
-  );
-
-  const selectedCreateTemplate =
-    createMode === "templates" ? getDiagramTemplate(createChoiceId) : null;
-  const selectedCreateType =
-    createMode === "scratch"
-      ? getDiagramCatalogItem("blank")
-      : getDiagramCatalogItem(selectedCreateTemplate?.type ?? createChoiceId);
-
-  const chooseCreateMode = (mode: "templates" | "scratch" | "code-only") => {
-    setCreateMode(mode);
-    if (mode === "templates") setCreateChoiceId(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
-    if (mode === "scratch") setCreateChoiceId("blank");
-    if (mode === "code-only") setCreateChoiceId(codeOnlyCreateTypes[0]?.id ?? "gantt");
-  };
 
   useEffect(() => {
     if (loading || folderLoading || searchLoading) return;
@@ -718,6 +718,39 @@ export default function Dashboard({
     },
     [],
   );
+
+  const headerTitle =
+    quickView === "all"
+      ? "All Files"
+      : quickView === "recent"
+        ? "Recent Diagrams"
+        : quickView === "starred"
+          ? "Starred Items"
+          : currentFolderId
+            ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
+            : "Your Diagrams";
+
+  const quickViewBreadcrumb =
+    quickView === "all"
+      ? "All Files"
+      : quickView === "recent"
+        ? "Recent"
+        : quickView === "starred"
+          ? "Starred"
+          : null;
+
+  const searchPlaceholder =
+    quickView === "all"
+      ? "Search all files"
+      : quickView === "recent"
+        ? "Search recent diagrams"
+        : quickView === "starred"
+          ? "Search starred items"
+          : currentFolderId
+            ? `Search in ${headerTitle}`
+            : "Search workspace";
+  const searchResultCount = visibleFolders.length + filteredDiagrams.length;
+  const searchResultLabel = `${searchResultCount} result${searchResultCount === 1 ? "" : "s"}`;
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
@@ -904,83 +937,161 @@ export default function Dashboard({
           </nav>
 
           {/* Main Content */}
-          <div className="w-full max-w-7xl mx-auto px-6 md:px-10 py-8 flex-grow">
-            {/* Header: breadcrumb + title on top, controls in a full-width wrapping row below */}
-            <div className="mb-6">
-              {/* Breadcrumb navigation */}
-              <nav className="flex items-center gap-1 text-sm text-muted-foreground mb-2 flex-wrap">
-                <button
-                  onClick={() => navigateToFolder(null)}
-                  onDragOver={(e) => {
-                    if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
-                      e.preventDefault();
-                      setBreadcrumbDragOverId("__root__");
-                    }
-                  }}
-                  onDragLeave={() => setBreadcrumbDragOverId(null)}
-                  onDrop={(e) => {
-                    const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
-                    setBreadcrumbDragOverId(null);
-                    if (diagramId) {
-                      e.preventDefault();
-                      handleFolderDrop(diagramId, null);
-                    }
-                  }}
-                  className={`flex items-center gap-1 rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === "__root__" ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
-                >
-                  <Home className="w-3.5 h-3.5" /> Workspace
-                </button>
-                {breadcrumb.map((f) => (
-                  <span key={f.id} className="flex items-center gap-1">
-                    <ChevronRight className="w-3.5 h-3.5 opacity-50" />
-                    <button
-                      onClick={() => navigateToFolder(f.id)}
-                      onDragOver={(e) => {
-                        if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
-                          e.preventDefault();
-                          setBreadcrumbDragOverId(f.id);
-                        }
-                      }}
-                      onDragLeave={() => setBreadcrumbDragOverId(null)}
-                      onDrop={(e) => {
-                        const diagramId = e.dataTransfer.getData("application/x-livemaid-diagram");
-                        setBreadcrumbDragOverId(null);
-                        if (diagramId) {
-                          e.preventDefault();
-                          handleFolderDrop(diagramId, f.id);
-                        }
-                      }}
-                      className={`max-w-[160px] truncate rounded px-1.5 py-0.5 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "text-foreground font-medium" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
-                    >
-                      {f.name}
-                    </button>
-                  </span>
-                ))}
-              </nav>
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-10 py-5 md:py-7 flex-grow">
+            <div className="mb-6 border-b border-border pb-4">
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="min-w-0">
+                    <nav className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground flex-wrap">
+                      <button
+                        onClick={() => navigateToFolder(null)}
+                        onDragOver={(e) => {
+                          if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
+                            e.preventDefault();
+                            setBreadcrumbDragOverId("__root__");
+                          }
+                        }}
+                        onDragLeave={() => setBreadcrumbDragOverId(null)}
+                        onDrop={(e) => {
+                          const diagramId = e.dataTransfer.getData(
+                            "application/x-livemaid-diagram",
+                          );
+                          setBreadcrumbDragOverId(null);
+                          if (diagramId) {
+                            e.preventDefault();
+                            handleFolderDrop(diagramId, null);
+                          }
+                        }}
+                        className={`flex items-center gap-1 rounded-full px-2 py-1 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null && !quickView ? "text-foreground" : ""} ${breadcrumbDragOverId === "__root__" ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+                      >
+                        <Home className="w-3.5 h-3.5" /> Workspace
+                      </button>
+                      {quickViewBreadcrumb && (
+                        <span className="flex min-w-0 items-center gap-1">
+                          <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                          <span className="truncate rounded-full bg-accent px-2 py-1 text-foreground">
+                            {quickViewBreadcrumb}
+                          </span>
+                        </span>
+                      )}
+                      {!quickView &&
+                        breadcrumb.map((f) => (
+                          <span key={f.id} className="flex min-w-0 items-center gap-1">
+                            <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                            <button
+                              onClick={() => navigateToFolder(f.id)}
+                              onDragOver={(e) => {
+                                if (
+                                  e.dataTransfer.types.includes("application/x-livemaid-diagram")
+                                ) {
+                                  e.preventDefault();
+                                  setBreadcrumbDragOverId(f.id);
+                                }
+                              }}
+                              onDragLeave={() => setBreadcrumbDragOverId(null)}
+                              onDrop={(e) => {
+                                const diagramId = e.dataTransfer.getData(
+                                  "application/x-livemaid-diagram",
+                                );
+                                setBreadcrumbDragOverId(null);
+                                if (diagramId) {
+                                  e.preventDefault();
+                                  handleFolderDrop(diagramId, f.id);
+                                }
+                              }}
+                              className={`max-w-[180px] truncate rounded-full px-2 py-1 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "bg-accent text-foreground" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+                            >
+                              {f.name}
+                            </button>
+                          </span>
+                        ))}
+                    </nav>
 
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate w-full min-w-0 lg:max-w-md">
-                  {quickView === "all"
-                    ? "All Files"
-                    : quickView === "recent"
-                      ? "Recent Diagrams"
-                      : quickView === "starred"
-                        ? "Starred"
-                        : currentFolderId
-                          ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
-                          : "Your Diagrams"}
-                </h1>
+                    <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+                      {headerTitle}
+                    </h1>
+                  </div>
 
-                <div className="flex flex-col gap-3 w-full lg:flex-1 lg:min-w-0">
-                  {/* Row 1: filters — how existing diagrams are displayed (search / sort / view). */}
-                  <div className="flex flex-wrap gap-3 items-center">
-                    <div className="relative flex-1 min-w-[200px]">
+                  <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                    <div className="hidden items-center gap-2 sm:flex">
+                      {!isDemo && (
+                        <Button
+                          onClick={openCreateFolderDialog}
+                          variant="outline"
+                          className="h-10 w-[168px] justify-center gap-2 whitespace-nowrap"
+                        >
+                          <FolderPlus className="w-4 h-4" />
+                          New Folder
+                        </Button>
+                      )}
+
+                      {isDemo ? (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger render={<span className="inline-flex" />}>
+                              <Button
+                                disabled
+                                className="bg-[#7a3dff]/40 text-white rounded-lg h-10 w-[168px] justify-center gap-2 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
+                              >
+                                <Plus className="w-5 h-5" />
+                                New Diagram
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Read-only in demo mode</TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      ) : (
+                        <Button
+                          onClick={openCreateDialog}
+                          className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg h-10 w-[168px] justify-center gap-2 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                        >
+                          <Plus className="w-5 h-5" />
+                          New Diagram
+                        </Button>
+                      )}
+                    </div>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        render={
+                          <Button className="h-10 gap-2 bg-[#7a3dff] text-white hover:bg-[#6b33e6] sm:hidden" />
+                        }
+                      >
+                        <Plus className="w-4 h-4" />
+                        Create
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        {!isDemo && (
+                          <DropdownMenuItem
+                            onClick={openCreateFolderDialog}
+                            className="cursor-pointer gap-2"
+                          >
+                            <FolderPlus className="w-4 h-4" /> New Folder
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={openCreateDialog}
+                          disabled={isDemo}
+                          className="cursor-pointer gap-2"
+                        >
+                          <Plus className="w-4 h-4" /> New Diagram
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+
+                <div className="flex w-full min-w-0 flex-wrap items-start gap-3 sm:flex-nowrap">
+                  <div className="min-w-0 flex-1 basis-full sm:basis-auto">
+                    <div className="relative">
                       <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
                       <Input
+                        ref={searchInputRef}
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
-                        placeholder="Search diagrams"
-                        className="pl-9 pr-9 h-10"
+                        placeholder={searchPlaceholder}
+                        aria-label="Search dashboard"
+                        className="h-10 pl-9 pr-9"
                       />
                       {searchLoading ? (
                         <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
@@ -994,54 +1105,68 @@ export default function Dashboard({
                         </button>
                       ) : null}
                     </div>
+                    {(searchInput.trim() || isSearching) && (
+                      <p className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+                        {searchLoading
+                          ? `Searching ${headerTitle.toLowerCase()}...`
+                          : `${searchResultLabel} for "${searchQuery || searchInput}"`}
+                      </p>
+                    )}
+                  </div>
 
-                    {/* Sort dropdown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button variant="outline" className="h-10 gap-2 whitespace-nowrap" />
-                        }
-                      >
-                        <ArrowDownUp className="w-4 h-4" />
-                        {sortBy === "edited"
-                          ? "Last edited"
-                          : sortBy === "created"
-                            ? "Date created"
-                            : "Name"}
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem
-                          onClick={() => setUserPref("sortBy", "edited")}
-                          className="cursor-pointer"
+                  <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:pt-0.5">
+                    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 p-1">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger
+                          render={
+                            <Button
+                              variant="ghost"
+                              className="h-8 gap-2 px-2.5 text-sm whitespace-nowrap"
+                              aria-label="Sort diagrams"
+                            />
+                          }
                         >
-                          Last edited
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setUserPref("sortBy", "created")}
-                          className="cursor-pointer"
-                        >
-                          Date created
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setUserPref("sortBy", "name")}
-                          className="cursor-pointer"
-                        >
-                          Name
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <ArrowDownUp className="w-4 h-4" />
+                          <span className="hidden sm:inline">
+                            {sortBy === "edited"
+                              ? "Last edited"
+                              : sortBy === "created"
+                                ? "Date created"
+                                : "Name"}
+                          </span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem
+                            onClick={() => setUserPref("sortBy", "edited")}
+                            className="cursor-pointer"
+                          >
+                            Last edited
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setUserPref("sortBy", "created")}
+                            className="cursor-pointer"
+                          >
+                            Date created
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => setUserPref("sortBy", "name")}
+                            className="cursor-pointer"
+                          >
+                            Name
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
 
-                    {/* View toggle: switch the file viewer between grid and list layouts. */}
-                    <div className="flex h-10 items-center rounded-md border border-border p-0.5">
+                      <div className="h-5 w-px bg-border" />
                       <button
                         type="button"
                         onClick={() => setUserPref("viewMode", "grid")}
                         aria-label="Grid view"
                         aria-pressed={viewMode === "grid"}
                         title="Grid view"
-                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                        className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                           viewMode === "grid"
-                            ? "bg-accent text-foreground"
+                            ? "bg-background text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -1053,9 +1178,9 @@ export default function Dashboard({
                         aria-label="List view"
                         aria-pressed={viewMode === "list"}
                         title="List view"
-                        className={`flex h-9 w-9 items-center justify-center rounded transition-colors ${
+                        className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
                           viewMode === "list"
-                            ? "bg-accent text-foreground"
+                            ? "bg-background text-foreground shadow-sm"
                             : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
@@ -1063,51 +1188,9 @@ export default function Dashboard({
                       </button>
                     </div>
                   </div>
-                  {/* end Row 1 */}
-
-                  {/* Row 2: actions — create new content (folder / diagram), primary CTA anchored right. */}
-                  <div className="flex flex-wrap gap-3 items-center justify-end">
-                    {!isDemo && (
-                      <Button
-                        onClick={openCreateFolderDialog}
-                        variant="outline"
-                        className="h-10 gap-2 whitespace-nowrap"
-                      >
-                        <FolderPlus className="w-4 h-4" />
-                        New Folder
-                      </Button>
-                    )}
-
-                    {isDemo ? (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger render={<span className="inline-flex" />}>
-                            <Button
-                              disabled
-                              className="bg-[#7a3dff]/40 text-white rounded-lg px-5 h-10 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
-                            >
-                              <Plus className="w-5 h-5 mr-2" />
-                              New Diagram
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Read-only in demo mode</TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    ) : (
-                      <Button
-                        onClick={openCreateDialog}
-                        className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-5 h-10 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
-                      >
-                        <Plus className="w-5 h-5 mr-2" />
-                        New Diagram
-                      </Button>
-                    )}
-                  </div>
-                  {/* end Row 2 */}
                 </div>
               </div>
             </div>
-            {/* end header */}
 
             {loading || folderLoading || searchLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1168,12 +1251,18 @@ export default function Dashboard({
                   <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">
-                  {diagrams.length === 0 ? "No diagrams yet" : "No diagrams found"}
+                  {diagrams.length === 0
+                    ? "No diagrams yet"
+                    : isSearching
+                      ? `No results found for "${searchQuery}"`
+                      : "No diagrams found"}
                 </h3>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xs text-center">
                   {diagrams.length === 0
                     ? "Get started by creating your first diagram. Choose a template above or create from scratch."
-                    : "Try a different search term or create a new diagram."}
+                    : isSearching
+                      ? "Try a different name, diagram type, or folder."
+                      : "Try a different search term or create a new diagram."}
                 </p>
                 <div className="flex gap-3">
                   {isDemo ? (
@@ -1282,121 +1371,12 @@ export default function Dashboard({
         </div>
       </div>
 
-      {/* Create Dialog */}
-      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Create New Diagram</DialogTitle>
-          </DialogHeader>
-          <div className="py-4 flex flex-col gap-4">
-            <Input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              placeholder="Diagram name"
-              autoFocus
-              onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
-            />
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              {[
-                { id: "templates" as const, label: "Templates", copy: "Guided starters" },
-                { id: "scratch" as const, label: "Start from scratch", copy: "Empty workspace" },
-                { id: "code-only" as const, label: "Other Mermaid", copy: "Render-only types" },
-              ].map((mode) => (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => chooseCreateMode(mode.id)}
-                  className={`rounded-lg border px-4 py-3 text-left transition-colors ${
-                    createMode === mode.id
-                      ? "border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
-                      : "border-border bg-background hover:bg-accent"
-                  }`}
-                >
-                  <span className="block text-sm font-semibold">{mode.label}</span>
-                  <span className="text-xs text-muted-foreground">{mode.copy}</span>
-                </button>
-              ))}
-            </div>
-
-            {createMode === "scratch" ? (
-              <button
-                type="button"
-                onClick={() => setCreateChoiceId("blank")}
-                className="rounded-xl border border-indigo-500 bg-indigo-500/10 p-4 text-left"
-              >
-                <span className="block text-sm font-semibold text-foreground">Blank diagram</span>
-                <span className="mt-1 block text-sm text-muted-foreground">
-                  Creates an intentional empty document. The editor will show a blank state instead
-                  of a Mermaid syntax error.
-                </span>
-              </button>
-            ) : (
-              <div className="grid max-h-[380px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-                {(createMode === "templates" ? DIAGRAM_TEMPLATES : codeOnlyCreateTypes).map(
-                  (item) => {
-                    const catalogItem = getDiagramCatalogItem("type" in item ? item.type : item.id);
-                    const active = createChoiceId === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        onClick={() => setCreateChoiceId(item.id)}
-                        className={`rounded-xl border p-4 text-left transition-colors ${
-                          active
-                            ? "border-indigo-500 bg-indigo-500/10"
-                            : "border-border bg-background hover:bg-accent"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <span className="block text-sm font-semibold text-foreground">
-                              {"name" in item ? item.name : item.label}
-                            </span>
-                            <span className="mt-1 block text-xs text-muted-foreground">
-                              {catalogItem.label}
-                            </span>
-                          </div>
-                          <span
-                            className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                              catalogItem.capability === "two-way"
-                                ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
-                                : "bg-slate-500/10 text-slate-700 dark:text-slate-300"
-                            }`}
-                          >
-                            {catalogItem.capability === "two-way" ? "2-way editing" : "Code-only"}
-                          </span>
-                        </div>
-                        <p className="mt-3 text-sm text-muted-foreground">
-                          {"description" in item ? item.description : catalogItem.description}
-                        </p>
-                        <pre className="mt-3 max-h-20 overflow-hidden rounded-md bg-muted/70 p-2 text-[11px] leading-4 text-muted-foreground">
-                          {"code" in item ? item.code : item.defaultCode}
-                        </pre>
-                      </button>
-                    );
-                  },
-                )}
-              </div>
-            )}
-
-            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
-              Selected:{" "}
-              <span className="font-medium text-foreground">{selectedCreateType.label}</span>{" "}
-              <span>
-                ({selectedCreateType.capability === "two-way" ? "2-way editing" : "Code-only"})
-              </span>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateDiagramDialog
+        open={isCreateOpen}
+        onOpenChange={setIsCreateOpen}
+        defaultName={createName || "Untitled Diagram"}
+        onCreate={handleCreateSubmit}
+      />
 
       {/* Rename Dialog */}
       <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>

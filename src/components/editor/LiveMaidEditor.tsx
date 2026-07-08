@@ -31,6 +31,7 @@ import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
 import { CommentSidebar } from "./comments/CommentSidebar";
 import { ClassTextEditor } from "./ClassTextEditor";
+import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/CreateDiagramDialog";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Loader2,
@@ -3774,15 +3775,18 @@ export function LiveMaidEditor({
     return `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
   };
 
-  const handleCreateSubmit = async () => {
-    if (!createName.trim()) return;
+  const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
+    if (!payload.name.trim()) return;
     try {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: createName.trim(),
-          code: `graph TD\n    A[Start] --> B[End]`,
+          name: payload.name,
+          type: payload.type,
+          templateId: payload.templateId,
+          code: payload.code,
+          folderId: doc?.folderId ?? null,
         }),
       });
       if (res.ok) {
@@ -4915,31 +4919,12 @@ export function LiveMaidEditor({
         />
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Diagram</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              placeholder="Diagram name"
-              autoFocus
-              onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewDiagramOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateDiagramDialog
+        open={isNewDiagramOpen}
+        onOpenChange={setIsNewDiagramOpen}
+        defaultName={createName || "New Diagram"}
+        onCreate={handleCreateSubmit}
+      />
 
       {/* Rename Dialog */}
       <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>

@@ -108,27 +108,6 @@ export function EditorHeader({
     setDraftName(doc?.name || "");
   };
 
-  const handleNewDiagramInNewTab = async () => {
-    if (!doc) return;
-    try {
-      const res = await fetch("/api/diagrams", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "New Diagram",
-          code: `graph TD\n    A[Start] --> B[End]`,
-        }),
-      });
-      if (res.ok) {
-        const newDiagram = await res.json();
-        window.open(`/editor/${newDiagram.id}`, "_blank", "noopener,noreferrer");
-      }
-    } catch {
-      // fallback to the existing dialog flow
-      onNewDiagram();
-    }
-  };
-
   const prepareDuplicateLink = (anchor: HTMLAnchorElement) => {
     if (anchor.dataset.duplicatePrepared === "true") return true;
     const duplicateUrl = onDuplicate();
@@ -172,7 +151,7 @@ export function EditorHeader({
               <DropdownMenuItem
                 onClick={(e) => {
                   e.preventDefault();
-                  handleNewDiagramInNewTab();
+                  onNewDiagram();
                 }}
                 className="cursor-pointer rounded-md px-3 py-2.5 text-[15px] focus:bg-accent focus:text-accent-foreground flex items-center gap-2"
               >
