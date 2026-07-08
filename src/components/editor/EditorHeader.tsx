@@ -28,7 +28,11 @@ import {
   PencilLine,
   Moon,
   LayoutDashboard,
+  Repeat2,
+  Code2,
 } from "lucide-react";
+import { getDiagramCapability } from "@/lib/diagrams/catalog";
+import { diagramTypeLabel } from "@/lib/diagrams/utils";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
@@ -43,6 +47,7 @@ interface EditorHeaderProps {
   onExport: () => void;
   onVersionHistory: () => void;
   onComments: () => void;
+  currentType?: string;
 }
 
 export function EditorHeader({
@@ -58,6 +63,7 @@ export function EditorHeader({
   onExport,
   onVersionHistory,
   onComments,
+  currentType,
 }: EditorHeaderProps) {
   // `resolvedTheme` (NOT `theme`): `theme` is the literal setting ("system") on a fresh load, so it
   // doesn't reflect the actual dark/light in effect. Use the resolved value so the toggle's state
@@ -136,6 +142,8 @@ export function EditorHeader({
 
   const actionButtonClass =
     "flex h-9 w-[140px] items-center justify-center gap-2 rounded-md border border-border px-3 text-foreground transition-colors hover:bg-accent";
+  const displayType = currentType || doc?.type || "blank";
+  const capability = getDiagramCapability(displayType);
 
   useEffect(() => {
     if (isEditingName) {
@@ -345,6 +353,23 @@ export function EditorHeader({
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
+        <span
+          className={`ml-3 hidden items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold uppercase tracking-wide sm:inline-flex ${
+            capability === "two-way"
+              ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+              : "bg-slate-500/10 text-slate-700 dark:text-slate-300"
+          }`}
+          title={`${diagramTypeLabel(displayType)} ${
+            capability === "two-way" ? "supports visual two-way editing" : "is code-only"
+          }`}
+        >
+          {capability === "two-way" ? (
+            <Repeat2 className="h-3 w-3" />
+          ) : (
+            <Code2 className="h-3 w-3" />
+          )}
+          {capability === "two-way" ? "2-way editing" : "Code-only"}
+        </span>
       </div>
       <div className="flex items-center gap-3 text-sm font-medium mr-4">
         <button

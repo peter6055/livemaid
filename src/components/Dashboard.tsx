@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useTheme } from "next-themes";
-import Link from "next/link";
 import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
 import { FolderTree } from "@/components/FolderTree";
@@ -26,10 +25,15 @@ import {
   LayoutGrid,
   List,
   Settings,
+  Star,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { DiagramRegistry } from "@/lib/diagrams/registry";
+import {
+  DIAGRAM_CATALOG,
+  DIAGRAM_TEMPLATES,
+  getDiagramCatalogItem,
+  getDiagramTemplate,
+} from "@/lib/diagrams/catalog";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
 
 import { Skeleton } from "@/components/ui/skeleton";
@@ -109,15 +113,15 @@ export default function Dashboard({
   const [searchLoading, setSearchLoading] = useState(false);
   const searchTimer = useRef<NodeJS.Timeout | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isNavigating, setIsNavigating] = useState(false);
   const [displayCount, setDisplayCount] = useState(12);
   const sentinelRef = useRef<HTMLDivElement>(null);
-  const router = useRouter();
 
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
-  const [createType, setCreateType] = useState("blank");
+  const [createMode, setCreateMode] = useState<"templates" | "scratch" | "code-only">("templates");
+  const [createChoiceId, setCreateChoiceId] = useState(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
+  const [quickView, setQuickView] = useState<"all" | "recent" | "starred" | null>(null);
 
   const [isRenameOpen, setIsRenameOpen] = useState(false);
   const [renameId, setRenameId] = useState("");
@@ -209,7 +213,8 @@ export default function Dashboard({
 
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
-    setCreateType("blank");
+    setCreateMode("templates");
+    setCreateChoiceId(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
     setIsCreateOpen(true);
   };
 
@@ -217,20 +222,28 @@ export default function Dashboard({
     if (!createName.trim()) return;
     setIsCreateOpen(false);
 
+    const template = createMode === "templates" ? getDiagramTemplate(createChoiceId) : null;
+    const catalogItem =
+      createMode === "scratch"
+        ? getDiagramCatalogItem("blank")
+        : getDiagramCatalogItem(createChoiceId);
+
     try {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: createName,
-          type: createType,
-          code: createType === "blank" ? "" : DiagramRegistry[createType]?.defaultCode,
+          type: template?.type ?? catalogItem.id,
+          templateId: template?.id,
+          code: template ? undefined : catalogItem.defaultCode,
           folderId: currentFolderId,
         }),
       });
       if (!res.ok) throw new Error("Failed to create");
       const newDoc = await res.json();
-      handleNavigate(`/editor/${newDoc.id}`);
+      setDiagrams((prev) => [newDoc, ...prev]);
+      window.open(`/editor/${newDoc.id}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.error("Failed to create diagram");
     }
@@ -239,13 +252,6 @@ export default function Dashboard({
   const openDeleteDialog = (id: string) => {
     setDeleteId(id);
     setIsDeleteOpen(true);
-  };
-
-  const handleNavigate = (url: string) => {
-    setIsNavigating(true);
-    setTimeout(() => {
-      router.push(url);
-    }, 400);
   };
 
   const handleDeleteConfirm = async () => {
@@ -398,6 +404,52 @@ export default function Dashboard({
     }
   };
 
+  const handleToggleDiagramStar = async (id: string, starred: boolean) => {
+    if (isDemo) {
+      toast.info("Demo mode — this is read only, changes won't be saved");
+      return;
+    }
+    const starredAt = starred ? new Date().toISOString() : null;
+    const previous = diagrams;
+    setDiagrams((prev) => prev.map((d) => (d.id === id ? { ...d, starred, starredAt } : d)));
+    try {
+      const res = await fetch(`/api/diagrams/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starred, starredAt }),
+      });
+      if (!res.ok) throw new Error("Failed to update star");
+      const updated = await res.json();
+      setDiagrams((prev) => prev.map((d) => (d.id === id ? updated : d)));
+    } catch {
+      setDiagrams(previous);
+      toast.error("Failed to update diagram star");
+    }
+  };
+
+  const handleToggleFolderStar = async (id: string, starred: boolean) => {
+    if (isDemo) {
+      toast.info("Demo mode — this is read only, changes won't be saved");
+      return;
+    }
+    const starredAt = starred ? new Date().toISOString() : null;
+    const previous = folders;
+    setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, starred, starredAt } : f)));
+    try {
+      const res = await fetch(`/api/folders/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starred, starredAt }),
+      });
+      if (!res.ok) throw new Error("Failed to update star");
+      const updated = await res.json();
+      setFolders((prev) => prev.map((f) => (f.id === id ? updated : f)));
+    } catch {
+      setFolders(previous);
+      toast.error("Failed to update folder star");
+    }
+  };
+
   // Open the move-confirmation dialog (non-demo only). Captures the target names so the dialog
   // can display them before the user confirms.
   const requestMoveDiagram = (id: string, folderId: string | null) => {
@@ -529,7 +581,17 @@ export default function Dashboard({
     if (id === currentFolderId && searchInput.trim() === "" && searchQuery.trim() === "") return;
     resetSearch();
     setFolderLoading(true);
+    setQuickView(null);
     setCurrentFolderId(id);
+    if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
+    folderSwitchTimer.current = setTimeout(() => setFolderLoading(false), 350);
+  };
+
+  const selectQuickView = (view: "all" | "recent" | "starred") => {
+    resetSearch();
+    setFolderLoading(true);
+    setQuickView(view);
+    setCurrentFolderId(null);
     if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
     folderSwitchTimer.current = setTimeout(() => setFolderLoading(false), 350);
   };
@@ -544,20 +606,35 @@ export default function Dashboard({
 
   // Folders shown in the current view. While searching, match by name across ALL folders.
   const visibleFolders = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
     const list = isSearching
-      ? folders.filter((f) => f.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-      : folders.filter((f) => (f.parentId ?? null) === currentFolderId);
+      ? folders.filter((f) => f.name.toLowerCase().includes(q))
+      : quickView === "starred"
+        ? folders.filter((f) => f.starred)
+        : quickView === "recent"
+          ? []
+          : quickView === "all"
+            ? folders
+            : folders.filter((f) => (f.parentId ?? null) === currentFolderId);
     return list.sort((a, b) => a.name.localeCompare(b.name));
-  }, [folders, currentFolderId, isSearching, searchQuery]);
+  }, [folders, currentFolderId, isSearching, searchQuery, quickView]);
 
   const filteredDiagrams = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     const inScope = isSearching
       ? diagrams.filter((d) => d.name.toLowerCase().includes(q))
-      : // The workspace behaves like a file-explorer root: it shows the folders plus only the
-        // diagrams that live directly at this level (unfiled at root, or owned by the current
-        // folder). Diagrams moved into a folder leave the root view and surface inside that folder.
-        diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
+      : quickView === "starred"
+        ? diagrams.filter((d) => d.starred)
+        : quickView === "recent"
+          ? [...diagrams]
+              .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+              .slice(0, 20)
+          : quickView === "all"
+            ? diagrams
+            : // The workspace behaves like a file-explorer root: it shows the folders plus only the
+              // diagrams that live directly at this level (unfiled at root, or owned by the current
+              // folder). Diagrams moved into a folder leave the root view and surface inside that folder.
+              diagrams.filter((d) => (d.folderId ?? null) === currentFolderId);
     const sorted = [...inScope];
     if (sortBy === "name") {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
@@ -567,7 +644,7 @@ export default function Dashboard({
       sorted.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     }
     return sorted;
-  }, [diagrams, searchQuery, isSearching, currentFolderId, sortBy]);
+  }, [diagrams, searchQuery, isSearching, currentFolderId, sortBy, quickView]);
 
   // Lazy-load: show 12 items at a time, reveal next batch via IntersectionObserver.
   const LAZY_BATCH = 12;
@@ -579,11 +656,30 @@ export default function Dashboard({
     setDisplayCount(12);
     setLoadingMore(false);
     if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
-  }, [currentFolderId, searchQuery, sortBy]);
+  }, [currentFolderId, searchQuery, sortBy, quickView]);
 
   const displayedDiagrams = useMemo(() => {
     return filteredDiagrams.slice(0, displayCount);
   }, [filteredDiagrams, displayCount]);
+
+  const codeOnlyCreateTypes = useMemo(
+    () => DIAGRAM_CATALOG.filter((item) => item.group === "code-only"),
+    [],
+  );
+
+  const selectedCreateTemplate =
+    createMode === "templates" ? getDiagramTemplate(createChoiceId) : null;
+  const selectedCreateType =
+    createMode === "scratch"
+      ? getDiagramCatalogItem("blank")
+      : getDiagramCatalogItem(selectedCreateTemplate?.type ?? createChoiceId);
+
+  const chooseCreateMode = (mode: "templates" | "scratch" | "code-only") => {
+    setCreateMode(mode);
+    if (mode === "templates") setCreateChoiceId(DIAGRAM_TEMPLATES[0]?.id ?? "blank");
+    if (mode === "scratch") setCreateChoiceId("blank");
+    if (mode === "code-only") setCreateChoiceId(codeOnlyCreateTypes[0]?.id ?? "gantt");
+  };
 
   useEffect(() => {
     if (loading || folderLoading || searchLoading) return;
@@ -645,6 +741,35 @@ export default function Dashboard({
 
           {/* Sidebar navigation: Recent + Folders */}
           <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-5">
+            {/* Quick views */}
+            <div>
+              <div className="flex items-center gap-1.5 px-2 mb-2">
+                <LayoutGrid className="w-3.5 h-3.5 text-muted-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Quick views
+                </span>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                {[
+                  { id: "all" as const, label: "All Files", icon: FileText },
+                  { id: "recent" as const, label: "Recent", icon: Clock },
+                  { id: "starred" as const, label: "Starred", icon: Star },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => selectQuickView(item.id)}
+                      className={`flex items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm transition-colors text-left ${quickView === item.id ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent hover:text-foreground"}`}
+                    >
+                      <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {/* Recent */}
             <div>
               <div className="flex items-center gap-1.5 px-2 mb-2">
@@ -658,20 +783,22 @@ export default function Dashboard({
               ) : (
                 <div className="flex flex-col gap-0.5">
                   {recentDiagrams.map((d) => (
-                    <button
+                    <a
                       key={d.id}
+                      href={`/editor/${d.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData("application/x-livemaid-diagram", d.id);
                         e.dataTransfer.effectAllowed = "move";
                       }}
-                      onClick={() => handleNavigate(`/editor/${d.id}`)}
                       title={d.name}
                       className="flex items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors text-left"
                     >
                       <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{d.name}</span>
-                    </button>
+                    </a>
                   ))}
                 </div>
               )}
@@ -776,17 +903,6 @@ export default function Dashboard({
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </nav>
 
-          {isNavigating && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm transition-all duration-300">
-              <div className="flex flex-col items-center gap-4">
-                <Loader2 className="w-12 h-12 animate-spin text-indigo-500" />
-                <p className="text-lg font-medium text-foreground animate-pulse">
-                  Loading Workspace...
-                </p>
-              </div>
-            </div>
-          )}
-
           {/* Main Content */}
           <div className="w-full max-w-7xl mx-auto px-6 md:px-10 py-8 flex-grow">
             {/* Header: breadcrumb + title on top, controls in a full-width wrapping row below */}
@@ -844,9 +960,15 @@ export default function Dashboard({
 
               <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <h1 className="text-3xl font-semibold tracking-tight text-foreground truncate w-full min-w-0 lg:max-w-md">
-                  {currentFolderId
-                    ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
-                    : "Your Diagrams"}
+                  {quickView === "all"
+                    ? "All Files"
+                    : quickView === "recent"
+                      ? "Recent Diagrams"
+                      : quickView === "starred"
+                        ? "Starred"
+                        : currentFolderId
+                          ? (breadcrumb[breadcrumb.length - 1]?.name ?? "Your Diagrams")
+                          : "Your Diagrams"}
                 </h1>
 
                 <div className="flex flex-col gap-3 w-full lg:flex-1 lg:min-w-0">
@@ -1107,6 +1229,7 @@ export default function Dashboard({
                           onRename={openRenameFolderDialog}
                           onDelete={openDeleteFolderDialog}
                           onMove={handleMoveFolder}
+                          onToggleStar={handleToggleFolderStar}
                           onDropDiagram={handleFolderDrop}
                           moveTargets={moveTargets}
                           canMove={ALLOW_NESTED_FOLDERS}
@@ -1139,8 +1262,8 @@ export default function Dashboard({
                         diagram={diagram}
                         onRename={openRenameDialog}
                         onDelete={openDeleteDialog}
-                        onNavigate={handleNavigate}
                         onMove={requestMoveDiagram}
+                        onToggleStar={handleToggleDiagramStar}
                         moveTargets={moveTargets}
                         isDemo={isDemo}
                         view={viewMode}
@@ -1161,7 +1284,7 @@ export default function Dashboard({
 
       {/* Create Dialog */}
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Create New Diagram</DialogTitle>
           </DialogHeader>
@@ -1173,36 +1296,95 @@ export default function Dashboard({
               autoFocus
               onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
             />
-            <div className="flex flex-col gap-2">
-              <p className="text-xs font-medium text-muted-foreground">Diagram Template</p>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {[
-                  {
-                    id: "blank",
-                    label: "Blank",
-                    description: "Start with an empty canvas and write your own Mermaid code.",
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {[
+                { id: "templates" as const, label: "Templates", copy: "Guided starters" },
+                { id: "scratch" as const, label: "Start from scratch", copy: "Empty workspace" },
+                { id: "code-only" as const, label: "Other Mermaid", copy: "Render-only types" },
+              ].map((mode) => (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => chooseCreateMode(mode.id)}
+                  className={`rounded-lg border px-4 py-3 text-left transition-colors ${
+                    createMode === mode.id
+                      ? "border-indigo-500 bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                      : "border-border bg-background hover:bg-accent"
+                  }`}
+                >
+                  <span className="block text-sm font-semibold">{mode.label}</span>
+                  <span className="text-xs text-muted-foreground">{mode.copy}</span>
+                </button>
+              ))}
+            </div>
+
+            {createMode === "scratch" ? (
+              <button
+                type="button"
+                onClick={() => setCreateChoiceId("blank")}
+                className="rounded-xl border border-indigo-500 bg-indigo-500/10 p-4 text-left"
+              >
+                <span className="block text-sm font-semibold text-foreground">Blank diagram</span>
+                <span className="mt-1 block text-sm text-muted-foreground">
+                  Creates an intentional empty document. The editor will show a blank state instead
+                  of a Mermaid syntax error.
+                </span>
+              </button>
+            ) : (
+              <div className="grid max-h-[380px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
+                {(createMode === "templates" ? DIAGRAM_TEMPLATES : codeOnlyCreateTypes).map(
+                  (item) => {
+                    const catalogItem = getDiagramCatalogItem("type" in item ? item.type : item.id);
+                    const active = createChoiceId === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setCreateChoiceId(item.id)}
+                        className={`rounded-xl border p-4 text-left transition-colors ${
+                          active
+                            ? "border-indigo-500 bg-indigo-500/10"
+                            : "border-border bg-background hover:bg-accent"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <span className="block text-sm font-semibold text-foreground">
+                              {"name" in item ? item.name : item.label}
+                            </span>
+                            <span className="mt-1 block text-xs text-muted-foreground">
+                              {catalogItem.label}
+                            </span>
+                          </div>
+                          <span
+                            className={`shrink-0 rounded px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                              catalogItem.capability === "two-way"
+                                ? "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                                : "bg-slate-500/10 text-slate-700 dark:text-slate-300"
+                            }`}
+                          >
+                            {catalogItem.capability === "two-way" ? "2-way editing" : "Code-only"}
+                          </span>
+                        </div>
+                        <p className="mt-3 text-sm text-muted-foreground">
+                          {"description" in item ? item.description : catalogItem.description}
+                        </p>
+                        <pre className="mt-3 max-h-20 overflow-hidden rounded-md bg-muted/70 p-2 text-[11px] leading-4 text-muted-foreground">
+                          {"code" in item ? item.code : item.defaultCode}
+                        </pre>
+                      </button>
+                    );
                   },
-                  { id: "flowchart", label: "Flowchart" },
-                  { id: "sequence", label: "Sequence" },
-                  { id: "classDiagram", label: "Class" },
-                  { id: "erDiagram", label: "ER" },
-                  { id: "stateDiagram", label: "State" },
-                  { id: "mindmap", label: "Mindmap" },
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setCreateType(t.id)}
-                    className={`flex min-h-20 flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition-all ${
-                      createType === t.id
-                        ? "border-indigo-500 bg-indigo-500/10 text-indigo-600 shadow-sm dark:text-indigo-400"
-                        : "border-border bg-background text-muted-foreground hover:border-indigo-300 hover:bg-accent/60"
-                    }`}
-                  >
-                    <span className="text-sm font-medium leading-none">{t.label}</span>
-                  </button>
-                ))}
+                )}
               </div>
+            )}
+
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+              Selected:{" "}
+              <span className="font-medium text-foreground">{selectedCreateType.label}</span>{" "}
+              <span>
+                ({selectedCreateType.capability === "two-way" ? "2-way editing" : "Code-only"})
+              </span>
             </div>
           </div>
           <DialogFooter>

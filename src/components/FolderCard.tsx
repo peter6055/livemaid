@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   FolderOpen,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -28,6 +29,8 @@ export interface Folder {
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
+  starred?: boolean;
+  starredAt?: string | null;
 }
 
 export function FolderCard({
@@ -37,6 +40,7 @@ export function FolderCard({
   onRename,
   onDelete,
   onMove,
+  onToggleStar,
   onDropDiagram,
   moveTargets,
   canMove = true,
@@ -49,6 +53,7 @@ export function FolderCard({
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, parentId: string | null) => void;
+  onToggleStar?: (id: string, starred: boolean) => void;
   onDropDiagram: (diagramId: string, folderId: string) => void;
   moveTargets: { id: string | null; name: string; depth: number }[];
   canMove?: boolean;
@@ -90,6 +95,15 @@ export function FolderCard({
         <MoreVertical className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
+        {onToggleStar && (
+          <DropdownMenuItem
+            onClick={() => onToggleStar(folder.id, !folder.starred)}
+            className="cursor-pointer gap-2"
+          >
+            <Star className={`h-4 w-4 ${folder.starred ? "fill-amber-500 text-amber-500" : ""}`} />
+            {folder.starred ? "Unstar" : "Star"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => onOpen(folder.id)} className="cursor-pointer gap-2">
           <FolderOpen className="h-4 w-4" /> Open
         </DropdownMenuItem>
@@ -133,6 +147,20 @@ export function FolderCard({
 
   const countLabel =
     childCount === 0 ? "Empty" : `${childCount} item${childCount === 1 ? "" : "s"}`;
+  const starButton = onToggleStar && !isDemo && (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`h-8 w-8 ${folder.starred ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"} hover:bg-accent`}
+      aria-label={folder.starred ? "Unstar folder" : "Star folder"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggleStar(folder.id, !folder.starred);
+      }}
+    >
+      <Star className={`h-4 w-4 ${folder.starred ? "fill-current" : ""}`} />
+    </Button>
+  );
 
   // ---- List view: a compact horizontal row -------------------------------
   if (view === "list") {
@@ -155,6 +183,7 @@ export function FolderCard({
           className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
+          {starButton}
           {menu}
         </div>
       </Card>
@@ -173,9 +202,10 @@ export function FolderCard({
       {/* Three-dot menu — top-right corner, like diagram cards */}
       {!isDemo && (
         <div
-          className="absolute top-2 right-2 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+          className="absolute top-2 right-2 flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
+          {starButton}
           {menu}
         </div>
       )}

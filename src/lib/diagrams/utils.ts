@@ -63,6 +63,8 @@ export function updateMermaidTheme(code: string, newTheme: string): string {
 }
 
 export function determineDiagramType(sourceCode: string): string {
+  if (sourceCode.trim().length === 0) return "blank";
+
   const lines = sourceCode.split("\n");
   let inConfig = false;
   for (const line of lines) {
@@ -75,11 +77,15 @@ export function determineDiagramType(sourceCode: string): string {
 
     if (trimmed.startsWith("flowchart") || trimmed.startsWith("graph")) return "flowchart";
     if (trimmed.startsWith("sequenceDiagram")) return "sequence";
+    if (trimmed.startsWith("gitGraph")) return "gitGraph";
+    if (trimmed.startsWith("requirementDiagram")) return "requirementDiagram";
+    if (/^C4(?:Context|Container|Component|Dynamic|Deployment)\b/.test(trimmed))
+      return trimmed.split(/\s+/)[0];
 
-    const match = trimmed.match(/^([a-zA-Z]+)/);
+    const match = trimmed.match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
     if (match) return match[1];
   }
-  return "flowchart";
+  return "blank";
 }
 
 /**
@@ -90,6 +96,7 @@ export function determineDiagramType(sourceCode: string): string {
 export function diagramTypeLabel(type: string): string {
   const KNOWN: Record<string, string> = {
     flowchart: "Flowchart",
+    blank: "Blank Diagram",
     graph: "Flowchart",
     sequence: "Sequence Diagram",
     sequenceDiagram: "Sequence Diagram",

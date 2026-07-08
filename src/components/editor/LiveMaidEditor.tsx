@@ -233,6 +233,7 @@ export function LiveMaidEditor({
     currentFont,
     setCurrentFont,
     parseError,
+    isBlankDiagram,
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,
@@ -4132,6 +4133,7 @@ export function LiveMaidEditor({
       <EditorHeader
         doc={doc}
         folders={folders}
+        currentType={currentType}
         saving={saving}
         isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
@@ -4677,6 +4679,7 @@ export function LiveMaidEditor({
               code={code}
               parseError={parseError}
               svgContent={svgContent}
+              isBlankDiagram={isBlankDiagram}
               isLocked={isLocked}
               setIsLocked={setIsLocked}
               containerRef={containerRef}
@@ -4793,6 +4796,7 @@ export function LiveMaidEditor({
               onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
               onLinkSequenceNote={handleLinkSequenceNote}
               setIsInlineEditing={setIsInlineEditing}
+              handleCodeChange={handleCodeChange}
               textBox={textBox}
               theme={currentTheme}
               editingText={editingText}

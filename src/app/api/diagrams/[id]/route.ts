@@ -21,10 +21,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   if (IS_DEMO_MODE) {
     try {
       const body = await request.json();
-      // Rename operations (name change without code) are rejected in demo mode
-      if (body.name !== undefined && body.code === undefined) {
+      // Metadata writes (rename/move/star) are rejected in demo mode.
+      if (body.code === undefined) {
         return NextResponse.json(
-          { error: "Demo mode: renaming diagrams is disabled" },
+          { error: "Demo mode: editing diagrams is disabled" },
           { status: 403 },
         );
       }
@@ -46,6 +46,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
+    const nextStarred = typeof body.starred === "boolean" ? body.starred : existing.starred;
+    const nextStarredAt =
+      typeof body.starredAt === "string" || body.starredAt === null
+        ? body.starredAt
+        : existing.starredAt;
     const requestedHistory = Array.isArray(body.versionHistory) ? body.versionHistory : null;
     const baseHistory = requestedHistory ?? existing.versionHistory ?? [];
 
@@ -76,6 +81,8 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...body,
       id, // Protect ID
       updatedAt: new Date().toISOString(),
+      starred: Boolean(nextStarred),
+      starredAt: nextStarred ? (nextStarredAt ?? new Date().toISOString()) : null,
       versionHistory: nextVersionHistory,
     };
 
