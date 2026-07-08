@@ -179,12 +179,9 @@ export function FolderCard({
           <p className="truncate text-sm font-medium text-foreground">{folder.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{countLabel}</p>
         </div>
-        <div
-          className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="flex shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
           {starButton}
-          {menu}
+          <div className="opacity-0 transition-opacity group-hover:opacity-100">{menu}</div>
         </div>
       </Card>
     );
@@ -201,12 +198,9 @@ export function FolderCard({
     >
       {/* Three-dot menu — top-right corner, like diagram cards */}
       {!isDemo && (
-        <div
-          className="absolute top-2 right-2 flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="absolute top-2 right-2 flex shrink-0" onClick={(e) => e.stopPropagation()}>
           {starButton}
-          {menu}
+          <div className="opacity-0 transition-opacity group-hover:opacity-100">{menu}</div>
         </div>
       )}
 

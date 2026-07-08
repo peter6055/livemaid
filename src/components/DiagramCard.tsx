@@ -88,6 +88,18 @@ export function DiagramCard({
   };
 
   // Action buttons (edit / move / delete) shared between the grid card and the list row.
+  const starAction = !isDemo && onToggleStar && (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`h-8 w-8 ${diagram.starred ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"} hover:bg-accent`}
+      aria-label={diagram.starred ? "Unstar diagram" : "Star diagram"}
+      onClick={() => onToggleStar(diagram.id, !diagram.starred)}
+    >
+      <Star className={`h-4 w-4 ${diagram.starred ? "fill-current" : ""}`} />
+    </Button>
+  );
+
   const actions = isDemo ? (
     <TooltipProvider>
       <Tooltip>
@@ -157,17 +169,6 @@ export function DiagramCard({
     </TooltipProvider>
   ) : (
     <>
-      {onToggleStar && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-8 w-8 ${diagram.starred ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"} hover:bg-accent`}
-          aria-label={diagram.starred ? "Unstar diagram" : "Star diagram"}
-          onClick={() => onToggleStar(diagram.id, !diagram.starred)}
-        >
-          <Star className={`h-4 w-4 ${diagram.starred ? "fill-current" : ""}`} />
-        </Button>
-      )}
       <Button
         variant="ghost"
         size="icon"
@@ -287,6 +288,14 @@ export function DiagramCard({
         >
           {actions}
         </div>
+        {starAction && (
+          <div
+            className="relative z-20 flex shrink-0 items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {starAction}
+          </div>
+        )}
       </Card>
     );
   }
@@ -315,6 +324,11 @@ export function DiagramCard({
           <div className="relative z-20 flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             {actions}
           </div>
+          {starAction && (
+            <div className="relative z-20 flex flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {starAction}
+            </div>
+          )}
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">
           {typeBadge}
