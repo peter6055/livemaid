@@ -33,7 +33,10 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 - **Live WYSIWYG Editor:** Write Mermaid code and see the rendered diagram update in real time.
 - **Two-Way Visual Editing:** Click nodes, edges, and participants directly on the canvas to rename labels, change shapes/styles, reorder, or delete — all changes write back to the code instantly.
-- **Diagram Management:** Create, rename, and delete diagrams from a centralized dashboard, with folder organization support.
+- **Capability-Aware Creation:** Start from guided templates, create an intentional blank workspace, or create code-only Mermaid diagram types from the New Diagram flow.
+- **Blank Diagram State:** Empty diagrams open as a friendly blank workspace with starter-template actions instead of a Mermaid syntax error.
+- **Diagram Management:** Create, rename, delete, star, and organize diagrams from a centralized dashboard, with folder support and All Files / Recent / Starred quick views.
+- **Dashboard Workflow:** Open diagrams from the dashboard in a new browser tab so the file browser stays available.
 - **Powered by Monaco:** Enjoy a rich code-editing experience with Mermaid syntax highlighting, powered by the Monaco Editor.
 - **Dark Mode Support:** Toggle between light and dark themes for comfortable viewing anytime.
 - **Modern Stack:** Built on Next.js, React 19, and styled with Tailwind CSS & shadcn/ui.
@@ -53,11 +56,26 @@ These diagram types support full two-way interaction — you can click and manip
 | **Sequence Diagram** | Supported                   |
 | **Class Diagram**    | Supported                   |
 | **ER Diagram**       | Supported                   |
-| **State Diagram**    | Supported (2-way sync)      |
+| **State Diagram**    | Supported 2-way sync        |
+| **Mindmap**          | Supported                   |
 
 ### 🔲 Code Only (render + preview)
 
-All other Mermaid diagram types are fully supported for editing and rendering but do not yet have visual canvas interaction
+Code-only diagrams can be created, edited, rendered, searched, starred, organized, saved, and opened in LiveMaid, but do not yet expose visual canvas editing controls.
+
+The New Diagram flow currently exposes these code-only starters:
+
+| Diagram                 | Support Level    |
+| ----------------------- | ---------------- |
+| **Gantt Chart**         | Code-only render |
+| **Pie Chart**           | Code-only render |
+| **Timeline**            | Code-only render |
+| **User Journey**        | Code-only render |
+| **Git Graph**           | Code-only render |
+| **Requirement Diagram** | Code-only render |
+| **C4 Context**          | Code-only render |
+
+Other Mermaid diagram syntax can still be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only.
 
 ## 🐳 Deployment (Docker)
 
