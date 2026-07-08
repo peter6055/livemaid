@@ -196,12 +196,19 @@ export function FolderCard({
         isDragOver ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/5" : ""
       }`}
     >
-      {/* Three-dot menu — top-right corner, like diagram cards */}
+      {/* Top-right actions: keep the star fixed; reveal the menu to its left on hover. */}
       {!isDemo && (
-        <div className="absolute top-2 right-2 flex shrink-0" onClick={(e) => e.stopPropagation()}>
-          {starButton}
-          <div className="opacity-0 transition-opacity group-hover:opacity-100">{menu}</div>
-        </div>
+        <>
+          <div className="absolute top-2 right-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {starButton}
+          </div>
+          <div
+            className="absolute top-2 right-10 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu}
+          </div>
+        </>
       )}
 
       {/* Centered folder icon + name */}
