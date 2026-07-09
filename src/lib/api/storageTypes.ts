@@ -257,7 +257,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
     starred: Boolean(raw.starred),
-    starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
+    starredAt: Boolean(raw.starred) && typeof raw.starredAt === "string" ? raw.starredAt : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
     comments: normalizedComments,
     versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
@@ -273,7 +273,7 @@ export function normalizeFolder(raw: Partial<Folder>): Folder {
     updatedAt: raw.updatedAt || new Date().toISOString(),
     deletedAt: typeof raw.deletedAt === "string" ? raw.deletedAt : null,
     starred: Boolean(raw.starred),
-    starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
+    starredAt: Boolean(raw.starred) && typeof raw.starredAt === "string" ? raw.starredAt : null,
   };
 }
 

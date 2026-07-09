@@ -119,6 +119,10 @@ export function diagramTypeLabel(type: string): string {
     block: "Block Diagram",
     "block-beta": "Block Diagram",
     C4Context: "C4 Diagram",
+    C4Container: "C4 Diagram",
+    C4Component: "C4 Diagram",
+    C4Dynamic: "C4 Diagram",
+    C4Deployment: "C4 Diagram",
   };
   if (KNOWN[type]) return KNOWN[type];
   const spaced = type

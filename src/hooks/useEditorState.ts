@@ -43,6 +43,8 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     if (mermaidCode.trim().length === 0) {
       setParseError(null);
       setSvgContent("");
+      setCurrentTheme("default");
+      setCurrentFont("Default");
       renderIdRef.current = null;
       if (onResetSelection) onResetSelection();
       return;
