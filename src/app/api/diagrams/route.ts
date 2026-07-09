@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDiagrams, saveDiagram, DiagramDocument, IS_DEMO_MODE } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
-import { DiagramRegistry } from "@/lib/diagrams/registry";
+import {
+  getDiagramCatalogItem,
+  getDiagramTemplate,
+  isCreatableDiagramType,
+} from "@/lib/diagrams/catalog";
 
 export async function GET(request: Request) {
   try {
@@ -41,26 +45,36 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { name, type = "flowchart", code } = body;
+    const template =
+      typeof body.templateId === "string" ? getDiagramTemplate(body.templateId) : null;
+    const requestedType =
+      template?.type ?? (typeof body.type === "string" ? body.type : "flowchart");
+    const { name, code } = body;
     const folderId = typeof body.folderId === "string" ? body.folderId : null;
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    const plugin = DiagramRegistry[type] || DiagramRegistry["flowchart"];
-    const defaultCode = plugin.defaultCode;
-    const finalCode = code !== undefined ? code : defaultCode;
+    if (!isCreatableDiagramType(requestedType)) {
+      return NextResponse.json({ error: "Unsupported diagram type" }, { status: 400 });
+    }
+
+    const catalogItem = getDiagramCatalogItem(requestedType);
+    const finalCode = typeof code === "string" ? code : (template?.code ?? catalogItem.defaultCode);
+    const now = new Date().toISOString();
 
     const newDiagram: DiagramDocument = {
       id: nanoid(),
       name,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
       deletedAt: null,
       code: finalCode,
-      type,
+      type: requestedType,
       folderId,
+      starred: false,
+      starredAt: null,
       subPages: [],
       comments: [],
       versionHistory: [],

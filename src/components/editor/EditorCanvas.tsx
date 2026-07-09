@@ -67,6 +67,7 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
+import { EmptyCanvas } from "./EmptyCanvas";
 
 const DEFAULT_CANVAS_INITIAL_SCALE = 2.75;
 
@@ -74,6 +75,7 @@ interface EditorCanvasProps {
   code: string;
   parseError: string | null;
   svgContent: string;
+  isBlankDiagram?: boolean;
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
   isCommentMode?: boolean;
@@ -387,6 +389,7 @@ export function EditorCanvas({
   code,
   parseError,
   svgContent,
+  isBlankDiagram = false,
   isLocked,
   setIsLocked,
   containerRef,
@@ -1847,6 +1850,11 @@ export function EditorCanvas({
           backgroundSize: "24px 24px",
         }}
       />
+      {isBlankDiagram && (
+        <div className="absolute inset-0 z-40 bg-white/90">
+          <EmptyCanvas handleCodeChange={handleCodeChange} />
+        </div>
+      )}
       <TransformWrapper
         initialScale={1.5}
         minScale={0.5}
@@ -2016,17 +2024,21 @@ export function EditorCanvas({
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {parseError && !(currentType === "mindmap" && !mindmapHasNodes) && (
-                  <div
-                    className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
+                {parseError &&
+                  !isBlankDiagram &&
+                  !(currentType === "mindmap" && !mindmapHasNodes) && (
+                    <div
+                      className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
+
+                {!isBlankDiagram && (
+                  <StableMermaidHtml
+                    html={svgContent}
+                    className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
                   />
                 )}
-
-                <StableMermaidHtml
-                  html={svgContent}
-                  className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
-                />
 
                 <CommentLayer
                   code={code}

@@ -16,8 +16,10 @@ export interface DiagramDocument {
   updatedAt: string;
   deletedAt: string | null;
   code: string;
-  type: "flowchart" | "sequence" | "class";
+  type: string;
   folderId: string | null;
+  starred?: boolean;
+  starredAt?: string | null;
   subPages: { id: string; name: string; code: string }[];
   comments: DiagramComment[];
   versionHistory: VersionHistoryEntry[];
@@ -75,6 +77,8 @@ export interface Folder {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  starred?: boolean;
+  starredAt?: string | null;
 }
 
 // Whether the app runs in read-only demo mode. Read here once so every backend (and the API routes
@@ -252,6 +256,8 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     code: raw.code || "",
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
+    starred: Boolean(raw.starred),
+    starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
     comments: normalizedComments,
     versionHistory: Array.isArray(raw.versionHistory) ? raw.versionHistory : [],
@@ -266,6 +272,8 @@ export function normalizeFolder(raw: Partial<Folder>): Folder {
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
     deletedAt: typeof raw.deletedAt === "string" ? raw.deletedAt : null,
+    starred: Boolean(raw.starred),
+    starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
   };
 }
 

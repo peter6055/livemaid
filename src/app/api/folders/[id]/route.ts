@@ -69,6 +69,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       next.parentId = newParentId;
     }
 
+    if (typeof body.starred === "boolean") {
+      next.starred = body.starred;
+      next.starredAt = body.starred
+        ? typeof body.starredAt === "string"
+          ? body.starredAt
+          : new Date().toISOString()
+        : null;
+    }
+
     next.updatedAt = new Date().toISOString();
     await saveFolder(next);
     return NextResponse.json(next);
