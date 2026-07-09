@@ -67,7 +67,7 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
-import { DIAGRAM_TEMPLATES } from "@/lib/diagrams/catalog";
+import { EmptyCanvas } from "./EmptyCanvas";
 
 const DEFAULT_CANVAS_INITIAL_SCALE = 2.75;
 
@@ -1850,6 +1850,11 @@ export function EditorCanvas({
           backgroundSize: "24px 24px",
         }}
       />
+      {isBlankDiagram && (
+        <div className="absolute inset-0 z-40 bg-white/90">
+          <EmptyCanvas handleCodeChange={handleCodeChange} />
+        </div>
+      )}
       <TransformWrapper
         initialScale={1.5}
         minScale={0.5}
@@ -2019,37 +2024,6 @@ export function EditorCanvas({
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {isBlankDiagram && (
-                  <div className="absolute inset-0 z-30 flex items-center justify-center px-6 pointer-events-none">
-                    <div className="max-w-md rounded-2xl border border-slate-200 bg-white/95 p-6 text-center shadow-xl pointer-events-auto">
-                      <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-500/10 text-indigo-600">
-                        <SquareStack className="h-6 w-6" />
-                      </div>
-                      <h3 className="text-lg font-semibold text-slate-950">
-                        This diagram is empty
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Start typing Mermaid code, paste an existing diagram, or insert a starter
-                        template. Empty code is treated as a blank workspace, not a syntax error.
-                      </p>
-                      {handleCodeChange && (
-                        <div className="mt-5 grid gap-2 sm:grid-cols-3">
-                          {DIAGRAM_TEMPLATES.slice(0, 3).map((template) => (
-                            <button
-                              key={template.id}
-                              type="button"
-                              onClick={() => handleCodeChange(template.code)}
-                              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
-                            >
-                              {template.name.replace(" starter", "")}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
                 {parseError &&
                   !isBlankDiagram &&
                   !(currentType === "mindmap" && !mindmapHasNodes) && (
