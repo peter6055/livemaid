@@ -11,6 +11,42 @@ interface TelemetryContextValue {
   setDebugReporting: (enabled: boolean) => void;
 }
 
+interface TelemetryPreferences {
+  usageAnalytics: boolean;
+  debugReporting: boolean;
+}
+
+const TELEMETRY_PREFS_KEY = "livemaid:telemetry-preferences";
+
+function loadTelemetryPreferences(): TelemetryPreferences {
+  if (typeof window === "undefined") {
+    return { usageAnalytics: false, debugReporting: false };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(TELEMETRY_PREFS_KEY);
+    if (!raw) return { usageAnalytics: false, debugReporting: false };
+    const parsed = JSON.parse(raw);
+    return {
+      usageAnalytics: parsed.usageAnalytics === true,
+      debugReporting: parsed.debugReporting === true,
+    };
+  } catch {
+    return { usageAnalytics: false, debugReporting: false };
+  }
+}
+
+function saveTelemetryPreferences(usageAnalytics: boolean, debugReporting: boolean) {
+  try {
+    window.localStorage.setItem(
+      TELEMETRY_PREFS_KEY,
+      JSON.stringify({ usageAnalytics, debugReporting }),
+    );
+  } catch {
+    // Ignore storage failures so privacy toggles still work for the current session.
+  }
+}
+
 const TelemetryContext = createContext<TelemetryContextValue>({
   usageAnalytics: false,
   debugReporting: false,
@@ -29,20 +65,33 @@ export function TelemetryProvider({
   children: ReactNode;
   config: TelemetryConfig;
 }) {
-  const [usageAnalytics, setUsageAnalyticsState] = useState(false);
-  const [debugReporting, setDebugReportingState] = useState(false);
+  const [{ usageAnalytics, debugReporting }, setTelemetryPreferences] =
+    useState(loadTelemetryPreferences);
 
   useEffect(() => {
-    initTelemetry(config);
-  }, []);
+    const telemetry = initTelemetry(config);
+    telemetry.setUsageAnalytics(usageAnalytics);
+    telemetry.setDebugReporting(debugReporting);
+    // `usageAnalytics` and `debugReporting` are intentionally only read for initial bootstrapping.
+    // Toggle handlers update the live telemetry instance directly after mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config]);
 
   const setUsageAnalytics = (value: boolean) => {
-    setUsageAnalyticsState(value);
+    setTelemetryPreferences((prev) => {
+      const next = { ...prev, usageAnalytics: value };
+      saveTelemetryPreferences(next.usageAnalytics, next.debugReporting);
+      return next;
+    });
     getTelemetry()?.setUsageAnalytics(value);
   };
 
   const setDebugReporting = (value: boolean) => {
-    setDebugReportingState(value);
+    setTelemetryPreferences((prev) => {
+      const next = { ...prev, debugReporting: value };
+      saveTelemetryPreferences(next.usageAnalytics, next.debugReporting);
+      return next;
+    });
     getTelemetry()?.setDebugReporting(value);
   };
 

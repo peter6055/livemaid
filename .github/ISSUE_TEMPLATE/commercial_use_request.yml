@@ -1,0 +1,67 @@
+name: Commercial use request
+description: Request approval for a use that requires written permission under LSAL-1.0.
+title: "Commercial Use Request: "
+labels:
+  - commercial-use
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Some hosted, managed-service, commercial redistribution, commercial product, and competing-service uses require prior written approval. See COMMERCIAL_USE.md before submitting.
+  - type: input
+    id: organization
+    attributes:
+      label: Organization name
+      description: Company, organization, or individual requesting approval.
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: Contact person and role
+      placeholder: Jane Doe, Engineering Manager
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Intended use case
+      description: Describe clearly how you intend to use LiveMaid.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment-model
+    attributes:
+      label: Distribution or deployment model
+      options:
+        - Internal only
+        - Hosted or managed service for third parties
+        - SaaS, PaaS, or API-as-a-service
+        - On-premises product for customers
+        - Commercial redistribution
+        - Commercial product
+        - Competing hosted service
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: modifications
+    attributes:
+      label: Planned modifications
+      description: Do you intend to modify the source code? If so, describe the changes.
+    validations:
+      required: true
+  - type: textarea
+    id: timeline
+    attributes:
+      label: Timeline and scale
+      description: Approximate start date, expected users, customers, or deployment scale.
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Acknowledgement
+      options:
+        - label: I understand submitting this request does not grant permission until explicit written approval is received.
+          required: true

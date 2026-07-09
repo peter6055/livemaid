@@ -7,9 +7,17 @@
 
 <h1 align="center">LiveMaid</h1>
 
-<p align="center"><strong>An open source two way Mermaid diagram WYSIWYG editor</strong></p>
+<p align="center"><strong>A source-available two-way Mermaid diagram WYSIWYG editor</strong></p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/peter6055">
+    <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" />
+  </a>
+</p>
 
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
+
+LiveMaid is source-available under the [LiveMaid Source Available License 1.0](LICENSE). It is not OSI open-source software; please review the license before using, modifying, redistributing, or offering it as a service.
 
 ## 📑 Table of Contents
 
@@ -18,10 +26,12 @@ LiveMaid is a modern, local web application designed to make creating, editing, 
 - [📊 Supported Diagrams](#-supported-diagrams)
   - [✅ Two-Way Sync (visual editing + code)](#-two-way-sync-visual-editing--code)
   - [🔲 Code Only (render + preview)](#-code-only-render--preview)
+- [📋 Requirements](#-requirements)
 - [🐳 Deployment (Docker)](#-deployment-docker)
   - [Manual Docker Compose](#manual-docker-compose)
   - [Demo Mode](#demo-mode)
 - [🛠️ Tech Stack](#️-tech-stack)
+- [📜 Licensing](#-licensing)
 - [🤝 Contributing](#-contributing)
 - [💖 Support the Community](#-support-the-community)
 
@@ -44,7 +54,7 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 ## 📊 Supported Diagrams
 
-LiveMaid has two levels of support for Mermaid diagram types:
+LiveMaid supports Mermaid diagrams at two levels: selected diagram types have full two-way visual editing, and all Mermaid diagram syntax can be used as code-only render/preview diagrams.
 
 ### ✅ Two-Way Sync (visual editing + code)
 
@@ -61,21 +71,18 @@ These diagram types support full two-way interaction — you can click and manip
 
 ### 🔲 Code Only (render + preview)
 
-Code-only diagrams can be created, edited, rendered, searched, starred, organized, saved, and opened in LiveMaid, but do not yet expose visual canvas editing controls.
+All Mermaid diagram types can be created, edited, rendered, searched, starred, organized, saved, and opened in LiveMaid as code-only diagrams, but diagram types without a two-way plugin do not yet expose visual canvas editing controls.
 
-The New Diagram flow currently exposes these code-only starters:
+Any Mermaid diagram syntax can be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only render/preview.
 
-| Diagram                 | Support Level    |
-| ----------------------- | ---------------- |
-| **Gantt Chart**         | Code-only render |
-| **Pie Chart**           | Code-only render |
-| **Timeline**            | Code-only render |
-| **User Journey**        | Code-only render |
-| **Git Graph**           | Code-only render |
-| **Requirement Diagram** | Code-only render |
-| **C4 Context**          | Code-only render |
+## 📋 Requirements
 
-Other Mermaid diagram syntax can still be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only.
+For local development, LiveMaid requires:
+
+- Node.js 20 or newer
+- npm 10 or newer
+
+For Docker deployment, use Docker Engine with Docker Compose support. The published container image runs the production app on Node.js 20.
 
 ## 🐳 Deployment (Docker)
 
@@ -161,6 +168,25 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 - [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
 
+## 📜 Licensing
+
+LiveMaid is distributed under the [LiveMaid Source Available License 1.0](LICENSE). It is source-available software, not OSI open-source software.
+
+You may use LiveMaid without prior approval for:
+
+- Personal, educational, research, and non-commercial use.
+- Internal organizational or business use, as long as LiveMaid is not offered to third parties as a hosted or managed service and is not redistributed as a commercial product.
+- Private modifications that you keep internal.
+
+You need prior written approval before:
+
+- Offering LiveMaid, or a modified version of it, as SaaS, PaaS, API-as-a-service, or another hosted/managed service to third parties.
+- Redistributing, sublicensing, selling, or commercializing LiveMaid or derivatives for external customers.
+- Building and distributing a commercial product from LiveMaid or substantial portions of it.
+- Operating a competing hosted service based on LiveMaid or substantial portions of it.
+
+See [COMMERCIAL_USE.md](COMMERCIAL_USE.md) for approval requests.
+
 ## 🤝 Contributing
 
 Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, the branch workflow, commit conventions, PR title rules, and the full CI/CD pipeline overview.
@@ -168,3 +194,5 @@ Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup ins
 ## 💖 Support the Community
 
 If you plan to use this editor for commercial purposes or in an enterprise environment, we highly encourage you to support the Mermaid community by purchasing a [Mermaid Chart / Mermaid.ai](https://www.mermaidchart.com/) subscription. Your support helps sustain the continued development of the incredible diagramming tool that powers this application!
+
+If LiveMaid saves you time, you can also [buy me a coffee](https://buymeacoffee.com/peter6055) to support this project directly.

@@ -18,7 +18,9 @@ import {
 } from "./storageTypes";
 
 export function createFileSystemStorageAdapter(): StorageAdapter {
-  const DATA_DIR = path.join(process.cwd(), IS_DEMO_MODE ? "demo" : "data");
+  const DATA_DIR = IS_DEMO_MODE
+    ? path.join(process.cwd(), "demo")
+    : path.join(process.cwd(), "data");
   const FOLDERS_DIR = path.join(DATA_DIR, "folders");
 
   async function ensureDataDir() {

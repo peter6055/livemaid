@@ -1,4 +1,4 @@
-# Commercial License Requests
+# Commercial Use Requests
 
 Some uses of LiveMaid require prior written approval from the Licensor under
 the [LiveMaid Source Available License 1.0 (LSAL-1.0)](LICENSE).
@@ -34,7 +34,7 @@ Please open an issue in this repository:
 
 **URL:** <https://github.com/peter6055/livemaid/issues>
 
-Use the title format: `Commercial License Request: <Organization / Use Case>`
+Use the title format: `Commercial Use Request: <Organization / Use Case>`
 
 ### Required information
 
@@ -54,7 +54,7 @@ Include the following details in your request:
 
 ## Response
 
-All commercial license requests are reviewed at the Licensor's sole discretion.
+All commercial use requests are reviewed at the Licensor's sole discretion.
 There is no guaranteed response time or guaranteed approval. Approval, if
 granted, will be provided in writing (including via the GitHub issue thread).
 

@@ -19,7 +19,7 @@ LiveMaid is a local-first Next.js WYSIWYG Mermaid editor:
 
 - **Persistence**: JSON documents on disk via `StorageAdapter` (`src/lib/api/storage.ts`). MongoDB-ready but deferred.
 - **Editor**: Monaco (source of truth) + Mermaid SVG canvas with React overlays (`react-zoom-pan-pinch`).
-- **Diagrams**: Composition/plugin architecture — `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram` registered in `src/lib/diagrams/registry.ts`. Other types render-only.
+- **Diagrams**: Composition/plugin architecture — `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`, and `mindmap` registered in `src/lib/diagrams/registry.ts`. Other Mermaid types are code-only render/preview.
 - **Stack**: Next.js App Router, Tailwind v4, shadcn/ui, lucide-react, next-themes (system default).
 - **Theme**: App shell follows OS theme; Mermaid canvas stays white. Full tokens in [`standards/design.md`](../standards/design.md).
 
