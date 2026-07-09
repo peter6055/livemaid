@@ -53,6 +53,10 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      # Blocking: unit and integration tests must stay green.
+      - name: Tests
+        run: npm run test
+
   validate:
     name: Build
     runs-on: ubuntu-latest

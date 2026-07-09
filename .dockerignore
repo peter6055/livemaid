@@ -10,3 +10,7 @@ test-results
 .config
 *.log
 tsconfig.tsbuildinfo
+
+# env files (keep local secrets out of Docker build contexts)
+.env*
+!.env.example

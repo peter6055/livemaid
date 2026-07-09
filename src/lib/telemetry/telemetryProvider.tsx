@@ -65,9 +65,8 @@ export function TelemetryProvider({
   children: ReactNode;
   config: TelemetryConfig;
 }) {
-  const [{ usageAnalytics, debugReporting }, setTelemetryPreferences] = useState(
-    loadTelemetryPreferences,
-  );
+  const [{ usageAnalytics, debugReporting }, setTelemetryPreferences] =
+    useState(loadTelemetryPreferences);
 
   useEffect(() => {
     const telemetry = initTelemetry(config);

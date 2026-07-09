@@ -7,9 +7,11 @@
 
 <h1 align="center">LiveMaid</h1>
 
-<p align="center"><strong>An open source two way Mermaid diagram WYSIWYG editor</strong></p>
+<p align="center"><strong>A source-available two-way Mermaid diagram WYSIWYG editor</strong></p>
 
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
+
+LiveMaid is source-available under the [LiveMaid Source Available License 1.0](LICENSE). It is not OSI open-source software; please review the license before using, modifying, redistributing, or offering it as a service.
 
 ## 📑 Table of Contents
 
@@ -22,6 +24,7 @@ LiveMaid is a modern, local web application designed to make creating, editing, 
   - [Manual Docker Compose](#manual-docker-compose)
   - [Demo Mode](#demo-mode)
 - [🛠️ Tech Stack](#️-tech-stack)
+- [📜 Licensing](#-licensing)
 - [🤝 Contributing](#-contributing)
 - [💖 Support the Community](#-support-the-community)
 
@@ -160,6 +163,10 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [shadcn/ui](https://ui.shadcn.com/)
+
+## 📜 Licensing
+
+LiveMaid is distributed under the [LiveMaid Source Available License 1.0](LICENSE). Personal, educational, research, non-commercial, and permitted internal organizational uses are allowed, but some commercial, hosted, managed-service, redistribution, and competing-service uses require prior written approval. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for approval requests.
 
 ## 🤝 Contributing
 
