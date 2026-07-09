@@ -1,0 +1,44 @@
+name: Question or support
+description: Ask a focused question about using or deploying LiveMaid.
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For open-ended discussion, ideas, or community support, GitHub Discussions may be a better fit.
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What do you need help with?
+      placeholder: Ask the question clearly and include the relevant context.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Using the editor
+        - Mermaid syntax or rendering
+        - Docker deployment
+        - Demo mode
+        - Licensing
+        - Contributing
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What have you tried?
+      description: Link docs, commands, or issues you already checked.
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed private diagram content, credentials, and secrets from this question.
+          required: true

@@ -9,6 +9,12 @@
 
 <p align="center"><strong>A source-available two-way Mermaid diagram WYSIWYG editor</strong></p>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/peter6055">
+    <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" />
+  </a>
+</p>
+
 LiveMaid is a modern, local web application designed to make creating, editing, and managing [Mermaid](https://mermaid.js.org/) diagrams a breeze. Built with Next.js and React, it provides a seamless visual workspace for developers, architects, and anyone who needs to quickly generate diagrams from code.
 
 LiveMaid is source-available under the [LiveMaid Source Available License 1.0](LICENSE). It is not OSI open-source software; please review the license before using, modifying, redistributing, or offering it as a service.
@@ -200,3 +206,5 @@ Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for setup ins
 ## 💖 Support the Community
 
 If you plan to use this editor for commercial purposes or in an enterprise environment, we highly encourage you to support the Mermaid community by purchasing a [Mermaid Chart / Mermaid.ai](https://www.mermaidchart.com/) subscription. Your support helps sustain the continued development of the incredible diagramming tool that powers this application!
+
+If LiveMaid saves you time, you can also [buy me a coffee](https://buymeacoffee.com/peter6055) to support this project directly.

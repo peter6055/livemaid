@@ -1,0 +1,86 @@
+name: Bug report
+description: Report something that is broken or behaving unexpectedly.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do not include private diagram content, credentials, or secrets.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: Describe the bug in a few sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest set of steps that reproduces the issue.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: diagram-type
+    attributes:
+      label: Diagram type
+      options:
+        - Flowchart
+        - Sequence diagram
+        - Class diagram
+        - ER diagram
+        - State diagram
+        - Mindmap
+        - Code-only Mermaid diagram
+        - Dashboard or folders
+        - Deployment or Docker
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: LiveMaid version
+      description: Include the app version, Docker tag, commit SHA, or branch if known.
+      placeholder: v1.12.0, latest, or commit SHA
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS
+      placeholder: Chrome 126 on macOS, Firefox on Ubuntu, etc.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or screenshots
+      description: Add logs, screenshots, or a sanitized Mermaid sample if helpful.
+      render: shell
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed private diagram content, credentials, and secrets from this report.
+          required: true
+        - label: I searched existing issues and discussions for a similar report.
+          required: true
