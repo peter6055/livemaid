@@ -24,10 +24,10 @@ Then read the relevant deep-dive:
 
 ## Support Matrix
 
-- Two-way canvas editing: `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`, `erDiagram`, `stateDiagram` / `stateDiagram-v2`.
-- Other Mermaid types are render-only on the canvas; code is the only editing surface.
+- Two-way canvas editing: `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`, `erDiagram`, `stateDiagram` / `stateDiagram-v2`, and `mindmap`.
+- Other Mermaid types are code-only render/preview; code is the only editing surface.
 - Diagram type detection: `determineDiagramType` in `src/lib/diagrams/utils.ts`.
-- Registered two-way plugins in `src/lib/diagrams/registry.ts`: `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`.
+- Registered two-way plugins in `src/lib/diagrams/registry.ts`: `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`, `mindmap`.
 
 ## Global Editor Invariants
 
@@ -51,7 +51,7 @@ Then read the relevant deep-dive:
 
 - Diagram plugins stay decoupled via `src/lib/diagrams/registry.ts`.
 - Plugin modules imported server-side must not carry `"use client"` or client-only top-level imports.
-- New reference docs belong under `reference/`, organized by subfolder (see [`README.md`](.../README.md)).
+- New reference docs belong under `reference/`, organized by subfolder (see [`README.md`](../README.md)).
 
 ## Testing Conventions
 

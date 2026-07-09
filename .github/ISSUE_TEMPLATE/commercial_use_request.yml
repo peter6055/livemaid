@@ -1,8 +1,8 @@
-name: Commercial license request
+name: Commercial use request
 description: Request approval for a use that requires written permission under LSAL-1.0.
-title: "Commercial License Request: "
+title: "Commercial Use Request: "
 labels:
-  - commercial-license
+  - commercial-use
 body:
   - type: markdown
     attributes:

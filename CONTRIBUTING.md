@@ -91,7 +91,7 @@ We follow a strict **Feature Branch Workflow** with **Squash and Merge**.
 3. **Raise a Pull Request**: Once complete, raise a Pull Request targeting `main`. The **PR title must follow Conventional Commits** (see below) — because we squash and merge, the PR title becomes the commit message on `main`.
 4. **Squash and Merge**: Merge the PR using the **"Squash and merge"** option. This keeps the `main` history perfectly clean with one commit per epic.
 
-_(Note: PRs currently do not require a reviewer, but mandatory reviews will be enforced once there is more than one contributor)._
+_(Note: PRs currently do not require a separate approving reviewer because LiveMaid has one maintainer. Required approvals will be reconsidered when additional maintainers are added.)_
 
 ## ✏️ Pull Request Titles
 
@@ -115,7 +115,7 @@ This repository follows the pipeline below — from raising a PR through to the 
 
 ```mermaid
 flowchart TD
-    A([PR raised → main]) --> B[ci/pr-checks<br/>typecheck · lint · format · build]
+    A([PR raised → main]) --> B[ci/pr-checks<br/>typecheck · lint · format · test · build]
     A --> C[ci/pr-title<br/>validate Conventional Commit title]
     A --> P[Railway bot<br/>ephemeral PR preview environment]
     P -. on PR close/merge .-> Q[Railway bot<br/>tear down preview environment]
@@ -143,10 +143,11 @@ Every PR must pass the following required checks before it can be merged:
 | **Type check**                     | `ci/pr-checks` → _Lint, format & types_ | TypeScript compiles with no type errors.                                                                                                   |
 | **Lint**                           | `ci/pr-checks` → _Lint, format & types_ | ESLint reports no errors.                                                                                                                  |
 | **Format check**                   | `ci/pr-checks` → _Lint, format & types_ | The tree is Prettier-formatted (run `npm run format` to fix drift).                                                                        |
+| **Tests**                          | `ci/pr-checks` → _Lint, format & types_ | Unit and integration tests pass.                                                                                                           |
 | **Build**                          | `ci/pr-checks` → _Build_                | The production build succeeds.                                                                                                             |
 | **PR title (Conventional Commit)** | `ci/pr-title`                           | PR title follows Conventional Commits via [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request). |
 
-> 💡 Run `npm run prepush` locally before pushing to run all four checks (typecheck, lint, format check, build) and catch failures early.
+> 💡 Run `npm run prepush` locally before pushing to run all five checks (typecheck, lint, format check, tests, build) and catch failures early.
 
 ### 3) PR Preview Environment (Railway)
 
