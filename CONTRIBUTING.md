@@ -53,8 +53,8 @@ Follow these instructions to set up the project locally for development.
 
 ### Prerequisites
 
-- Node.js (v18 or higher recommended)
-- npm (or yarn, pnpm, bun)
+- Node.js 20 or newer
+- npm 10 or newer
 
 ### Installation
 

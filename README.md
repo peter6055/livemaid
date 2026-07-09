@@ -20,6 +20,7 @@ LiveMaid is source-available under the [LiveMaid Source Available License 1.0](L
 - [📊 Supported Diagrams](#-supported-diagrams)
   - [✅ Two-Way Sync (visual editing + code)](#-two-way-sync-visual-editing--code)
   - [🔲 Code Only (render + preview)](#-code-only-render--preview)
+- [📋 Requirements](#-requirements)
 - [🐳 Deployment (Docker)](#-deployment-docker)
   - [Manual Docker Compose](#manual-docker-compose)
   - [Demo Mode](#demo-mode)
@@ -79,6 +80,15 @@ The New Diagram flow currently exposes these code-only starters:
 | **C4 Context**          | Code-only render |
 
 Other Mermaid diagram syntax can still be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only.
+
+## 📋 Requirements
+
+For local development, LiveMaid requires:
+
+- Node.js 20 or newer
+- npm 10 or newer
+
+For Docker deployment, use Docker Engine with Docker Compose support. The published container image runs the production app on Node.js 20.
 
 ## 🐳 Deployment (Docker)
 
@@ -166,7 +176,22 @@ Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded w
 
 ## 📜 Licensing
 
-LiveMaid is distributed under the [LiveMaid Source Available License 1.0](LICENSE). Personal, educational, research, non-commercial, and permitted internal organizational uses are allowed, but some commercial, hosted, managed-service, redistribution, and competing-service uses require prior written approval. See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for approval requests.
+LiveMaid is distributed under the [LiveMaid Source Available License 1.0](LICENSE). It is source-available software, not OSI open-source software.
+
+You may use LiveMaid without prior approval for:
+
+- Personal, educational, research, and non-commercial use.
+- Internal organizational or business use, as long as LiveMaid is not offered to third parties as a hosted or managed service and is not redistributed as a commercial product.
+- Private modifications that you keep internal.
+
+You need prior written approval before:
+
+- Offering LiveMaid, or a modified version of it, as SaaS, PaaS, API-as-a-service, or another hosted/managed service to third parties.
+- Redistributing, sublicensing, selling, or commercializing LiveMaid or derivatives for external customers.
+- Building and distributing a commercial product from LiveMaid or substantial portions of it.
+- Operating a competing hosted service based on LiveMaid or substantial portions of it.
+
+See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for approval requests.
 
 ## 🤝 Contributing
 
