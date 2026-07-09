@@ -15,11 +15,7 @@ import {
   TimerReset,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DIAGRAM_CATALOG,
-  DIAGRAM_TEMPLATES,
-  getDiagramCatalogItem,
-} from "@/lib/diagrams/catalog";
+import { DIAGRAM_CATALOG, DIAGRAM_TEMPLATES, getDiagramCatalogItem } from "@/lib/diagrams/catalog";
 
 const ICONS: Record<string, React.FC<{ className?: string }>> = {
   flowchart: Route,
