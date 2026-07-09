@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Some hosted, managed-service, commercial redistribution, commercial product, and competing-service uses require prior written approval. See COMMERCIAL_LICENSE.md before submitting.
+        Some hosted, managed-service, commercial redistribution, commercial product, and competing-service uses require prior written approval. See COMMERCIAL_USE.md before submitting.
   - type: input
     id: organization
     attributes:

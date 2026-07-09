@@ -54,7 +54,7 @@ Writing Mermaid code can sometimes be tedious without immediate visual feedback.
 
 ## 📊 Supported Diagrams
 
-LiveMaid has two levels of support for Mermaid diagram types:
+LiveMaid supports Mermaid diagrams at two levels: selected diagram types have full two-way visual editing, and all Mermaid diagram syntax can be used as code-only render/preview diagrams.
 
 ### ✅ Two-Way Sync (visual editing + code)
 
@@ -71,21 +71,9 @@ These diagram types support full two-way interaction — you can click and manip
 
 ### 🔲 Code Only (render + preview)
 
-Code-only diagrams can be created, edited, rendered, searched, starred, organized, saved, and opened in LiveMaid, but do not yet expose visual canvas editing controls.
+All Mermaid diagram types can be created, edited, rendered, searched, starred, organized, saved, and opened in LiveMaid as code-only diagrams, but diagram types without a two-way plugin do not yet expose visual canvas editing controls.
 
-The New Diagram flow currently exposes these code-only starters:
-
-| Diagram                 | Support Level    |
-| ----------------------- | ---------------- |
-| **Gantt Chart**         | Code-only render |
-| **Pie Chart**           | Code-only render |
-| **Timeline**            | Code-only render |
-| **User Journey**        | Code-only render |
-| **Git Graph**           | Code-only render |
-| **Requirement Diagram** | Code-only render |
-| **C4 Context**          | Code-only render |
-
-Other Mermaid diagram syntax can still be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only.
+Any Mermaid diagram syntax can be typed or pasted into the editor as code. If LiveMaid does not have a two-way plugin for that diagram type, it is treated as code-only render/preview.
 
 ## 📋 Requirements
 
@@ -197,7 +185,7 @@ You need prior written approval before:
 - Building and distributing a commercial product from LiveMaid or substantial portions of it.
 - Operating a competing hosted service based on LiveMaid or substantial portions of it.
 
-See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md) for approval requests.
+See [COMMERCIAL_USE.md](COMMERCIAL_USE.md) for approval requests.
 
 ## 🤝 Contributing
 

@@ -1,4 +1,4 @@
-# Commercial License Requests
+# Commercial Use Requests
 
 Some uses of LiveMaid require prior written approval from the Licensor under
 the [LiveMaid Source Available License 1.0 (LSAL-1.0)](LICENSE).
