@@ -31,6 +31,7 @@ import { EditorCodePanel } from "./EditorCodePanel";
 import { EditorCanvas } from "./EditorCanvas";
 import { CommentSidebar } from "./comments/CommentSidebar";
 import { ClassTextEditor } from "./ClassTextEditor";
+import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/CreateDiagramDialog";
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable";
 import {
   Loader2,
@@ -151,6 +152,13 @@ import {
   setStateNodeShape,
 } from "@/lib/diagrams/stateDiagram";
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import {
+  addMindmapChild,
+  changeMindmapNodeShape,
+  deleteMindmapNode,
+  mindmapLineFromNodeId,
+  type MindmapShapeKind,
+} from "@/lib/diagrams/mindmap";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -226,6 +234,7 @@ export function LiveMaidEditor({
     currentFont,
     setCurrentFont,
     parseError,
+    isBlankDiagram,
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,
@@ -459,6 +468,35 @@ export function LiveMaidEditor({
     setIsInlineEditing(false);
     setSelectedClassName(null);
   }, [setSelectedNodeId, setSelectedSvgId, setSelectionBox, setTextBox, setIsInlineEditing]);
+
+  const handleAddMindmapChild = useCallback(
+    (nodeId: string) => {
+      const result = addMindmapChild(code, nodeId);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleDeleteMindmapNode = useCallback(
+    (nodeId: string) => {
+      const newCode = deleteMindmapNode(code, nodeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleChangeMindmapShape = useCallback(
+    (nodeId: string, shape: MindmapShapeKind) => {
+      const newCode = changeMindmapNodeShape(code, nodeId, shape);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
 
   // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
   // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
@@ -2059,6 +2097,10 @@ export function LiveMaidEditor({
       return msg ? toRange(msg.index) : null;
     }
 
+    if (selectedNodeId.startsWith("MINDMAP_")) {
+      return toRange(mindmapLineFromNodeId(selectedNodeId) ?? -1);
+    }
+
     if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       return toRange(findFlowchartEdgeLine(code, src, dst, occurrenceIndex));
@@ -3005,17 +3047,21 @@ export function LiveMaidEditor({
       if (handledClusterRename) {
         // no-op, newCode already updated
       } else {
+        const editingTextForSave = editingText.replace(/\n/g, "<br/>");
         const nodeRegex = new RegExp(
           `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
         );
         if (nodeRegex.test(newCode)) {
           const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
-          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
+          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
         } else {
           const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
           if (standaloneRegex.test(newCode)) {
-            newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
+            newCode = newCode.replace(
+              standaloneRegex,
+              `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
+            );
           } else {
             const lines = newCode.split("\n");
             let insertIndex = -1;
@@ -3032,7 +3078,7 @@ export function LiveMaidEditor({
               }
             }
 
-            const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
+            const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
             if (insertIndex !== -1) {
               lines.splice(insertIndex, 0, newDeclaration);
               newCode = lines.join("\n");
@@ -3733,15 +3779,18 @@ export function LiveMaidEditor({
     return `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
   };
 
-  const handleCreateSubmit = async () => {
-    if (!createName.trim()) return;
+  const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
+    if (!payload.name.trim()) return;
     try {
       const res = await fetch("/api/diagrams", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: createName.trim(),
-          code: `graph TD\n    A[Start] --> B[End]`,
+          name: payload.name,
+          type: payload.type,
+          templateId: payload.templateId,
+          code: payload.code,
+          folderId: doc?.folderId ?? null,
         }),
       });
       if (res.ok) {
@@ -4092,6 +4141,7 @@ export function LiveMaidEditor({
       <EditorHeader
         doc={doc}
         folders={folders}
+        currentType={currentType}
         saving={saving}
         isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
@@ -4637,6 +4687,7 @@ export function LiveMaidEditor({
               code={code}
               parseError={parseError}
               svgContent={svgContent}
+              isBlankDiagram={isBlankDiagram}
               isLocked={isLocked}
               setIsLocked={setIsLocked}
               containerRef={containerRef}
@@ -4736,6 +4787,9 @@ export function LiveMaidEditor({
               onDeleteStateTransition={handleDeleteStateTransition}
               onAddStateTransition={handleAddStateTransition}
               onCreateStateShapeLinked={handleCreateStateShapeLinked}
+              onAddMindmapChild={handleAddMindmapChild}
+              onDeleteMindmapNode={handleDeleteMindmapNode}
+              onChangeMindmapShape={handleChangeMindmapShape}
               handleUpdateStyle={handleUpdateStyle}
               handleFormatNodeLabel={handleFormatNodeLabel}
               handleChangeShape={handleChangeShape}
@@ -4750,6 +4804,7 @@ export function LiveMaidEditor({
               onChangeSequenceMessageEndpoint={handleChangeSequenceMessageEndpoint}
               onLinkSequenceNote={handleLinkSequenceNote}
               setIsInlineEditing={setIsInlineEditing}
+              handleCodeChange={handleCodeChange}
               textBox={textBox}
               theme={currentTheme}
               editingText={editingText}
@@ -4868,31 +4923,12 @@ export function LiveMaidEditor({
         />
       )}
 
-      {/* Create Dialog */}
-      <Dialog open={isNewDiagramOpen} onOpenChange={setIsNewDiagramOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New Diagram</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <Input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              placeholder="Diagram name"
-              autoFocus
-              onKeyDown={(e) => e.key === "Enter" && handleCreateSubmit()}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewDiagramOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateSubmit} className="bg-black text-white hover:bg-zinc-800">
-              Create
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <CreateDiagramDialog
+        open={isNewDiagramOpen}
+        onOpenChange={setIsNewDiagramOpen}
+        defaultName={createName || "New Diagram"}
+        onCreate={handleCreateSubmit}
+      />
 
       {/* Rename Dialog */}
       <Dialog open={isRenameOpen} onOpenChange={setIsRenameOpen}>

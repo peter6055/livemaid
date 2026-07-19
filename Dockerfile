@@ -21,6 +21,11 @@ ARG APP_VERSION
 
 RUN VERSION="${VERSION:-$APP_VERSION}" npm run build
 
+# Never carry local secrets or developer data into the runtime image if a build
+# context accidentally includes them.
+RUN rm -f .next/standalone/.env .next/standalone/.env.* \
+  && rm -rf .next/standalone/data
+
 # Production image, copy all the files and run next
 FROM node:20-alpine AS runner
 WORKDIR /app

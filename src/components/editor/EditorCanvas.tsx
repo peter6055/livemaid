@@ -17,6 +17,7 @@ import { ClassNodeToolbar } from "./ClassNodeToolbar";
 import { ErNodeToolbar } from "./ErNodeToolbar";
 import { StateNodeToolbar } from "./StateNodeToolbar";
 import { StateEdgeToolbar } from "./StateEdgeToolbar";
+import { MindmapNodeToolbar } from "./MindmapNodeToolbar";
 import { ErEdgeToolbar } from "./ErEdgeToolbar";
 import { ErPropertyPanel } from "./ErPropertyPanel";
 import { InlineTextEditor } from "./InlineTextEditor";
@@ -46,6 +47,7 @@ import {
   hasEndState,
 } from "@/lib/diagrams/stateDiagram";
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
+import { getMindmapNode, parseMindmap, type MindmapShapeKind } from "@/lib/diagrams/mindmap";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
@@ -65,6 +67,7 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequenceNotes";
+import { EmptyCanvas } from "./EmptyCanvas";
 
 const DEFAULT_CANVAS_INITIAL_SCALE = 2.75;
 
@@ -72,6 +75,7 @@ interface EditorCanvasProps {
   code: string;
   parseError: string | null;
   svgContent: string;
+  isBlankDiagram?: boolean;
   isLocked: boolean;
   setIsLocked: (locked: boolean) => void;
   isCommentMode?: boolean;
@@ -226,6 +230,9 @@ interface EditorCanvasProps {
   onAddStateTransition?: (source: string, target: string) => void;
   /** Drop-on-empty-canvas: create the chosen shape and link `source --> <shape>` in one edit. */
   onCreateStateShapeLinked?: (source: string, kind: StateShapeKind) => void;
+  onAddMindmapChild?: (nodeId: string) => void;
+  onDeleteMindmapNode?: (nodeId: string) => void;
+  onChangeMindmapShape?: (nodeId: string, shape: MindmapShapeKind) => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -382,6 +389,7 @@ export function EditorCanvas({
   code,
   parseError,
   svgContent,
+  isBlankDiagram = false,
   isLocked,
   setIsLocked,
   containerRef,
@@ -489,6 +497,9 @@ export function EditorCanvas({
   onDeleteStateTransition,
   onAddStateTransition,
   onCreateStateShapeLinked,
+  onAddMindmapChild,
+  onDeleteMindmapNode,
+  onChangeMindmapShape,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -1329,6 +1340,16 @@ export function EditorCanvas({
     return stateNameFromSvgId(selectedSvgId);
   }, [currentType, selectedSvgId]);
 
+  const selectedMindmapNode = useMemo(() => {
+    if (currentType !== "mindmap" || !selectedNodeId?.startsWith("MINDMAP_")) return null;
+    return getMindmapNode(code, selectedNodeId);
+  }, [code, currentType, selectedNodeId]);
+
+  const mindmapHasNodes = useMemo(
+    () => (currentType === "mindmap" ? parseMindmap(code).nodes.length > 0 : true),
+    [code, currentType],
+  );
+
   const connectSourceStateIsComposite = useMemo(
     () => (connectSourceState ? isCompositeState(code, connectSourceState) : false),
     [connectSourceState, code],
@@ -1829,6 +1850,11 @@ export function EditorCanvas({
           backgroundSize: "24px 24px",
         }}
       />
+      {isBlankDiagram && (
+        <div className="absolute inset-0 z-40 bg-white/90">
+          <EmptyCanvas handleCodeChange={handleCodeChange} />
+        </div>
+      )}
       <TransformWrapper
         initialScale={1.5}
         minScale={0.5}
@@ -1998,19 +2024,24 @@ export function EditorCanvas({
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
               >
-                {parseError && (
-                  <div
-                    className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
-                    onClick={(e) => e.stopPropagation()}
+                {parseError &&
+                  !isBlankDiagram &&
+                  !(currentType === "mindmap" && !mindmapHasNodes) && (
+                    <div
+                      className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
+
+                {!isBlankDiagram && (
+                  <StableMermaidHtml
+                    html={svgContent}
+                    className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
                   />
                 )}
 
-                <StableMermaidHtml
-                  html={svgContent}
-                  className={`mermaid-container select-none ${parseError ? "opacity-30" : ""}`}
-                />
-
                 <CommentLayer
+                  code={code}
                   comments={comments}
                   scale={state.scale}
                   containerRef={containerRef}
@@ -2703,10 +2734,20 @@ export function EditorCanvas({
                               : undefined
                           }
                         />
+                      ) : currentType === "mindmap" && selectedMindmapNode ? (
+                        <MindmapNodeToolbar
+                          scale={state.scale}
+                          currentShape={selectedMindmapNode.shape}
+                          onChangeShape={(shape) =>
+                            onChangeMindmapShape?.(selectedMindmapNode.id, shape)
+                          }
+                          onDelete={() => onDeleteMindmapNode?.(selectedMindmapNode.id)}
+                        />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||
                         currentType === "erDiagram" ||
-                        currentType === "stateDiagram" ? null : (
+                        currentType === "stateDiagram" ||
+                        currentType === "mindmap" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -2761,10 +2802,42 @@ export function EditorCanvas({
                     />
 
                     {!isInlineEditing &&
+                      currentType === "mindmap" &&
+                      selectedMindmapNode &&
+                      selectionBox && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onAddMindmapChild?.(selectedMindmapNode.id);
+                            }}
+                            className="h-5 w-5 rounded-full bg-indigo-500 text-white shadow-md transition-transform hover:scale-110 hover:bg-indigo-600 flex items-center justify-center"
+                            title="Click to add child element"
+                          >
+                            <Plus className="h-3 w-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
+
+                    {!isInlineEditing &&
                       currentType !== "sequence" &&
                       currentType !== "classDiagram" &&
                       currentType !== "erDiagram" &&
                       currentType !== "stateDiagram" &&
+                      currentType !== "mindmap" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question in Discussions
+    url: https://github.com/peter6055/livemaid/discussions
+    about: Use Discussions for open-ended questions, ideas, and community support.

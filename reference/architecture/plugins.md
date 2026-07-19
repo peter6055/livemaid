@@ -1,0 +1,9 @@
+# Diagram Plugin Architecture
+
+## 6. Diagram Plugin Architecture & Parallel Development
+
+LiveMaid avoids using centralized object-oriented inheritance (e.g., `class DiagramBase`) for diagram behaviors. Instead, we use a **Composition / Plugin Architecture** built on functional React components.
+
+- **Centralized Shared Behavior**: Core canvas logic (infinite pan/zoom, coordinate mapping, and two-way sync synchronization) is centralized in `LiveMaidEditor` and shared custom hooks (`useEditorState`, `useCanvasInteraction`).
+- **Decoupled Diagram Logic**: Each diagram type is isolated into its own file (e.g., `src/lib/diagrams/flowchart.tsx`) and exports a `DiagramPlugin` interface. This plugin dictates diagram-specific behavior, default code, and renders its own interactive toolbars on top of the canvas. **Currently implemented two-way plugins**: `flowchart.tsx`, `sequence.tsx`, `classDiagram.tsx`, `erDiagram.tsx`, `stateDiagram.tsx`, and `mindmap.tsx`, all registered in `src/lib/diagrams/registry.ts`. Other Mermaid diagram types still render correctly as code-only render/preview diagrams. **Plugin module rule**: plugin files must NOT carry the `"use client"` directive — the registry is imported server-side by `POST /api/diagrams` to read `defaultCode`, and a client-module export reads back as `undefined` there (see `reference/features/diagrams/overview.md`).
+- **Parallel Agent Workflows**: Because diagram logic is decoupled, multiple AI agents or human developers can work on _different diagram types in parallel_ without causing merge conflicts in a central file. A new two-way diagram type only needs its own `<type>.tsx` plugin plus an entry in `src/lib/diagrams/registry.ts` (e.g. a future `gantt.tsx`).

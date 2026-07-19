@@ -9,6 +9,7 @@ import {
   Pencil,
   Trash2,
   FolderOpen,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
 import {
@@ -28,6 +29,8 @@ export interface Folder {
   parentId: string | null;
   createdAt: string;
   updatedAt: string;
+  starred?: boolean;
+  starredAt?: string | null;
 }
 
 export function FolderCard({
@@ -37,6 +40,7 @@ export function FolderCard({
   onRename,
   onDelete,
   onMove,
+  onToggleStar,
   onDropDiagram,
   moveTargets,
   canMove = true,
@@ -49,6 +53,7 @@ export function FolderCard({
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
   onMove: (id: string, parentId: string | null) => void;
+  onToggleStar?: (id: string, starred: boolean) => void;
   onDropDiagram: (diagramId: string, folderId: string) => void;
   moveTargets: { id: string | null; name: string; depth: number }[];
   canMove?: boolean;
@@ -90,6 +95,15 @@ export function FolderCard({
         <MoreVertical className="h-4 w-4" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
+        {onToggleStar && (
+          <DropdownMenuItem
+            onClick={() => onToggleStar(folder.id, !folder.starred)}
+            className="cursor-pointer gap-2"
+          >
+            <Star className={`h-4 w-4 ${folder.starred ? "fill-amber-500 text-amber-500" : ""}`} />
+            {folder.starred ? "Unstar" : "Star"}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => onOpen(folder.id)} className="cursor-pointer gap-2">
           <FolderOpen className="h-4 w-4" /> Open
         </DropdownMenuItem>
@@ -133,6 +147,20 @@ export function FolderCard({
 
   const countLabel =
     childCount === 0 ? "Empty" : `${childCount} item${childCount === 1 ? "" : "s"}`;
+  const starButton = onToggleStar && !isDemo && (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`h-8 w-8 ${folder.starred ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"} hover:bg-accent`}
+      aria-label={folder.starred ? "Unstar folder" : "Star folder"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggleStar(folder.id, !folder.starred);
+      }}
+    >
+      <Star className={`h-4 w-4 ${folder.starred ? "fill-current" : ""}`} />
+    </Button>
+  );
 
   // ---- List view: a compact horizontal row -------------------------------
   if (view === "list") {
@@ -151,11 +179,9 @@ export function FolderCard({
           <p className="truncate text-sm font-medium text-foreground">{folder.name}</p>
           <p className="text-xs text-muted-foreground mt-0.5">{countLabel}</p>
         </div>
-        <div
-          className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {menu}
+        <div className="flex shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
+          {starButton}
+          <div className="opacity-0 transition-opacity group-hover:opacity-100">{menu}</div>
         </div>
       </Card>
     );
@@ -166,18 +192,23 @@ export function FolderCard({
     <Card
       onClick={() => onOpen(folder.id)}
       {...dropProps}
-      className={`group relative flex flex-col items-center justify-center text-center gap-3 p-6 h-full min-h-[140px] cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 ${
+      className={`group relative flex flex-col items-center justify-center text-center gap-3 px-4 py-6 h-full min-h-[140px] cursor-pointer bg-background border-border transition-all duration-200 hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 ${
         isDragOver ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-500/5" : ""
       }`}
     >
-      {/* Three-dot menu — top-right corner, like diagram cards */}
+      {/* Top-right actions: keep the star fixed; reveal the menu to its left on hover. */}
       {!isDemo && (
-        <div
-          className="absolute top-2 right-2 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {menu}
-        </div>
+        <>
+          <div className="absolute top-4 right-4 shrink-0" onClick={(e) => e.stopPropagation()}>
+            {starButton}
+          </div>
+          <div
+            className="absolute top-4 right-12 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {menu}
+          </div>
+        </>
       )}
 
       {/* Centered folder icon + name */}

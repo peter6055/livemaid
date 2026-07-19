@@ -11,10 +11,12 @@ import {
   Code2,
   MoreVertical,
   FolderInput,
+  Star,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useEffect, useRef } from "react";
 import { determineDiagramType, diagramTypeLabel } from "@/lib/diagrams/utils";
+import { getDiagramCapability } from "@/lib/diagrams/catalog";
 import { useMermaidPreview } from "@/hooks/useMermaidPreview";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -44,6 +46,8 @@ export interface DiagramDocument {
   type: string;
   code?: string;
   folderId?: string | null;
+  starred?: boolean;
+  starredAt?: string | null;
 }
 
 export function DiagramCard({
@@ -52,6 +56,7 @@ export function DiagramCard({
   onDelete,
   onNavigate,
   onMove,
+  onToggleStar,
   moveTargets,
   isDemo = false,
   view = "grid",
@@ -59,8 +64,9 @@ export function DiagramCard({
   diagram: DiagramDocument;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-  onNavigate: (url: string) => void;
+  onNavigate?: (url: string) => void;
   onMove?: (id: string, folderId: string | null) => void;
+  onToggleStar?: (id: string, starred: boolean) => void;
   moveTargets?: { id: string | null; name: string; depth: number }[];
   isDemo?: boolean;
   view?: "grid" | "list";
@@ -73,13 +79,8 @@ export function DiagramCard({
   const showPreviewLoader = Boolean(diagram.code) && isCompiling;
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
-  const isSupported =
-    parsedType === "graph" ||
-    parsedType === "flowchart" ||
-    parsedType === "sequence" ||
-    parsedType === "classDiagram" ||
-    parsedType === "erDiagram" ||
-    parsedType === "stateDiagram";
+  const isSupported = getDiagramCapability(parsedType) === "two-way";
+  const href = `/editor/${diagram.id}`;
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
@@ -87,6 +88,18 @@ export function DiagramCard({
   };
 
   // Action buttons (edit / move / delete) shared between the grid card and the list row.
+  const starAction = !isDemo && onToggleStar && (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={`h-8 w-8 ${diagram.starred ? "text-amber-500 hover:text-amber-400" : "text-muted-foreground hover:text-foreground"} hover:bg-accent`}
+      aria-label={diagram.starred ? "Unstar diagram" : "Star diagram"}
+      onClick={() => onToggleStar(diagram.id, !diagram.starred)}
+    >
+      <Star className={`h-4 w-4 ${diagram.starred ? "fill-current" : ""}`} />
+    </Button>
+  );
+
   const actions = isDemo ? (
     <TooltipProvider>
       <Tooltip>
@@ -245,10 +258,17 @@ export function DiagramCard({
       <Card
         draggable={!!onMove}
         onDragStart={handleDragStart}
-        onClick={() => onNavigate(`/editor/${diagram.id}`)}
         style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
-        className="flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer"
+        className="relative flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer"
       >
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Open ${diagram.name}`}
+          className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          onClick={() => onNavigate?.(href)}
+        />
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
           <GitCommitVertical className="h-4 w-4" />
         </div>
@@ -263,11 +283,19 @@ export function DiagramCard({
           {editedLabel}
         </div>
         <div
-          className="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
+          className="relative z-20 flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
           {actions}
         </div>
+        {starAction && (
+          <div
+            className="relative z-20 flex shrink-0 items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {starAction}
+          </div>
+        )}
       </Card>
     );
   }
@@ -278,29 +306,36 @@ export function DiagramCard({
       draggable={!!onMove}
       onDragStart={handleDragStart}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
-      className="flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
+      className="relative flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
     >
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Open ${diagram.name}`}
+        className="absolute inset-0 z-10 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        onClick={() => onNavigate?.(href)}
+      />
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2 min-h-8 w-full overflow-hidden">
           <CardTitle className="text-lg font-medium text-foreground truncate flex-1 min-w-0">
             {diagram.name}
           </CardTitle>
-          <div className="flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <div className="relative z-20 flex opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             {actions}
           </div>
+          {starAction && (
+            <div className="relative z-20 flex flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+              {starAction}
+            </div>
+          )}
         </div>
         <div className="flex items-center text-xs text-muted-foreground mt-1 gap-2 flex-wrap">
           {typeBadge}
         </div>
       </CardHeader>
       <CardContent className="flex-grow">
-        <a
-          href={`/editor/${diagram.id}`}
-          onClick={(e) => {
-            e.preventDefault();
-            onNavigate(`/editor/${diagram.id}`);
-          }}
-        >
+        <div className="relative z-10 pointer-events-none">
           <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
             {showPreviewLoader ? (
               <div className="w-full h-full flex items-center justify-center gap-3 px-4 animate-pulse opacity-50 dark:opacity-40">
@@ -341,7 +376,7 @@ export function DiagramCard({
               </div>
             )}
           </div>
-        </a>
+        </div>
       </CardContent>
       <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
         <Clock className="h-3 w-3 mr-1" />

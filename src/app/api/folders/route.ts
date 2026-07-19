@@ -41,6 +41,8 @@ export async function POST(request: Request) {
       createdAt: now,
       updatedAt: now,
       deletedAt: null,
+      starred: false,
+      starredAt: null,
     };
 
     await saveFolder(folder);

@@ -23,7 +23,7 @@ const eslintConfig = defineConfig([
       // pointed at the latest callback every render, reading layout from a ref
       // during render). Rewriting that pan/zoom/sequence logic to satisfy these
       // brand-new opinionated rules risks regressions in code that is
-      // explicitly protected by reference/FEATURES_AND_TRUTHS.md. Keep them as
+      // explicitly protected by reference/features/reading-map.md. Keep them as
       // warnings (visible tech-debt) so they don't block CI, while the genuinely
       // valuable rules (no-explicit-any, no-unused-vars, no-html-link-for-pages)
       // stay as errors and are fixed.

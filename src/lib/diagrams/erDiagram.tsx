@@ -2,7 +2,7 @@
  * ER Diagram (Entity-Relationship) plugin — modular, self-contained.
  *
  * Everything ER-diagram-specific lives in this file so the feature is a drop-in plugin per the
- * project's Composition / Plugin Architecture (see reference/ARCHITECTURE.md §6). The only wiring
+ * project's Composition / Plugin Architecture (see reference/architecture/plugins.md). The only wiring
  * outside this file is the registry entry in `registry.ts`, the Dashboard create-dialog type
  * picker, and the EditorCanvas / LiveMaidEditor canvas-interaction hooks.
  *

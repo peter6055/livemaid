@@ -11,6 +11,7 @@ import {
   getSequenceNoteTextElementAtIndex,
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
+import { findMindmapSvgElementByNodeId, mindmapNodeIdFromSvgElement } from "@/lib/diagrams/mindmap";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -479,6 +480,7 @@ export function useCanvasInteraction({
   const [sequenceMessageTriggerAreas, setSequenceMessageTriggerAreas] = useState<
     Array<{ index: number; x: number; y: number; width: number; height: number }>
   >([]);
+  const [sequenceLayoutVersion, setSequenceLayoutVersion] = useState(0);
   const sequenceConnectionCommittedRef = useRef(false);
   const [sequenceBlockAreas, setSequenceBlockAreas] = useState<SequenceBlockArea[]>([]);
   const [hoveredSequenceMessageIndex, setHoveredSequenceMessageIndex] = useState<number | null>(
@@ -1009,7 +1011,14 @@ export function useCanvasInteraction({
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
     };
-  }, [containerRef, code, svgContent, determineDiagramType, getSequenceMessageEntries]);
+  }, [
+    containerRef,
+    code,
+    svgContent,
+    sequenceLayoutVersion,
+    determineDiagramType,
+    getSequenceMessageEntries,
+  ]);
 
   const getSequenceParticipantEntries = useCallback(() => {
     const participantDecl =
@@ -1580,8 +1589,8 @@ export function useCanvasInteraction({
       const scale = containerRect.width / container.offsetWidth;
       if (!Number.isFinite(scale) || scale <= 0) return null;
 
-      const toCanvasX = (vx: number) => (vx - containerRect.left + container.scrollLeft) / scale;
       const toCanvasY = (vy: number) => (vy - containerRect.top + container.scrollTop) / scale;
+      void sequenceLayoutVersion;
 
       const messageEntry = getSequenceMessageEntries(code)[messageIndex];
       if (!messageEntry) return null;
@@ -1636,6 +1645,7 @@ export function useCanvasInteraction({
     [
       containerRef,
       code,
+      sequenceLayoutVersion,
       getSequenceMessageEntries,
       parseSequenceMessageActors,
       getSequenceLifelines,
@@ -1992,6 +2002,7 @@ export function useCanvasInteraction({
       if (id.startsWith("ER_EDGE_")) return id;
       // State-diagram transition edge ids are kept verbatim too (`STATE_EDGE_edge<N>`).
       if (id.startsWith("STATE_EDGE_")) return id;
+      if (id.startsWith("MINDMAP_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -2067,6 +2078,12 @@ export function useCanvasInteraction({
       if (path) {
         foundElement = path;
         foundRawSvgId = path.id || null;
+      }
+    } else if (selectedNodeId.startsWith("MINDMAP_")) {
+      const node = findMindmapSvgElementByNodeId(code, containerRef.current, selectedNodeId);
+      if (node) {
+        foundElement = node;
+        foundRawSvgId = node.id || null;
       }
     } else if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
@@ -2470,25 +2487,40 @@ export function useCanvasInteraction({
     return () => clearTimeout(timeoutId);
   }, [code, svgContent, selectedNodeId, recalculateSelection]);
 
-  // Effect to recalculate selection on container or mermaid-container resize (e.g. dragging panel splitter or window resize)
+  const recalculateSelectionRef = useRef(recalculateSelection);
   useEffect(() => {
-    if (!selectedNodeId || !containerRef.current) return;
+    recalculateSelectionRef.current = recalculateSelection;
+  }, [recalculateSelection]);
 
+  // Effect to recalculate sequence geometry on container or mermaid-container resize
+  // (e.g. dragging panel splitter or window resize). Sequence overlays cache DOM-derived
+  // canvas coordinates, so resize must invalidate the visual model even when code/svg are unchanged.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    let rafId = 0;
     const observer = new ResizeObserver(() => {
-      recalculateSelection();
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        sequenceMessageVisualsRef.current = [];
+        setSequenceLayoutVersion((version) => version + 1);
+        recalculateSelectionRef.current();
+      });
     });
 
-    const mermaidContainer = containerRef.current.querySelector(".mermaid-container");
+    const mermaidContainer = container.querySelector(".mermaid-container");
 
-    observer.observe(containerRef.current);
+    observer.observe(container);
     if (mermaidContainer) {
       observer.observe(mermaidContainer);
     }
 
     return () => {
+      if (rafId) cancelAnimationFrame(rafId);
       observer.disconnect();
     };
-  }, [selectedNodeId, containerRef, recalculateSelection, svgContent]);
+  }, [containerRef, svgContent]);
 
   const getClickedNode = useCallback(
     (target: Element) => {
@@ -2500,8 +2532,22 @@ export function useCanvasInteraction({
       let currentNode: SVGElement | null = target as SVGElement;
       let foundNodeClass = false;
       let nodeId = null;
+      const currentDiagramType = determineDiagramType(code);
 
       while (currentNode && currentNode.tagName !== "svg") {
+        if (currentDiagramType === "mindmap") {
+          const mindmapNodeId = containerRef.current
+            ? mindmapNodeIdFromSvgElement(code, containerRef.current, currentNode)
+            : null;
+          if (mindmapNodeId) {
+            const group = currentNode.closest("g.mindmap-node, g.node, g[class*='mindmap']");
+            foundNodeClass = true;
+            nodeId = mindmapNodeId;
+            currentNode = (group?.closest("g") ?? group ?? currentNode) as SVGElement;
+            break;
+          }
+        }
+
         if (
           currentNode.classList?.contains("node") ||
           currentNode.classList?.contains("cluster") ||
@@ -2726,7 +2772,8 @@ export function useCanvasInteraction({
           ? nodeId.startsWith("SEQ_") ||
             nodeId.startsWith("CLASS_EDGE_") ||
             nodeId.startsWith("ER_EDGE_") ||
-            nodeId.startsWith("STATE_EDGE_")
+            nodeId.startsWith("STATE_EDGE_") ||
+            nodeId.startsWith("MINDMAP_")
             ? nodeId
             : normalizeId(nodeId)
           : null;
@@ -2973,6 +3020,8 @@ export function useCanvasInteraction({
     },
     [
       containerRef,
+      code,
+      determineDiagramType,
       normalizeId,
       resolveSequenceActorIdFromDisplayName,
       getSequenceLifelines,
@@ -3036,15 +3085,24 @@ export function useCanvasInteraction({
       let targetElement = e.target as Element;
       if (!fromToolbar && "clientX" in e && "clientY" in e) {
         const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-        const svgElement = elementsAtPoint.find(
+        const nodeElement = elementsAtPoint.find(
           (el) =>
-            el.tagName.toLowerCase() !== "div" && el.namespaceURI === "http://www.w3.org/2000/svg",
+            el.classList?.contains("node") && el.namespaceURI === "http://www.w3.org/2000/svg",
         );
-        if (svgElement) {
-          targetElement = svgElement;
+        if (nodeElement) {
+          targetElement = nodeElement;
         } else {
-          const firstEl = elementsAtPoint[0];
-          if (firstEl) targetElement = firstEl;
+          const svgElement = elementsAtPoint.find(
+            (el) =>
+              el.tagName.toLowerCase() !== "div" &&
+              el.namespaceURI === "http://www.w3.org/2000/svg",
+          );
+          if (svgElement) {
+            targetElement = svgElement;
+          } else {
+            const firstEl = elementsAtPoint[0];
+            if (firstEl) targetElement = firstEl;
+          }
         }
       }
 
@@ -3256,7 +3314,7 @@ export function useCanvasInteraction({
         );
         const match = code.match(nodeRegex);
         if (match && match[3]) {
-          currentText = match[3];
+          currentText = match[3].replace(/<br\s*\/?>/gi, "\n");
         } else {
           const innerText = result?.rawSvgId
             ? document.querySelector(

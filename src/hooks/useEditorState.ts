@@ -40,6 +40,14 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   }, []);
 
   const renderMermaid = useCallback(async (mermaidCode: string, onResetSelection?: () => void) => {
+    if (mermaidCode.trim().length === 0) {
+      setParseError(null);
+      setSvgContent("");
+      renderIdRef.current = null;
+      if (onResetSelection) onResetSelection();
+      return;
+    }
+
     try {
       setParseError(null);
       mermaid.initialize({
@@ -211,6 +219,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     setCurrentFont,
     parseError,
     setParseError,
+    isBlankDiagram: code.trim().length === 0,
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,

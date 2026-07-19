@@ -147,7 +147,7 @@ If an unbounded proof was not achieved, indicate the number of clock cycles anal
 
 ## Verification Plan Reviews
 
-As core-v-verif is an open-source project it is necessary to enable open, comprehensive reviews with a broad set of stakeholders and interested parties in any proposed
+Verification plans should enable open, comprehensive reviews with a broad set of stakeholders and interested parties in any proposed
 Verification Plan. At a minumum, design and verification leads, and related design engineers and verification engineers must be involved in a review. The review should be
 made open to all other interested contributors, utilizing collaboration tools as necessary.
 

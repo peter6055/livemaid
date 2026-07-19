@@ -16,6 +16,7 @@ import {
   getVisibleSequenceMessageTexts,
   findOwningLineForSequenceLabel,
 } from "@/hooks/useCanvasInteraction";
+import { findMindmapSvgElementByNodeId } from "@/lib/diagrams/mindmap";
 
 const SHAPE_COMMENT_OFFSET = 4;
 const SEQUENCE_COMMENT_OFFSET = 5;
@@ -27,6 +28,7 @@ type CommentComposerState = {
 } | null;
 
 interface CommentLayerProps {
+  code: string;
   comments: DiagramComment[];
   scale: number;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -74,6 +76,7 @@ function isEdgeAnchorElement(el: Element) {
 }
 
 export function CommentLayer({
+  code,
   comments,
   scale,
   containerRef,
@@ -199,6 +202,27 @@ export function CommentLayer({
             continue;
           }
         }
+
+        if (comment.anchor.shapeId?.startsWith("MINDMAP_")) {
+          const node = findMindmapSvgElementByNodeId(code, safeContainer, comment.anchor.shapeId);
+          if (node) {
+            const rect = node.getBoundingClientRect();
+            x = (rect.right + SHAPE_COMMENT_OFFSET * scale - safeContainerRect.left) / scale;
+            y = (rect.top - SHAPE_COMMENT_OFFSET * scale - safeContainerRect.top) / scale;
+            x = Math.min(contentWidth - 16, Math.max(16, x));
+            y = Math.min(contentHeight - 16, Math.max(16, y));
+            entries.set(comment.id, { x, y, missingTarget: false });
+            continue;
+          }
+          if (comment.anchor.fallbackPos) {
+            x = comment.anchor.fallbackPos.x;
+            y = comment.anchor.fallbackPos.y;
+            missingTarget = true;
+            entries.set(comment.id, { x, y, missingTarget });
+            continue;
+          }
+        }
+
         const directSequenceIndex = Number(
           comment.anchor.shapeId?.match(/^SEQ_MSG_(\d+)$/)?.[1] ?? -1,
         );
@@ -325,6 +349,7 @@ export function CommentLayer({
     return entries;
   }, [
     canMeasure,
+    code,
     comments,
     container,
     containerRect,
