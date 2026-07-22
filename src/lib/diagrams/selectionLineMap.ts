@@ -34,6 +34,22 @@ function isStructuralLine(trimmed: string): boolean {
 }
 
 /**
+ * Find the source line of a flowchart subgraph declaration.
+ * Matches `subgraph <id>` or `subgraph <id>["Title"]` at the start of a line.
+ * Returns the 0-indexed line number, or -1 if not found.
+ */
+export function findFlowchartSubgraphLine(code: string, subgraphId: string): number {
+  if (!subgraphId) return -1;
+  const esc = escapeRegExp(subgraphId);
+  const declRe = new RegExp(`^\\s*subgraph\\s+${esc}(?:\\s*\\[|\\s*$)`, "im");
+  const lines = code.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    if (declRe.test(lines[i])) return i;
+  }
+  return -1;
+}
+
+/**
  * Find the source line that best defines a flowchart node. Prefers a line where
  * the id is immediately followed by a shape opener (`A[...]`, `A(...)`, `A@{...}`)
  * — its declaration — and falls back to the first line that references the id as

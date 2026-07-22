@@ -20,6 +20,7 @@ import {
 import {
   findFlowchartNodeLine,
   findFlowchartEdgeLine,
+  findFlowchartSubgraphLine,
   findSequenceParticipantLine,
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
@@ -265,6 +266,13 @@ export function LiveMaidEditor({
       });
     }
   }, [code]);
+  useEffect(() => {
+    const name = doc?.name;
+    document.title = name ? `${name} — LiveMaid` : "LiveMaid Editor";
+    return () => {
+      document.title = "LiveMaid Editor";
+    };
+  }, [doc?.name]);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
     isNavigating: boolean;
@@ -2105,6 +2113,10 @@ export function LiveMaidEditor({
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       return toRange(findFlowchartEdgeLine(code, src, dst, occurrenceIndex));
     }
+
+    // Flowchart subgraph (cluster) — highlight the `subgraph <id>` line.
+    const subgraphLine = findFlowchartSubgraphLine(code, selectedNodeId);
+    if (subgraphLine >= 0) return toRange(subgraphLine);
 
     // Flowchart node (plain id).
     return toRange(findFlowchartNodeLine(code, selectedNodeId));
