@@ -3316,31 +3316,50 @@ export function useCanvasInteraction({
         currentText = targetNodeId.replace("SEQ_", "");
         currentText = currentText.replace(/<br\/>/g, "\n");
       } else if (isEdgeId(targetNodeId)) {
-        const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
-        if (src && dst) {
-          const lines = code.split("\n");
-          let currentOccurrence = 0;
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (
-              !trimmed ||
-              trimmed.startsWith("%%") ||
-              trimmed.startsWith("subgraph") ||
-              trimmed.startsWith("end")
-            ) {
-              continue;
-            }
-            const match = matchFlowchartLinkLine(line, src, dst);
-            if (match) {
-              if (currentOccurrence === occurrenceIndex) {
-                currentText = getLinkLabelFromMiddle(match[2]);
-                break;
+        // Distinguish a real edge (path / edgeLabel) from a node whose Mermaid
+        // SVG id just happens to start with `L_` / `L-` / `e_` (e.g. a node
+        // named `L_CF_AZ_CNAME`).
+        const rawEl = result?.rawSvgId ? document.getElementById(result.rawSvgId) : null;
+        const isRealEdge =
+          rawEl &&
+          (rawEl.classList.contains("flowchart-link") ||
+            rawEl.classList.contains("flowchart-link-hit-target") ||
+            rawEl.classList.contains("edgeLabel"));
+
+        if (isRealEdge) {
+          const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
+          if (src && dst) {
+            const lines = code.split("\n");
+            let currentOccurrence = 0;
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (
+                !trimmed ||
+                trimmed.startsWith("%%") ||
+                trimmed.startsWith("subgraph") ||
+                trimmed.startsWith("end")
+              ) {
+                continue;
               }
-              currentOccurrence++;
+              const match = matchFlowchartLinkLine(line, src, dst);
+              if (match) {
+                if (currentOccurrence === occurrenceIndex) {
+                  currentText = getLinkLabelFromMiddle(match[2]);
+                  break;
+                }
+                currentOccurrence++;
+              }
             }
           }
         }
-      } else {
+        // When the DOM element is not a real edge (it's a node), fall through
+        // to the generic node-text extraction below so the user sees the actual
+        // label instead of the raw SVG id.
+      }
+      if (
+        !targetNodeId.startsWith("SEQ_") &&
+        (!isEdgeId(targetNodeId) || currentText === targetNodeId)
+      ) {
         const nodeRegex = new RegExp(
           `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
