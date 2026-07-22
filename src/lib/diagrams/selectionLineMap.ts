@@ -54,6 +54,11 @@ export function findFlowchartSubgraphLine(code: string, subgraphId: string): num
  * the id is immediately followed by a shape opener (`A[...]`, `A(...)`, `A@{...}`)
  * — its declaration — and falls back to the first line that references the id as
  * a standalone token.
+ *
+ * When the node ID comes from a Mermaid SVG element (after `normalizeId`), it
+ * may have been sanitized — e.g. `"IPsec S2S"` becomes `IPsecS2S`. If the
+ * direct search fails, we also try matching against quoted source IDs whose
+ * sanitized form equals the given `nodeId`.
  */
 export function findFlowchartNodeLine(code: string, nodeId: string): number {
   if (!nodeId) return -1;
@@ -72,6 +77,22 @@ export function findFlowchartNodeLine(code: string, nodeId: string): number {
     if (firstReference === -1) firstReference = i;
   }
 
+  // Fallback: the nodeId may be sanitized (quotes/spaces removed by Mermaid
+  // when generating SVG element ids).  Scan for quoted source IDs whose
+  // sanitized form matches.
+  if (firstReference === -1) {
+    const quotedRe = /"([^"]+)"/g;
+    const sanitized = nodeId.replace(/\s+/g, "");
+    for (let i = 0; i < lines.length; i += 1) {
+      const trimmed = lines[i].trim();
+      if (isStructuralLine(trimmed)) continue;
+      let match: RegExpExecArray | null;
+      while ((match = quotedRe.exec(lines[i]))) {
+        if (match[1].replace(/\s+/g, "") === sanitized) return i;
+      }
+    }
+  }
+
   return firstReference;
 }
 
@@ -79,6 +100,9 @@ export function findFlowchartNodeLine(code: string, nodeId: string): number {
  * Find the source line of the `occurrenceIndex`-th edge from `src` to `dst`.
  * Mirrors the scan in `getLinkIndex` (which returns a link ordinal) but returns
  * the absolute line index instead.
+ *
+ * Handles quoted node IDs (e.g. `"IPsec S2S" --> Server`) where Mermaid
+ * sanitises the SVG element id by stripping quotes and spaces.
  */
 export function findFlowchartEdgeLine(
   code: string,
@@ -99,22 +123,29 @@ export function findFlowchartEdgeLine(
     if (parts.length < 2) continue;
 
     for (let p = 0; p < parts.length - 1; p += 1) {
-      const cleanSrcStr = parts[p]
-        .replace(/\|[^|]*\|/g, "")
-        .replace(/"[^"]*"/g, "")
-        .replace(/\b[a-zA-Z0-9_-]+@\s*$/, "")
-        .trim();
-      const cleanDstStr = parts[p + 1]
-        .replace(/\|[^|]*\|/g, "")
-        .replace(/"[^"]*"/g, "")
-        .trim();
+      // Strip annotations (|...|) but preserve quoted IDs.
+      const srcSide = parts[p].replace(/\|[^|]*\|/g, "").trim();
+      const dstSide = parts[p + 1].replace(/\|[^|]*\|/g, "").trim();
 
-      const srcLastWord = cleanSrcStr.split(/\s+/).pop() || "";
-      const dstFirstWord = cleanDstStr.split(/\s+/)[0] || "";
-      const srcMatch = srcLastWord.match(/^([a-zA-Z0-9_-]+)/);
-      const dstMatch = dstFirstWord.match(/^([a-zA-Z0-9_-]+)/);
+      // Extract the endpoint id from the portion BEFORE the first shape opener
+      // ([, (, {, >, @{) so we skip the label inside brackets.
+      const srcBefore = srcSide.split(/[\[\({>@]/)[0];
+      const dstBefore = dstSide.split(/[\[\({>@]/)[0];
 
-      if (srcMatch && dstMatch && srcMatch[1] === src && dstMatch[1] === dst) {
+      // Prefer a quoted id ("A B"), otherwise the first/last word token.
+      // Sanitize (strip quotes + spaces) to match Mermaid's SVG id form.
+      const srcQuoted = srcBefore.match(/"([^"]+)"/);
+      const dstQuoted = dstBefore.match(/"([^"]+)"/);
+      const srcId = (srcQuoted
+        ? srcQuoted[1]
+        : srcBefore.replace(/\b[a-zA-Z0-9_-]+@\s*$/, "").split(/\s+/).pop() || ""
+      ).replace(/\s+/g, "");
+      const dstId = (dstQuoted
+        ? dstQuoted[1]
+        : dstBefore.split(/\s+/).filter(Boolean)[0] || ""
+      ).replace(/\s+/g, "");
+
+      if (srcId === src && dstId === dst) {
         if (matchingOccurrenceCount === occurrenceIndex) return i;
         matchingOccurrenceCount += 1;
       }
