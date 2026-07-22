@@ -837,14 +837,13 @@ export function EditorCanvas({
       const isGenericContainerTarget =
         tag === "svg" || tag === "div" || tag === "g" || target === container;
 
-      if (isGenericContainerTarget) {
-        const candidates = Array.from(
-          container.querySelectorAll(".node, .cluster, path.flowchart-link, .edgeLabel"),
-        ) as SVGGraphicsElement[];
+      const candidates = Array.from(
+        container.querySelectorAll(".node, .cluster, path.flowchart-link, .edgeLabel"),
+      ) as SVGGraphicsElement[];
 
+      const findBestAtPoint = () => {
         let best: { el: SVGGraphicsElement; area: number } | null = null;
         const pad = 8;
-
         for (const el of candidates) {
           const r = el.getBoundingClientRect();
           const inside =
@@ -853,13 +852,21 @@ export function EditorCanvas({
             event.clientY >= r.top - pad &&
             event.clientY <= r.bottom + pad;
           if (!inside) continue;
-
           const area = Math.max(1, r.width * r.height);
           if (!best || area < best.area) {
             best = { el, area };
           }
         }
+        return best;
+      };
 
+      if (isGenericContainerTarget) {
+        const best = findBestAtPoint();
+        if (best) {
+          target = best.el as unknown as HTMLElement;
+        }
+      } else {
+        const best = findBestAtPoint();
         if (best) {
           target = best.el as unknown as HTMLElement;
         }

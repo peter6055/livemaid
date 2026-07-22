@@ -3085,18 +3085,20 @@ export function useCanvasInteraction({
       let targetElement = e.target as Element;
       if (!fromToolbar && "clientX" in e && "clientY" in e) {
         const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-        const nodeElement = elementsAtPoint.find(
+        const svgElementsAtPoint = elementsAtPoint.filter(
           (el) =>
-            el.classList?.contains("node") && el.namespaceURI === "http://www.w3.org/2000/svg",
+            el.tagName.toLowerCase() !== "div" && el.namespaceURI === "http://www.w3.org/2000/svg",
         );
-        if (nodeElement) {
-          targetElement = nodeElement;
+        // Find an element that is or has a .node ancestor.
+        // elementsFromPoint returns elements from front-to-back (top of z-order first).
+        // We want the first (topmost) element that is part of a node.
+        const insideNode = svgElementsAtPoint.find(
+          (el) => el.classList?.contains("node") || el.closest?.(".node"),
+        );
+        if (insideNode) {
+          targetElement = insideNode;
         } else {
-          const svgElement = elementsAtPoint.find(
-            (el) =>
-              el.tagName.toLowerCase() !== "div" &&
-              el.namespaceURI === "http://www.w3.org/2000/svg",
-          );
+          const svgElement = svgElementsAtPoint[0];
           if (svgElement) {
             targetElement = svgElement;
           } else {
@@ -3158,7 +3160,38 @@ export function useCanvasInteraction({
         return;
       }
 
-      const result = pendingResult ?? (fromToolbar ? null : getClickedNode(targetElement));
+      let result = pendingResult ?? (fromToolbar ? null : getClickedNode(targetElement));
+      if (
+        result?.rawSvgId &&
+        !fromToolbar &&
+        "clientX" in e &&
+        "clientY" in e &&
+        containerRef.current
+      ) {
+        const selectedEl = containerRef.current.querySelector(
+          `#${CSS.escape(result.rawSvgId)}`,
+        ) as SVGElement | null;
+        if (selectedEl?.classList?.contains("cluster")) {
+          // Check if ANY node in the diagram is at the click point.
+          // If so, prefer that node over the cluster (topmost element wins).
+          const allNodes = Array.from(
+            containerRef.current.querySelectorAll(".node"),
+          ) as SVGElement[];
+          for (const node of allNodes) {
+            const rect = node.getBoundingClientRect();
+            if (
+              e.clientX >= rect.left &&
+              e.clientX <= rect.right &&
+              e.clientY >= rect.top &&
+              e.clientY <= rect.bottom
+            ) {
+              result = getClickedNode(node);
+              break;
+            }
+          }
+        }
+      }
+
       // Use ref for selectedNodeId to avoid stale closure
       let targetNodeId = selectedNodeIdRef.current;
 
@@ -3314,7 +3347,7 @@ export function useCanvasInteraction({
         );
         const match = code.match(nodeRegex);
         if (match && match[3]) {
-          currentText = match[3].replace(/<br\s*\/?>/gi, "\n");
+          currentText = match[3].replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "");
         } else {
           const innerText = result?.rawSvgId
             ? document.querySelector(

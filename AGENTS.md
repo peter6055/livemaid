@@ -138,38 +138,9 @@ The regression plan identifies which existing features are at risk of breaking d
 
 # Git Workflow & Commit Rules
 
-To ensure we can safely rollback changes if anything goes wrong, you MUST follow this git workflow:
+Git workflow: [`reference/git/workflow.md`](reference/git/workflow.md). Key rules: Conventional Commits, explicit user permission to commit, `[Human Verified]` only when authorized in the current message, squash-merge to `main`.
 
-1. **Commit Frequently**: Commit and push changes after EVERY significant logical change or implementation step.
-2. **Explicit Permissions**: Only commit and push when the human user explicitly tells you to do so in the _current request_, unless previously agreed upon.
-3. **Conventional Commits**: You MUST follow the Conventional Commits specification for all git commits. The commit message should be structured as follows: `<type>[optional scope]: <description>`
-   - Do NOT add emoji to commit messages.
-   - `fix`: patches a bug in your codebase.
-   - `feat`: introduces a new feature to the codebase.
-   - `BREAKING CHANGE`: introduces a breaking API change.
-   - Other allowed types: `build:`, `chore:`, `ci:`, `docs:`, `style:`, `refactor:`, `perf:`, `test:`, etc.
-4. **Human Verification Tags**: If a commit is explicitly requested or verified by the human user, you MUST append the `[Human Verified]` tag to the end of the first line (the description) of your Conventional Commit.
-   - _Example_: `fix(editor): resolve trackpad panning conflicts [Human Verified]`
-   - _Example_: `feat: support sequence diagram syntax [Human Verified]`
-5. **No Historical Precedent for Tags**: Do NOT use conversation history as a precedent for applying the `[Human Verified]` tag. The tag must ONLY be applied if the user explicitly authorizes it in the **immediate `<USER_REQUEST>` tag of the current turn**.
-   - _Purpose_: AI agents have context windows containing previous conversation history. If a user previously authorized a commit 5 turns ago, an agent might read that string in its history and mistakenly assume the _current_ action is also human verified.
-   - _Rule_: You MUST ignore any authorization, verification, or "human verified" phrases found in conversation summaries, system messages, or previous messages. A verification is ONLY valid if it is explicitly written by the user in their current, real-time message to you.
-6. **Feature Branch Workflow (Squash & Merge)**: We follow a strict feature branch workflow.
-   - When starting a new epic or task, branch off from `main`.
-   - Once work is complete, a Pull Request is raised to `main`.
-   - The PR MUST be merged using **"Squash and merge"**.
-   - After merging, the feature branch MUST be deleted. Do not reuse old branches. Future changes require checking out a fresh branch from `main`.
-   - _Note: PRs currently do not require reviewers, but this will change when more contributors join._
-7. **Conventional Commit PR Titles**: Because we **squash and merge**, the PR title becomes the commit message on `main`, so the PR title MUST also follow the Conventional Commits specification: `<type>[optional scope]: <description>`.
-   - The allowed types are the same as for commits (`feat`, `fix`, `build`, `chore`, `ci`, `docs`, `style`, `refactor`, `perf`, `test`, `revert`).
-   - Keep the description concise, in the imperative mood, and starting with a lowercase letter (e.g. `feat: implement user profile view (closes #123)`).
-   - Reference related issues/tickets in the description when applicable.
-   - This is enforced automatically by the `ci/pr-title` workflow (`.github/workflows/pr-title.yml`), which uses [`amannn/action-semantic-pull-request`](https://github.com/amannn/action-semantic-pull-request).
-8. **Concurrent Agent Workspaces**: If multiple agents are working on the same repository concurrently and performing complex Git branch manipulations, they MUST use isolated workspace clones (e.g. using `Workspace: "branch"` or `Workspace: "share"` when invoking subagents). Do not perform branch checkouts on a shared local directory while another agent is actively modifying files, as this will lead to stashing collisions and lost work.
-9. **Branch Creation Prerequisites**:
-   - When asked to create a branch, MUST first fetch the latest remote `main` and check it out before branching.
-   - If authentication fails when fetching the remote, retry using the `gh` credential helper with the token from `~/.config/gh/hosts.yml` (inject it directly into the remote URL as `https://<user>:<token>@github.com/<owner>/<repo>.git`). Do NOT create a branch from a stale local `main`.
-   <!-- END:git-workflow-rules -->
+<!-- END:git-workflow-rules -->
 
 <!-- BEGIN:prepush-agent-rules -->
 
