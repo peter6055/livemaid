@@ -401,7 +401,7 @@ export function parseAttributeParts(raw: string): ParsedAttribute {
   // 1. Trailing quoted comment.
   const cm = s.match(/\s*"((?:[^"\\]|\\.)*)"\s*$/);
   if (cm && cm.index !== undefined) {
-    result.comment = cm[1].replace(/\\"/g, '"');
+    result.comment = cm[1].replace(/\\\\/g, "\\").replace(/\\"/g, '"');
     s = s.slice(0, cm.index).trim();
   }
   // 2. type (first token) + name (second token) + trailing keys (the rest).

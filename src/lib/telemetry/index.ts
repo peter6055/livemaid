@@ -132,7 +132,10 @@ function generateSessionId(): string {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
   }
-  const arr = new Uint32Array(4);
-  crypto.getRandomValues(arr);
-  return Array.from(arr, (n) => n.toString(36)).join("");
+  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
+    const arr = new Uint32Array(4);
+    crypto.getRandomValues(arr);
+    return Array.from(arr, (n) => n.toString(36)).join("");
+  }
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }

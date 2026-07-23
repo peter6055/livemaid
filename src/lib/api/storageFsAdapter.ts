@@ -66,16 +66,15 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
   }
 
   function validateId(id: string): string {
-    if (/[^a-zA-Z0-9_-]/.test(id)) throw new Error("Invalid ID");
+    if (!id || /[^a-zA-Z0-9_-]/.test(id)) throw new Error("Invalid ID");
     return id;
   }
 
   async function getDiagram(id: string): Promise<DiagramDocument | null> {
     await ensureDataDir();
-    const safeId = validateId(id);
-    const filePath = path.join(DATA_DIR, `${safeId}.json`);
-
     try {
+      const safeId = validateId(id);
+      const filePath = path.join(DATA_DIR, `${safeId}.json`);
       const content = await fs.readFile(filePath, "utf-8");
       const doc = normalizeDiagramDocument(JSON.parse(content) as DiagramDocument);
       if (doc.deletedAt) {

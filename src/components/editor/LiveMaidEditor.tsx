@@ -269,10 +269,12 @@ export function LiveMaidEditor({
   useEffect(() => {
     const name = doc?.name;
     document.title = name ? `${name} — LiveMaid` : "LiveMaid Editor";
+  }, [doc?.name]);
+  useEffect(() => {
     return () => {
       document.title = "LiveMaid Editor";
     };
-  }, [doc?.name]);
+  }, []);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
     isNavigating: boolean;
@@ -3003,6 +3005,7 @@ export function LiveMaidEditor({
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
       // so generic node regex replacement may fail and incorrectly append a new node.
       let handledClusterRename = false;
+      const editingTextForSave = editingText.replace(/\n/g, "<br/>");
       if (selectedSvgId && containerRef.current) {
         const selectedEl = containerRef.current.querySelector(
           `#${CSS.escape(selectedSvgId)}`,
@@ -3059,7 +3062,7 @@ export function LiveMaidEditor({
             const idAndMaybeLabel = trimmed.match(/^subgraph\s+(\S+)(?:\s*\[.*\])?\s*$/);
             if (idAndMaybeLabel) {
               const subId = idAndMaybeLabel[1];
-              lines[renameIndex] = `${lead}subgraph ${subId}["${editingText}"]`;
+              lines[renameIndex] = `${lead}subgraph ${subId}["${editingTextForSave}"]`;
               newCode = lines.join("\n");
               handledClusterRename = true;
             }
@@ -3070,7 +3073,6 @@ export function LiveMaidEditor({
       if (handledClusterRename) {
         // no-op, newCode already updated
       } else {
-        const editingTextForSave = editingText.replace(/\n/g, "<br/>");
         const nodeRegex = new RegExp(
           `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
