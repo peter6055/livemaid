@@ -244,6 +244,10 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+.mermaid-container .edge-label-hit-target {
+  cursor: pointer !important;
+}
+
 .mermaid-container path.flowchart-link,
 .mermaid-container .edgePath .path,
 .mermaid-container .edgePath .arrowheadPath {

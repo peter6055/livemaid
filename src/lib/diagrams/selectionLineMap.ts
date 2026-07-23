@@ -136,13 +136,16 @@ export function findFlowchartEdgeLine(
       // Sanitize (strip quotes + spaces) to match Mermaid's SVG id form.
       const srcQuoted = srcBefore.match(/"([^"]+)"/);
       const dstQuoted = dstBefore.match(/"([^"]+)"/);
-      const srcId = (srcQuoted
-        ? srcQuoted[1]
-        : srcBefore.replace(/\b[a-zA-Z0-9_-]+@\s*$/, "").split(/\s+/).pop() || ""
+      const srcId = (
+        srcQuoted
+          ? srcQuoted[1]
+          : srcBefore
+              .replace(/\b[a-zA-Z0-9_-]+@\s*$/, "")
+              .split(/\s+/)
+              .pop() || ""
       ).replace(/\s+/g, "");
-      const dstId = (dstQuoted
-        ? dstQuoted[1]
-        : dstBefore.split(/\s+/).filter(Boolean)[0] || ""
+      const dstId = (
+        dstQuoted ? dstQuoted[1] : dstBefore.split(/\s+/).filter(Boolean)[0] || ""
       ).replace(/\s+/g, "");
 
       if (srcId === src && dstId === dst) {

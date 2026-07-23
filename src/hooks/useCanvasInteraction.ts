@@ -2560,10 +2560,42 @@ export function useCanvasInteraction({
         if (
           currentNode.classList?.contains("flowchart-link") ||
           currentNode.classList?.contains("flowchart-link-hit-target") ||
-          currentNode.classList?.contains("edgeLabel")
+          currentNode.classList?.contains("edgeLabel") ||
+          currentNode.classList?.contains("edge-label-hit-target")
         ) {
           foundNodeClass = true;
-          if (currentNode.classList?.contains("edgeLabel")) {
+          if (currentNode.classList?.contains("edge-label-hit-target")) {
+            const dataId = currentNode.getAttribute("data-id");
+            if (dataId) {
+              const canonical = normalizeId(dataId);
+              const paths = Array.from(
+                containerRef.current?.querySelectorAll(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ) || [],
+              );
+              const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+              if (path && path.id) nodeId = path.id;
+            }
+            if (!nodeId) {
+              const edgeLabel = currentNode.closest(".edgeLabel");
+              if (edgeLabel) {
+                const rawId =
+                  edgeLabel.getAttribute("data-id") ??
+                  edgeLabel.querySelector("[data-id]")?.getAttribute("data-id") ??
+                  null;
+                if (rawId) {
+                  const canonical = normalizeId(rawId);
+                  const paths = Array.from(
+                    containerRef.current?.querySelectorAll(
+                      "path.flowchart-link:not(.flowchart-link-hit-target)",
+                    ) || [],
+                  );
+                  const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+                  if (path && path.id) nodeId = path.id;
+                }
+              }
+            }
+          } else if (currentNode.classList?.contains("edgeLabel")) {
             const rawId =
               currentNode.getAttribute("data-id") ??
               currentNode.querySelector("[data-id]")?.getAttribute("data-id") ??

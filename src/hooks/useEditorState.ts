@@ -272,6 +272,45 @@ function addInteractionHelpersToSvg(svgString: string): string {
       }
     });
 
+    // Edge label hit-targets: add invisible rects over each edge label so the label
+    // text area has a generous clickable target, even though the foreignObject itself
+    // has pointer-events: none (set above). The data-id on the edgeLabel is used to
+    // resolve the edge back to its source path.
+    const edgeLabelGroups = doc.querySelectorAll(".edgeLabel");
+    edgeLabelGroups.forEach((el) => {
+      const fo = el.querySelector("foreignObject");
+      if (!fo) return;
+      if (!fo.textContent?.trim()) return;
+
+      const x = parseFloat(fo.getAttribute("x") || "0");
+      const y = parseFloat(fo.getAttribute("y") || "0");
+      const w = parseFloat(fo.getAttribute("width") || "0");
+      const h = parseFloat(fo.getAttribute("height") || "0");
+      if (w === 0 || h === 0) return;
+
+      const padding = 8;
+      const rect = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
+      rect.classList.add("edge-label-hit-target");
+      rect.setAttribute("x", String(x - padding));
+      rect.setAttribute("y", String(y - padding));
+      rect.setAttribute("width", String(w + padding * 2));
+      rect.setAttribute("height", String(h + padding * 2));
+      rect.setAttribute("fill", "transparent");
+      rect.setAttribute("opacity", "0.01");
+      rect.setAttribute(
+        "style",
+        "fill: transparent !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: all !important;",
+      );
+
+      const dataId =
+        el.getAttribute("data-id") ??
+        el.querySelector("[data-id]")?.getAttribute("data-id") ??
+        null;
+      if (dataId) rect.setAttribute("data-id", dataId);
+
+      fo.parentNode?.insertBefore(rect, fo);
+    });
+
     // Class-diagram relationship edges (`path.relation`) get the same wide transparent hit-target
     // treatment so the thin connector line is easy to click. The clone keeps the stable `data-id`
     // (`id_<Src>_<Dst>_<N>`) used to resolve the edge back to its source line, but drops the id and
