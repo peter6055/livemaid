@@ -3489,7 +3489,6 @@ export function useCanvasInteraction({
         if (match && match[3]) {
           currentText = match[3]
             .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<[^>]*>/g, "")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
         } else {
