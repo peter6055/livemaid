@@ -105,6 +105,10 @@ if ! curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
     fi
     sleep 1
   done
+  if ! curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
+    echo "Dev server still unavailable after retry" >&2
+    exit 1
+  fi
 fi
 ```
 
@@ -149,7 +153,7 @@ Git workflow: [`reference/git/workflow.md`](reference/git/workflow.md). Key rule
 Before committing or pushing any changes, you MUST run the `prepush` script defined in `package.json`:
 
 ```bash
-npm run prepush
+npm run prepush 2>&1 | head -c 4000
 ```
 
 This runs:

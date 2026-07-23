@@ -1932,13 +1932,7 @@ export function LiveMaidEditor({
     const match = newCode.match(nodeRegex);
     if (match) {
       const originalLabel = match[3];
-      const cleanLabel = originalLabel
-        .replace(/<b[^>]*>/gi, "")
-        .replace(/<\/b>/gi, "")
-        .replace(/<i[^>]*>/gi, "")
-        .replace(/<\/i>/gi, "")
-        .replace(/<span[^>]*>/gi, "")
-        .replace(/<\/span>/gi, "");
+      const cleanLabel = originalLabel.replace(/<[^>]*>/g, "");
 
       const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
       newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);

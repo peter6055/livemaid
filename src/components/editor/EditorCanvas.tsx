@@ -865,11 +865,6 @@ export function EditorCanvas({
         if (best) {
           target = best.el as unknown as HTMLElement;
         }
-      } else {
-        const best = findBestAtPoint();
-        if (best) {
-          target = best.el as unknown as HTMLElement;
-        }
       }
 
       const syntheticEvent = {

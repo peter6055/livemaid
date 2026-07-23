@@ -3492,7 +3492,7 @@ export function useCanvasInteraction({
           const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
           const innerText = effectiveRawSvgId
             ? document.querySelector(
-                `#${effectiveRawSvgId} .label, #${effectiveRawSvgId} text, #${effectiveRawSvgId} foreignObject, #${effectiveRawSvgId} .nodeLabel`,
+                `#${CSS.escape(effectiveRawSvgId)} .label, #${CSS.escape(effectiveRawSvgId)} text, #${CSS.escape(effectiveRawSvgId)} foreignObject, #${CSS.escape(effectiveRawSvgId)} .nodeLabel`,
               )
             : null;
           if (innerText && innerText.textContent) {

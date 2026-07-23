@@ -139,10 +139,17 @@ export default function Dashboard({
   const [breadcrumbDragOverId, setBreadcrumbDragOverId] = useState<string | null>(null);
 
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimer = useRef<NodeJS.Timeout | null>(null);
   // Clear highlight when the view context changes so a stale ID doesn't linger
   useEffect(() => {
     if (highlightedId) setHighlightedId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentFolderId, searchQuery, quickView]);
+  useEffect(() => {
+    return () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    };
+  }, []);
   const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
   const [pendingMoveId, setPendingMoveId] = useState("");
   const [pendingMoveFolderId, setPendingMoveFolderId] = useState<string | null>(null);
@@ -417,7 +424,8 @@ export default function Dashboard({
       const newDiagram = await createRes.json();
       setDiagrams((prev) => [newDiagram, ...prev]);
       setHighlightedId(newDiagram.id);
-      setTimeout(() => setHighlightedId(null), 1500);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightedId(null), 1500);
       toast.success("Diagram duplicated");
     } catch {
       toast.error("Failed to duplicate diagram");

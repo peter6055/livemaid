@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const DEV_ORIGINS_DEFAULTS = [
-  "*.tail1f8d1a.ts.net",
   "devenv-ubuntu-a.tail1f8d1a.ts.net",
   "127.0.0.1",
   "localhost",

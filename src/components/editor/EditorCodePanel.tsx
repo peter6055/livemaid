@@ -103,17 +103,32 @@ export function EditorCodePanel({
       "critical",
       "break",
       "rect",
-      "section",
     ]);
     const BLOCK_SAME = new Set(["else", "and", "option"]);
     const BLOCK_CLOSE = "end";
 
     const lines = code.split("\n");
 
-    // Pass 1: trim trailing whitespace on every line.
-    const trimmed = lines.map((l) => l.replace(/\s+$/, ""));
+    // Extract and preserve YAML front matter (--- … ---) at the start.
+    let frontMatterLines: string[] = [];
+    let bodyStartIndex = 0;
+    if (lines.length > 0 && lines[0].trim() === "---") {
+      const endIndex = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+      if (endIndex > 0) {
+        frontMatterLines = lines.slice(0, endIndex + 1);
+        bodyStartIndex = endIndex + 1;
+        // Skip blank lines between front matter and body.
+        while (bodyStartIndex < lines.length && lines[bodyStartIndex].trim() === "") {
+          bodyStartIndex++;
+        }
+      }
+    }
+    const bodyLines = lines.slice(bodyStartIndex);
 
-    // Pass 2: collapse consecutive blank lines.
+    // Pass 1: trim trailing whitespace on every line.
+    const trimmed = bodyLines.map((l) => l.replace(/\s+$/, ""));
+
+    // Pass 2: collapse consecutive blank lines, keep leading/trailing blanks.
     const collapsed: string[] = [];
     let prevBlank = false;
     for (const line of trimmed) {
@@ -148,7 +163,6 @@ export function EditorCodePanel({
       // "else", "and", "option" are at the SAME level as their parent block.
       if (BLOCK_SAME.has(firstWord)) {
         reformatted.push(INDENT.repeat(Math.max(0, depth - 1)) + stripped);
-        // Re-open the depth since the block continues after these keywords.
         continue;
       }
 
@@ -161,7 +175,9 @@ export function EditorCodePanel({
       }
     }
 
-    const formatted = reformatted.join("\n");
+    const bodyFormatted = reformatted.join("\n");
+    const frontMatter = frontMatterLines.length > 0 ? frontMatterLines.join("\n") + "\n" : "";
+    const formatted = frontMatter + bodyFormatted;
     if (formatted === code) {
       toast.info("Already formatted");
       return;

@@ -113,7 +113,7 @@ export function updateClassNoteByIndex(code: string, noteIndex: number, text: st
   const notes = getClassNotes(code);
   const target = notes[noteIndex];
   if (!target) return code;
-  const escaped = text.replace(/"/g, '\\"');
+  const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const lines = code.split("\n");
   lines[target.lineIndex] = lines[target.lineIndex].replace(
     CLASS_NOTE_RE,
@@ -450,7 +450,7 @@ export function addClassWithRelationship(
 
 /** Append a class-scoped note (`note for <ClassName> "text"`) for the given class. */
 export function appendClassNoteForClass(code: string, className: string, text: string): string {
-  const escaped = text.replace(/"/g, '\\"');
+  const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   return appendClassBodyLine(code, `    note for ${className} "${escaped}"`);
 }
 

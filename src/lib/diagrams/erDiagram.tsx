@@ -422,7 +422,7 @@ export function serializeAttributeParts(a: ParsedAttribute): string {
   const comment = a.comment.trim();
   let s = [type, name].filter(Boolean).join(" ");
   if (keys) s += ` ${keys}`;
-  if (comment) s += ` "${comment.replace(/"/g, '\\"')}"`;
+  if (comment) s += ` "${comment.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   return s;
 }
 
@@ -670,7 +670,7 @@ export function addErRelationship(
   const labelStr = !trimmed
     ? `""`
     : /[\s"]/.test(trimmed)
-      ? `"${trimmed.replace(/"/g, '\\"')}"`
+      ? `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
       : trimmed;
   return appendErLine(code, `    ${source} ${operator} ${target} : ${labelStr}`);
 }
@@ -723,7 +723,7 @@ export function setErRelationshipLabel(code: string, lineIndex: number, label: s
   const labelStr = !trimmed
     ? `""`
     : /[\s"]/.test(trimmed)
-      ? `"${trimmed.replace(/"/g, '\\"')}"`
+      ? `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
       : trimmed;
   lines[lineIndex] = `${head}${target} : ${labelStr}`;
   return lines.join("\n");
