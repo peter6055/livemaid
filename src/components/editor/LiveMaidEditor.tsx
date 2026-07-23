@@ -2979,13 +2979,30 @@ export function LiveMaidEditor({
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
-        newCode = updateLinkStyleAndLabel(
-          newCode,
-          src,
-          dst,
-          { label: editingText },
-          occurrenceIndex,
-        );
+        // Skip the update if the label hasn't changed to avoid unnecessary
+        // re-renders.
+        const lines = code.split("\n");
+        let currentLabel: string | null = null;
+        let currentOcc = 0;
+        for (const line of lines) {
+          const match = matchFlowchartLinkLine(line, src, dst);
+          if (match) {
+            if (currentOcc === occurrenceIndex) {
+              currentLabel = getLinkLabelFromMiddle(match[2]);
+              break;
+            }
+            currentOcc++;
+          }
+        }
+        if (currentLabel === null || currentLabel !== editingText) {
+          newCode = updateLinkStyleAndLabel(
+            newCode,
+            src,
+            dst,
+            { label: editingText },
+            occurrenceIndex,
+          );
+        }
       }
     } else {
       // Flowchart cluster/subgraph title rename path.
