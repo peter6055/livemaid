@@ -70,6 +70,13 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
     return id;
   }
 
+  function safeFilePath(dir: string, id: string): string {
+    const safeName = validateId(id);
+    const safe = path.basename(safeName) + ".json";
+    if (safe !== safeName + ".json") throw new Error("Invalid ID");
+    return path.join(dir, safe);
+  }
+
   async function getDiagram(id: string): Promise<DiagramDocument | null> {
     await ensureDataDir();
     try {
@@ -127,8 +134,8 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
   async function getFolder(id: string): Promise<Folder | null> {
     await ensureFoldersDir();
     try {
-      const safeId = validateId(id);
-      const content = await fs.readFile(path.join(FOLDERS_DIR, `${safeId}.json`), "utf-8");
+      const filePath = safeFilePath(FOLDERS_DIR, id);
+      const content = await fs.readFile(filePath, "utf-8");
       const folder = normalizeFolder(JSON.parse(content) as Folder);
       if (folder.deletedAt) return null;
       return folder;
@@ -140,9 +147,8 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
   async function saveFolder(folder: Folder): Promise<void> {
     if (IS_DEMO_MODE) return;
     await ensureFoldersDir();
-    const safeId = validateId(folder.id);
     await fs.writeFile(
-      path.join(FOLDERS_DIR, `${safeId}.json`),
+      safeFilePath(FOLDERS_DIR, folder.id),
       JSON.stringify(normalizeFolder(folder), null, 2),
       "utf-8",
     );

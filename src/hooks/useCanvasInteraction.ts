@@ -3487,7 +3487,11 @@ export function useCanvasInteraction({
         );
         const match = code.match(nodeRegex);
         if (match && match[3]) {
-          currentText = match[3].replace(/<br\s*\/?>/gi, "\n").replace(/<[^>]*>/g, "");
+          currentText = match[3]
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/<[^>]*>/g, "")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
         } else {
           const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
           const innerText = effectiveRawSvgId
