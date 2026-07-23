@@ -2628,18 +2628,14 @@ export function useCanvasInteraction({
             }
             // Fallback: find edge path by matching position in edgeLabels container
             if (!nodeId && containerRef.current) {
-              const labelsContainer = containerRef.current.querySelector(
-                "g.edgeLabels",
-              );
+              const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
               if (labelsContainer) {
                 const allLabels = Array.from(
                   labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
                 );
                 const labelIdx = allLabels.indexOf(labelEl);
                 if (labelIdx >= 0) {
-                  const edgePathsContainer = containerRef.current.querySelector(
-                    "g.edgePaths",
-                  );
+                  const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
                   if (edgePathsContainer) {
                     const allPaths = Array.from(
                       edgePathsContainer.querySelectorAll(
@@ -3130,7 +3126,6 @@ export function useCanvasInteraction({
     (e: React.MouseEvent | Event) => {
       if ("stopPropagation" in e) e.stopPropagation();
 
-
       const currentType = determineDiagramType(code);
       if (!(currentType === "graph" || currentType === "flowchart" || currentType === "sequence")) {
         return;
@@ -3407,18 +3402,14 @@ export function useCanvasInteraction({
           // position in <g class="edgePaths">.
           const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
           if (effectiveRawSvgId && containerRef.current) {
-            const edgePathsContainer = containerRef.current.querySelector(
-              "g.edgePaths",
-            );
+            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
             if (edgePathsContainer) {
               const allPaths = Array.from(
                 edgePathsContainer.querySelectorAll(
                   "path.flowchart-link:not(.flowchart-link-hit-target)",
                 ),
               );
-              const labelsContainer = containerRef.current.querySelector(
-                "g.edgeLabels",
-              );
+              const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
               const clickedPath = containerRef.current.querySelector(
                 `#${CSS.escape(effectiveRawSvgId)}`,
               );
@@ -3444,11 +3435,8 @@ export function useCanvasInteraction({
                 );
                 const labelEl = allLabels[edgeIdx];
                 if (labelEl) {
-                  const labelDiv = labelEl.querySelector(
-                    "foreignObject div, foreignObject span",
-                  );
-                  const labelText =
-                    labelDiv?.textContent || labelEl.textContent;
+                  const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
+                  const labelText = labelDiv?.textContent || labelEl.textContent;
                   if (labelText?.trim()) {
                     currentText = labelText.trim();
                   }
@@ -3521,9 +3509,7 @@ export function useCanvasInteraction({
             isEdgeId(targetNodeId) &&
             containerRef.current
           ) {
-            const edgePathsContainer = containerRef.current.querySelector(
-              "g.edgePaths",
-            );
+            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
             if (edgePathsContainer) {
               const allPaths = Array.from(
                 edgePathsContainer.querySelectorAll(
@@ -3536,28 +3522,20 @@ export function useCanvasInteraction({
               const edgeIdx = clickedPath
                 ? allPaths.indexOf(
                     clickedPath.classList.contains("flowchart-link-hit-target")
-                      ? (clickedPath.nextElementSibling as Element) ||
-                          clickedPath
+                      ? (clickedPath.nextElementSibling as Element) || clickedPath
                       : clickedPath,
                   )
                 : -1;
               if (edgeIdx >= 0) {
-                const labelsContainer = containerRef.current.querySelector(
-                  "g.edgeLabels",
-                );
+                const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
                 if (labelsContainer) {
                   const allLabels = Array.from(
-                    labelsContainer.querySelectorAll(
-                      ":scope > g.edgeLabel",
-                    ),
+                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
                   );
                   const labelEl = allLabels[edgeIdx];
                   if (labelEl) {
-                    const labelDiv = labelEl.querySelector(
-                      "foreignObject div, foreignObject span",
-                    );
-                    const labelText =
-                      labelDiv?.textContent || labelEl.textContent;
+                    const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
+                    const labelText = labelDiv?.textContent || labelEl.textContent;
                     if (labelText?.trim()) {
                       currentText = labelText.trim();
                     }
