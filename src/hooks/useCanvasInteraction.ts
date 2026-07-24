@@ -413,6 +413,11 @@ export function useCanvasInteraction({
     setSelectedNodeId(id);
   }, []);
   const [selectedSvgId, setSelectedSvgId] = useState<string | null>(null);
+  const selectedSvgIdRef = useRef<string | null>(null);
+  const setSelectedSvgIdWithRef = useCallback((id: string | null) => {
+    selectedSvgIdRef.current = id;
+    setSelectedSvgId(id);
+  }, []);
   const [selectionBox, setSelectionBox] = useState<{
     x: number;
     y: number;
@@ -1520,7 +1525,7 @@ export function useCanvasInteraction({
       const textEl = visual.labelEls[0] || null;
       const lineEl = visual.lineEl;
       if (textEl && !textEl.id) textEl.id = `seq-msg-${messageIndex}`;
-      setSelectedSvgId(textEl?.id || lineEl?.id || null);
+      setSelectedSvgIdWithRef(textEl?.id || lineEl?.id || null);
 
       if (startInlineEdit) {
         const msgLine = getSequenceMessageLineByIndex(messageIndex);
@@ -1782,7 +1787,7 @@ export function useCanvasInteraction({
         height: textRect.height / scale,
       });
       setSelectedNodeIdWithRef(`SEQ_NOTE_${index}`);
-      setSelectedSvgId(textEl.id || rectNote?.id || null);
+      setSelectedSvgIdWithRef(textEl.id || rectNote?.id || null);
 
       if (startInlineEdit) {
         const noteEntry = getSequenceNoteEntries(code)[index];
@@ -2420,13 +2425,13 @@ export function useCanvasInteraction({
 
       setSelectionBox(newSelectionBox);
       setTextBox(newTextBox);
-      setSelectedSvgId(foundRawSvgId);
+      setSelectedSvgIdWithRef(foundRawSvgId);
     } else {
       // If we couldn't find the selected element in the new SVG, clear the selection
       setSelectionBox(null);
       setTextBox(null);
       setSelectedNodeIdWithRef(null);
-      setSelectedSvgId(null);
+      setSelectedSvgIdWithRef(null);
     }
   }, [
     selectedNodeId,
@@ -2560,13 +2565,49 @@ export function useCanvasInteraction({
         if (
           currentNode.classList?.contains("flowchart-link") ||
           currentNode.classList?.contains("flowchart-link-hit-target") ||
-          currentNode.classList?.contains("edgeLabel")
+          currentNode.classList?.contains("edgeLabel") ||
+          currentNode.classList?.contains("edge-label-hit-target")
         ) {
           foundNodeClass = true;
-          if (currentNode.classList?.contains("edgeLabel")) {
+          if (currentNode.classList?.contains("edge-label-hit-target")) {
+            const dataId = currentNode.getAttribute("data-id");
+            if (dataId) {
+              const canonical = normalizeId(dataId);
+              const paths = Array.from(
+                containerRef.current?.querySelectorAll(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ) || [],
+              );
+              const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+              if (path && path.id) nodeId = path.id;
+            }
+            if (!nodeId) {
+              const edgeLabel = currentNode.closest(".edgeLabel");
+              if (edgeLabel) {
+                const rawId =
+                  edgeLabel.getAttribute("data-id") ??
+                  edgeLabel.querySelector("[data-id]")?.getAttribute("data-id") ??
+                  null;
+                if (rawId) {
+                  const canonical = normalizeId(rawId);
+                  const paths = Array.from(
+                    containerRef.current?.querySelectorAll(
+                      "path.flowchart-link:not(.flowchart-link-hit-target)",
+                    ) || [],
+                  );
+                  const path = paths.find((p) => p.id && normalizeId(p.id) === canonical);
+                  if (path && path.id) nodeId = path.id;
+                }
+              }
+            }
+          } else if (currentNode.classList?.contains("edgeLabel")) {
+            // Walk up to the <g class="edgeLabel"> container if we landed on
+            // a child element (e.g. <span class="edgeLabel"> inside foreignObject).
+            const edgeLabelG = currentNode.closest("g.edgeLabel") as Element | null;
+            const labelEl = edgeLabelG || currentNode;
             const rawId =
-              currentNode.getAttribute("data-id") ??
-              currentNode.querySelector("[data-id]")?.getAttribute("data-id") ??
+              labelEl.getAttribute("data-id") ??
+              labelEl.querySelector("[data-id]")?.getAttribute("data-id") ??
               null;
             if (rawId) {
               const canonical = normalizeId(rawId);
@@ -2580,10 +2621,33 @@ export function useCanvasInteraction({
             }
             if (!nodeId) {
               const path =
-                currentNode.parentElement?.querySelector(
+                labelEl.parentElement?.querySelector(
                   "path.flowchart-link:not(.flowchart-link-hit-target)",
-                ) || currentNode.closest(".edgeLabel")?.previousElementSibling;
+                ) || (labelEl as Element).previousElementSibling;
               if (path && path.id) nodeId = path.id;
+            }
+            // Fallback: find edge path by matching position in edgeLabels container
+            if (!nodeId && containerRef.current) {
+              const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
+              if (labelsContainer) {
+                const allLabels = Array.from(
+                  labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                );
+                const labelIdx = allLabels.indexOf(labelEl);
+                if (labelIdx >= 0) {
+                  const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
+                  if (edgePathsContainer) {
+                    const allPaths = Array.from(
+                      edgePathsContainer.querySelectorAll(
+                        "path.flowchart-link:not(.flowchart-link-hit-target)",
+                      ),
+                    );
+                    if (labelIdx < allPaths.length && allPaths[labelIdx].id) {
+                      nodeId = allPaths[labelIdx].id;
+                    }
+                  }
+                }
+              }
             }
           } else {
             nodeId = currentNode.id;
@@ -3085,15 +3149,26 @@ export function useCanvasInteraction({
       let targetElement = e.target as Element;
       if (!fromToolbar && "clientX" in e && "clientY" in e) {
         const elementsAtPoint = document.elementsFromPoint(e.clientX, e.clientY);
-        const svgElement = elementsAtPoint.find(
+        const svgElementsAtPoint = elementsAtPoint.filter(
           (el) =>
             el.tagName.toLowerCase() !== "div" && el.namespaceURI === "http://www.w3.org/2000/svg",
         );
-        if (svgElement) {
-          targetElement = svgElement;
+        // Find an element that is or has a .node ancestor.
+        // elementsFromPoint returns elements from front-to-back (top of z-order first).
+        // We want the first (topmost) element that is part of a node.
+        const insideNode = svgElementsAtPoint.find(
+          (el) => el.classList?.contains("node") || el.closest?.(".node"),
+        );
+        if (insideNode) {
+          targetElement = insideNode;
         } else {
-          const firstEl = elementsAtPoint[0];
-          if (firstEl) targetElement = firstEl;
+          const svgElement = svgElementsAtPoint[0];
+          if (svgElement) {
+            targetElement = svgElement;
+          } else {
+            const firstEl = elementsAtPoint[0];
+            if (firstEl) targetElement = firstEl;
+          }
         }
       }
 
@@ -3132,7 +3207,7 @@ export function useCanvasInteraction({
           height: r.height / scale,
         });
         setSelectedNodeIdWithRef(blockNodeId);
-        setSelectedSvgId(null);
+        setSelectedSvgIdWithRef(null);
 
         const lineStr = code.split("\n")[blockTarget.lineIndex] || "";
         const labelMatch = lineStr
@@ -3149,7 +3224,38 @@ export function useCanvasInteraction({
         return;
       }
 
-      const result = pendingResult ?? (fromToolbar ? null : getClickedNode(targetElement));
+      let result = pendingResult ?? (fromToolbar ? null : getClickedNode(targetElement));
+      if (
+        result?.rawSvgId &&
+        !fromToolbar &&
+        "clientX" in e &&
+        "clientY" in e &&
+        containerRef.current
+      ) {
+        const selectedEl = containerRef.current.querySelector(
+          `#${CSS.escape(result.rawSvgId)}`,
+        ) as SVGElement | null;
+        if (selectedEl?.classList?.contains("cluster")) {
+          // Check if ANY node in the diagram is at the click point.
+          // If so, prefer that node over the cluster (topmost element wins).
+          const allNodes = Array.from(
+            containerRef.current.querySelectorAll(".node"),
+          ) as SVGElement[];
+          for (const node of allNodes) {
+            const rect = node.getBoundingClientRect();
+            if (
+              e.clientX >= rect.left &&
+              e.clientX <= rect.right &&
+              e.clientY >= rect.top &&
+              e.clientY <= rect.bottom
+            ) {
+              result = getClickedNode(node);
+              break;
+            }
+          }
+        }
+      }
+
       // Use ref for selectedNodeId to avoid stale closure
       let targetNodeId = selectedNodeIdRef.current;
 
@@ -3178,7 +3284,7 @@ export function useCanvasInteraction({
         setSelectionBox(result.newSelectionBox);
         setTextBox(result.newTextBox);
         setSelectedNodeIdWithRef(result.cleanId);
-        setSelectedSvgId(result.rawSvgId);
+        setSelectedSvgIdWithRef(result.rawSvgId);
         targetNodeId = result.cleanId;
       } else if (targetNodeId && containerRef.current && !fromToolbar) {
         // Edge label fallback: when the click resolved to the SVG background (because the
@@ -3274,46 +3380,172 @@ export function useCanvasInteraction({
         currentText = targetNodeId.replace("SEQ_", "");
         currentText = currentText.replace(/<br\/>/g, "\n");
       } else if (isEdgeId(targetNodeId)) {
-        const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
-        if (src && dst) {
-          const lines = code.split("\n");
-          let currentOccurrence = 0;
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (
-              !trimmed ||
-              trimmed.startsWith("%%") ||
-              trimmed.startsWith("subgraph") ||
-              trimmed.startsWith("end")
-            ) {
-              continue;
-            }
-            const match = matchFlowchartLinkLine(line, src, dst);
-            if (match) {
-              if (currentOccurrence === occurrenceIndex) {
-                currentText = getLinkLabelFromMiddle(match[2]);
-                break;
+        // Distinguish a real edge (path / edgeLabel) from a node whose Mermaid
+        // SVG id just happens to start with `L_` / `L-` / `e_` (e.g. a node
+        // named `L_CF_AZ_CNAME`).
+        const rawEl = result?.rawSvgId
+          ? document.getElementById(result.rawSvgId)
+          : selectedSvgIdRef.current
+            ? document.getElementById(selectedSvgIdRef.current)
+            : null;
+        const isRealEdge =
+          rawEl &&
+          (rawEl.classList.contains("flowchart-link") ||
+            rawEl.classList.contains("flowchart-link-hit-target") ||
+            rawEl.classList.contains("edgeLabel"));
+
+        if (isRealEdge) {
+          // FIRST: Try to get the label from the SVG DOM (what the user
+          // actually sees on the canvas). Mermaid renders edge labels in a
+          // separate <g class="edgeLabels"> container, not as children of
+          // the edge path.  Find the label by matching the edge-path's
+          // position in <g class="edgePaths">.
+          const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
+          if (effectiveRawSvgId && containerRef.current) {
+            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
+            if (edgePathsContainer) {
+              const allPaths = Array.from(
+                edgePathsContainer.querySelectorAll(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ),
+              );
+              const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
+              const clickedPath = containerRef.current.querySelector(
+                `#${CSS.escape(effectiveRawSvgId)}`,
+              );
+              let edgeIdx = -1;
+              if (clickedPath) {
+                if (clickedPath.classList.contains("flowchart-link-hit-target")) {
+                  const actualPath = clickedPath.nextElementSibling as Element;
+                  if (actualPath) edgeIdx = allPaths.indexOf(actualPath);
+                } else if (clickedPath.classList.contains("flowchart-link")) {
+                  edgeIdx = allPaths.indexOf(clickedPath);
+                } else if (labelsContainer) {
+                  // edgeLabel <g> — find by position in edgeLabels container
+                  const allLabels = Array.from(
+                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                  );
+                  const labelG = clickedPath.closest("g.edgeLabel") as Element | null;
+                  edgeIdx = labelG ? allLabels.indexOf(labelG) : allLabels.indexOf(clickedPath);
+                }
               }
-              currentOccurrence++;
+              if (edgeIdx >= 0 && labelsContainer) {
+                const allLabels = Array.from(
+                  labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                );
+                const labelEl = allLabels[edgeIdx];
+                if (labelEl) {
+                  const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
+                  const labelText = labelDiv?.textContent || labelEl.textContent;
+                  if (labelText?.trim()) {
+                    currentText = labelText.trim();
+                  }
+                }
+              }
+            }
+          }
+
+          // SECOND: If SVG lookup failed, fall back to the source-code regex.
+          if (currentText === targetNodeId) {
+            const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
+            if (src && dst) {
+              const lines = code.split("\n");
+              let currentOccurrence = 0;
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (
+                  !trimmed ||
+                  trimmed.startsWith("%%") ||
+                  trimmed.startsWith("subgraph") ||
+                  trimmed.startsWith("end")
+                ) {
+                  continue;
+                }
+                const match = matchFlowchartLinkLine(line, src, dst);
+                if (match) {
+                  if (currentOccurrence === occurrenceIndex) {
+                    currentText = getLinkLabelFromMiddle(match[2]);
+                    break;
+                  }
+                  currentOccurrence++;
+                }
+              }
             }
           }
         }
-      } else {
+        // When the DOM element is not a real edge (it's a node), fall through
+        // to the generic node-text extraction below so the user sees the actual
+        // label instead of the raw SVG id.
+      }
+      if (
+        !targetNodeId.startsWith("SEQ_") &&
+        (!isEdgeId(targetNodeId) || currentText === targetNodeId)
+      ) {
         const nodeRegex = new RegExp(
           `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
         );
         const match = code.match(nodeRegex);
         if (match && match[3]) {
-          currentText = match[3];
+          currentText = match[3]
+            .replace(/<br\s*\/?>/gi, "\n")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
         } else {
-          const innerText = result?.rawSvgId
+          const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
+          const innerText = effectiveRawSvgId
             ? document.querySelector(
-                `#${result.rawSvgId} .label, #${result.rawSvgId} text, #${result.rawSvgId} foreignObject, #${result.rawSvgId} .nodeLabel`,
+                `#${CSS.escape(effectiveRawSvgId)} .label, #${CSS.escape(effectiveRawSvgId)} text, #${CSS.escape(effectiveRawSvgId)} foreignObject, #${CSS.escape(effectiveRawSvgId)} .nodeLabel`,
               )
             : null;
           if (innerText && innerText.textContent) {
             currentText = innerText.textContent.trim();
+          }
+          // Edge-label fallback: Mermaid renders edge labels in a separate
+          // <g class="edgeLabels"> container (not as children of the edge path).
+          // Find the label by matching the edge-path's position in the edgePaths
+          // container (each edge has a hit-target + actual path, so label index
+          // = path index / 2).
+          if (
+            currentText === targetNodeId &&
+            effectiveRawSvgId &&
+            isEdgeId(targetNodeId) &&
+            containerRef.current
+          ) {
+            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
+            if (edgePathsContainer) {
+              const allPaths = Array.from(
+                edgePathsContainer.querySelectorAll(
+                  "path.flowchart-link:not(.flowchart-link-hit-target)",
+                ),
+              );
+              const clickedPath = containerRef.current.querySelector(
+                `#${CSS.escape(effectiveRawSvgId)}`,
+              );
+              const edgeIdx = clickedPath
+                ? allPaths.indexOf(
+                    clickedPath.classList.contains("flowchart-link-hit-target")
+                      ? (clickedPath.nextElementSibling as Element) || clickedPath
+                      : clickedPath,
+                  )
+                : -1;
+              if (edgeIdx >= 0) {
+                const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
+                if (labelsContainer) {
+                  const allLabels = Array.from(
+                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                  );
+                  const labelEl = allLabels[edgeIdx];
+                  if (labelEl) {
+                    const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
+                    const labelText = labelDiv?.textContent || labelEl.textContent;
+                    if (labelText?.trim()) {
+                      currentText = labelText.trim();
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -3449,7 +3681,7 @@ export function useCanvasInteraction({
         debugLog("select", clicked.cleanId);
         clearSequenceMessageHoverHighlight();
         setSelectedNodeIdWithRef(clicked.cleanId);
-        setSelectedSvgId(clicked.rawSvgId);
+        setSelectedSvgIdWithRef(clicked.rawSvgId);
         setSelectionBox(clicked.newSelectionBox);
         setTextBox(clicked.newTextBox);
       } else {
@@ -3465,7 +3697,7 @@ export function useCanvasInteraction({
               debugLog("select-band", bandClicked.cleanId);
               clearSequenceMessageHoverHighlight();
               setSelectedNodeIdWithRef(bandClicked.cleanId);
-              setSelectedSvgId(bandClicked.rawSvgId);
+              setSelectedSvgIdWithRef(bandClicked.rawSvgId);
               setSelectionBox(bandClicked.newSelectionBox);
               setTextBox(bandClicked.newTextBox);
               return;
@@ -3479,7 +3711,7 @@ export function useCanvasInteraction({
         }
         debugLog("clear-selection");
         setSelectedNodeIdWithRef(null);
-        setSelectedSvgId(null);
+        setSelectedSvgIdWithRef(null);
         setSelectionBox(null);
         setTextBox(null);
       }
@@ -4215,9 +4447,17 @@ export function useCanvasInteraction({
     if (isLocked) return;
 
     const handleNativeDblClick = (e: MouseEvent) => {
-      // Only handle dblclicks within the canvas container (not toolbar overlays outside it, etc.)
       const container = containerRef.current;
-      if (!container || !container.contains(e.target as Node)) return;
+      const target = e.target as Node;
+
+      // Handle dblclicks within the canvas container OR on the inline text
+      // editor (which is rendered in a portal outside the container).  When
+      // the user double-clicks an edge the second click may land on the
+      // InlineTextEditor textarea that appeared after the first click — we
+      // still want to enter (or stay in) edit mode for the selected edge.
+      const insideCanvas = container?.contains(target) ?? false;
+      const insideInlineEditor = (target as Element)?.closest?.("[data-scale-lock]");
+      if (!insideCanvas && !insideInlineEditor) return;
 
       // If click(detail=2) already handled this dblclick gesture, skip to avoid double-invocation.
       // (The capture listener fires AFTER click(detail=2) has already entered EDIT_MODE.)

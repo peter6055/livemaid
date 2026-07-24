@@ -401,7 +401,7 @@ export function parseAttributeParts(raw: string): ParsedAttribute {
   // 1. Trailing quoted comment.
   const cm = s.match(/\s*"((?:[^"\\]|\\.)*)"\s*$/);
   if (cm && cm.index !== undefined) {
-    result.comment = cm[1].replace(/\\"/g, '"');
+    result.comment = cm[1].replace(/\\"/g, '"').replace(/\\\\/g, "\\");
     s = s.slice(0, cm.index).trim();
   }
   // 2. type (first token) + name (second token) + trailing keys (the rest).
@@ -422,7 +422,7 @@ export function serializeAttributeParts(a: ParsedAttribute): string {
   const comment = a.comment.trim();
   let s = [type, name].filter(Boolean).join(" ");
   if (keys) s += ` ${keys}`;
-  if (comment) s += ` "${comment.replace(/"/g, '\\"')}"`;
+  if (comment) s += ` "${comment.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   return s;
 }
 
@@ -670,7 +670,7 @@ export function addErRelationship(
   const labelStr = !trimmed
     ? `""`
     : /[\s"]/.test(trimmed)
-      ? `"${trimmed.replace(/"/g, '\\"')}"`
+      ? `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
       : trimmed;
   return appendErLine(code, `    ${source} ${operator} ${target} : ${labelStr}`);
 }
@@ -723,7 +723,7 @@ export function setErRelationshipLabel(code: string, lineIndex: number, label: s
   const labelStr = !trimmed
     ? `""`
     : /[\s"]/.test(trimmed)
-      ? `"${trimmed.replace(/"/g, '\\"')}"`
+      ? `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`
       : trimmed;
   lines[lineIndex] = `${head}${target} : ${labelStr}`;
   return lines.join("\n");

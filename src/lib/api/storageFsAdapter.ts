@@ -65,11 +65,23 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
     );
   }
 
+  function validateId(id: string): string {
+    if (!id || /[^a-zA-Z0-9_-]/.test(id)) throw new Error("Invalid ID");
+    return id;
+  }
+
+  function safeFilePath(dir: string, id: string): string {
+    const safeName = validateId(id);
+    const safe = path.basename(safeName) + ".json";
+    if (safe !== safeName + ".json") throw new Error("Invalid ID");
+    return path.join(dir, safe);
+  }
+
   async function getDiagram(id: string): Promise<DiagramDocument | null> {
     await ensureDataDir();
-    const filePath = path.join(DATA_DIR, `${id}.json`);
-
     try {
+      const safeId = validateId(id);
+      const filePath = path.join(DATA_DIR, `${safeId}.json`);
       const content = await fs.readFile(filePath, "utf-8");
       const doc = normalizeDiagramDocument(JSON.parse(content) as DiagramDocument);
       if (doc.deletedAt) {
@@ -84,7 +96,8 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
   async function saveDiagram(doc: DiagramDocument): Promise<void> {
     if (IS_DEMO_MODE) return;
     await ensureDataDir();
-    const filePath = path.join(DATA_DIR, `${doc.id}.json`);
+    const safeId = validateId(doc.id);
+    const filePath = path.join(DATA_DIR, `${safeId}.json`);
     await fs.writeFile(filePath, JSON.stringify(normalizeDiagramDocument(doc), null, 2), "utf-8");
   }
 
@@ -121,7 +134,8 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
   async function getFolder(id: string): Promise<Folder | null> {
     await ensureFoldersDir();
     try {
-      const content = await fs.readFile(path.join(FOLDERS_DIR, `${id}.json`), "utf-8");
+      const filePath = safeFilePath(FOLDERS_DIR, id);
+      const content = await fs.readFile(filePath, "utf-8");
       const folder = normalizeFolder(JSON.parse(content) as Folder);
       if (folder.deletedAt) return null;
       return folder;
@@ -134,7 +148,7 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
     if (IS_DEMO_MODE) return;
     await ensureFoldersDir();
     await fs.writeFile(
-      path.join(FOLDERS_DIR, `${folder.id}.json`),
+      safeFilePath(FOLDERS_DIR, folder.id),
       JSON.stringify(normalizeFolder(folder), null, 2),
       "utf-8",
     );

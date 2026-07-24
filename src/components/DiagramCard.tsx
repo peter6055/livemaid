@@ -9,6 +9,7 @@ import {
   GitCommitVertical,
   Repeat2,
   Code2,
+  Copy,
   MoreVertical,
   FolderInput,
   Star,
@@ -54,6 +55,8 @@ export function DiagramCard({
   diagram,
   onRename,
   onDelete,
+  onDuplicate,
+  highlighted,
   onNavigate,
   onMove,
   onToggleStar,
@@ -64,6 +67,8 @@ export function DiagramCard({
   diagram: DiagramDocument;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onDuplicate?: (id: string) => void;
+  highlighted?: boolean;
   onNavigate?: (url: string) => void;
   onMove?: (id: string, folderId: string | null) => void;
   onToggleStar?: (id: string, starred: boolean) => void;
@@ -77,6 +82,22 @@ export function DiagramCard({
     error: previewError,
   } = useMermaidPreview(diagram.code, diagram.id);
   const showPreviewLoader = Boolean(diagram.code) && isCompiling;
+
+  useEffect(() => {
+    const id = "diagram-card-highlight-pulse";
+    if (!document.getElementById(id)) {
+      const style = document.createElement("style");
+      style.id = id;
+      style.textContent = `
+        @keyframes highlight-pulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.5); border-color: rgba(99,102,241,0.5); }
+          50% { box-shadow: 0 0 0 6px rgba(99,102,241,0.15); border-color: rgba(99,102,241,0.8); }
+        }
+        .animate-highlight-pulse { animation: highlight-pulse 0.6s ease-in-out 2; }
+      `;
+      document.head.appendChild(style);
+    }
+  }, []);
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
   const isSupported = getDiagramCapability(parsedType) === "two-way";
@@ -128,7 +149,7 @@ export function DiagramCard({
         </TooltipTrigger>
         <TooltipContent>Read-only in demo mode</TooltipContent>
       </Tooltip>
-      {onMove && moveTargets && (
+      {(onMove && moveTargets) || onDuplicate ? (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -142,30 +163,40 @@ export function DiagramCard({
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                <FolderInput className="h-4 w-4" /> Move to
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                {moveTargets
-                  .filter((t) => t.id !== (diagram.folderId ?? null))
-                  .map((t) => (
-                    <DropdownMenuItem
-                      key={t.id ?? "root"}
-                      onClick={() =>
-                        toast.info("Demo mode — this is read only, changes won't be saved")
-                      }
-                      className="cursor-pointer overflow-hidden"
-                      style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
-                    >
-                      <span className="truncate">{t.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {onDuplicate && (
+              <DropdownMenuItem
+                onClick={() => toast.info("Demo mode — this is read only, changes won't be saved")}
+                className="cursor-pointer gap-2"
+              >
+                <Copy className="h-4 w-4" /> Duplicate
+              </DropdownMenuItem>
+            )}
+            {onMove && moveTargets && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                  <FolderInput className="h-4 w-4" /> Move to
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                  {moveTargets
+                    .filter((t) => t.id !== (diagram.folderId ?? null))
+                    .map((t) => (
+                      <DropdownMenuItem
+                        key={t.id ?? "root"}
+                        onClick={() =>
+                          toast.info("Demo mode — this is read only, changes won't be saved")
+                        }
+                        className="cursor-pointer overflow-hidden"
+                        style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                      >
+                        <span className="truncate">{t.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
+      ) : null}
     </TooltipProvider>
   ) : (
     <>
@@ -177,7 +208,7 @@ export function DiagramCard({
       >
         <FileEdit className="h-4 w-4" />
       </Button>
-      {onMove && moveTargets && (
+      {(onMove && moveTargets) || onDuplicate ? (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -191,28 +222,38 @@ export function DiagramCard({
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44">
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                <FolderInput className="h-4 w-4" /> Move to
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
-                {moveTargets
-                  .filter((t) => t.id !== (diagram.folderId ?? null))
-                  .map((t) => (
-                    <DropdownMenuItem
-                      key={t.id ?? "root"}
-                      onClick={() => onMove(diagram.id, t.id)}
-                      className="cursor-pointer overflow-hidden"
-                      style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
-                    >
-                      <span className="truncate">{t.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
+            {onDuplicate && (
+              <DropdownMenuItem
+                onClick={() => onDuplicate(diagram.id)}
+                className="cursor-pointer gap-2"
+              >
+                <Copy className="h-4 w-4" /> Duplicate
+              </DropdownMenuItem>
+            )}
+            {onMove && moveTargets && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                  <FolderInput className="h-4 w-4" /> Move to
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                  {moveTargets
+                    .filter((t) => t.id !== (diagram.folderId ?? null))
+                    .map((t) => (
+                      <DropdownMenuItem
+                        key={t.id ?? "root"}
+                        onClick={() => onMove(diagram.id, t.id)}
+                        className="cursor-pointer overflow-hidden"
+                        style={{ paddingLeft: `${0.5 + t.depth * 0.75}rem` }}
+                      >
+                        <span className="truncate">{t.name}</span>
+                      </DropdownMenuItem>
+                    ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
-      )}
+      ) : null}
       <Button
         variant="ghost"
         size="icon"
@@ -259,7 +300,7 @@ export function DiagramCard({
         draggable={!!onMove}
         onDragStart={handleDragStart}
         style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
-        className="relative flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer"
+        className={`relative flex flex-row items-center gap-4 px-4 py-3 bg-background border-border hover:border-accent-foreground/30 hover:shadow-md transition-all duration-200 group cursor-pointer ${highlighted ? "animate-highlight-pulse" : ""}`}
       >
         <a
           href={href}
@@ -283,7 +324,7 @@ export function DiagramCard({
           {editedLabel}
         </div>
         <div
-          className="relative z-20 flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
+          className="relative z-20 flex shrink-0 items-center"
           onClick={(e) => e.stopPropagation()}
         >
           {actions}
@@ -306,7 +347,7 @@ export function DiagramCard({
       draggable={!!onMove}
       onDragStart={handleDragStart}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
-      className="relative flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer"
+      className={`relative flex flex-col h-full bg-background border-border hover:border-accent-foreground/30 hover:shadow-lg hover:-translate-y-1 transition-all duration-200 group cursor-pointer ${highlighted ? "animate-highlight-pulse" : ""}`}
     >
       <a
         href={href}

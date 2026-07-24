@@ -138,7 +138,18 @@ export default function Dashboard({
   // Breadcrumb drag-over target (for the move-back-to-folder drop zones in the header breadcrumb).
   const [breadcrumbDragOverId, setBreadcrumbDragOverId] = useState<string | null>(null);
 
-  // Move diagram confirmation state
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const highlightTimer = useRef<NodeJS.Timeout | null>(null);
+  // Clear highlight when the view context changes so a stale ID doesn't linger
+  useEffect(() => {
+    if (highlightedId) setHighlightedId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentFolderId, searchQuery, quickView]);
+  useEffect(() => {
+    return () => {
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+    };
+  }, []);
   const [isMoveConfirmOpen, setIsMoveConfirmOpen] = useState(false);
   const [pendingMoveId, setPendingMoveId] = useState("");
   const [pendingMoveFolderId, setPendingMoveFolderId] = useState<string | null>(null);
@@ -387,6 +398,37 @@ export default function Dashboard({
       toast.success(`Moved to ${dest}`);
     } catch {
       toast.error("Failed to move diagram");
+    }
+  };
+
+  const handleDuplicateDiagram = async (id: string) => {
+    if (isDemo) {
+      toast.info("Demo mode — this is read only, changes won't be saved");
+      return;
+    }
+    try {
+      const sourceRes = await fetch(`/api/diagrams/${id}`);
+      if (!sourceRes.ok) throw new Error("Source diagram not found");
+      const source = await sourceRes.json();
+      const createRes = await fetch("/api/diagrams", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `${source.name} (Copy)`,
+          code: source.code,
+          type: source.type,
+          folderId: source.folderId ?? null,
+        }),
+      });
+      if (!createRes.ok) throw new Error("Failed to duplicate diagram");
+      const newDiagram = await createRes.json();
+      setDiagrams((prev) => [newDiagram, ...prev]);
+      setHighlightedId(newDiagram.id);
+      if (highlightTimer.current) clearTimeout(highlightTimer.current);
+      highlightTimer.current = setTimeout(() => setHighlightedId(null), 1500);
+      toast.success("Diagram duplicated");
+    } catch {
+      toast.error("Failed to duplicate diagram");
     }
   };
 
@@ -1351,8 +1393,10 @@ export default function Dashboard({
                         diagram={diagram}
                         onRename={openRenameDialog}
                         onDelete={openDeleteDialog}
+                        onDuplicate={handleDuplicateDiagram}
                         onMove={requestMoveDiagram}
                         onToggleStar={handleToggleDiagramStar}
+                        highlighted={diagram.id === highlightedId}
                         moveTargets={moveTargets}
                         isDemo={isDemo}
                         view={viewMode}

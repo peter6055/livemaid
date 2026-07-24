@@ -181,7 +181,7 @@ export function FolderCard({
         </div>
         <div className="flex shrink-0 items-center" onClick={(e) => e.stopPropagation()}>
           {starButton}
-          <div className="opacity-0 transition-opacity group-hover:opacity-100">{menu}</div>
+          <div>{menu}</div>
         </div>
       </Card>
     );
