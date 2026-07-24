@@ -15,7 +15,7 @@ export function matchFlowchartLinkLine(
   const srcPattern = escapeRegExp(src);
   const dstPattern = escapeRegExp(dst);
   const standardLabelRegex = new RegExp(
-    `(^|\\s*)${srcPattern}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*?)(?:\\b|(?<=[xoXO]))${dstPattern}\\b`,
+    `(^|\\s*)${srcPattern}(?:\\b|(?=[xoXO]))[^\\n]*?((?:${CONNECTOR_PATTERN})[^\\n]*)(?:\\b|(?<=[xoXO]))${dstPattern}\\b`,
     "i",
   );
   const inlineTextLabelRegex = new RegExp(

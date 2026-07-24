@@ -20,6 +20,7 @@ import {
 import {
   findFlowchartNodeLine,
   findFlowchartEdgeLine,
+  findFlowchartSubgraphLine,
   findSequenceParticipantLine,
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
@@ -265,6 +266,15 @@ export function LiveMaidEditor({
       });
     }
   }, [code]);
+  useEffect(() => {
+    const name = doc?.name;
+    document.title = name ? `${name} — LiveMaid` : "LiveMaid Editor";
+  }, [doc?.name]);
+  useEffect(() => {
+    return () => {
+      document.title = "LiveMaid Editor";
+    };
+  }, []);
   const [isCodePanelOpen, setIsCodePanelOpen] = useState(true);
   const [navigatingState, setNavigatingState] = useState<{
     isNavigating: boolean;
@@ -1924,13 +1934,7 @@ export function LiveMaidEditor({
     const match = newCode.match(nodeRegex);
     if (match) {
       const originalLabel = match[3];
-      const cleanLabel = originalLabel
-        .replace(/<b[^>]*>/gi, "")
-        .replace(/<\/b>/gi, "")
-        .replace(/<i[^>]*>/gi, "")
-        .replace(/<\/i>/gi, "")
-        .replace(/<span[^>]*>/gi, "")
-        .replace(/<\/span>/gi, "");
+      const cleanLabel = originalLabel.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
       const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
       newCode = newCode.replace(nodeRegexGlobal, `$1$2${cleanLabel}$4`);
@@ -2105,6 +2109,10 @@ export function LiveMaidEditor({
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       return toRange(findFlowchartEdgeLine(code, src, dst, occurrenceIndex));
     }
+
+    // Flowchart subgraph (cluster) — highlight the `subgraph <id>` line.
+    const subgraphLine = findFlowchartSubgraphLine(code, selectedNodeId);
+    if (subgraphLine >= 0) return toRange(subgraphLine);
 
     // Flowchart node (plain id).
     return toRange(findFlowchartNodeLine(code, selectedNodeId));
@@ -2967,19 +2975,37 @@ export function LiveMaidEditor({
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
-        newCode = updateLinkStyleAndLabel(
-          newCode,
-          src,
-          dst,
-          { label: editingText },
-          occurrenceIndex,
-        );
+        // Skip the update if the label hasn't changed to avoid unnecessary
+        // re-renders.
+        const lines = code.split("\n");
+        let currentLabel: string | null = null;
+        let currentOcc = 0;
+        for (const line of lines) {
+          const match = matchFlowchartLinkLine(line, src, dst);
+          if (match) {
+            if (currentOcc === occurrenceIndex) {
+              currentLabel = getLinkLabelFromMiddle(match[2]);
+              break;
+            }
+            currentOcc++;
+          }
+        }
+        if (currentLabel === null || currentLabel !== editingText) {
+          newCode = updateLinkStyleAndLabel(
+            newCode,
+            src,
+            dst,
+            { label: editingText },
+            occurrenceIndex,
+          );
+        }
       }
     } else {
       // Flowchart cluster/subgraph title rename path.
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
       // so generic node regex replacement may fail and incorrectly append a new node.
       let handledClusterRename = false;
+      const editingTextForSave = editingText.replace(/\n/g, "<br/>");
       if (selectedSvgId && containerRef.current) {
         const selectedEl = containerRef.current.querySelector(
           `#${CSS.escape(selectedSvgId)}`,
@@ -3036,7 +3062,7 @@ export function LiveMaidEditor({
             const idAndMaybeLabel = trimmed.match(/^subgraph\s+(\S+)(?:\s*\[.*\])?\s*$/);
             if (idAndMaybeLabel) {
               const subId = idAndMaybeLabel[1];
-              lines[renameIndex] = `${lead}subgraph ${subId}["${editingText}"]`;
+              lines[renameIndex] = `${lead}subgraph ${subId}["${editingTextForSave}"]`;
               newCode = lines.join("\n");
               handledClusterRename = true;
             }
@@ -3053,11 +3079,14 @@ export function LiveMaidEditor({
         );
         if (nodeRegex.test(newCode)) {
           const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
-          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingText}$4`);
+          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
         } else {
           const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
           if (standaloneRegex.test(newCode)) {
-            newCode = newCode.replace(standaloneRegex, `$1$2${selectedNodeId}["${editingText}"]$4`);
+            newCode = newCode.replace(
+              standaloneRegex,
+              `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
+            );
           } else {
             const lines = newCode.split("\n");
             let insertIndex = -1;
@@ -3074,7 +3103,7 @@ export function LiveMaidEditor({
               }
             }
 
-            const newDeclaration = `    ${selectedNodeId}["${editingText}"]`;
+            const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
             if (insertIndex !== -1) {
               lines.splice(insertIndex, 0, newDeclaration);
               newCode = lines.join("\n");
