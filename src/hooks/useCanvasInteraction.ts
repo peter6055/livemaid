@@ -6,6 +6,7 @@ import {
   matchFlowchartLinkLine,
 } from "@/lib/diagrams/utils";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
+import { containsHtml } from "@/lib/utils";
 import {
   getSequenceNoteRectForText,
   getSequenceNoteTextElementAtIndex,
@@ -1536,7 +1537,12 @@ export function useCanvasInteraction({
         setTimeout(() => {
           if (inlineInputRef.current) {
             inlineInputRef.current.focus();
-            inlineInputRef.current.select();
+            // Select all content in contentEditable div
+            const range = document.createRange();
+            range.selectNodeContents(inlineInputRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
           }
         }, 10);
       }
@@ -1796,7 +1802,12 @@ export function useCanvasInteraction({
         setTimeout(() => {
           if (inlineInputRef.current) {
             inlineInputRef.current.focus();
-            inlineInputRef.current.select();
+            // Select all content in contentEditable div
+            const range = document.createRange();
+            range.selectNodeContents(inlineInputRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
           }
         }, 10);
       }
@@ -3097,7 +3108,7 @@ export function useCanvasInteraction({
     ],
   );
 
-  const inlineInputRef = useRef<HTMLTextAreaElement>(null);
+  const inlineInputRef = useRef<HTMLDivElement>(null);
   // commitEditRef is a ref slot that LiveMaidEditor fills with handleEditSubmit.
   // The hook calls it before any cross-element or background transition so that
   // typed edits are committed to the diagram code before the selection changes.
@@ -3218,7 +3229,12 @@ export function useCanvasInteraction({
         setTimeout(() => {
           if (inlineInputRef.current) {
             inlineInputRef.current.focus();
-            inlineInputRef.current.select();
+            // Select all content in contentEditable div
+            const range = document.createRange();
+            range.selectNodeContents(inlineInputRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
           }
         }, 10);
         return;
@@ -3487,10 +3503,10 @@ export function useCanvasInteraction({
         );
         const match = code.match(nodeRegex);
         if (match && match[3]) {
-          currentText = match[3]
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;");
+          const rawLabel = match[3];
+          // Preserve HTML tags for contentEditable editing
+          // Convert <br> tags to ensure consistent line breaks
+          currentText = rawLabel.replace(/<br\s*\/?>/gi, "<br/>");
         } else {
           const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
           const innerText = effectiveRawSvgId
@@ -3555,7 +3571,12 @@ export function useCanvasInteraction({
       setTimeout(() => {
         if (inlineInputRef.current) {
           inlineInputRef.current.focus();
-          inlineInputRef.current.select();
+          // Select all content in contentEditable div
+          const range = document.createRange();
+          range.selectNodeContents(inlineInputRef.current);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
         }
       }, 10);
     },
