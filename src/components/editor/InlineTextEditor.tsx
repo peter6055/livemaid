@@ -1,4 +1,11 @@
-import { RefObject, useEffect, useLayoutEffect } from "react";
+import { RefObject, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import {
+  Bold,
+  Italic,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+} from "lucide-react";
 
 interface InlineTextEditorProps {
   isInlineEditing: boolean;
@@ -10,12 +17,15 @@ interface InlineTextEditorProps {
   editingText: string;
   setEditingText: (text: string) => void;
   handleEditSubmit: () => void;
-  inlineInputRef: RefObject<HTMLTextAreaElement | null>;
+  inlineInputRef: RefObject<HTMLDivElement | null>;
   selectedSvgId: string | null;
+  handleFormatText?: (format: string, colorValue?: string) => void;
 }
 
 function estimateTextWidth(text: string, fontSize: number) {
-  const longestLine = text
+  // Strip HTML tags for width estimation
+  const plainText = text.replace(/<[^>]+>/g, "");
+  const longestLine = plainText
     .split(/\r?\n/)
     .reduce((longest, line) => (line.length > longest.length ? line : longest), "");
   if (!longestLine) return 0;
@@ -43,7 +53,10 @@ export function InlineTextEditor({
   handleEditSubmit,
   inlineInputRef,
   selectedSvgId,
+  handleFormatText,
 }: InlineTextEditorProps) {
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!isInlineEditing) return;
 
@@ -71,9 +84,11 @@ export function InlineTextEditor({
     if (!isInlineEditing) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (inlineInputRef.current && !inlineInputRef.current.contains(event.target as Node)) {
-        handleEditSubmit();
-      }
+      const target = event.target as Node;
+      // Don't submit if clicking inside the editor or the toolbar
+      if (inlineInputRef.current?.contains(target)) return;
+      if (toolbarRef.current?.contains(target)) return;
+      handleEditSubmit();
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -82,6 +97,17 @@ export function InlineTextEditor({
     };
   }, [isInlineEditing, handleEditSubmit, inlineInputRef]);
 
+  // Set innerHTML when entering edit mode or when editingText changes externally
+  useEffect(() => {
+    if (!isInlineEditing) return;
+    const el = inlineInputRef.current;
+    if (!el) return;
+    // Only update if the content differs to avoid cursor jumps
+    if (el.innerHTML !== editingText) {
+      el.innerHTML = editingText;
+    }
+  }, [isInlineEditing, editingText, inlineInputRef]);
+
   useLayoutEffect(() => {
     if (!isInlineEditing || !textBox || !selectionBox) return;
     const el = inlineInputRef.current;
@@ -89,6 +115,12 @@ export function InlineTextEditor({
     el.style.height = "auto";
     el.style.height = `${Math.max(el.scrollHeight, Math.max(textBox.height, 24))}px`;
   }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox]);
+
+  const handleInput = useCallback(() => {
+    const el = inlineInputRef.current;
+    if (!el) return;
+    setEditingText(el.innerHTML);
+  }, [inlineInputRef, setEditingText]);
 
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
@@ -110,47 +142,160 @@ export function InlineTextEditor({
   const targetVisualWidth = Math.min(Math.max(textBox.width, measuredTextWidth + 20, 80), 700);
   const targetVisualHeight = Math.max(textBox.height, 24);
 
+  const toolbarButtonClass =
+    "h-7 w-7 flex items-center justify-center rounded hover:bg-accent hover:text-accent-foreground transition-colors";
+
   return (
-    <textarea
-      data-scale-lock
-      data-base-transform="translate(-50%, -50%)"
-      ref={inlineInputRef}
-      className="absolute bg-white pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white whitespace-pre-wrap"
-      value={editingText}
-      onChange={(e) => setEditingText(e.target.value)}
-      onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-          e.preventDefault();
-          handleEditSubmit();
-        } else if (e.key === "Escape") {
-          e.preventDefault();
-          setIsInlineEditing(false);
-        } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-          e.preventDefault();
-          inlineInputRef.current?.select();
-        }
-        e.stopPropagation();
-      }}
-      onBlur={(e) => {
-        const related = e.relatedTarget;
-        if (related && inlineInputRef.current?.contains(related as Node)) return;
-        handleEditSubmit();
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
-      style={{
-        left: centerX,
-        top: centerY,
-        transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, 1))`,
-        width: targetVisualWidth,
-        height: targetVisualHeight,
-        fontSize: `${fontSize}px`,
-        lineHeight: 1.4,
-        color: "#1c1c21",
-        whiteSpace: "pre-wrap",
-        boxSizing: "border-box",
-      }}
-    />
+    <>
+      {/* Formatting Toolbar - positioned above the editor */}
+      {handleFormatText && (
+        <div
+          ref={toolbarRef}
+          data-scale-lock
+          data-inline-toolbar
+          data-base-transform="translateX(-50%) translateY(-100%)"
+          className="absolute pointer-events-auto z-50"
+          style={{
+            left: centerX,
+            top: `calc(${centerY - targetVisualHeight / 2}px - 8px * var(--zoom-inverse-scale, ${1 / scale}))`,
+            transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
+            transformOrigin: "bottom",
+            padding: "8px",
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg px-1.5 py-1 shadow-lg">
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatText("bold");
+              }}
+              className={toolbarButtonClass}
+              title="Bold (Ctrl+B)"
+            >
+              <Bold className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatText("italic");
+              }}
+              className={toolbarButtonClass}
+              title="Italic (Ctrl+I)"
+            >
+              <Italic className="w-3.5 h-3.5" />
+            </button>
+
+            <div className="w-px h-4 bg-border mx-0.5" />
+
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatText("align-left");
+              }}
+              className={toolbarButtonClass}
+              title="Align Left"
+            >
+              <AlignLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatText("align-center");
+              }}
+              className={toolbarButtonClass}
+              title="Align Center"
+            >
+              <AlignCenter className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleFormatText("align-right");
+              }}
+              className={toolbarButtonClass}
+              title="Align Right"
+            >
+              <AlignRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Content Editable Div */}
+      <div
+        data-scale-lock
+        data-base-transform="translate(-50%, -50%)"
+        ref={inlineInputRef}
+        contentEditable
+        suppressContentEditableWarning
+        className="absolute bg-white pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium break-words z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white whitespace-pre-wrap cursor-text"
+        onInput={handleInput}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            handleEditSubmit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            setIsInlineEditing(false);
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            const el = inlineInputRef.current;
+            if (el) {
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+            e.preventDefault();
+            handleFormatText?.("bold");
+          } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "i") {
+            e.preventDefault();
+            handleFormatText?.("italic");
+          }
+          e.stopPropagation();
+        }}
+        onBlur={(e) => {
+          const related = e.relatedTarget;
+          // Don't submit if focus moved to something inside the editor or toolbar
+          if (related && inlineInputRef.current?.contains(related as Node)) return;
+          if (related && toolbarRef.current?.contains(related as Node)) return;
+          // Use setTimeout to check if focus is still within our components
+          // This handles cases where relatedTarget is null (e.g., clicking a button)
+          setTimeout(() => {
+            const activeEl = document.activeElement;
+            if (activeEl && inlineInputRef.current?.contains(activeEl)) return;
+            if (activeEl && toolbarRef.current?.contains(activeEl)) return;
+            // Check if any element in our components has focus
+            if (inlineInputRef.current?.querySelector(":focus")) return;
+            if (toolbarRef.current?.querySelector(":focus")) return;
+            handleEditSubmit();
+          }, 0);
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        style={{
+          left: centerX,
+          top: centerY,
+          transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
+          width: targetVisualWidth,
+          height: targetVisualHeight,
+          fontSize: `${fontSize}px`,
+          lineHeight: 1.4,
+          color: "#1c1c21",
+          whiteSpace: "pre-wrap",
+          boxSizing: "border-box",
+        }}
+      />
+    </>
   );
 }

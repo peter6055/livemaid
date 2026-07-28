@@ -24,6 +24,7 @@ import {
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
+import { normalizeHtmlForMermaid } from "@/lib/utils";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -2669,69 +2670,123 @@ export function LiveMaidEditor({
       return;
     }
 
-    let start = inlineInputRef.current.selectionStart;
-    let end = inlineInputRef.current.selectionEnd;
+    const el = inlineInputRef.current;
 
-    const augmentedInput = inlineInputRef.current as HTMLTextAreaElement & {
-      _lastSelectionStart?: number;
-      _lastSelectionEnd?: number;
-    };
-    if (start === end && typeof augmentedInput._lastSelectionStart === "number") {
-      const lastStart = augmentedInput._lastSelectionStart;
-      const lastEnd = augmentedInput._lastSelectionEnd ?? lastStart;
-      if (lastStart !== lastEnd) {
-        start = lastStart;
-        end = lastEnd;
+    // Handle alignment formats
+    if (format.startsWith("align-")) {
+      const alignValue = format.replace("align-", "");
+      // Find or create a wrapper div with text-align style
+      const existingDiv = el.querySelector("div[style*='text-align']");
+      if (existingDiv) {
+        (existingDiv as HTMLElement).style.textAlign = alignValue;
+      } else {
+        // Wrap content in a div with alignment
+        const wrapper = document.createElement("div");
+        wrapper.style.textAlign = alignValue;
+        wrapper.innerHTML = el.innerHTML;
+        el.innerHTML = "";
+        el.appendChild(wrapper);
       }
+      setEditingText(el.innerHTML);
+      return;
     }
 
-    let selectedText = editingText.substring(start, end);
-    console.log(
-      "[handleFormatText] start:",
-      start,
-      "end:",
-      end,
-      "selectedText:",
-      selectedText,
-      "editingText:",
-      editingText,
-    );
+    const sel = window.getSelection();
 
-    const isSelectionEmpty = !selectedText;
-    if (isSelectionEmpty) {
-      start = 0;
-      end = editingText.length;
-      selectedText = editingText;
+    if (!sel || sel.rangeCount === 0) {
+      // No selection, wrap all content
+      let before = "";
+      let after = "";
+
+      if (format === "bold") {
+        before = "<b>";
+        after = "</b>";
+      } else if (format === "italic") {
+        before = "<i>";
+        after = "</i>";
+      } else if (format === "color" && colorValue) {
+        before = `<span style='color:${colorValue}'>`;
+        after = "</span>";
+      }
+
+      el.innerHTML = before + el.innerHTML + after;
+      setEditingText(el.innerHTML);
+      return;
     }
 
-    let before = "";
-    let after = "";
+    const range = sel.getRangeAt(0);
 
+    // Check if selection is within the editor
+    if (!el.contains(range.commonAncestorContainer)) {
+      // Selection is outside editor, wrap all content
+      let before = "";
+      let after = "";
+
+      if (format === "bold") {
+        before = "<b>";
+        after = "</b>";
+      } else if (format === "italic") {
+        before = "<i>";
+        after = "</i>";
+      } else if (format === "color" && colorValue) {
+        before = `<span style='color:${colorValue}'>`;
+        after = "</span>";
+      }
+
+      el.innerHTML = before + el.innerHTML + after;
+      setEditingText(el.innerHTML);
+      return;
+    }
+
+    // Get the selected content
+    const selectedContent = range.extractContents();
+    const selectedText = selectedContent.textContent || "";
+
+    if (!selectedText.trim()) {
+      // Empty selection, wrap all content
+      let before = "";
+      let after = "";
+
+      if (format === "bold") {
+        before = "<b>";
+        after = "</b>";
+      } else if (format === "italic") {
+        before = "<i>";
+        after = "</i>";
+      } else if (format === "color" && colorValue) {
+        before = `<span style='color:${colorValue}'>`;
+        after = "</span>";
+      }
+
+      el.innerHTML = before + el.innerHTML + after;
+      setEditingText(el.innerHTML);
+      return;
+    }
+
+    // Create the formatted element
+    let wrapper: HTMLElement;
     if (format === "bold") {
-      before = "<b>";
-      after = "</b>";
+      wrapper = document.createElement("b");
     } else if (format === "italic") {
-      before = "<i>";
-      after = "</i>";
+      wrapper = document.createElement("i");
     } else if (format === "color" && colorValue) {
-      before = `<span style='color:${colorValue}'>`;
-      after = "</span>";
+      wrapper = document.createElement("span");
+      wrapper.style.color = colorValue;
+    } else {
+      wrapper = document.createElement("span");
     }
 
-    const newText =
-      editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
-    console.log("[handleFormatText] setting editingText to:", newText);
-    setEditingText(newText);
+    wrapper.appendChild(selectedContent);
+    range.insertNode(wrapper);
 
-    setTimeout(() => {
-      if (inlineInputRef.current) {
-        inlineInputRef.current.focus();
-        inlineInputRef.current.setSelectionRange(
-          start,
-          start + before.length + selectedText.length + after.length,
-        );
-      }
-    }, 10);
+    // Update editingText with the new HTML
+    setEditingText(el.innerHTML);
+
+    // Select the newly formatted text
+    const newRange = document.createRange();
+    newRange.selectNodeContents(wrapper);
+    sel.removeAllRanges();
+    sel.addRange(newRange);
   };
 
   const handleEditSubmit = () => {
@@ -2807,7 +2862,7 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(editingText);
 
       let found = false;
       const lines = code.split("\n");
@@ -2861,7 +2916,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(editingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2878,7 +2933,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(editingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2912,7 +2967,7 @@ export function LiveMaidEditor({
       }
     } else if (selectedNodeId.startsWith("SEQ_")) {
       const oldText = selectedNodeId.replace("SEQ_", "");
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(editingText);
       newCode = newCode
         .split("\n")
         .map((line) => {
@@ -4756,6 +4811,7 @@ export function LiveMaidEditor({
               setEditingText={setEditingText}
               handleEditSubmit={handleEditSubmit}
               inlineInputRef={inlineInputRef}
+              handleFormatText={handleFormatText}
               handleAddNodeFromSelected={handleAddNodeFromSelected}
               onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
               onHoveredSequenceMessageClick={(index) =>
