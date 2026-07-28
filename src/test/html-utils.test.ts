@@ -167,4 +167,23 @@ describe("normalizeHtmlForMermaid", () => {
     const input = '<div style="text-align:right;">Right aligned</div>';
     expect(normalizeHtmlForMermaid(input)).toBe('<div style="text-align:right;">Right aligned');
   });
+
+  it("removes browser-added br at word boundary characters", () => {
+    // Browser wraps at "/" character
+    const input1 = '<b>Azure DNS /<br>cloudapp.azure.com</b><br/>CNAME target';
+    expect(normalizeHtmlForMermaid(input1)).toBe('<b>Azure DNS /cloudapp.azure.com</b><br/>CNAME target');
+
+    // Browser wraps at "-" character
+    const input2 = 'some-long-<br>word';
+    expect(normalizeHtmlForMermaid(input2)).toBe('some-long-word');
+
+    // Browser wraps at "." character
+    const input3 = 'example.<br>com';
+    expect(normalizeHtmlForMermaid(input3)).toBe('example.com');
+  });
+
+  it("preserves intentional br tags", () => {
+    const input = 'Line 1<br/>Line 2';
+    expect(normalizeHtmlForMermaid(input)).toBe('Line 1<br/>Line 2');
+  });
 });
