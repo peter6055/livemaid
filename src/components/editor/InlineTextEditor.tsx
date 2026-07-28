@@ -1,4 +1,4 @@
-import { RefObject, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { RefObject, useEffect, useLayoutEffect, useCallback, useRef, useState } from "react";
 import {
   Bold,
   Italic,
@@ -41,6 +41,51 @@ function estimateTextWidth(text: string, fontSize: number) {
   return ctx.measureText(longestLine).width;
 }
 
+function getActiveFormats(el: HTMLElement | null): {
+  bold: boolean;
+  italic: boolean;
+  align: "left" | "center" | "right" | "";
+} {
+  if (!el) return { bold: false, italic: false, align: "" };
+
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return { bold: false, italic: false, align: "" };
+
+  const range = sel.getRangeAt(0);
+  let node: Node | null = range.commonAncestorContainer;
+  if (node.nodeType === Node.TEXT_NODE) {
+    node = node.parentNode;
+  }
+
+  let bold = false;
+  let italic = false;
+  let align: "left" | "center" | "right" | "" = "";
+
+  // Walk up the DOM tree to find formatting tags
+  while (node && node !== el) {
+    if (node instanceof HTMLElement) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === "b" || tag === "strong") bold = true;
+      if (tag === "i" || tag === "em") italic = true;
+
+      const textAlign = node.style?.textAlign;
+      if (textAlign === "left" || textAlign === "center" || textAlign === "right") {
+        if (!align) align = textAlign;
+      }
+    }
+    node = node.parentNode;
+  }
+
+  // Also check computed styles for the selection
+  if (range.startContainer instanceof HTMLElement) {
+    const computed = window.getComputedStyle(range.startContainer);
+    if (computed.fontWeight === "bold" || parseInt(computed.fontWeight) >= 700) bold = true;
+    if (computed.fontStyle === "italic") italic = true;
+  }
+
+  return { bold, italic, align };
+}
+
 export function InlineTextEditor({
   isInlineEditing,
   setIsInlineEditing,
@@ -56,6 +101,30 @@ export function InlineTextEditor({
   handleFormatText,
 }: InlineTextEditorProps) {
   const toolbarRef = useRef<HTMLDivElement>(null);
+  const [activeFormats, setActiveFormats] = useState({
+    bold: false,
+    italic: false,
+    align: "" as "left" | "center" | "right" | "",
+  });
+  const originalContentRef = useRef<string>("");
+  const isInitialLoadRef = useRef<boolean>(true);
+
+  // Update active formats when selection changes
+  const updateActiveFormats = useCallback(() => {
+    if (!inlineInputRef.current) return;
+    const formats = getActiveFormats(inlineInputRef.current);
+    setActiveFormats(formats);
+  }, [inlineInputRef]);
+
+  // Listen for selection changes
+  useEffect(() => {
+    if (!isInlineEditing) return;
+
+    document.addEventListener("selectionchange", updateActiveFormats);
+    return () => {
+      document.removeEventListener("selectionchange", updateActiveFormats);
+    };
+  }, [isInlineEditing, updateActiveFormats]);
 
   useEffect(() => {
     if (!isInlineEditing) return;
@@ -105,6 +174,9 @@ export function InlineTextEditor({
     // Only update if the content differs to avoid cursor jumps
     if (el.innerHTML !== editingText) {
       el.innerHTML = editingText;
+      // Store original content for comparison
+      originalContentRef.current = editingText;
+      isInitialLoadRef.current = true;
     }
   }, [isInlineEditing, editingText, inlineInputRef]);
 
@@ -119,6 +191,16 @@ export function InlineTextEditor({
   const handleInput = useCallback(() => {
     const el = inlineInputRef.current;
     if (!el) return;
+    
+    // Skip the first input event after loading (browser auto-formats)
+    if (isInitialLoadRef.current) {
+      isInitialLoadRef.current = false;
+      // Still update the height
+      el.style.height = "auto";
+      el.style.height = `${Math.max(el.scrollHeight, 24)}px`;
+      return;
+    }
+    
     setEditingText(el.innerHTML);
   }, [inlineInputRef, setEditingText]);
 
@@ -142,7 +224,9 @@ export function InlineTextEditor({
   const targetVisualWidth = Math.min(Math.max(textBox.width, measuredTextWidth + 20, 80), 700);
   const targetVisualHeight = Math.max(textBox.height, 24);
 
-  const toolbarButtonClass =
+  const activeButtonClass =
+    "h-7 w-7 flex items-center justify-center rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 transition-colors";
+  const inactiveButtonClass =
     "h-7 w-7 flex items-center justify-center rounded hover:bg-accent hover:text-accent-foreground transition-colors";
 
   return (
@@ -172,7 +256,7 @@ export function InlineTextEditor({
                 e.stopPropagation();
                 handleFormatText("bold");
               }}
-              className={toolbarButtonClass}
+              className={activeFormats.bold ? activeButtonClass : inactiveButtonClass}
               title="Bold (Ctrl+B)"
             >
               <Bold className="w-3.5 h-3.5" />
@@ -183,7 +267,7 @@ export function InlineTextEditor({
                 e.stopPropagation();
                 handleFormatText("italic");
               }}
-              className={toolbarButtonClass}
+              className={activeFormats.italic ? activeButtonClass : inactiveButtonClass}
               title="Italic (Ctrl+I)"
             >
               <Italic className="w-3.5 h-3.5" />
@@ -197,7 +281,7 @@ export function InlineTextEditor({
                 e.stopPropagation();
                 handleFormatText("align-left");
               }}
-              className={toolbarButtonClass}
+              className={activeFormats.align === "left" ? activeButtonClass : inactiveButtonClass}
               title="Align Left"
             >
               <AlignLeft className="w-3.5 h-3.5" />
@@ -208,7 +292,7 @@ export function InlineTextEditor({
                 e.stopPropagation();
                 handleFormatText("align-center");
               }}
-              className={toolbarButtonClass}
+              className={activeFormats.align === "center" ? activeButtonClass : inactiveButtonClass}
               title="Align Center"
             >
               <AlignCenter className="w-3.5 h-3.5" />
@@ -219,7 +303,7 @@ export function InlineTextEditor({
                 e.stopPropagation();
                 handleFormatText("align-right");
               }}
-              className={toolbarButtonClass}
+              className={activeFormats.align === "right" ? activeButtonClass : inactiveButtonClass}
               title="Align Right"
             >
               <AlignRight className="w-3.5 h-3.5" />
@@ -281,7 +365,11 @@ export function InlineTextEditor({
           }, 0);
         }}
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          // Update active formats on click
+          setTimeout(updateActiveFormats, 0);
+        }}
         onDoubleClick={(e) => e.stopPropagation()}
         style={{
           left: centerX,

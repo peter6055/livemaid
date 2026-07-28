@@ -2672,13 +2672,25 @@ export function LiveMaidEditor({
 
     const el = inlineInputRef.current;
 
-    // Handle alignment formats
+    // Handle alignment formats - toggle if same alignment
     if (format.startsWith("align-")) {
       const alignValue = format.replace("align-", "");
-      // Find or create a wrapper div with text-align style
-      const existingDiv = el.querySelector("div[style*='text-align']");
+      const existingDiv = el.querySelector("div[style*='text-align']") as HTMLElement | null;
       if (existingDiv) {
-        (existingDiv as HTMLElement).style.textAlign = alignValue;
+        // Toggle: if same alignment, remove it
+        if (existingDiv.style.textAlign === alignValue) {
+          existingDiv.style.textAlign = "";
+          if (!existingDiv.getAttribute("style")) {
+            // Remove the div wrapper if no styles remain
+            const parent = existingDiv.parentNode;
+            while (existingDiv.firstChild) {
+              parent?.insertBefore(existingDiv.firstChild, existingDiv);
+            }
+            parent?.removeChild(existingDiv);
+          }
+        } else {
+          existingDiv.style.textAlign = alignValue;
+        }
       } else {
         // Wrap content in a div with alignment
         const wrapper = document.createElement("div");
@@ -2691,25 +2703,63 @@ export function LiveMaidEditor({
       return;
     }
 
-    const sel = window.getSelection();
-
-    if (!sel || sel.rangeCount === 0) {
-      // No selection, wrap all content
-      let before = "";
-      let after = "";
-
-      if (format === "bold") {
-        before = "<b>";
-        after = "</b>";
-      } else if (format === "italic") {
-        before = "<i>";
-        after = "</i>";
-      } else if (format === "color" && colorValue) {
-        before = `<span style='color:${colorValue}'>`;
-        after = "</span>";
+    // Check if format is currently active for toggle
+    const isActive = (() => {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        // Check entire content
+        if (format === "bold") return /<b[\s>]/i.test(el.innerHTML);
+        if (format === "italic") return /<i[\s>]/i.test(el.innerHTML);
+        return false;
       }
 
-      el.innerHTML = before + el.innerHTML + after;
+      let node: Node | null = sel.getRangeAt(0).commonAncestorContainer;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+
+      while (node && node !== el) {
+        if (node instanceof HTMLElement) {
+          const tag = node.tagName.toLowerCase();
+          if (format === "bold" && (tag === "b" || tag === "strong")) return true;
+          if (format === "italic" && (tag === "i" || tag === "em")) return true;
+        }
+        node = node.parentNode;
+      }
+      return false;
+    })();
+
+    const sel = window.getSelection();
+
+    // Helper to unwrap format (remove tags)
+    const unwrapFormat = (container: HTMLElement, tag: string) => {
+      const elements = container.querySelectorAll(tag);
+      elements.forEach((elem) => {
+        const parent = elem.parentNode;
+        while (elem.firstChild) {
+          parent?.insertBefore(elem.firstChild, elem);
+        }
+        parent?.removeChild(elem);
+      });
+    };
+
+    if (!sel || sel.rangeCount === 0) {
+      // No selection - toggle entire content
+      if (isActive) {
+        unwrapFormat(el, format === "bold" ? "b" : "i");
+      } else {
+        let before = "";
+        let after = "";
+        if (format === "bold") {
+          before = "<b>";
+          after = "</b>";
+        } else if (format === "italic") {
+          before = "<i>";
+          after = "</i>";
+        } else if (format === "color" && colorValue) {
+          before = `<span style='color:${colorValue}'>`;
+          after = "</span>";
+        }
+        el.innerHTML = before + el.innerHTML + after;
+      }
       setEditingText(el.innerHTML);
       return;
     }
@@ -2718,22 +2768,49 @@ export function LiveMaidEditor({
 
     // Check if selection is within the editor
     if (!el.contains(range.commonAncestorContainer)) {
-      // Selection is outside editor, wrap all content
-      let before = "";
-      let after = "";
-
-      if (format === "bold") {
-        before = "<b>";
-        after = "</b>";
-      } else if (format === "italic") {
-        before = "<i>";
-        after = "</i>";
-      } else if (format === "color" && colorValue) {
-        before = `<span style='color:${colorValue}'>`;
-        after = "</span>";
+      // Selection is outside editor - toggle entire content
+      if (isActive) {
+        unwrapFormat(el, format === "bold" ? "b" : "i");
+      } else {
+        let before = "";
+        let after = "";
+        if (format === "bold") {
+          before = "<b>";
+          after = "</b>";
+        } else if (format === "italic") {
+          before = "<i>";
+          after = "</i>";
+        } else if (format === "color" && colorValue) {
+          before = `<span style='color:${colorValue}'>`;
+          after = "</span>";
+        }
+        el.innerHTML = before + el.innerHTML + after;
       }
+      setEditingText(el.innerHTML);
+      return;
+    }
 
-      el.innerHTML = before + el.innerHTML + after;
+    // If toggling off, unwrap the format from the selection
+    if (isActive) {
+      // Find the closest formatting ancestor and unwrap it
+      let node: Node | null = range.commonAncestorContainer;
+      if (node.nodeType === Node.TEXT_NODE) node = node.parentNode;
+
+      while (node && node !== el) {
+        if (node instanceof HTMLElement) {
+          const tag = node.tagName.toLowerCase();
+          if ((format === "bold" && (tag === "b" || tag === "strong")) ||
+              (format === "italic" && (tag === "i" || tag === "em"))) {
+            const parent = node.parentNode;
+            while (node.firstChild) {
+              parent?.insertBefore(node.firstChild, node);
+            }
+            parent?.removeChild(node);
+            break;
+          }
+        }
+        node = node.parentNode;
+      }
       setEditingText(el.innerHTML);
       return;
     }
@@ -2743,22 +2820,24 @@ export function LiveMaidEditor({
     const selectedText = selectedContent.textContent || "";
 
     if (!selectedText.trim()) {
-      // Empty selection, wrap all content
-      let before = "";
-      let after = "";
-
-      if (format === "bold") {
-        before = "<b>";
-        after = "</b>";
-      } else if (format === "italic") {
-        before = "<i>";
-        after = "</i>";
-      } else if (format === "color" && colorValue) {
-        before = `<span style='color:${colorValue}'>`;
-        after = "</span>";
+      // Empty selection - toggle entire content
+      if (isActive) {
+        unwrapFormat(el, format === "bold" ? "b" : "i");
+      } else {
+        let before = "";
+        let after = "";
+        if (format === "bold") {
+          before = "<b>";
+          after = "</b>";
+        } else if (format === "italic") {
+          before = "<i>";
+          after = "</i>";
+        } else if (format === "color" && colorValue) {
+          before = `<span style='color:${colorValue}'>`;
+          after = "</span>";
+        }
+        el.innerHTML = before + el.innerHTML + after;
       }
-
-      el.innerHTML = before + el.innerHTML + after;
       setEditingText(el.innerHTML);
       return;
     }
@@ -2789,9 +2868,32 @@ export function LiveMaidEditor({
     sel.addRange(newRange);
   };
 
+  // Store original content when editing starts
+  const originalEditContentRef = useRef<string>("");
+
+  useEffect(() => {
+    if (isInlineEditing) {
+      originalEditContentRef.current = editingText;
+    }
+  }, [isInlineEditing]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleEditSubmit = () => {
     if (!selectedNodeId || !isInlineEditing) {
       setIsInlineEditing(false);
+      return;
+    }
+
+    // Normalize the editing text to clean up browser-added line breaks
+    const normalizedText = normalizeHtmlForMermaid(editingText);
+    
+    // Compare with original content - if no real changes, just close
+    const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);
+    if (normalizedText === originalNormalized) {
+      setIsInlineEditing(false);
+      setSelectedNodeId(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
       return;
     }
 
