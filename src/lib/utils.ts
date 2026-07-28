@@ -40,6 +40,7 @@ export function containsHtml(str: string): boolean {
  * - Preserves text-align style attributes
  * - Removes empty tags
  * - Normalizes whitespace
+ * - Removes browser-added line wraps at word-boundary characters (/, -, .)
  */
 export function normalizeHtmlForMermaid(html: string): string {
   return (
@@ -58,6 +59,10 @@ export function normalizeHtmlForMermaid(html: string): string {
       )
       // Convert closing block elements to <br/>
       .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "<br/>")
+      // Remove <br> that the browser added at word-boundary characters (/, -, .)
+      // These are visual line wraps, not intentional line breaks
+      .replace(/([/\-.])<br\s*\/?>/gi, "$1")
+      .replace(/<br\s*\/?>([/\-.])/gi, "$1")
       // Remove empty <br/> at the start
       .replace(/^(<br\s*\/?>)+/i, "")
       // Remove empty <br/> at the end
