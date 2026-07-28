@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { Telemetry, initTelemetry, getTelemetry } from "./index";
+import { initTelemetry, getTelemetry, STORAGE_KEY } from "./index";
 import type { TelemetryConfig } from "./types";
 
 interface TelemetryContextValue {
@@ -16,15 +16,13 @@ interface TelemetryPreferences {
   debugReporting: boolean;
 }
 
-const TELEMETRY_PREFS_KEY = "livemaid:telemetry-preferences";
-
 function loadTelemetryPreferences(): TelemetryPreferences {
   if (typeof window === "undefined") {
     return { usageAnalytics: false, debugReporting: false };
   }
 
   try {
-    const raw = window.localStorage.getItem(TELEMETRY_PREFS_KEY);
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { usageAnalytics: false, debugReporting: false };
     const parsed = JSON.parse(raw);
     return {
@@ -39,7 +37,7 @@ function loadTelemetryPreferences(): TelemetryPreferences {
 function saveTelemetryPreferences(usageAnalytics: boolean, debugReporting: boolean) {
   try {
     window.localStorage.setItem(
-      TELEMETRY_PREFS_KEY,
+      STORAGE_KEY,
       JSON.stringify({ usageAnalytics, debugReporting }),
     );
   } catch {
@@ -69,12 +67,9 @@ export function TelemetryProvider({
     useState(loadTelemetryPreferences);
 
   useEffect(() => {
-    const telemetry = initTelemetry(config);
-    telemetry.setUsageAnalytics(usageAnalytics);
-    telemetry.setDebugReporting(debugReporting);
-    // `usageAnalytics` and `debugReporting` are intentionally only read for initial bootstrapping.
-    // Toggle handlers update the live telemetry instance directly after mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const prefs = loadTelemetryPreferences();
+    initTelemetry(config, prefs);
+    setTelemetryPreferences(prefs);
   }, [config]);
 
   const setUsageAnalytics = (value: boolean) => {
