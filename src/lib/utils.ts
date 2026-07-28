@@ -46,17 +46,14 @@ export function normalizeHtmlForMermaid(html: string): string {
   return (
     html
       // Replace opening block elements with their style attribute (if any)
-      .replace(
-        /<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi,
-        (_match, _tag, attrs) => {
-          // Extract text-align style if present
-          const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
-          if (styleMatch) {
-            return `<div style="${styleMatch[1]}">`;
-          }
-          return "";
-        },
-      )
+      .replace(/<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi, (_match, _tag, attrs) => {
+        // Extract text-align style if present
+        const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
+        if (styleMatch) {
+          return `<div style="${styleMatch[1]}">`;
+        }
+        return "";
+      })
       // Convert closing block elements to <br/>
       .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "<br/>")
       // Remove <br> that the browser added at word-boundary characters (/, -, .)

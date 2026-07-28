@@ -171,7 +171,12 @@ export function InlineTextEditor({
           }
         }
         // Block browser formatting shortcuts (B/I/U) - users should edit styling in code
-        else if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === "b" || e.key.toLowerCase() === "i" || e.key.toLowerCase() === "u")) {
+        else if (
+          (e.metaKey || e.ctrlKey) &&
+          (e.key.toLowerCase() === "b" ||
+            e.key.toLowerCase() === "i" ||
+            e.key.toLowerCase() === "u")
+        ) {
           e.preventDefault();
         }
         e.stopPropagation();

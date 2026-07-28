@@ -2730,7 +2730,7 @@ export function LiveMaidEditor({
 
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(editingText);
-    
+
     // Compare with original content - if no real changes, just close
     const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);
     if (normalizedText === originalNormalized) {

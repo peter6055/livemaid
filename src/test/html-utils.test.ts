@@ -113,7 +113,9 @@ describe("normalizeHtmlForMermaid", () => {
   });
 
   it("converts p tags to br", () => {
-    expect(normalizeHtmlForMermaid("<p>Paragraph 1</p><p>Paragraph 2</p>")).toBe("Paragraph 1<br/>Paragraph 2");
+    expect(normalizeHtmlForMermaid("<p>Paragraph 1</p><p>Paragraph 2</p>")).toBe(
+      "Paragraph 1<br/>Paragraph 2",
+    );
   });
 
   it("preserves existing br tags", () => {
@@ -155,7 +157,9 @@ describe("normalizeHtmlForMermaid", () => {
 
   it("preserves text-align style", () => {
     const input = "<div style='text-align:left;'><b>Azure DNS</b><br/>CNAME target</div>";
-    expect(normalizeHtmlForMermaid(input)).toBe('<div style="text-align:left;"><b>Azure DNS</b><br/>CNAME target');
+    expect(normalizeHtmlForMermaid(input)).toBe(
+      '<div style="text-align:left;"><b>Azure DNS</b><br/>CNAME target',
+    );
   });
 
   it("preserves text-align center", () => {
@@ -170,20 +174,22 @@ describe("normalizeHtmlForMermaid", () => {
 
   it("removes browser-added br at word boundary characters", () => {
     // Browser wraps at "/" character
-    const input1 = '<b>Azure DNS /<br>cloudapp.azure.com</b><br/>CNAME target';
-    expect(normalizeHtmlForMermaid(input1)).toBe('<b>Azure DNS /cloudapp.azure.com</b><br/>CNAME target');
+    const input1 = "<b>Azure DNS /<br>cloudapp.azure.com</b><br/>CNAME target";
+    expect(normalizeHtmlForMermaid(input1)).toBe(
+      "<b>Azure DNS /cloudapp.azure.com</b><br/>CNAME target",
+    );
 
     // Browser wraps at "-" character
-    const input2 = 'some-long-<br>word';
-    expect(normalizeHtmlForMermaid(input2)).toBe('some-long-word');
+    const input2 = "some-long-<br>word";
+    expect(normalizeHtmlForMermaid(input2)).toBe("some-long-word");
 
     // Browser wraps at "." character
-    const input3 = 'example.<br>com';
-    expect(normalizeHtmlForMermaid(input3)).toBe('example.com');
+    const input3 = "example.<br>com";
+    expect(normalizeHtmlForMermaid(input3)).toBe("example.com");
   });
 
   it("preserves intentional br tags", () => {
-    const input = 'Line 1<br/>Line 2';
-    expect(normalizeHtmlForMermaid(input)).toBe('Line 1<br/>Line 2');
+    const input = "Line 1<br/>Line 2";
+    expect(normalizeHtmlForMermaid(input)).toBe("Line 1<br/>Line 2");
   });
 });
