@@ -265,6 +265,7 @@ interface EditorCanvasProps {
   editingText: string;
   setEditingText: (text: string) => void;
   handleEditSubmit: () => void;
+  handleFormatText?: (format: string, colorValue?: string) => void;
   inlineInputRef: RefObject<HTMLDivElement | null>;
   onDeselect?: () => void;
   onResetStyle?: () => void;
@@ -520,6 +521,7 @@ export function EditorCanvas({
   editingText,
   setEditingText,
   handleEditSubmit,
+  handleFormatText,
   inlineInputRef,
   onDeselect,
   onResetStyle,
@@ -2799,6 +2801,7 @@ export function EditorCanvas({
                       editingText={editingText}
                       setEditingText={setEditingText}
                       handleEditSubmit={handleEditSubmit}
+                      handleFormatText={handleFormatText}
                       inlineInputRef={inlineInputRef}
                       selectedSvgId={selectedSvgId}
                     />

@@ -132,7 +132,11 @@ export function initTelemetry(
       })
     : createNoopAdapter();
 
-  instance = new Telemetry(adapter, { usageAnalytics: usagePref, debugReporting: debugPref }, sessionId);
+  instance = new Telemetry(
+    adapter,
+    { usageAnalytics: usagePref, debugReporting: debugPref },
+    sessionId,
+  );
 
   if (typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).LiveMaidDiagnostics = {

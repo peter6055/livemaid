@@ -36,10 +36,7 @@ function loadTelemetryPreferences(): TelemetryPreferences {
 
 function saveTelemetryPreferences(usageAnalytics: boolean, debugReporting: boolean) {
   try {
-    window.localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ usageAnalytics, debugReporting }),
-    );
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ usageAnalytics, debugReporting }));
   } catch {
     // Ignore storage failures so privacy toggles still work for the current session.
   }

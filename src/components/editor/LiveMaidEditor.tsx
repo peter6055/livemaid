@@ -2713,6 +2713,208 @@ export function LiveMaidEditor({
     [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic],
   );
 
+  const handleFormatText = useCallback(
+    (format: string, colorValue?: string) => {
+      if (!inlineInputRef.current) return;
+
+      const el = inlineInputRef.current;
+      el.focus();
+
+      const isFormatTag = (node: Node, fmt: "bold" | "italic") => {
+        if (!(node instanceof HTMLElement)) return false;
+        const tag = node.tagName.toLowerCase();
+        return fmt === "bold" ? tag === "b" || tag === "strong" : tag === "i" || tag === "em";
+      };
+
+      const getTextNodes = (node: Node): Text[] => {
+        const nodes: Text[] = [];
+        node.childNodes.forEach((child) => {
+          if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
+            nodes.push(child as Text);
+          } else if (child.nodeType === Node.ELEMENT_NODE) {
+            nodes.push(...getTextNodes(child));
+          }
+        });
+        return nodes;
+      };
+
+      const isAllContentFormatted = (fmt: "bold" | "italic") => {
+        const textNodes = getTextNodes(el);
+        if (textNodes.length === 0) return false;
+        return textNodes.every((textNode) => {
+          let node: Node | null = textNode.parentNode;
+          while (node && node !== el) {
+            if (isFormatTag(node, fmt)) return true;
+            node = node.parentNode;
+          }
+          return false;
+        });
+      };
+
+      const getTextNodesInRange = (range: Range): Text[] => {
+        if (range.collapsed) return [];
+        const nodes: Text[] = [];
+        const iterator = document.createNodeIterator(
+          range.commonAncestorContainer,
+          NodeFilter.SHOW_TEXT,
+        );
+        let node: Node | null;
+        while ((node = iterator.nextNode())) {
+          if (range.intersectsNode(node) && node.textContent?.trim()) {
+            nodes.push(node as Text);
+          }
+        }
+        return nodes;
+      };
+
+      const isRangeFormatted = (range: Range, fmt: "bold" | "italic") => {
+        const textNodes = getTextNodesInRange(range);
+        if (textNodes.length === 0) return isAllContentFormatted(fmt);
+        return textNodes.every((textNode) => {
+          let node: Node | null = textNode.parentNode;
+          while (node && node !== el) {
+            if (isFormatTag(node, fmt)) return true;
+            node = node.parentNode;
+          }
+          return false;
+        });
+      };
+
+      const coversAllContent = (range: Range) =>
+        range.startContainer === el &&
+        range.startOffset === 0 &&
+        range.endContainer === el &&
+        range.endOffset === el.childNodes.length;
+
+      const unwrapAll = (fmt: "bold" | "italic") => {
+        const tags = fmt === "bold" ? ["b", "strong"] : ["i", "em"];
+        el.querySelectorAll(tags.join(",")).forEach((elem) => {
+          const parent = elem.parentNode;
+          if (!parent) return;
+          while (elem.firstChild) {
+            parent.insertBefore(elem.firstChild, elem);
+          }
+          parent.removeChild(elem);
+        });
+      };
+
+      const wrapEntireContent = (wrapper: HTMLElement) => {
+        wrapper.innerHTML = el.innerHTML;
+        el.innerHTML = "";
+        el.appendChild(wrapper);
+      };
+
+      const toggleEntireContent = (fmt: "bold" | "italic") => {
+        if (isAllContentFormatted(fmt)) {
+          unwrapAll(fmt);
+        } else {
+          const wrapper = document.createElement(fmt === "bold" ? "b" : "i");
+          wrapEntireContent(wrapper);
+        }
+      };
+
+      // Alignment: handled separately because it wraps the whole editor.
+      if (format.startsWith("align-")) {
+        const alignValue = format.replace("align-", "") as "left" | "center" | "right";
+        const existingDiv = el.querySelector("div[style*='text-align']") as HTMLElement | null;
+        if (existingDiv) {
+          if (existingDiv.style.textAlign === alignValue) {
+            existingDiv.style.textAlign = "";
+            if (!existingDiv.getAttribute("style")) {
+              const parent = existingDiv.parentNode;
+              while (existingDiv.firstChild) {
+                parent?.insertBefore(existingDiv.firstChild, existingDiv);
+              }
+              parent?.removeChild(existingDiv);
+            }
+          } else {
+            existingDiv.style.textAlign = alignValue;
+          }
+        } else {
+          const wrapper = document.createElement("div");
+          wrapper.style.textAlign = alignValue;
+          wrapper.innerHTML = el.innerHTML;
+          el.innerHTML = "";
+          el.appendChild(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
+      }
+
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        if (format === "bold" || format === "italic") {
+          toggleEntireContent(format as "bold" | "italic");
+        } else if (format === "color" && colorValue) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
+      }
+
+      const range = sel.getRangeAt(0);
+
+      if (!el.contains(range.commonAncestorContainer)) {
+        if (format === "bold" || format === "italic") {
+          toggleEntireContent(format as "bold" | "italic");
+        } else if (format === "color" && colorValue) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
+      }
+
+      if (format === "bold" || format === "italic") {
+        const fmt = format as "bold" | "italic";
+        const active = coversAllContent(range)
+          ? isAllContentFormatted(fmt)
+          : isRangeFormatted(range, fmt);
+
+        if (active) {
+          unwrapAll(fmt);
+        } else {
+          const selectedContent = range.extractContents();
+          const selectedText = selectedContent.textContent || "";
+          if (!selectedText.trim()) {
+            toggleEntireContent(fmt);
+          } else {
+            const wrapper = document.createElement(fmt === "bold" ? "b" : "i");
+            wrapper.appendChild(selectedContent);
+            range.insertNode(wrapper);
+            const newRange = document.createRange();
+            newRange.selectNodeContents(wrapper);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+        }
+      } else if (format === "color" && colorValue) {
+        const selectedContent = range.extractContents();
+        const selectedText = selectedContent.textContent || "";
+        if (!selectedText.trim()) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        } else {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapper.appendChild(selectedContent);
+          range.insertNode(wrapper);
+          const newRange = document.createRange();
+          newRange.selectNodeContents(wrapper);
+          sel.removeAllRanges();
+          sel.addRange(newRange);
+        }
+      }
+
+      setEditingText(el.innerHTML);
+    },
+    [inlineInputRef, setEditingText],
+  );
+
   // Store original content when editing starts
   const originalEditContentRef = useRef<string>("");
 
@@ -2728,8 +2930,13 @@ export function LiveMaidEditor({
       return;
     }
 
+    // Read the latest text directly from the DOM to avoid stale React state
+    // when the user types and immediately saves (e.g. automated tests or
+    // very fast typing + Ctrl+Enter).
+    const latestEditingText = inlineInputRef.current?.innerHTML ?? editingText;
+
     // Normalize the editing text to clean up browser-added line breaks
-    const normalizedText = normalizeHtmlForMermaid(editingText);
+    const normalizedText = normalizeHtmlForMermaid(latestEditingText);
 
     // Compare with original content - if no real changes, just close
     const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);
@@ -2809,7 +3016,7 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
-      const newText = normalizeHtmlForMermaid(editingText);
+      const newText = normalizeHtmlForMermaid(latestEditingText);
 
       let found = false;
       const lines = code.split("\n");
@@ -2863,7 +3070,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = normalizeHtmlForMermaid(editingText);
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2880,7 +3087,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = normalizeHtmlForMermaid(editingText);
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2900,7 +3107,7 @@ export function LiveMaidEditor({
       // label portion after the keyword is rewritten; the keyword + indentation are preserved.
       // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
       const lineIdx = parseInt(selectedNodeId.replace("SEQ_BLK_", ""), 10);
-      const newText = editingText.replace(/\n/g, " ").trim();
+      const newText = latestEditingText.replace(/\n/g, " ").trim();
       const lines = code.split("\n");
       const line = lines[lineIdx];
       if (line != null) {
@@ -2914,7 +3121,7 @@ export function LiveMaidEditor({
       }
     } else if (selectedNodeId.startsWith("SEQ_")) {
       const oldText = selectedNodeId.replace("SEQ_", "");
-      const newText = normalizeHtmlForMermaid(editingText);
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       newCode = newCode
         .split("\n")
         .map((line) => {
@@ -2942,12 +3149,12 @@ export function LiveMaidEditor({
             currentOcc++;
           }
         }
-        if (currentLabel === null || currentLabel !== editingText) {
+        if (currentLabel === null || currentLabel !== latestEditingText) {
           newCode = updateLinkStyleAndLabel(
             newCode,
             src,
             dst,
-            { label: editingText },
+            { label: latestEditingText },
             occurrenceIndex,
           );
         }
@@ -2957,7 +3164,7 @@ export function LiveMaidEditor({
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
       // so generic node regex replacement may fail and incorrectly append a new node.
       let handledClusterRename = false;
-      const editingTextForSave = editingText.replace(/\n/g, "<br/>");
+      const editingTextForSave = latestEditingText.replace(/\n/g, "<br/>");
       if (selectedSvgId && containerRef.current) {
         const selectedEl = containerRef.current.querySelector(
           `#${CSS.escape(selectedSvgId)}`,
@@ -4787,6 +4994,7 @@ export function LiveMaidEditor({
               editingText={editingText}
               setEditingText={setEditingText}
               handleEditSubmit={handleEditSubmit}
+              handleFormatText={handleFormatText}
               inlineInputRef={inlineInputRef}
               handleAddNodeFromSelected={handleAddNodeFromSelected}
               onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}
