@@ -16,25 +16,6 @@ interface InlineTextEditorProps {
   handleFormatText?: (format: string, colorValue?: string) => void;
 }
 
-function estimateTextWidth(text: string, fontSize: number) {
-  // Strip HTML tags for width estimation
-  const plainText = text.replace(/<[^>]+>/g, "");
-  const longestLine = plainText
-    .split(/\r?\n/)
-    .reduce((longest, line) => (line.length > longest.length ? line : longest), "");
-  if (!longestLine) return 0;
-
-  if (typeof document === "undefined") {
-    return longestLine.length * fontSize * 0.62;
-  }
-
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return longestLine.length * fontSize * 0.62;
-  ctx.font = `500 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
-  return ctx.measureText(longestLine).width;
-}
-
 function isFormatTag(node: Node, format: "bold" | "italic"): boolean {
   if (!(node instanceof HTMLElement)) return false;
   const tag = node.tagName.toLowerCase();
@@ -220,6 +201,7 @@ export function InlineTextEditor({
     italic: false,
     align: "" as "left" | "center" | "right" | "",
   });
+  const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
   const savedSelectionRef = useRef<SavedSelection | null>(null);
 
   const updateActiveFormats = useCallback(() => {
@@ -263,7 +245,10 @@ export function InlineTextEditor({
   }, [inlineInputRef]);
 
   useEffect(() => {
-    if (!isInlineEditing) return;
+    if (!isInlineEditing) {
+      setMeasuredHeight(null);
+      return;
+    }
 
     document.addEventListener("selectionchange", updateActiveFormats);
     return () => {
@@ -327,8 +312,10 @@ export function InlineTextEditor({
     const el = inlineInputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.max(el.scrollHeight, Math.max(textBox.height, 24))}px`;
-  }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox]);
+    const minHeight = Math.max(textBox.height * scale, 24);
+    el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
+    setMeasuredHeight(el.getBoundingClientRect().height);
+  }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox, scale]);
 
   const handleInput = useCallback(() => {
     const el = inlineInputRef.current;
@@ -352,9 +339,13 @@ export function InlineTextEditor({
   }
 
   const fontSize = 14;
-  const measuredTextWidth = estimateTextWidth(editingText, fontSize);
-  const targetVisualWidth = Math.min(Math.max(textBox.width, measuredTextWidth + 20, 80), 700);
-  const targetVisualHeight = Math.max(textBox.height, 24);
+  // Keep the editor at the rendered node's visual size so wrapping matches the graph output.
+  // textBox is stored in unscaled canvas units; multiply by the current zoom so the overlay
+  // covers the same CSS pixels as the underlying SVG node.
+  // We no longer expand the width to fit the longest line; that prevents the editor from
+  // showing the same line breaks Mermaid will render.
+  const targetVisualWidth = Math.min(Math.max(textBox.width * scale, 24), 700);
+  const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 24);
 
   const activeButtonClass =
     "h-7 w-7 flex items-center justify-center rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 transition-colors";
@@ -549,9 +540,11 @@ export function InlineTextEditor({
           width: targetVisualWidth,
           height: targetVisualHeight,
           fontSize: `${fontSize}px`,
-          lineHeight: 1.4,
+          lineHeight: 1.5,
+          fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
           color: "#1c1c21",
-          whiteSpace: "nowrap",
+          whiteSpace: "break-spaces",
+          display: "table",
           boxSizing: "border-box",
         }}
       />
