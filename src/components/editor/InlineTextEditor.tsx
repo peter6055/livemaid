@@ -364,15 +364,15 @@ export function InlineTextEditor({
           className="absolute pointer-events-auto z-50"
           style={{
             left: centerX,
-            top: `calc(${centerY - targetVisualHeight / 2}px - 8px * var(--zoom-inverse-scale, ${1 / scale}))`,
+            top: `${centerY - targetVisualHeight / 2 / scale - 4 / scale}px`,
             transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
             transformOrigin: "bottom",
-            padding: "8px",
+            padding: "0px",
           }}
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg px-1.5 py-1 shadow-lg">
+          <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg px-1.5 py-0.5 shadow-lg">
             <button
               type="button"
               onMouseDown={(e) => {

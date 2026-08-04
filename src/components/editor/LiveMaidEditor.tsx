@@ -2799,9 +2799,20 @@ export function LiveMaidEditor({
       };
 
       const wrapEntireContent = (wrapper: HTMLElement) => {
-        wrapper.innerHTML = el.innerHTML;
-        el.innerHTML = "";
-        el.appendChild(wrapper);
+        // Preserve the alignment wrapper so formatting tags are nested inside it.
+        // This keeps alignment detectable by getActiveFormats and prevents the
+        // toolbar from losing the active alignment state when toggling bold/italic.
+        const existingDiv = el.querySelector("div[style*='text-align']") as HTMLElement | null;
+        if (existingDiv && existingDiv.parentNode === el && el.childNodes.length === 1) {
+          const innerWrapper = wrapper.cloneNode(true) as HTMLElement;
+          innerWrapper.innerHTML = existingDiv.innerHTML;
+          existingDiv.innerHTML = "";
+          existingDiv.appendChild(innerWrapper);
+        } else {
+          wrapper.innerHTML = el.innerHTML;
+          el.innerHTML = "";
+          el.appendChild(wrapper);
+        }
       };
 
       const toggleEntireContent = (fmt: "bold" | "italic") => {
@@ -2876,6 +2887,10 @@ export function LiveMaidEditor({
 
         if (active) {
           unwrapAll(fmt);
+        } else if (coversAllContent(range)) {
+          // When the whole editor is selected, wrap the entire content so the
+          // alignment wrapper (if any) stays at the top level.
+          toggleEntireContent(fmt);
         } else {
           const selectedContent = range.extractContents();
           const selectedText = selectedContent.textContent || "";
@@ -2892,21 +2907,27 @@ export function LiveMaidEditor({
           }
         }
       } else if (format === "color" && colorValue) {
-        const selectedContent = range.extractContents();
-        const selectedText = selectedContent.textContent || "";
-        if (!selectedText.trim()) {
+        if (coversAllContent(range)) {
           const wrapper = document.createElement("span");
           wrapper.style.color = colorValue;
           wrapEntireContent(wrapper);
         } else {
-          const wrapper = document.createElement("span");
-          wrapper.style.color = colorValue;
-          wrapper.appendChild(selectedContent);
-          range.insertNode(wrapper);
-          const newRange = document.createRange();
-          newRange.selectNodeContents(wrapper);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
+          const selectedContent = range.extractContents();
+          const selectedText = selectedContent.textContent || "";
+          if (!selectedText.trim()) {
+            const wrapper = document.createElement("span");
+            wrapper.style.color = colorValue;
+            wrapEntireContent(wrapper);
+          } else {
+            const wrapper = document.createElement("span");
+            wrapper.style.color = colorValue;
+            wrapper.appendChild(selectedContent);
+            range.insertNode(wrapper);
+            const newRange = document.createRange();
+            newRange.selectNodeContents(wrapper);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
         }
       }
 
