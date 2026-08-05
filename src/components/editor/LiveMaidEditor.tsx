@@ -1,6 +1,7 @@
 "use client";
 
 import { getTelemetry } from "@/lib/telemetry";
+import { broadcastDashboardRefresh } from "@/lib/dashboardSync";
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import {
@@ -4001,6 +4002,8 @@ export function LiveMaidEditor({
       if (res.ok) {
         const newDiagram = await res.json();
         setIsNewDiagramOpen(false);
+        // Notify any open Dashboard tabs that the file list should refresh.
+        broadcastDashboardRefresh();
         handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...");
       } else {
         toast.error("Failed to create diagram");
