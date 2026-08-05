@@ -50,7 +50,7 @@ Before planning or implementing any Mermaid diagram logic (parsers, rendering, f
 When implementing UI features, rendering logic, or complex client-side changes, you MUST follow this robust operational loop:
 
 1. **Implement**: Write the code and implement the changes.
-2. **Execute Interactive Testing (Browser)**: Use the best available browser automation tooling in the current runtime to perform the exact user flow for the feature. Prefer the in-app Browser tooling when available; otherwise use the loaded browser automation alternative.
+2. **Execute Interactive Testing (Browser)**: Use the best available browser automation tooling in the current runtime to perform the exact user flow for the feature. Prefer project Playwright (`npx playwright test` or a standalone script against `npm run test:dev`); use the in-app Browser tooling only for quick recon. If the in-app Browser MCP hangs or times out, switch to Playwright immediately — see [`reference/standards/browser-mcp.md`](reference/standards/browser-mcp.md).
 3. **Capture Comprehensive Visuals**: Capture screenshots at each meaningful verification checkpoint so the interaction flow has a visual record.
 4. **Return Results**: Evaluate the results (including all screenshots and DOM observations).
 5. **Scale Testing (If Needed)**: You can spawn multiple subagents to test the implementation to different degrees or in parallel if the feature is complex.
@@ -65,56 +65,63 @@ When implementing UI features, rendering logic, or complex client-side changes, 
 ## Two-Server Protocol
 
 - **User's server** (port **3434**): runs via `npm run dev`. Never touch this.
-- **Agent's test server** (port **3435**): runs via `npm run test:dev`. Agent starts/stops ONLY this.
+- **Agent's test server** (random free port): runs via `npm run test:dev`. Agent starts/stops ONLY this.
 
 Both `npm run dev` and `npm run test:dev` now automatically kill any existing process on their respective port before starting, so stale servers are cleaned up automatically.
 
 **CRITICAL**: Never kill or interact with the user's server (port 3434, tmux session `livemaid`). The agent uses a separate port and tmux session (`livemaid-test`).
 
-## Agent Test Server Startup
+## Random Port Test Server
 
-> **Note**: OpenCode's bash tool may hang when backgrounding processes with `&`.  
-> Use `tmux` to fully decouple the server from the tool's process tree.
+`npm run test:dev` picks a random port in the **20000–30000** range (`Math.random()`) and starts `next dev` on it. The port is checked for availability first and re-rolled on collision (up to 20 attempts), so multiple agents running their own test server concurrently don't collide. Each test server also uses a unique temporary `distDir` so multiple agents can run their own test server against the same project directory without Next.js detecting a conflict. The port is printed in the console output:
+
+```
+Starting test dev server on http://localhost:<port>
+```
+
+Use `tmux` to fully decouple the server from the tool's process tree, then read the port from the log:
 
 ```bash
 # Kill only the agent's old test server (NOT the user's server on 3434)
 tmux kill-session -t livemaid-test 2>/dev/null
 
-# Start agent's test server on port 3435 in a detached tmux session
-# (port 3435 is automatically freed by the `test:dev` script)
+# Start agent's test server on a random free port in a detached tmux session
 cd /path/to/project && tmux new-session -d -s livemaid-test 'npm run test:dev'
+
+# Read the assigned port from the tmux output
+PORT=$(tmux capture-pane -t livemaid-test -p -S -20 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
 
 # Poll until ready
 for i in $(seq 1 30); do
-  if curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
-    echo "Dev server ready after ${i}s"
+  if curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; then
+    echo "Dev server ready after ${i}s on port ${PORT}"
     break
   fi
   sleep 1
 done
 
 # Retry once if needed
-if ! curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
+if ! curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; then
   echo "First attempt timed out, retrying..."
   tmux kill-session -t livemaid-test 2>/dev/null
   tmux new-session -d -s livemaid-test 'npm run test:dev'
+  PORT=$(tmux capture-pane -t livemaid-test -p -S -20 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
   for i in $(seq 1 30); do
-    if curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
-      echo "Dev server ready on retry after ${i}s"
+    if curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; then
+      echo "Dev server ready on retry after ${i}s on port ${PORT}"
       break
     fi
     sleep 1
   done
-  if ! curl -s -o /dev/null --max-time 2 http://localhost:3435 2>/dev/null; then
+  if ! curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; then
     echo "Dev server still unavailable after retry" >&2
     exit 1
   fi
 fi
 ```
 
-- Use `tmux new-session -d -s livemaid-test 'npm run test:dev'` to start the agent's server.
-- Poll `http://localhost:3435` until it responds with any HTTP status.
-- If not responding after 30s, kill and retry once.
+- When running Playwright, use the `playwright-global-setup.mjs` script which automatically picks a random 20000–30000 port, starts the dev server with a unique `distDir`, and sets `PLAYWRIGHT_BASE_URL`.
+- Multiple agents can therefore run `npm run test:dev` / Playwright concurrently without port or Next.js project-lock conflicts.
 - When done testing, kill ONLY the agent's server: `tmux kill-session -t livemaid-test`.
 - Never run `pkill -f "next dev"` — it would kill the user's server too.
 

@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "fuser -k 3434/tcp 2>/dev/null; next dev --hostname 0.0.0.0 -p 3434",
-    "test:dev": "fuser -k 3435/tcp 2>/dev/null; next dev --hostname 0.0.0.0 -p 3435",
+    "test:dev": "node scripts/start-test-server.mjs",
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",
