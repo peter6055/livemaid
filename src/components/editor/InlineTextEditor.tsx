@@ -546,7 +546,9 @@ export function InlineTextEditor({
           fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
           color: "#1c1c21",
           whiteSpace: "break-spaces",
-          display: "block",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
           boxSizing: "border-box",
           textAlign: "center",
         }}
