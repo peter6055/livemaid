@@ -315,6 +315,15 @@ export function LiveMaidEditor({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
   const allowBrowserBackRef = useRef(false);
+  // Ref so useCanvasInteraction can trigger shape-comment placement without creating a
+  // circular dependency: the helper needs getSequenceMessageEndpointGeometry from the hook.
+  const openShapeCommentComposerRef = useRef<
+    | ((
+        nodeId: string,
+        selectionBox: { x: number; y: number; width: number; height: number },
+      ) => void)
+    | null
+  >(null);
 
   const handleCloseComments = useCallback(() => {
     setIsCommentsOpen(false);
@@ -412,6 +421,16 @@ export function LiveMaidEditor({
     };
   }, []);
 
+  const handleShapeCommentPlace = useCallback(
+    (
+      nodeId: string,
+      shapeSelectionBox: { x: number; y: number; width: number; height: number },
+    ) => {
+      openShapeCommentComposerRef.current?.(nodeId, shapeSelectionBox);
+    },
+    [],
+  );
+
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -470,6 +489,7 @@ export function LiveMaidEditor({
     determineDiagramType,
     isCommentMode,
     onCanvasCommentPlace: handleCanvasCommentPlace,
+    onShapeCommentPlace: handleShapeCommentPlace,
   });
 
   const handleDeselect = useCallback(() => {
@@ -610,7 +630,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
+            "[data-inline-editor],[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
           ),
         )
       ) {
@@ -775,7 +795,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-er-property-panel],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
+            "[data-inline-editor],[data-er-property-panel],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
           ),
         )
       ) {
@@ -852,7 +872,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-class-text-editor],[data-inline-toolbar],.state-connect-btn,.monaco-editor",
+            "[data-inline-editor],[data-class-text-editor],[data-inline-toolbar],.state-connect-btn,.monaco-editor",
           ),
         )
       ) {
@@ -2263,62 +2283,74 @@ export function LiveMaidEditor({
     [commentComposer, commentDraft, createCommentThread],
   );
 
+  const openShapeCommentComposer = useCallback(
+    (
+      nodeId: string,
+      shapeSelectionBox: { x: number; y: number; width: number; height: number },
+    ) => {
+      const sequenceMessageIndex = nodeId.startsWith("SEQ_MSG_")
+        ? parseInt(nodeId.replace("SEQ_MSG_", ""), 10)
+        : null;
+      const sequenceGeometry =
+        Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
+          ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
+          : null;
+      const fallbackPos =
+        sequenceGeometry &&
+        Number.isFinite(sequenceGeometry.source.x) &&
+        Number.isFinite(sequenceGeometry.target.x)
+          ? {
+              x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
+              y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
+            }
+          : {
+              x: shapeSelectionBox.x + shapeSelectionBox.width / 2,
+              y: shapeSelectionBox.y + shapeSelectionBox.height / 2,
+            };
+      const anchor: DiagramCommentAnchor = {
+        type: "shape",
+        shapeId: nodeId,
+        fallbackPos,
+      };
+
+      if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
+        const messageEntries = getSequenceMessageEntries(code);
+        const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
+        if (sequenceMessage) {
+          anchor.sequenceMessage = sequenceMessage;
+        }
+      }
+
+      setCommentComposer({
+        anchor,
+        position: {
+          x: sequenceGeometry
+            ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
+            : shapeSelectionBox.x + shapeSelectionBox.width + 12,
+          y: sequenceGeometry
+            ? Math.max(12, fallbackPos.y - 12)
+            : Math.max(12, shapeSelectionBox.y - 12),
+        },
+        targetLabel: `Anchored to ${nodeId}`,
+        commentMode: "shape",
+      });
+      setCommentDraft("");
+      setIsCommentMode(false);
+      setActiveCommentId(null);
+    },
+    [code, getSequenceMessageEntries, getSequenceMessageEndpointGeometry],
+  );
+
+  // Keep the ref current so the callback passed to useCanvasInteraction always points to
+  // the latest helper (with the latest dependencies).
+  useEffect(() => {
+    openShapeCommentComposerRef.current = openShapeCommentComposer;
+  }, [openShapeCommentComposer]);
+
   const openSelectionCommentComposer = useCallback(() => {
     if (!selectedNodeId || !selectionBox) return;
-    const sequenceMessageIndex = selectedNodeId.startsWith("SEQ_MSG_")
-      ? parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10)
-      : null;
-    const sequenceGeometry =
-      Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
-        ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
-        : null;
-    const fallbackPos =
-      sequenceGeometry &&
-      Number.isFinite(sequenceGeometry.source.x) &&
-      Number.isFinite(sequenceGeometry.target.x)
-        ? {
-            x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
-            y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
-          }
-        : {
-            x: selectionBox.x + selectionBox.width / 2,
-            y: selectionBox.y + selectionBox.height / 2,
-          };
-    const anchor: DiagramCommentAnchor = {
-      type: "shape",
-      shapeId: selectedNodeId,
-      fallbackPos,
-    };
-
-    if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
-      const messageEntries = getSequenceMessageEntries(code);
-      const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
-      if (sequenceMessage) {
-        anchor.sequenceMessage = sequenceMessage;
-      }
-    }
-
-    setCommentComposer({
-      anchor,
-      position: {
-        x: sequenceGeometry
-          ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
-          : selectionBox.x + selectionBox.width + 12,
-        y: sequenceGeometry ? Math.max(12, fallbackPos.y - 12) : Math.max(12, selectionBox.y - 12),
-      },
-      targetLabel: `Anchored to ${selectedNodeId}`,
-      commentMode: "shape",
-    });
-    setCommentDraft("");
-    setIsCommentMode(false);
-    setActiveCommentId(null);
-  }, [
-    code,
-    getSequenceMessageEntries,
-    getSequenceMessageEndpointGeometry,
-    selectedNodeId,
-    selectionBox,
-  ]);
+    openShapeCommentComposer(selectedNodeId, selectionBox);
+  }, [openShapeCommentComposer, selectedNodeId, selectionBox]);
 
   const appendCommentReply = useCallback(
     async (commentId: string) => {
@@ -2955,7 +2987,17 @@ export function LiveMaidEditor({
     // Read the latest text directly from the DOM to avoid stale React state
     // when the user types and immediately saves (e.g. automated tests or
     // very fast typing + Ctrl+Enter).
-    const latestEditingText = inlineInputRef.current?.innerHTML ?? editingText;
+    let latestEditingText = inlineInputRef.current?.innerHTML ?? editingText;
+
+    // The browser auto-closes unclosed HTML tags (e.g. <div>...) when set as innerHTML.
+    // Strip auto-added closing tags that weren't in the original Mermaid code so they
+    // don't get injected into the wrong position on save.
+    if (originalEditContentRef.current) {
+      const orig = originalEditContentRef.current;
+      if (!orig.includes("</div>")) latestEditingText = latestEditingText.replace(/<\/div>/gi, "");
+      if (!orig.includes("</span>"))
+        latestEditingText = latestEditingText.replace(/<\/span>/gi, "");
+    }
 
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(latestEditingText);
@@ -3254,45 +3296,56 @@ export function LiveMaidEditor({
       if (handledClusterRename) {
         // no-op, newCode already updated
       } else {
-        const nodeRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+        // Try ["..."] shape first — same fix as extraction in useCanvasInteraction.ts.
+        // The generic regex's \) in the closing group matches parens inside label text.
+        const quoteBracketRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
           "m",
         );
-        if (nodeRegex.test(newCode)) {
-          const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
-          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
+        if (quoteBracketRegex.test(newCode)) {
+          const quoteBracketGlobal = new RegExp(quoteBracketRegex.source, "gm");
+          newCode = newCode.replace(quoteBracketGlobal, `$1$2${editingTextForSave}$4`);
         } else {
-          const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
-          if (standaloneRegex.test(newCode)) {
-            newCode = newCode.replace(
-              standaloneRegex,
-              `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
-            );
+          const nodeRegex = new RegExp(
+            `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+            "m",
+          );
+          if (nodeRegex.test(newCode)) {
+            const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
+            newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
           } else {
-            const lines = newCode.split("\n");
-            let insertIndex = -1;
-            for (let i = 0; i < lines.length; i++) {
-              const trimmed = lines[i].trim();
-              if (
-                trimmed.startsWith("style ") ||
-                trimmed.startsWith("linkStyle ") ||
-                trimmed.startsWith("classDef ") ||
-                trimmed.startsWith("class ")
-              ) {
-                insertIndex = i;
-                break;
+            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
+            if (standaloneRegex.test(newCode)) {
+              newCode = newCode.replace(
+                standaloneRegex,
+                `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
+              );
+            } else {
+              const lines = newCode.split("\n");
+              let insertIndex = -1;
+              for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (
+                  trimmed.startsWith("style ") ||
+                  trimmed.startsWith("linkStyle ") ||
+                  trimmed.startsWith("classDef ") ||
+                  trimmed.startsWith("class ")
+                ) {
+                  insertIndex = i;
+                  break;
+                }
+              }
+
+              const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
+              if (insertIndex !== -1) {
+                lines.splice(insertIndex, 0, newDeclaration);
+                newCode = lines.join("\n");
+              } else {
+                newCode += `\n${newDeclaration}`;
               }
             }
-
-            const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
-            if (insertIndex !== -1) {
-              lines.splice(insertIndex, 0, newDeclaration);
-              newCode = lines.join("\n");
-            } else {
-              newCode += `\n${newDeclaration}`;
-            }
           }
-        }
+        } // close quoteBracketRegex else
       }
     }
 

@@ -194,6 +194,8 @@ function isSequenceMessageHoverSuppressedByFloatingUi(clientX: number, clientY: 
     if (el.closest("[data-seq-msg-hover-outline]")) return false;
     if (getComputedStyle(el).pointerEvents === "none") continue;
     return Boolean(
+      el.closest?.("[data-inline-editor]") ||
+      el.closest?.("[data-class-text-editor]") ||
       el.closest?.("[data-inline-toolbar]") ||
       el.closest?.("[data-scale-lock]") ||
       el.closest?.("[data-scale-lock-border]"),
@@ -395,6 +397,7 @@ export function useCanvasInteraction({
   determineDiagramType,
   isCommentMode = false,
   onCanvasCommentPlace,
+  onShapeCommentPlace,
 }: {
   code: string;
   svgContent?: string;
@@ -405,6 +408,10 @@ export function useCanvasInteraction({
   determineDiagramType: (code: string) => string;
   isCommentMode?: boolean;
   onCanvasCommentPlace?: (position: { x: number; y: number }) => void;
+  onShapeCommentPlace?: (
+    nodeId: string,
+    selectionBox: { x: number; y: number; width: number; height: number },
+  ) => void;
 }) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const selectedNodeIdRef = useRef<string | null>(null);
@@ -2428,10 +2435,10 @@ export function useCanvasInteraction({
       };
 
       const newTextBox = {
-        x: (textRect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
-        y: (textRect.top - containerRect.top + containerRef.current.scrollTop) / scale,
-        width: textRect.width / scale,
-        height: textRect.height / scale,
+        x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
+        y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
+        width: rect.width / scale,
+        height: rect.height / scale,
       };
 
       setSelectionBox(newSelectionBox);
@@ -3083,10 +3090,10 @@ export function useCanvasInteraction({
         };
 
         const newTextBox = {
-          x: (textRect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
-          y: (textRect.top - containerRect.top + containerRef.current.scrollTop) / scale,
-          width: textRect.width / scale,
-          height: textRect.height / scale,
+          x: (rect.left - containerRect.left + containerRef.current.scrollLeft) / scale,
+          y: (rect.top - containerRect.top + containerRef.current.scrollTop) / scale,
+          width: rect.width / scale,
+          height: rect.height / scale,
         };
 
         return { cleanId, rawSvgId, newSelectionBox, newTextBox };
@@ -3142,6 +3149,14 @@ export function useCanvasInteraction({
         return;
       }
 
+      // If the event originated inside an active inline editor (e.g. the user double-clicked to
+      // select a word), do not treat it as a canvas double-click. Let the editor consume it.
+      if (
+        (e.target as Element | null)?.closest?.("[data-inline-editor], [data-class-text-editor]")
+      ) {
+        return;
+      }
+
       // Resolve actual SVG element via elementsFromPoint to bypass overlay divs.
       // EXCEPTION: when invoked from a floating toolbar (e.g. the Rename button), the cursor is
       // over the toolbar — NOT the diagram element — so elementsFromPoint would resolve to whatever
@@ -3152,7 +3167,9 @@ export function useCanvasInteraction({
       // labels). We prefer that resolved result over elementsFromPoint since elementsFromPoint
       // bypasses pointer-events: none elements and hits the SVG background instead.
       const fromToolbar = Boolean(
-        (e.target as Element | null)?.closest?.("[data-inline-toolbar], [data-scale-lock]"),
+        (e.target as Element | null)?.closest?.(
+          "[data-inline-toolbar], [data-scale-lock], [data-inline-editor]",
+        ),
       );
       const pendingResult = pendingEditTargetRef.current;
       pendingEditTargetRef.current = null;
@@ -3497,73 +3514,87 @@ export function useCanvasInteraction({
         !targetNodeId.startsWith("SEQ_") &&
         (!isEdgeId(targetNodeId) || currentText === targetNodeId)
       ) {
-        const nodeRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+        // Try ["..."] shape first (e.g. NODE["label with (parens)"])
+        // This must be separate because the generic regex's closing group
+        // contains \) which matches parentheses inside label text.
+        const quoteBracketRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
           "m",
         );
-        const match = code.match(nodeRegex);
+        let match = code.match(quoteBracketRegex);
         if (match && match[3]) {
-          const rawLabel = match[3];
-          // Preserve HTML tags for contentEditable editing
-          // Convert <br> tags to ensure consistent line breaks
-          currentText = rawLabel.replace(/<br\s*\/?>/gi, "<br/>");
+          currentText = match[3].replace(/<br\s*\/?>/gi, "<br/>");
         } else {
-          const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
-          const innerText = effectiveRawSvgId
-            ? document.querySelector(
-                `#${CSS.escape(effectiveRawSvgId)} .label, #${CSS.escape(effectiveRawSvgId)} text, #${CSS.escape(effectiveRawSvgId)} foreignObject, #${CSS.escape(effectiveRawSvgId)} .nodeLabel`,
-              )
-            : null;
-          if (innerText && innerText.textContent) {
-            currentText = innerText.textContent.trim();
-          }
-          // Edge-label fallback: Mermaid renders edge labels in a separate
-          // <g class="edgeLabels"> container (not as children of the edge path).
-          // Find the label by matching the edge-path's position in the edgePaths
-          // container (each edge has a hit-target + actual path, so label index
-          // = path index / 2).
-          if (
-            currentText === targetNodeId &&
-            effectiveRawSvgId &&
-            isEdgeId(targetNodeId) &&
-            containerRef.current
-          ) {
-            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
-            if (edgePathsContainer) {
-              const allPaths = Array.from(
-                edgePathsContainer.querySelectorAll(
-                  "path.flowchart-link:not(.flowchart-link-hit-target)",
-                ),
-              );
-              const clickedPath = containerRef.current.querySelector(
-                `#${CSS.escape(effectiveRawSvgId)}`,
-              );
-              const edgeIdx = clickedPath
-                ? allPaths.indexOf(
-                    clickedPath.classList.contains("flowchart-link-hit-target")
-                      ? (clickedPath.nextElementSibling as Element) || clickedPath
-                      : clickedPath,
-                  )
-                : -1;
-              if (edgeIdx >= 0) {
-                const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
-                if (labelsContainer) {
-                  const allLabels = Array.from(
-                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
-                  );
-                  const labelEl = allLabels[edgeIdx];
-                  if (labelEl) {
-                    const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
-                    const labelText = labelDiv?.textContent || labelEl.textContent;
-                    if (labelText?.trim()) {
-                      currentText = labelText.trim();
+          const nodeRegex = new RegExp(
+            `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\]))`,
+            "m",
+          );
+          match = code.match(nodeRegex);
+          if (match && match[3]) {
+            const rawLabel = match[3];
+            // Preserve HTML tags for contentEditable editing
+            // Convert <br> tags to ensure consistent line breaks
+            currentText = rawLabel.replace(/<br\s*\/?>/gi, "<br/>");
+          } else {
+            const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
+            const innerText = effectiveRawSvgId
+              ? document.querySelector(
+                  `#${CSS.escape(effectiveRawSvgId)} .label, #${CSS.escape(effectiveRawSvgId)} text, #${CSS.escape(effectiveRawSvgId)} foreignObject, #${CSS.escape(effectiveRawSvgId)} .nodeLabel`,
+                )
+              : null;
+            if (innerText && innerText.textContent) {
+              currentText = innerText.textContent.trim();
+            }
+            // Edge-label fallback: Mermaid renders edge labels in a separate
+            // <g class="edgeLabels"> container (not as children of the edge path).
+            // Find the label by matching the edge-path's position in the edgePaths
+            // container (each edge has a hit-target + actual path, so label index
+            // = path index / 2).
+            if (
+              currentText === targetNodeId &&
+              effectiveRawSvgId &&
+              isEdgeId(targetNodeId) &&
+              containerRef.current
+            ) {
+              const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
+              if (edgePathsContainer) {
+                const allPaths = Array.from(
+                  edgePathsContainer.querySelectorAll(
+                    "path.flowchart-link:not(.flowchart-link-hit-target)",
+                  ),
+                );
+                const clickedPath = containerRef.current.querySelector(
+                  `#${CSS.escape(effectiveRawSvgId)}`,
+                );
+                const edgeIdx = clickedPath
+                  ? allPaths.indexOf(
+                      clickedPath.classList.contains("flowchart-link-hit-target")
+                        ? (clickedPath.nextElementSibling as Element) || clickedPath
+                        : clickedPath,
+                    )
+                  : -1;
+                if (edgeIdx >= 0) {
+                  const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
+                  if (labelsContainer) {
+                    const allLabels = Array.from(
+                      labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                    );
+                    const labelEl = allLabels[edgeIdx];
+                    if (labelEl) {
+                      const labelDiv = labelEl.querySelector(
+                        "foreignObject div, foreignObject span",
+                      );
+                      const labelText = labelDiv?.textContent || labelEl.textContent;
+                      if (labelText?.trim()) {
+                        currentText = labelText.trim();
+                      }
                     }
                   }
                 }
               }
             }
           }
-        }
+        } // close quoteBracketRegex else
       }
 
       setEditingText(currentText);
@@ -3621,6 +3652,8 @@ export function useCanvasInteraction({
         ? (e.clientY - containerRect.top + (container?.scrollTop ?? 0)) / scale
         : 0;
       if (
+        target.closest("[data-inline-editor]") ||
+        target.closest("[data-class-text-editor]") ||
         target.closest("[data-scale-lock]") ||
         target.closest("[data-scale-lock-border]") ||
         target.closest("[data-inline-toolbar]")
@@ -3635,6 +3668,13 @@ export function useCanvasInteraction({
         clicked: clicked?.cleanId ?? null,
         inlineEditing: isInlineEditing,
       });
+
+      // Comment mode takes priority over selection: clicking a shape while adding a
+      // comment should attach the comment to that shape, not select it.
+      if (isCommentMode && clicked?.cleanId && onShapeCommentPlace) {
+        onShapeCommentPlace(clicked.cleanId, clicked.newSelectionBox);
+        return;
+      }
 
       const now = Date.now();
       const lastClick = lastClickRef.current;
@@ -3714,7 +3754,11 @@ export function useCanvasInteraction({
           const band = findSequenceMessageBandAtPoint(canvasX, canvasY);
           if (band) {
             const bandClicked = getClickedNode(band.el);
-            if (bandClicked) {
+            if (bandClicked?.cleanId) {
+              if (isCommentMode && onShapeCommentPlace) {
+                onShapeCommentPlace(bandClicked.cleanId, bandClicked.newSelectionBox);
+                return;
+              }
               debugLog("select-band", bandClicked.cleanId);
               clearSequenceMessageHoverHighlight();
               setSelectedNodeIdWithRef(bandClicked.cleanId);
@@ -3751,6 +3795,7 @@ export function useCanvasInteraction({
       findSequenceMessageBandAtPoint,
       isCommentMode,
       onCanvasCommentPlace,
+      onShapeCommentPlace,
     ],
   );
 

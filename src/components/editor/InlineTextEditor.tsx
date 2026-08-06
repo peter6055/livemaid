@@ -338,13 +338,13 @@ export function InlineTextEditor({
     return null;
   }
 
-  const fontSize = 14;
+  const fontSize = 16;
   // Keep the editor at the rendered node's visual size so wrapping matches the graph output.
   // textBox is stored in unscaled canvas units; multiply by the current zoom so the overlay
   // covers the same CSS pixels as the underlying SVG node.
   // We no longer expand the width to fit the longest line; that prevents the editor from
   // showing the same line breaks Mermaid will render.
-  const targetVisualWidth = Math.min(Math.max(textBox.width * scale, 24), 700);
+  const targetVisualWidth = Math.max(textBox.width * scale, 24);
   const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 24);
 
   const activeButtonClass =
@@ -358,6 +358,7 @@ export function InlineTextEditor({
       {handleFormatText && (
         <div
           ref={toolbarRef}
+          data-inline-editor
           data-scale-lock
           data-inline-toolbar
           data-base-transform="translateX(-50%) translateY(-100%)"
@@ -477,6 +478,7 @@ export function InlineTextEditor({
 
       {/* Content Editable Div */}
       <div
+        data-inline-editor
         data-scale-lock
         data-base-transform="translate(-50%, -50%)"
         ref={inlineInputRef}
@@ -544,8 +546,9 @@ export function InlineTextEditor({
           fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
           color: "#1c1c21",
           whiteSpace: "break-spaces",
-          display: "table",
+          display: "block",
           boxSizing: "border-box",
+          textAlign: "center",
         }}
       />
     </>
