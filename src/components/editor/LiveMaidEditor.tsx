@@ -1960,7 +1960,7 @@ export function LiveMaidEditor({
 
     // 2. Remove inline HTML formatting tags from label
     const nodeRegex = new RegExp(
-      `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+      `(^|[^a-zA-Z0-9_])(${escapeRegExp(selectedNodeId)}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
       "m",
     );
     const match = newCode.match(nodeRegex);
@@ -2703,7 +2703,7 @@ export function LiveMaidEditor({
         handleUpdateEdgeStyle({ label: newLabel });
       } else {
         const nodeRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+          `(^|[^a-zA-Z0-9_])(${escapeRegExp(selectedNodeId)}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
         );
         const match = code.match(nodeRegex);
@@ -3250,8 +3250,9 @@ export function LiveMaidEditor({
       } else {
         // Try ["..."] shape first — same fix as extraction in useCanvasInteraction.ts.
         // The generic regex's \) in the closing group matches parens inside label text.
+        const escapedNodeId = escapeRegExp(selectedNodeId);
         const quoteBracketRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
+          `(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
           "m",
         );
         if (quoteBracketRegex.test(newCode)) {
@@ -3259,7 +3260,7 @@ export function LiveMaidEditor({
           newCode = newCode.replace(quoteBracketGlobal, `$1$2${editingTextForSave}$4`);
         } else {
           const nodeRegex = new RegExp(
-            `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+            `(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
             "m",
           );
           if (nodeRegex.test(newCode)) {
@@ -3869,12 +3870,13 @@ export function LiveMaidEditor({
       newCode = filtered.join("\n");
     } else {
       // Flowchart deletion logic
+      const escapedDeleteId = escapeRegExp(selectedNodeId);
       const toRegex = new RegExp(
-        `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`,
+        `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedDeleteId}([^a-zA-Z0-9_]|$)`,
         "g",
       );
       const fromRegex = new RegExp(
-        `(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
+        `(^|[^a-zA-Z0-9_])${escapedDeleteId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
         "g",
       );
 

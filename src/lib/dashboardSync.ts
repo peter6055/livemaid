@@ -21,6 +21,9 @@ export function broadcastDashboardRefresh() {
       const channel = new BroadcastChannel(CHANNEL_NAME);
       channel.postMessage({ type: MESSAGE_TYPE });
       channel.close();
+      // BroadcastChannel succeeded — skip localStorage to avoid duplicate
+      // cross-tab notifications (storage events would also fire).
+      return;
     }
   } catch {
     // BroadcastChannel may be unavailable in some private modes; fall through.

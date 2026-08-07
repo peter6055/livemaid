@@ -96,12 +96,6 @@ function createSanitizer(): (html: string) => string {
   return stripDisallowedHtml;
 }
 
-/** Pattern matching `<tag>` or `<tag/>` for the dangerous elements. */
-const DANGEROUS_TAG_RE =
-  /<(script|style|iframe|object|embed|link|meta|base|form|svg|math|template)\b[^>]*>/gi;
-/** Pattern matching `</tag>` for the dangerous elements. */
-const DANGEROUS_CLOSE_RE =
-  /<\/(script|style|iframe|object|embed|link|meta|base|form|svg|math|template)\s*>/gi;
 /** Matches an HTML opening tag and captures its name + attribute string. */
 const TAG_RE = /<([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[^<>]*?)?)\s*(\/?)>/g;
 /** Matches a `style="..."` or `style='...'` attribute. */
@@ -201,28 +195,42 @@ function stripDisallowedHtml(html: string): string {
  * - Decodes HTML entities
  */
 export function htmlToPlainText(html: string): string {
-  return (
-    html
-      .replace(/<br\s*\/?>/gi, "\n") // <br> → newline
-      .replace(/<\/?(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "\n") // Block elements → newline
-      .replace(/<[^>]+>/g, "") // Strip all other tags
-      // Decode HTML entities in a single pass so a decoded '&' is never
-      // re-processed by a later replacement (e.g. `&amp;lt;` stays `&lt;`).
-      .replace(
-        /&(amp|lt|gt|quot|#39|nbsp);/g,
-        (entity) =>
-          ({
-            "&amp;": "&",
-            "&lt;": "<",
-            "&gt;": ">",
-            "&quot;": '"',
-            "&#39;": "'",
-            "&nbsp;": " ",
-          })[entity] ?? entity,
-      )
-      .replace(/\n{3,}/g, "\n\n") // Collapse multiple newlines
-      .trim()
-  );
+  // Prefer DOM textContent when available — avoids regex sanitization pitfalls
+  // (CodeQL incomplete multi-character sanitization on tag-stripping regexes).
+  if (typeof document !== "undefined") {
+    const container = document.createElement("div");
+    container.innerHTML = sanitizeHtml(html);
+    return (container.textContent ?? "")
+      .replace(/\u00a0/g, " ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
+  // Node/unit-test fallback: sanitize first, then extract text with repeated
+  // tag stripping until stable so nested/overlapping patterns cannot reappear.
+  let value = sanitizeHtml(html)
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "\n");
+  let previous = "";
+  while (value !== previous) {
+    previous = value;
+    value = value.replace(/<[^>]*>/g, "");
+  }
+  return value
+    .replace(
+      /&(amp|lt|gt|quot|#39|nbsp);/g,
+      (entity) =>
+        ({
+          "&amp;": "&",
+          "&lt;": "<",
+          "&gt;": ">",
+          "&quot;": '"',
+          "&#39;": "'",
+          "&nbsp;": " ",
+        })[entity] ?? entity,
+    )
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /**
@@ -246,32 +254,37 @@ export function containsHtml(str: string): boolean {
  * value is stored in the diagram source.
  */
 export function normalizeHtmlForMermaid(html: string): string {
-  return (
-    sanitizeHtml(html)
-      // Replace opening block elements with their style attribute (if any)
-      .replace(/<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi, (_match, _tag, attrs) => {
-        // Extract text-align style if present
-        const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
-        if (styleMatch) {
-          return `<div style="${styleMatch[1]}">`;
-        }
-        return "";
-      })
-      // Convert closing block elements to <br/>
-      .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "<br/>")
-      // Remove <br> that the browser added at word-boundary characters (/, -, .)
-      // These are visual line wraps, not intentional line breaks
-      .replace(/([/\-.])<br\s*\/?>/gi, "$1")
-      .replace(/<br\s*\/?>([/\-.])/gi, "$1")
-      // Remove empty <br/> at the start
-      .replace(/^(<br\s*\/?>)+/i, "")
-      // Remove empty <br/> at the end
-      .replace(/(<br\s*\/?>)+$/i, "")
-      // Collapse multiple <br/> tags
-      .replace(/(<br\s*\/?>){3,}/gi, "<br/><br/>")
-      // Remove empty tags (like <b></b>, <i></i>, <span></span>)
-      .replace(/<(b|i|span|em|strong)[^>]*>\s*<\/\1>/gi, "")
-      // Trim whitespace
-      .trim()
-  );
+  // sanitizeHtml (DOMPurify) is the security boundary. The regexes below are
+  // Mermaid formatting only, applied after sanitization, and empty-tag cleanup
+  // is repeated until stable so incomplete multi-character sanitization cannot
+  // reintroduce previously stripped markup.
+  let value = sanitizeHtml(html)
+    // Replace opening block elements with their style attribute (if any)
+    .replace(/<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi, (_match, _tag, attrs) => {
+      // Extract text-align style if present
+      const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
+      if (styleMatch) {
+        return `<div style="${styleMatch[1]}">`;
+      }
+      return "";
+    })
+    // Convert closing block elements to <br/>
+    .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "<br/>")
+    // Remove <br> that the browser added at word-boundary characters (/, -, .)
+    // These are visual line wraps, not intentional line breaks
+    .replace(/([/\-.])<br\s*\/?>/gi, "$1")
+    .replace(/<br\s*\/?>([/\-.])/gi, "$1")
+    // Remove empty <br/> at the start
+    .replace(/^(<br\s*\/?>)+/i, "")
+    // Remove empty <br/> at the end
+    .replace(/(<br\s*\/?>)+$/i, "")
+    // Collapse multiple <br/> tags
+    .replace(/(<br\s*\/?>){3,}/gi, "<br/><br/>");
+
+  let previous = "";
+  while (value !== previous) {
+    previous = value;
+    value = value.replace(/<(b|i|span|em|strong)[^>]*>\s*<\/\1>/gi, "");
+  }
+  return value.trim();
 }
