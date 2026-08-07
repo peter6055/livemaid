@@ -1,11 +1,44 @@
 import { test, expect } from "@playwright/test";
 
-const MULTILINE_SEQ_ID = "39_y8UEfyD9BGZmlW88EH";
+// The diagram under test is seeded at runtime via the API (this suite must be
+// self-contained: `data/` is gitignored, so a hardcoded diagram id can never be
+// guaranteed to exist on a fresh test server). Cleaned up in `afterAll` so the
+// test never pollutes the user's local dashboard data.
+const SEED_CODE = `sequenceDiagram
+    participant Alice
+    participant Bob
+    participant Carol
+    Alice->>Bob: Hello there<br/>World message
+    Bob->>Carol: Second line message
+    Carol->>Alice: Third message
+    Alice->>Bob: Fourth message
+    Bob->>Alice: deoo<br/>sdcsdmkcl`;
+
+let MULTILINE_SEQ_ID = "";
 
 test.describe("Sequence multi-line message selection and hover (PR #74)", () => {
+  test.beforeAll(async ({ request }) => {
+    const res = await request.post("/api/diagrams", {
+      data: {
+        name: "Seed Multi-line Sequence (PR #74)",
+        type: "sequence",
+        code: SEED_CODE,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const doc = await res.json();
+    MULTILINE_SEQ_ID = doc.id;
+  });
+
+  test.afterAll(async ({ request }) => {
+    if (MULTILINE_SEQ_ID) {
+      await request.delete(`/api/diagrams/${MULTILINE_SEQ_ID}`);
+    }
+  });
+
   test.beforeEach(async ({ page }) => {
     await page.goto(`/editor/${MULTILINE_SEQ_ID}`);
-    await page.waitForLoadState("networkidle");
+    await page.waitForLoadState("domcontentloaded");
     await page.waitForSelector("svg[id^='mermaid-svg']", { timeout: 15000 });
     await page.waitForTimeout(2000);
   });
@@ -124,8 +157,14 @@ test.describe("Sequence multi-line message selection and hover (PR #74)", () => 
     await overlay.hover();
     await page.waitForTimeout(500);
 
-    // Double-click to enter inline edit
-    await overlay.dblclick();
+    // Double-click to enter inline edit. Playwright targets the overlay's
+    // bounding-box center by default, but the lifeline "+" handle
+    // (data-seq-plus-actor-id) appears on hover and can sit exactly on that
+    // center (Bob's lifeline here), intercepting the pointer. Aim near the
+    // line's start instead, which still lands on the message hit overlay.
+    const box = await overlay.boundingBox();
+    expect(box).not.toBeNull();
+    await overlay.dblclick({ position: { x: 12, y: box!.height / 2 } });
     await page.waitForTimeout(1500);
 
     // Check if an inline edit input/textarea appeared

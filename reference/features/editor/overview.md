@@ -24,3 +24,6 @@
   double-rendered text.
 - Inline editors should visually inherit the underlying text area's typography, alignment, and
   bounds closely enough to avoid visible jumps.
+- Flowchart inline editors mirror Mermaid's `foreignObject` text layout: `display: table`,
+  `white-space: break-spaces`, and the same font stack so line breaks match what Mermaid will
+  render on commit.
