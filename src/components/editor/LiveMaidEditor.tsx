@@ -1,6 +1,7 @@
 "use client";
 
 import { getTelemetry } from "@/lib/telemetry";
+import { broadcastDashboardRefresh } from "@/lib/dashboardSync";
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import {
@@ -25,6 +26,15 @@ import {
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
+import { normalizeHtmlForMermaid, sanitizeHtml, escapeRegExp } from "@/lib/utils";
+import {
+  isFormatTag,
+  getTextNodesInRange,
+  isAllContentFormatted,
+  coversAllContent,
+  getTextNodes,
+  isRangeFormatted,
+} from "@/lib/formatting-helpers";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -313,6 +323,15 @@ export function LiveMaidEditor({
   const [commentDraft, setCommentDraft] = useState("");
   const [commentReplyDrafts, setCommentReplyDrafts] = useState<Record<string, string>>({});
   const allowBrowserBackRef = useRef(false);
+  // Ref so useCanvasInteraction can trigger shape-comment placement without creating a
+  // circular dependency: the helper needs getSequenceMessageEndpointGeometry from the hook.
+  const openShapeCommentComposerRef = useRef<
+    | ((
+        nodeId: string,
+        selectionBox: { x: number; y: number; width: number; height: number },
+      ) => void)
+    | null
+  >(null);
 
   const handleCloseComments = useCallback(() => {
     setIsCommentsOpen(false);
@@ -410,6 +429,16 @@ export function LiveMaidEditor({
     };
   }, []);
 
+  const handleShapeCommentPlace = useCallback(
+    (
+      nodeId: string,
+      shapeSelectionBox: { x: number; y: number; width: number; height: number },
+    ) => {
+      openShapeCommentComposerRef.current?.(nodeId, shapeSelectionBox);
+    },
+    [],
+  );
+
   const {
     selectedNodeId,
     setSelectedNodeId,
@@ -468,6 +497,7 @@ export function LiveMaidEditor({
     determineDiagramType,
     isCommentMode,
     onCanvasCommentPlace: handleCanvasCommentPlace,
+    onShapeCommentPlace: handleShapeCommentPlace,
   });
 
   const handleDeselect = useCallback(() => {
@@ -608,7 +638,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
+            "[data-inline-editor],[data-class-property-panel],[data-class-text-editor],[data-class-connect-menu],[data-inline-toolbar],.class-connect-btn,.monaco-editor",
           ),
         )
       ) {
@@ -773,7 +803,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-er-property-panel],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
+            "[data-inline-editor],[data-er-property-panel],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
           ),
         )
       ) {
@@ -850,7 +880,7 @@ export function LiveMaidEditor({
       if (
         els.some((el) =>
           el.closest(
-            "[data-class-text-editor],[data-inline-toolbar],.state-connect-btn,.monaco-editor",
+            "[data-inline-editor],[data-class-text-editor],[data-inline-toolbar],.state-connect-btn,.monaco-editor",
           ),
         )
       ) {
@@ -1921,14 +1951,16 @@ export function LiveMaidEditor({
     // 1. Remove style lines
     const lines = newCode.split("\n");
     const filteredLines = lines.filter((line) => {
-      const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
+      const isStyleLine = line.match(
+        new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\b`),
+      );
       return !isStyleLine;
     });
     newCode = filteredLines.join("\n");
 
     // 2. Remove inline HTML formatting tags from label
     const nodeRegex = new RegExp(
-      `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+      `(^|[^a-zA-Z0-9_])(${escapeRegExp(selectedNodeId)}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
       "m",
     );
     const match = newCode.match(nodeRegex);
@@ -2261,62 +2293,74 @@ export function LiveMaidEditor({
     [commentComposer, commentDraft, createCommentThread],
   );
 
+  const openShapeCommentComposer = useCallback(
+    (
+      nodeId: string,
+      shapeSelectionBox: { x: number; y: number; width: number; height: number },
+    ) => {
+      const sequenceMessageIndex = nodeId.startsWith("SEQ_MSG_")
+        ? parseInt(nodeId.replace("SEQ_MSG_", ""), 10)
+        : null;
+      const sequenceGeometry =
+        Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
+          ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
+          : null;
+      const fallbackPos =
+        sequenceGeometry &&
+        Number.isFinite(sequenceGeometry.source.x) &&
+        Number.isFinite(sequenceGeometry.target.x)
+          ? {
+              x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
+              y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
+            }
+          : {
+              x: shapeSelectionBox.x + shapeSelectionBox.width / 2,
+              y: shapeSelectionBox.y + shapeSelectionBox.height / 2,
+            };
+      const anchor: DiagramCommentAnchor = {
+        type: "shape",
+        shapeId: nodeId,
+        fallbackPos,
+      };
+
+      if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
+        const messageEntries = getSequenceMessageEntries(code);
+        const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
+        if (sequenceMessage) {
+          anchor.sequenceMessage = sequenceMessage;
+        }
+      }
+
+      setCommentComposer({
+        anchor,
+        position: {
+          x: sequenceGeometry
+            ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
+            : shapeSelectionBox.x + shapeSelectionBox.width + 12,
+          y: sequenceGeometry
+            ? Math.max(12, fallbackPos.y - 12)
+            : Math.max(12, shapeSelectionBox.y - 12),
+        },
+        targetLabel: `Anchored to ${nodeId}`,
+        commentMode: "shape",
+      });
+      setCommentDraft("");
+      setIsCommentMode(false);
+      setActiveCommentId(null);
+    },
+    [code, getSequenceMessageEntries, getSequenceMessageEndpointGeometry],
+  );
+
+  // Keep the ref current so the callback passed to useCanvasInteraction always points to
+  // the latest helper (with the latest dependencies).
+  useEffect(() => {
+    openShapeCommentComposerRef.current = openShapeCommentComposer;
+  }, [openShapeCommentComposer]);
+
   const openSelectionCommentComposer = useCallback(() => {
     if (!selectedNodeId || !selectionBox) return;
-    const sequenceMessageIndex = selectedNodeId.startsWith("SEQ_MSG_")
-      ? parseInt(selectedNodeId.replace("SEQ_MSG_", ""), 10)
-      : null;
-    const sequenceGeometry =
-      Number.isFinite(sequenceMessageIndex ?? Number.NaN) && sequenceMessageIndex !== null
-        ? getSequenceMessageEndpointGeometry(sequenceMessageIndex)
-        : null;
-    const fallbackPos =
-      sequenceGeometry &&
-      Number.isFinite(sequenceGeometry.source.x) &&
-      Number.isFinite(sequenceGeometry.target.x)
-        ? {
-            x: Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 16,
-            y: (sequenceGeometry.source.y + sequenceGeometry.target.y) / 2,
-          }
-        : {
-            x: selectionBox.x + selectionBox.width / 2,
-            y: selectionBox.y + selectionBox.height / 2,
-          };
-    const anchor: DiagramCommentAnchor = {
-      type: "shape",
-      shapeId: selectedNodeId,
-      fallbackPos,
-    };
-
-    if (sequenceMessageIndex !== null && Number.isFinite(sequenceMessageIndex)) {
-      const messageEntries = getSequenceMessageEntries(code);
-      const sequenceMessage = buildSequenceMessageAnchor(messageEntries, sequenceMessageIndex);
-      if (sequenceMessage) {
-        anchor.sequenceMessage = sequenceMessage;
-      }
-    }
-
-    setCommentComposer({
-      anchor,
-      position: {
-        x: sequenceGeometry
-          ? Math.max(sequenceGeometry.source.x, sequenceGeometry.target.x) + 28
-          : selectionBox.x + selectionBox.width + 12,
-        y: sequenceGeometry ? Math.max(12, fallbackPos.y - 12) : Math.max(12, selectionBox.y - 12),
-      },
-      targetLabel: `Anchored to ${selectedNodeId}`,
-      commentMode: "shape",
-    });
-    setCommentDraft("");
-    setIsCommentMode(false);
-    setActiveCommentId(null);
-  }, [
-    code,
-    getSequenceMessageEntries,
-    getSequenceMessageEndpointGeometry,
-    selectedNodeId,
-    selectionBox,
-  ]);
+    openShapeCommentComposer(selectedNodeId, selectionBox);
+  }, [openShapeCommentComposer, selectedNodeId, selectionBox]);
 
   const appendCommentReply = useCallback(
     async (commentId: string) => {
@@ -2566,7 +2610,7 @@ export function LiveMaidEditor({
     (property: string, value: string) => {
       if (!selectedNodeId) return;
       let newCode = code;
-      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m");
+      const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m");
       const match = newCode.match(styleRegex);
       if (match) {
         let styleProps = match[1];
@@ -2659,7 +2703,7 @@ export function LiveMaidEditor({
         handleUpdateEdgeStyle({ label: newLabel });
       } else {
         const nodeRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+          `(^|[^a-zA-Z0-9_])(${escapeRegExp(selectedNodeId)}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\/|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
           "m",
         );
         const match = code.match(nodeRegex);
@@ -2687,7 +2731,9 @@ export function LiveMaidEditor({
     (format: string, colorValue?: string) => {
       if (!selectedNodeId) return;
       const getStyleVal = (property: string): string | null => {
-        const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m"));
+        const match = code.match(
+          new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m"),
+        );
         if (match) {
           const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
           return propMatch ? propMatch[1] : null;
@@ -2712,81 +2758,210 @@ export function LiveMaidEditor({
     [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic],
   );
 
-  const handleFormatText = (format: string, colorValue?: string) => {
-    console.log("[handleFormatText] format:", format, "colorValue:", colorValue);
-    if (!inlineInputRef.current) {
-      console.log("[handleFormatText] inlineInputRef.current is null/undefined");
-      return;
-    }
+  const handleFormatText = useCallback(
+    (format: string, colorValue?: string) => {
+      if (!inlineInputRef.current) return;
 
-    let start = inlineInputRef.current.selectionStart;
-    let end = inlineInputRef.current.selectionEnd;
+      const el = inlineInputRef.current;
+      el.focus();
 
-    const augmentedInput = inlineInputRef.current as HTMLTextAreaElement & {
-      _lastSelectionStart?: number;
-      _lastSelectionEnd?: number;
-    };
-    if (start === end && typeof augmentedInput._lastSelectionStart === "number") {
-      const lastStart = augmentedInput._lastSelectionStart;
-      const lastEnd = augmentedInput._lastSelectionEnd ?? lastStart;
-      if (lastStart !== lastEnd) {
-        start = lastStart;
-        end = lastEnd;
+      const unwrapAll = (fmt: "bold" | "italic") => {
+        const tags = fmt === "bold" ? ["b", "strong"] : ["i", "em"];
+        el.querySelectorAll(tags.join(",")).forEach((elem) => {
+          const parent = elem.parentNode;
+          if (!parent) return;
+          while (elem.firstChild) {
+            parent.insertBefore(elem.firstChild, elem);
+          }
+          parent.removeChild(elem);
+        });
+      };
+
+      const wrapEntireContent = (wrapper: HTMLElement) => {
+        // Preserve the alignment wrapper so formatting tags are nested inside it.
+        // This keeps alignment detectable by getActiveFormats and prevents the
+        // toolbar from losing the active alignment state when toggling bold/italic.
+        const existingDiv = el.querySelector("div[style*='text-align']") as HTMLElement | null;
+        if (existingDiv && existingDiv.parentNode === el && el.childNodes.length === 1) {
+          const innerWrapper = wrapper.cloneNode(true) as HTMLElement;
+          innerWrapper.innerHTML = existingDiv.innerHTML;
+          existingDiv.innerHTML = "";
+          existingDiv.appendChild(innerWrapper);
+        } else {
+          wrapper.innerHTML = el.innerHTML;
+          el.innerHTML = "";
+          el.appendChild(wrapper);
+        }
+      };
+
+      const toggleEntireContent = (fmt: "bold" | "italic") => {
+        if (isAllContentFormatted(el, fmt)) {
+          unwrapAll(fmt);
+        } else {
+          const wrapper = document.createElement(fmt === "bold" ? "b" : "i");
+          wrapEntireContent(wrapper);
+        }
+      };
+
+      // Alignment: handled separately because it wraps the whole editor.
+      if (format.startsWith("align-")) {
+        const alignValue = format.replace("align-", "") as "left" | "center" | "right";
+        const existingDiv = el.querySelector("div[style*='text-align']") as HTMLElement | null;
+        if (existingDiv) {
+          if (existingDiv.style.textAlign === alignValue) {
+            existingDiv.style.textAlign = "";
+            if (!existingDiv.getAttribute("style")) {
+              const parent = existingDiv.parentNode;
+              while (existingDiv.firstChild) {
+                parent?.insertBefore(existingDiv.firstChild, existingDiv);
+              }
+              parent?.removeChild(existingDiv);
+            }
+          } else {
+            existingDiv.style.textAlign = alignValue;
+          }
+        } else {
+          const wrapper = document.createElement("div");
+          wrapper.style.textAlign = alignValue;
+          wrapper.innerHTML = el.innerHTML;
+          el.innerHTML = "";
+          el.appendChild(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
       }
-    }
 
-    let selectedText = editingText.substring(start, end);
-    console.log(
-      "[handleFormatText] start:",
-      start,
-      "end:",
-      end,
-      "selectedText:",
-      selectedText,
-      "editingText:",
-      editingText,
-    );
-
-    const isSelectionEmpty = !selectedText;
-    if (isSelectionEmpty) {
-      start = 0;
-      end = editingText.length;
-      selectedText = editingText;
-    }
-
-    let before = "";
-    let after = "";
-
-    if (format === "bold") {
-      before = "<b>";
-      after = "</b>";
-    } else if (format === "italic") {
-      before = "<i>";
-      after = "</i>";
-    } else if (format === "color" && colorValue) {
-      before = `<span style='color:${colorValue}'>`;
-      after = "</span>";
-    }
-
-    const newText =
-      editingText.substring(0, start) + before + selectedText + after + editingText.substring(end);
-    console.log("[handleFormatText] setting editingText to:", newText);
-    setEditingText(newText);
-
-    setTimeout(() => {
-      if (inlineInputRef.current) {
-        inlineInputRef.current.focus();
-        inlineInputRef.current.setSelectionRange(
-          start,
-          start + before.length + selectedText.length + after.length,
-        );
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) {
+        if (format === "bold" || format === "italic") {
+          toggleEntireContent(format as "bold" | "italic");
+        } else if (format === "color" && colorValue) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
       }
-    }, 10);
-  };
+
+      const range = sel.getRangeAt(0);
+
+      if (!el.contains(range.commonAncestorContainer)) {
+        if (format === "bold" || format === "italic") {
+          toggleEntireContent(format as "bold" | "italic");
+        } else if (format === "color" && colorValue) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        }
+        setEditingText(el.innerHTML);
+        return;
+      }
+
+      if (format === "bold" || format === "italic") {
+        const fmt = format as "bold" | "italic";
+        const active = coversAllContent(el, range)
+          ? isAllContentFormatted(el, fmt)
+          : isRangeFormatted(el, range, fmt);
+
+        if (active) {
+          unwrapAll(fmt);
+        } else if (coversAllContent(el, range)) {
+          // When the whole editor is selected, wrap the entire content so the
+          // alignment wrapper (if any) stays at the top level.
+          toggleEntireContent(fmt);
+        } else {
+          const selectedContent = range.extractContents();
+          const selectedText = selectedContent.textContent || "";
+          if (!selectedText.trim()) {
+            toggleEntireContent(fmt);
+          } else {
+            const wrapper = document.createElement(fmt === "bold" ? "b" : "i");
+            wrapper.appendChild(selectedContent);
+            range.insertNode(wrapper);
+            const newRange = document.createRange();
+            newRange.selectNodeContents(wrapper);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+        }
+      } else if (format === "color" && colorValue) {
+        if (coversAllContent(el, range)) {
+          const wrapper = document.createElement("span");
+          wrapper.style.color = colorValue;
+          wrapEntireContent(wrapper);
+        } else {
+          const selectedContent = range.extractContents();
+          const selectedText = selectedContent.textContent || "";
+          if (!selectedText.trim()) {
+            const wrapper = document.createElement("span");
+            wrapper.style.color = colorValue;
+            wrapEntireContent(wrapper);
+          } else {
+            const wrapper = document.createElement("span");
+            wrapper.style.color = colorValue;
+            wrapper.appendChild(selectedContent);
+            range.insertNode(wrapper);
+            const newRange = document.createRange();
+            newRange.selectNodeContents(wrapper);
+            sel.removeAllRanges();
+            sel.addRange(newRange);
+          }
+        }
+      }
+
+      setEditingText(el.innerHTML);
+    },
+    [inlineInputRef, setEditingText],
+  );
+
+  // Store original content when editing starts
+  const originalEditContentRef = useRef<string>("");
+
+  useEffect(() => {
+    if (isInlineEditing) {
+      originalEditContentRef.current = editingText;
+    }
+  }, [isInlineEditing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleEditSubmit = () => {
     if (!selectedNodeId || !isInlineEditing) {
       setIsInlineEditing(false);
+      return;
+    }
+
+    // Read the latest text directly from the DOM to avoid stale React state
+    // when the user types and immediately saves (e.g. automated tests or
+    // very fast typing + Ctrl+Enter).
+    let latestEditingText = inlineInputRef.current?.innerHTML ?? editingText;
+
+    // Sanitize before anything is written back into the diagram source: the
+    // label is rendered as live HTML by Mermaid (securityLevel: "loose",
+    // htmlLabels: true), so scripts, iframes, event-handler attributes and
+    // other active/disallowed content must never be stored.
+    latestEditingText = sanitizeHtml(latestEditingText);
+
+    // The browser auto-closes unclosed HTML tags (e.g. <div>...) when set as innerHTML.
+    // Strip auto-added closing tags that weren't in the original Mermaid code so they
+    // don't get injected into the wrong position on save.
+    if (originalEditContentRef.current) {
+      const orig = originalEditContentRef.current;
+      if (!orig.includes("</div>")) latestEditingText = latestEditingText.replace(/<\/div>/gi, "");
+      if (!orig.includes("</span>"))
+        latestEditingText = latestEditingText.replace(/<\/span>/gi, "");
+    }
+
+    // Normalize the editing text to clean up browser-added line breaks
+    const normalizedText = normalizeHtmlForMermaid(latestEditingText);
+
+    // Compare with original content - if no real changes, just close
+    const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);
+    if (normalizedText === originalNormalized) {
+      setIsInlineEditing(false);
+      setSelectedNodeId(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
       return;
     }
 
@@ -2857,7 +3032,7 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("SEQ_ACTOR_")) {
       const actorId = selectedNodeId.replace("SEQ_ACTOR_", "");
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(latestEditingText);
 
       let found = false;
       const lines = code.split("\n");
@@ -2911,7 +3086,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_MSG_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2928,7 +3103,7 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
       const parts = selectedNodeId.split("_");
       const targetIndex = parseInt(parts[2], 10);
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       const lines = code.split("\n");
 
       const mappings = getCodeLineMappings(lines);
@@ -2948,7 +3123,7 @@ export function LiveMaidEditor({
       // label portion after the keyword is rewritten; the keyword + indentation are preserved.
       // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
       const lineIdx = parseInt(selectedNodeId.replace("SEQ_BLK_", ""), 10);
-      const newText = editingText.replace(/\n/g, " ").trim();
+      const newText = latestEditingText.replace(/\n/g, " ").trim();
       const lines = code.split("\n");
       const line = lines[lineIdx];
       if (line != null) {
@@ -2962,7 +3137,7 @@ export function LiveMaidEditor({
       }
     } else if (selectedNodeId.startsWith("SEQ_")) {
       const oldText = selectedNodeId.replace("SEQ_", "");
-      const newText = editingText.replace(/\n/g, "<br/>");
+      const newText = normalizeHtmlForMermaid(latestEditingText);
       newCode = newCode
         .split("\n")
         .map((line) => {
@@ -2990,12 +3165,12 @@ export function LiveMaidEditor({
             currentOcc++;
           }
         }
-        if (currentLabel === null || currentLabel !== editingText) {
+        if (currentLabel === null || currentLabel !== latestEditingText) {
           newCode = updateLinkStyleAndLabel(
             newCode,
             src,
             dst,
-            { label: editingText },
+            { label: latestEditingText },
             occurrenceIndex,
           );
         }
@@ -3005,7 +3180,7 @@ export function LiveMaidEditor({
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
       // so generic node regex replacement may fail and incorrectly append a new node.
       let handledClusterRename = false;
-      const editingTextForSave = editingText.replace(/\n/g, "<br/>");
+      const editingTextForSave = latestEditingText.replace(/\n/g, "<br/>");
       if (selectedSvgId && containerRef.current) {
         const selectedEl = containerRef.current.querySelector(
           `#${CSS.escape(selectedSvgId)}`,
@@ -3049,7 +3224,7 @@ export function LiveMaidEditor({
             renameIndex = lines.findIndex((line) => {
               const trimmed = line.trim();
               if (!trimmed.startsWith("subgraph ")) return false;
-              return new RegExp(`^subgraph\\s+${selectedNodeId}\\b`).test(trimmed);
+              return new RegExp(`^subgraph\\s+${escapeRegExp(selectedNodeId)}\\b`).test(trimmed);
             });
           }
 
@@ -3073,45 +3248,59 @@ export function LiveMaidEditor({
       if (handledClusterRename) {
         // no-op, newCode already updated
       } else {
-        const nodeRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${selectedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+        // Try ["..."] shape first — same fix as extraction in useCanvasInteraction.ts.
+        // The generic regex's \) in the closing group matches parens inside label text.
+        const escapedNodeId = escapeRegExp(selectedNodeId);
+        const quoteBracketRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
           "m",
         );
-        if (nodeRegex.test(newCode)) {
-          const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
-          newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
+        if (quoteBracketRegex.test(newCode)) {
+          const quoteBracketGlobal = new RegExp(quoteBracketRegex.source, "gm");
+          newCode = newCode.replace(quoteBracketGlobal, `$1$2${editingTextForSave}$4`);
         } else {
-          const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
-          if (standaloneRegex.test(newCode)) {
-            newCode = newCode.replace(
-              standaloneRegex,
-              `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
-            );
+          const nodeRegex = new RegExp(
+            `(^|[^a-zA-Z0-9_])(${escapedNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\}))`,
+            "m",
+          );
+          if (nodeRegex.test(newCode)) {
+            const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
+            newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
           } else {
-            const lines = newCode.split("\n");
-            let insertIndex = -1;
-            for (let i = 0; i < lines.length; i++) {
-              const trimmed = lines[i].trim();
-              if (
-                trimmed.startsWith("style ") ||
-                trimmed.startsWith("linkStyle ") ||
-                trimmed.startsWith("classDef ") ||
-                trimmed.startsWith("class ")
-              ) {
-                insertIndex = i;
-                break;
+            const standaloneRegex = new RegExp(
+              `(^|\\n)(\\s*)${escapeRegExp(selectedNodeId)}(\\s*)($|\\r?\\n)`,
+            );
+            if (standaloneRegex.test(newCode)) {
+              newCode = newCode.replace(
+                standaloneRegex,
+                `$1$2${selectedNodeId}["${editingTextForSave}"]$4`,
+              );
+            } else {
+              const lines = newCode.split("\n");
+              let insertIndex = -1;
+              for (let i = 0; i < lines.length; i++) {
+                const trimmed = lines[i].trim();
+                if (
+                  trimmed.startsWith("style ") ||
+                  trimmed.startsWith("linkStyle ") ||
+                  trimmed.startsWith("classDef ") ||
+                  trimmed.startsWith("class ")
+                ) {
+                  insertIndex = i;
+                  break;
+                }
+              }
+
+              const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
+              if (insertIndex !== -1) {
+                lines.splice(insertIndex, 0, newDeclaration);
+                newCode = lines.join("\n");
+              } else {
+                newCode += `\n${newDeclaration}`;
               }
             }
-
-            const newDeclaration = `    ${selectedNodeId}["${editingTextForSave}"]`;
-            if (insertIndex !== -1) {
-              lines.splice(insertIndex, 0, newDeclaration);
-              newCode = lines.join("\n");
-            } else {
-              newCode += `\n${newDeclaration}`;
-            }
           }
-        }
+        } // close quoteBracketRegex else
       }
     }
 
@@ -3681,12 +3870,13 @@ export function LiveMaidEditor({
       newCode = filtered.join("\n");
     } else {
       // Flowchart deletion logic
+      const escapedDeleteId = escapeRegExp(selectedNodeId);
       const toRegex = new RegExp(
-        `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${selectedNodeId}([^a-zA-Z0-9_]|$)`,
+        `([a-zA-Z0-9_]+)\\s*(-->|==>|-\\.->)\\s*${escapedDeleteId}([^a-zA-Z0-9_]|$)`,
         "g",
       );
       const fromRegex = new RegExp(
-        `(^|[^a-zA-Z0-9_])${selectedNodeId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
+        `(^|[^a-zA-Z0-9_])${escapedDeleteId}\\s*(-->|==>|-\\.->)\\s*([a-zA-Z0-9_]+)`,
         "g",
       );
 
@@ -3719,7 +3909,9 @@ export function LiveMaidEditor({
 
       const lines = newCode.split("\n");
       const filteredLines = lines.filter((line) => {
-        const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
+        const mentionRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])${escapeRegExp(selectedNodeId)}([^a-zA-Z0-9_]|$)`,
+        );
         return !mentionRegex.test(line);
       });
 
@@ -3821,6 +4013,8 @@ export function LiveMaidEditor({
       if (res.ok) {
         const newDiagram = await res.json();
         setIsNewDiagramOpen(false);
+        // Notify any open Dashboard tabs that the file list should refresh.
+        broadcastDashboardRefresh();
         handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...");
       } else {
         toast.error("Failed to create diagram");
@@ -4835,6 +5029,7 @@ export function LiveMaidEditor({
               editingText={editingText}
               setEditingText={setEditingText}
               handleEditSubmit={handleEditSubmit}
+              handleFormatText={handleFormatText}
               inlineInputRef={inlineInputRef}
               handleAddNodeFromSelected={handleAddNodeFromSelected}
               onHoveredSequenceMessageHover={(index) => triggerSequenceMessageHoverByIndex(index)}

@@ -265,7 +265,8 @@ interface EditorCanvasProps {
   editingText: string;
   setEditingText: (text: string) => void;
   handleEditSubmit: () => void;
-  inlineInputRef: RefObject<HTMLTextAreaElement | null>;
+  handleFormatText?: (format: string, colorValue?: string) => void;
+  inlineInputRef: RefObject<HTMLDivElement | null>;
   onDeselect?: () => void;
   onResetStyle?: () => void;
   onUpdateEdgeStyle?: (updates: { stroke?: string; arrowType?: string; label?: string }) => void;
@@ -520,6 +521,7 @@ export function EditorCanvas({
   editingText,
   setEditingText,
   handleEditSubmit,
+  handleFormatText,
   inlineInputRef,
   onDeselect,
   onResetStyle,
@@ -701,6 +703,7 @@ export function EditorCanvas({
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
   const fallbackRenderIdRef = useRef<string | null>(null);
   const lastScaleRef = useRef(0);
+  const commentAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
@@ -760,6 +763,20 @@ export function EditorCanvas({
     }
   }, [selectionBox, selectedNodeId, containerRef]);
 
+  // Keep the "Add comment to selection" anchor below the sticky app header so it
+  // stays clickable when the selected node sits at the top of the viewport.
+  useEffect(() => {
+    const el = commentAnchorRef.current;
+    if (!el || !selectionBox || !containerRef.current) return;
+    const rect = el.getBoundingClientRect();
+    const deficit = 64 - rect.top;
+    if (deficit <= 1) return;
+    const currentTop = parseFloat(el.style.top || "0");
+    if (Number.isNaN(currentTop)) return;
+    const scale = parseFloat(containerRef.current.style.getPropertyValue("--zoom-scale")) || 1;
+    el.style.top = `${currentTop + deficit / scale}px`;
+  }, [selectionBox, selectedNodeId, containerRef]);
+
   useEffect(() => {
     if (!shapePicker) return;
     const handleOutsideClick = () => {
@@ -803,11 +820,14 @@ export function EditorCanvas({
 
       const elements = document.elementsFromPoint(event.clientX, event.clientY) as HTMLElement[];
 
-      // If this pointer event is on any floating UI/overlay controls, never route it
-      // into canvas hit-testing. This prevents accidental back-shape selection when
-      // clicking toolbar buttons near tight edges.
+      // If this pointer event is on any floating UI/overlay controls (including inline
+      // text editors), never route it into canvas hit-testing. This prevents accidental
+      // back-shape selection when clicking toolbar buttons near tight edges and keeps
+      // the inline editor open when the user double-clicks to select text.
       const hitFloatingUi = elements.some((el) =>
         Boolean(
+          el.closest?.("[data-inline-editor]") ||
+          el.closest?.("[data-class-text-editor]") ||
           el.closest?.("[data-scale-lock]") ||
           el.closest?.("[data-scale-lock-max1]") ||
           el.closest?.("[data-inline-toolbar]") ||
@@ -1998,15 +2018,18 @@ export function EditorCanvas({
                             .slice(0, 3)
                             .map((el) => el.tagName + (el.id ? "#" + el.id : "")),
                         );
-                        // Ignore double-clicks that land on a floating toolbar / overlay control so
-                        // they never enter the underlying element's edit mode. This guard lives on the
-                        // CANVAS handler only — NOT inside handleEditClick — so the toolbar's own
-                        // Rename button (which calls handleEditClick programmatically while the cursor
-                        // is over the toolbar) still works.
+                        // Ignore double-clicks that land on a floating toolbar / overlay control
+                        // (including inline text editors) so they never enter the underlying
+                        // element's edit mode or close an active inline editor. This guard lives on
+                        // the CANVAS handler only — NOT inside handleEditClick — so the toolbar's
+                        // own Rename button (which calls handleEditClick programmatically while the
+                        // cursor is over the toolbar) still works.
                         const hitFloatingUi = document
                           .elementsFromPoint(e.clientX, e.clientY)
                           .some((el) =>
                             Boolean(
+                              el.closest?.("[data-inline-editor]") ||
+                              el.closest?.("[data-class-text-editor]") ||
                               el.closest?.("[data-scale-lock]") ||
                               el.closest?.("[data-scale-lock-max1]") ||
                               el.closest?.("[data-inline-toolbar]") ||
@@ -2070,6 +2093,7 @@ export function EditorCanvas({
                     still computed for later phases (resize/move/select targets). */}
 
                 {currentType === "sequence" &&
+                  !isCommentMode &&
                   !isInlineEditing &&
                   !connectionState.active &&
                   !seqReorder &&
@@ -2146,6 +2170,7 @@ export function EditorCanvas({
                       note's mousedown registers the unified drag / mouseup select-edit path. */}
                 {currentType === "sequence" &&
                   hoveredSequenceNoteBox &&
+                  !isCommentMode &&
                   !isInlineEditing &&
                   !connectionState.active &&
                   !seqReorder && (
@@ -2194,6 +2219,7 @@ export function EditorCanvas({
                 {currentType === "sequence" &&
                   getSequenceLifelines &&
                   !isLocked &&
+                  !isCommentMode &&
                   !isInlineEditing &&
                   !connectionState.active &&
                   !seqLifelineReorder &&
@@ -2451,6 +2477,42 @@ export function EditorCanvas({
                     </svg>
                   )}
 
+                {isCommentMode && (
+                  <style>{`
+                        .mermaid-container,
+                        .mermaid-container .react-transform-wrapper,
+                        .mermaid-container .react-transform-component,
+                        .mermaid-container svg,
+                        .mermaid-container svg .node,
+                        .mermaid-container svg .node *,
+                        .mermaid-container svg .cluster,
+                        .mermaid-container svg .cluster *,
+                        .mermaid-container svg .actor,
+                        .mermaid-container svg .actor *,
+                        .mermaid-container svg .actor-man,
+                        .mermaid-container svg .actor-man *,
+                        .mermaid-container svg .note,
+                        .mermaid-container svg .note *,
+                        .mermaid-container svg .messageText,
+                        .mermaid-container svg .messageLine0,
+                        .mermaid-container svg .messageLine1,
+                        .mermaid-container svg .label,
+                        .mermaid-container svg .nodeLabel,
+                        .mermaid-container svg .cluster-label,
+                        .mermaid-container svg foreignObject,
+                        .mermaid-container svg foreignObject *,
+                        .mermaid-container svg text,
+                        .mermaid-container svg rect,
+                        .mermaid-container svg path,
+                        .mermaid-container svg g,
+                        .mermaid-container svg .basic,
+                        .mermaid-container svg .label-container,
+                        .mermaid-container svg .default {
+                            cursor: copy !important;
+                        }
+                     `}</style>
+                )}
+
                 {isInlineEditing && selectedSvgSelector && (
                   <style>{`
                         ${selectedSvgSelector},
@@ -2473,6 +2535,7 @@ export function EditorCanvas({
                     selectedNodeId?.startsWith("SEQ_NOTE_")) &&
                   selectionBox &&
                   !isLocked &&
+                  !isCommentMode &&
                   !isInlineEditing &&
                   !connectionState.active && (
                     <div
@@ -2768,6 +2831,7 @@ export function EditorCanvas({
 
                     {onOpenSelectionCommentComposer && selectedNodeId && (
                       <button
+                        ref={commentAnchorRef}
                         type="button"
                         data-scale-lock
                         data-inline-toolbar
@@ -2799,6 +2863,7 @@ export function EditorCanvas({
                       editingText={editingText}
                       setEditingText={setEditingText}
                       handleEditSubmit={handleEditSubmit}
+                      handleFormatText={handleFormatText}
                       inlineInputRef={inlineInputRef}
                       selectedSvgId={selectedSvgId}
                     />

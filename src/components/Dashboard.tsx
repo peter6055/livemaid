@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useTheme } from "next-themes";
 import { DiagramCard, DiagramDocument } from "@/components/DiagramCard";
 import { FolderCard, Folder } from "@/components/FolderCard";
@@ -8,6 +8,7 @@ import { FolderTree } from "@/components/FolderTree";
 import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/CreateDiagramDialog";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/BrandLogo";
+import { broadcastDashboardRefresh, onDashboardRefresh } from "@/lib/dashboardSync";
 import {
   Plus,
   LayoutTemplate,
@@ -112,6 +113,9 @@ export default function Dashboard({
   const [displayCount, setDisplayCount] = useState(12);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
+  // Guard against overlapping fetches triggered by visibility changes and sync messages.
+  const isFetchingRef = useRef(false);
+
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [createName, setCreateName] = useState("");
@@ -160,9 +164,57 @@ export default function Dashboard({
   // doesn't clear `?folder=` on the very first render (before hydration runs).
   const didHydrateFolderRef = useRef(false);
 
+  const fetchData = useCallback(async (options: { silent?: boolean } = {}) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    try {
+      const startTime = Date.now();
+      const [diagRes, folderRes] = await Promise.all([
+        fetch("/api/diagrams"),
+        fetch("/api/folders"),
+      ]);
+      if (!diagRes.ok) throw new Error("Failed to fetch");
+      const { items } = await diagRes.json();
+      const folderData = folderRes.ok ? await folderRes.json() : [];
+
+      const elapsedTime = Date.now() - startTime;
+      // Only enforce the minimum skeleton duration for the initial load; silent refreshes
+      // (e.g., after returning from another tab) should feel instant.
+      if (!options.silent && elapsedTime < 600) {
+        await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
+      }
+      setDiagrams(items);
+      setFolders(folderData);
+    } catch (error) {
+      toast.error("Failed to load diagrams");
+    } finally {
+      isFetchingRef.current = false;
+      if (!options.silent) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
+
+  // Refresh the file list when the Dashboard tab becomes visible again after being backgrounded.
+  // This keeps the dashboard synchronized when the user creates or edits diagrams in other tabs.
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchData({ silent: true });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [fetchData]);
+
+  // Listen for cross-tab refresh notifications (e.g., an editor tab created a new diagram).
+  useEffect(() => {
+    return onDashboardRefresh(() => fetchData({ silent: true }));
+  }, [fetchData]);
 
   // Hydrate the current folder from the URL (`?folder=<id>`) on mount so deep-links and page
   // refreshes restore the folder view. If no URL param is present, restore from saved preferences.
@@ -192,30 +244,6 @@ export default function Dashboard({
     setUserPref("currentFolderId", currentFolderId);
   }, [currentFolderId, setUserPref]);
 
-  const fetchData = async () => {
-    try {
-      const startTime = Date.now();
-      const [diagRes, folderRes] = await Promise.all([
-        fetch("/api/diagrams"),
-        fetch("/api/folders"),
-      ]);
-      if (!diagRes.ok) throw new Error("Failed to fetch");
-      const { items } = await diagRes.json();
-      const folderData = folderRes.ok ? await folderRes.json() : [];
-
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime < 600) {
-        await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
-      }
-      setDiagrams(items);
-      setFolders(folderData);
-    } catch (error) {
-      toast.error("Failed to load diagrams");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const openCreateDialog = () => {
     setCreateName("Untitled Diagram");
     setIsCreateOpen(true);
@@ -240,6 +268,8 @@ export default function Dashboard({
       if (!res.ok) throw new Error("Failed to create");
       const newDoc = await res.json();
       setDiagrams((prev) => [newDoc, ...prev]);
+      // Notify other open Dashboard tabs that a new file exists so they can refresh.
+      broadcastDashboardRefresh();
       window.open(`/editor/${newDoc.id}`, "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.error("Failed to create diagram");

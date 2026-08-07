@@ -91,9 +91,11 @@ export function ClassTextEditor({
   return (
     <div
       ref={wrapperRef}
+      data-inline-editor
       data-class-text-editor
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         left: rect.left + rect.width / 2 - width / 2,
@@ -113,6 +115,7 @@ export function ClassTextEditor({
         }}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault();
@@ -137,7 +140,7 @@ export function ClassTextEditor({
                   : "Note text"
         }
         style={{ width: "100%", minHeight }}
-        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-sm leading-snug text-slate-900 shadow-lg outline-none whitespace-pre-wrap ${
+        className={`block resize-none overflow-hidden rounded-md border-2 border-indigo-500 bg-white px-2 py-1 font-sans text-base leading-snug text-slate-900 shadow-lg outline-none whitespace-pre-wrap ${
           kind === "title"
             ? "text-center font-semibold"
             : kind === "relationship" || kind === "namespace" || kind === "state"

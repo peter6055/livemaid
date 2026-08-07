@@ -63,3 +63,6 @@ data/
 .opencode/
 
 .config/
+
+# local test-server build artifacts
+tmp/
