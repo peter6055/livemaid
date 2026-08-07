@@ -1,5 +1,6 @@
 import { RefObject, useEffect, useLayoutEffect, useCallback, useRef, useState } from "react";
 import { Bold, Italic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { sanitizeHtml } from "@/lib/utils";
 
 interface InlineTextEditorProps {
   isInlineEditing: boolean;
@@ -301,9 +302,13 @@ export function InlineTextEditor({
     if (!isInlineEditing) return;
     const el = inlineInputRef.current;
     if (!el) return;
+    // Sanitize before injecting into the DOM: the label text originates from
+    // the diagram source, which may contain active/disallowed HTML that Mermaid
+    // would otherwise render verbatim (securityLevel: "loose", htmlLabels: true).
+    const safeText = sanitizeHtml(editingText);
     // Only update if the content differs to avoid cursor jumps
-    if (el.innerHTML !== editingText) {
-      el.innerHTML = editingText;
+    if (el.innerHTML !== safeText) {
+      el.innerHTML = safeText;
     }
   }, [isInlineEditing, editingText, inlineInputRef]);
 
@@ -316,6 +321,25 @@ export function InlineTextEditor({
     el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
     setMeasuredHeight(el.getBoundingClientRect().height);
   }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox, scale]);
+
+  // Keep the floating editor and its toolbar below the sticky app header (h-14).
+  // They live inside the zoomed canvas stacking context, so the header always paints
+  // above them — a node near the top of the viewport would otherwise render the
+  // toolbar under the header where clicks are swallowed.
+  useLayoutEffect(() => {
+    if (!isInlineEditing) return;
+    const elements = [inlineInputRef.current, toolbarRef.current].filter(Boolean) as HTMLElement[];
+    if (elements.length === 0) return;
+    const headerBottom = 64;
+    for (const el of elements) {
+      const rect = el.getBoundingClientRect();
+      const deficit = headerBottom - rect.top;
+      if (deficit <= 1) continue;
+      const currentTop = parseFloat(el.style.top || "0");
+      if (Number.isNaN(currentTop)) continue;
+      el.style.top = `${currentTop + deficit / scale}px`;
+    }
+  }, [isInlineEditing, scale, editingText, measuredHeight, handleFormatText, inlineInputRef]);
 
   const handleInput = useCallback(() => {
     const el = inlineInputRef.current;
@@ -546,8 +570,13 @@ export function InlineTextEditor({
           fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
           color: "#1c1c21",
           whiteSpace: "break-spaces",
+          // Column flex keeps text vertically centered (justify-content on the main
+          // axis) while the default align-items: stretch lets the alignment wrapper
+          // div fill the width — so text-align: left/right/center keeps working.
+          // A row flex with justify-content: center would shrink-wrap the wrapper and
+          // re-center it as a block, making horizontal alignment a no-op.
           display: "flex",
-          alignItems: "center",
+          flexDirection: "column",
           justifyContent: "center",
           boxSizing: "border-box",
           textAlign: "center",

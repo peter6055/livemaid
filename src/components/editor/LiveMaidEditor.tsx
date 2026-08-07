@@ -26,7 +26,7 @@ import {
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
-import { normalizeHtmlForMermaid } from "@/lib/utils";
+import { normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -2988,6 +2988,12 @@ export function LiveMaidEditor({
     // when the user types and immediately saves (e.g. automated tests or
     // very fast typing + Ctrl+Enter).
     let latestEditingText = inlineInputRef.current?.innerHTML ?? editingText;
+
+    // Sanitize before anything is written back into the diagram source: the
+    // label is rendered as live HTML by Mermaid (securityLevel: "loose",
+    // htmlLabels: true), so scripts, iframes, event-handler attributes and
+    // other active/disallowed content must never be stored.
+    latestEditingText = sanitizeHtml(latestEditingText);
 
     // The browser auto-closes unclosed HTML tags (e.g. <div>...) when set as innerHTML.
     // Strip auto-added closing tags that weren't in the original Mermaid code so they

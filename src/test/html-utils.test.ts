@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { htmlToPlainText, containsHtml, normalizeHtmlForMermaid } from "@/lib/utils";
+import {
+  htmlToPlainText,
+  containsHtml,
+  normalizeHtmlForMermaid,
+  sanitizeHtml,
+} from "@/lib/utils";
 
 describe("htmlToPlainText", () => {
   it("strips simple tags", () => {
@@ -191,5 +196,78 @@ describe("normalizeHtmlForMermaid", () => {
   it("preserves intentional br tags", () => {
     const input = "Line 1<br/>Line 2";
     expect(normalizeHtmlForMermaid(input)).toBe("Line 1<br/>Line 2");
+  });
+
+  it("strips script tags and their content", () => {
+    expect(normalizeHtmlForMermaid("<b>Bold</b><script>alert(1)</script>")).toBe("<b>Bold</b>");
+  });
+
+  it("strips iframes", () => {
+    expect(normalizeHtmlForMermaid("<iframe src='https://evil.example'></iframe>text")).toBe(
+      "text",
+    );
+  });
+
+  it("strips event handler attributes", () => {
+    expect(normalizeHtmlForMermaid('<b onclick="alert(1)">Bold</b>')).toBe("<b>Bold</b>");
+    expect(normalizeHtmlForMermaid('<span onmouseover="alert(1)">x</span>')).toBe("<span>x</span>");
+  });
+
+  it("strips javascript: URLs", () => {
+    expect(
+      normalizeHtmlForMermaid('<a href="javascript:alert(1)">link</a>'),
+    ).toBe("link");
+  });
+
+  it("strips style attributes that are not text-align", () => {
+    expect(
+      normalizeHtmlForMermaid('<span style="color:red">Red</span>'),
+    ).toBe("<span>Red</span>");
+  });
+
+  it("keeps text-align style attributes", () => {
+    expect(
+      normalizeHtmlForMermaid('<div style="text-align:center;">Centered</div>'),
+    ).toBe('<div style="text-align:center;">Centered');
+  });
+});
+
+describe("sanitizeHtml", () => {
+  it("keeps plain text", () => {
+    expect(sanitizeHtml("Just text")).toBe("Just text");
+  });
+
+  it("keeps formatting tags", () => {
+    expect(sanitizeHtml("<b>Bold</b><i>Italic</i>")).toBe("<b>Bold</b><i>Italic</i>");
+  });
+
+  it("drops script tags with their content", () => {
+    expect(sanitizeHtml("a<script>alert(1)</script>b")).toBe("ab");
+  });
+
+  it("drops iframe/object/embed/style tags with their content", () => {
+    expect(sanitizeHtml("<iframe src=x></iframe>x")).toBe("x");
+    expect(sanitizeHtml("<style>body{}</style>x")).toBe("x");
+    expect(sanitizeHtml("<object>data</object>x")).toBe("x");
+  });
+
+  it("drops event handler attributes", () => {
+    expect(sanitizeHtml('<b onmouseover="x()">B</b>')).toBe("<b>B</b>");
+  });
+
+  it("strips dangerous style values", () => {
+    expect(sanitizeHtml('<span style="background:url(https://evil.example)">x</span>')).toBe(
+      "<span>x</span>",
+    );
+  });
+
+  it("keeps text-align style", () => {
+    expect(sanitizeHtml('<div style="text-align:center;">x</div>')).toBe(
+      '<div style="text-align:center;">x</div>',
+    );
+  });
+
+  it("drops non-allowlisted tags", () => {
+    expect(sanitizeHtml("<table><tr><td>cell</td></tr></table>")).toBe("cell");
   });
 });

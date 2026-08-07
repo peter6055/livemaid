@@ -40,6 +40,23 @@ export default async function globalSetup() {
     setTimeout(() => reject(new Error(`Server did not start in time. Output:\n${output}`)), 120000);
   });
 
+  // Warm up the key routes so the first test doesn't pay the Next.js dev
+  // on-demand compile cost (which can exceed the per-test timeout). The editor
+  // and dashboard pull in Monaco/Mermaid and can take 30-60s to compile cold.
+  const warmRoutes = ["/", "/api/diagrams", "/editor/warmup"];
+  await Promise.all(
+    warmRoutes.map(async (path) => {
+      try {
+        const res = await fetch(`${baseURL}${path}`, {
+          signal: AbortSignal.timeout(120000),
+        });
+        console.log(`[globalSetup] warm-up ${path} -> ${res.status}`);
+      } catch (err) {
+        console.warn(`[globalSetup] warm-up ${path} failed: ${err.message}`);
+      }
+    }),
+  );
+
   return async () => {
     proc.kill("SIGTERM");
   };

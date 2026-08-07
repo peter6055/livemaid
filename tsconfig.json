@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -28,7 +34,21 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "**/*.mts"
+    "**/*.mts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-bBXl5g/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-bBXl5g/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-zfKH4D/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-zfKH4D/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-Ky5w8R/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-Ky5w8R/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-t3CvjO/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-t3CvjO/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-g3Q2qG/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-g3Q2qG/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "scratch", "tmp"]
+  "exclude": [
+    "node_modules",
+    "scratch",
+    "tmp"
+  ]
 }

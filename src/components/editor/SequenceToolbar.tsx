@@ -104,102 +104,128 @@ export const PARTICIPANT_TYPES: Array<{ key: string; label: string }> = [
   { key: "queue", label: "Queue" },
 ];
 
+const PARTICIPANT_DISPLAY_NAMES: Record<string, string> = {
+  participant: "Participant",
+  actor: "Actor",
+  boundary: "Boundary",
+  control: "Control",
+  entity: "Entity",
+  database: "Database",
+  collections: "Collections",
+  queue: "Queue",
+};
+
+const PARTICIPANT_DECL_RE =
+  /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)/i;
+
+const PARTICIPANT_DECL_WITH_LABEL_RE =
+  /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+[^\s@]+(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+?))?\s*$/i;
+
+const SEQUENCE_MESSAGE_RE =
+  /^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/;
+
+// AC 1.3 — Auto-ID: every existing participant ID (from declarations AND message references)
+// is collected so a new id never collides. The first unused single uppercase letter
+// (A, B, C, … → E when A–D exist) is picked; a timestamped id is the fallback only if all 26
+// letters are taken.
+export function getSequenceParticipantIds(code: string): Set<string> {
+  const usedIds = new Set<string>();
+  for (const line of code.split("\n")) {
+    const trimmed = line.trim();
+    const dm = trimmed.match(PARTICIPANT_DECL_RE);
+    if (dm) usedIds.add(dm[1]);
+    const mm = trimmed.match(SEQUENCE_MESSAGE_RE);
+    if (mm) {
+      usedIds.add(mm[1]);
+      usedIds.add(mm[2]);
+    }
+  }
+  return usedIds;
+}
+
+export function generateSequenceParticipantId(code: string): string {
+  const usedIds = getSequenceParticipantIds(code);
+  for (let i = 0; i < 26; i += 1) {
+    const c = String.fromCharCode(65 + i);
+    if (!usedIds.has(c)) return c;
+  }
+  return `P${Date.now().toString().slice(-3)}`;
+}
+
+// Keep the generated human-readable label unique as well. Sequence Mermaid allows repeated
+// participant ids with the same visible name, but that makes the duplicate lifelines look like
+// a rendering bug in the editor. "New Database", "New Database 2", "New Database 3", …
+// stays readable while preserving multiple participants of the same type.
+export function getSequenceParticipantLabels(code: string): Set<string> {
+  const usedLabels = new Set<string>();
+  for (const line of code.split("\n")) {
+    const match = line.trim().match(PARTICIPANT_DECL_WITH_LABEL_RE);
+    if (!match) continue;
+    const label = match[1]?.trim();
+    if (label) usedLabels.add(label);
+  }
+  return usedLabels;
+}
+
+export function generateSequenceParticipantLabel(type: string, code: string): string {
+  const baseLabel = `New ${PARTICIPANT_DISPLAY_NAMES[type]}`;
+  const usedLabels = getSequenceParticipantLabels(code);
+  if (!usedLabels.has(baseLabel)) return baseLabel;
+  let suffix = 2;
+  while (usedLabels.has(`${baseLabel} ${suffix}`)) suffix += 1;
+  return `${baseLabel} ${suffix}`;
+}
+
+export function buildSequenceParticipantInsertLine(
+  type: string,
+  id: string,
+  label: string,
+): string {
+  if (type === "participant") {
+    return `    participant ${id} as ${label}`;
+  }
+  if (type === "actor") {
+    return `    actor ${id} as ${label}`;
+  }
+  return `    participant ${id}@{ "type": "${type}" } as ${label}`;
+}
+
+export function getLastSequenceParticipantDeclarationIndex(code: string): number {
+  let last = -1;
+  code.split("\n").forEach((line, i) => {
+    if (line.trim().match(PARTICIPANT_DECL_RE)) last = i;
+  });
+  return last;
+}
+
+// AC 1.1 / 1.2 — Right-side insertion. Mermaid lays out participant columns in first-appearance
+// order, so the new participant must be DECLARED AFTER every existing one to land on the far
+// right. When explicit declarations exist, inject directly beneath the last declaration block
+// (clean code, renders rightmost). When participants are only implicit (declared via messages),
+// there is no declaration block — appending at the very END makes the new column appear after
+// all message-referenced participants, i.e. rightmost (declaring it at the top would wrongly
+// place it on the far LEFT — the bug this fixes).
+export function insertSequenceParticipant(code: string, type: string): string {
+  const id = generateSequenceParticipantId(code);
+  const label = generateSequenceParticipantLabel(type, code);
+  const insertLine = buildSequenceParticipantInsertLine(type, id, label);
+
+  const lastDeclIdx = getLastSequenceParticipantDeclarationIndex(code);
+  if (lastDeclIdx >= 0) {
+    const lines = code.split("\n");
+    lines.splice(lastDeclIdx + 1, 0, insertLine);
+    return lines.join("\n");
+  }
+  return code.replace(/\s*$/, "") + `\n${insertLine}`;
+}
+
 export const SequenceToolbar = ({ code, setCode }: EditorContext) => {
   const [showParticipantPicker, setShowParticipantPicker] = useState(false);
 
   const participantTypes = PARTICIPANT_TYPES;
 
   const handleAddParticipant = (type: string) => {
-    const displayNames: Record<string, string> = {
-      participant: "Participant",
-      actor: "Actor",
-      boundary: "Boundary",
-      control: "Control",
-      entity: "Entity",
-      database: "Database",
-      collections: "Collections",
-      queue: "Queue",
-    };
-
-    const lines = code.split("\n");
-    const participantDeclWithLabelRe =
-      /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+[^\s@]+(?:\s*@\{[^}]*\})?(?:\s+as\s+(.+?))?\s*$/i;
-
-    // AC 1.3 — Auto-ID: scan every existing participant ID (from declarations AND message
-    // references) so the new id never collides. Pick the first unused single uppercase letter
-    // (A, B, C, … → E when A–D exist); fall back to a timestamped id only if all 26 are taken.
-    const usedIds = new Set<string>();
-    const declRe =
-      /^(?:participant|actor|boundary|control|entity|database|collections|queue)\s+([^\s@]+)/i;
-    const msgRe = /^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/;
-    let lastDeclIdx = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      const trimmed = lines[i].trim();
-      const dm = trimmed.match(declRe);
-      if (dm) {
-        usedIds.add(dm[1]);
-        lastDeclIdx = i;
-      }
-      const mm = trimmed.match(msgRe);
-      if (mm) {
-        usedIds.add(mm[1]);
-        usedIds.add(mm[2]);
-      }
-    }
-
-    // Keep the generated human-readable label unique as well. Sequence Mermaid allows repeated
-    // participant ids with the same visible name, but that makes the duplicate lifelines look like
-    // a rendering bug in the editor. "New Database", "New Database 2", "New Database 3", ...
-    // stays readable while preserving multiple participants of the same type.
-    const usedLabels = new Set<string>();
-    for (const line of lines) {
-      const match = line.trim().match(participantDeclWithLabelRe);
-      if (!match) continue;
-      const label = match[1]?.trim();
-      if (label) usedLabels.add(label);
-    }
-
-    let newId = "";
-    for (let i = 0; i < 26; i += 1) {
-      const c = String.fromCharCode(65 + i);
-      if (!usedIds.has(c)) {
-        newId = c;
-        break;
-      }
-    }
-    if (!newId) newId = `P${Date.now().toString().slice(-3)}`;
-
-    let insertLine = "";
-    const baseLabel = `New ${displayNames[type]}`;
-    let newLabel = baseLabel;
-    if (usedLabels.has(baseLabel)) {
-      let suffix = 2;
-      while (usedLabels.has(`${baseLabel} ${suffix}`)) suffix += 1;
-      newLabel = `${baseLabel} ${suffix}`;
-    }
-    if (type === "participant") {
-      insertLine = `    participant ${newId} as ${newLabel}`;
-    } else if (type === "actor") {
-      insertLine = `    actor ${newId} as ${newLabel}`;
-    } else {
-      insertLine = `    participant ${newId}@{ "type": "${type}" } as ${newLabel}`;
-    }
-
-    // AC 1.1 / 1.2 — Right-side insertion. Mermaid lays out participant columns in first-appearance
-    // order, so the new participant must be DECLARED AFTER every existing one to land on the far
-    // right. When explicit declarations exist, inject directly beneath the last declaration block
-    // (clean code, renders rightmost). When participants are only implicit (declared via messages),
-    // there is no declaration block — appending at the very END makes the new column appear after
-    // all message-referenced participants, i.e. rightmost (declaring it at the top would wrongly
-    // place it on the far LEFT — the bug this fixes).
-    let newCode: string;
-    if (lastDeclIdx >= 0) {
-      lines.splice(lastDeclIdx + 1, 0, insertLine);
-      newCode = lines.join("\n");
-    } else {
-      newCode = code.replace(/\s*$/, "") + `\n${insertLine}`;
-    }
-    setCode(newCode);
+    setCode(insertSequenceParticipant(code, type));
     setShowParticipantPicker(false);
   };
 

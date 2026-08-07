@@ -703,6 +703,7 @@ export function EditorCanvas({
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
   const fallbackRenderIdRef = useRef<string | null>(null);
   const lastScaleRef = useRef(0);
+  const commentAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
@@ -760,6 +761,20 @@ export function EditorCanvas({
       );
       updateScaleLockedElements(containerRef.current, currentScale);
     }
+  }, [selectionBox, selectedNodeId, containerRef]);
+
+  // Keep the "Add comment to selection" anchor below the sticky app header so it
+  // stays clickable when the selected node sits at the top of the viewport.
+  useEffect(() => {
+    const el = commentAnchorRef.current;
+    if (!el || !selectionBox || !containerRef.current) return;
+    const rect = el.getBoundingClientRect();
+    const deficit = 64 - rect.top;
+    if (deficit <= 1) return;
+    const currentTop = parseFloat(el.style.top || "0");
+    if (Number.isNaN(currentTop)) return;
+    const scale = parseFloat(containerRef.current.style.getPropertyValue("--zoom-scale")) || 1;
+    el.style.top = `${currentTop + deficit / scale}px`;
   }, [selectionBox, selectedNodeId, containerRef]);
 
   useEffect(() => {
@@ -2816,6 +2831,7 @@ export function EditorCanvas({
 
                     {onOpenSelectionCommentComposer && selectedNodeId && (
                       <button
+                        ref={commentAnchorRef}
                         type="button"
                         data-scale-lock
                         data-inline-toolbar
