@@ -19,9 +19,18 @@ export function getTextNodesInRange(range: Range, el: HTMLElement): Text[] {
       const child = node.childNodes[range.startOffset];
       if (child && child.nodeType === Node.TEXT_NODE) {
         textNodes.push(child as Text);
-      } else {
+      } else if (child && child instanceof HTMLElement) {
+        const text = getTextNodes(child);
+        if (text.length > 0) textNodes.push(text[0]);
+      }
+      if (textNodes.length === 0) {
         const prev = node.childNodes[range.startOffset - 1];
-        if (prev && prev.nodeType === Node.TEXT_NODE) textNodes.push(prev as Text);
+        if (prev && prev.nodeType === Node.TEXT_NODE) {
+          textNodes.push(prev as Text);
+        } else if (prev && prev instanceof HTMLElement) {
+          const text = getTextNodes(prev);
+          if (text.length > 0) textNodes.push(text[text.length - 1]);
+        }
       }
     }
     return textNodes.filter((n) => n.textContent?.trim());
@@ -82,11 +91,7 @@ export function getTextNodes(node: Node): Text[] {
   return nodes;
 }
 
-export function isRangeFormatted(
-  el: HTMLElement,
-  range: Range,
-  fmt: "bold" | "italic",
-): boolean {
+export function isRangeFormatted(el: HTMLElement, range: Range, fmt: "bold" | "italic"): boolean {
   const textNodes = getTextNodesInRange(range, el);
   if (textNodes.length === 0) return isAllContentFormatted(el, fmt);
   return textNodes.every((textNode) => {
