@@ -125,8 +125,8 @@ function constrainStyleAttributes(html: string): string {
  * attribute that could carry active content.
  */
 function stripDisallowedHtml(html: string): string {
-  // 1. Remove comments.
-  let value = html.replace(/<!--[\s\S]*?-->/g, "");
+  // 1. Remove comments (closed and unclosed).
+  let value = html.replace(/<!--[\s\S]*?(-->|$)/g, "");
 
   // 2. Drop dangerous elements entirely, including their content: remove the
   //    whole `<script>…</script>` span first so the payload never survives.
