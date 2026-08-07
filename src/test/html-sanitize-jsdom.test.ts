@@ -24,9 +24,9 @@ describe("sanitizeHtml (jsdom/DOMPurify path)", () => {
   });
 
   it("strips dangerous style values", () => {
-    expect(
-      sanitizeHtml('<span style="background:url(https://evil.example)">x</span>'),
-    ).toBe("<span>x</span>");
+    expect(sanitizeHtml('<span style="background:url(https://evil.example)">x</span>')).toBe(
+      "<span>x</span>",
+    );
   });
 
   it("keeps text-align style", () => {

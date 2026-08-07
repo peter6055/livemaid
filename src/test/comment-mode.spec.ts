@@ -34,7 +34,7 @@ test.describe("comment mode on shapes", () => {
     // Clicking a node opens the shape comment composer.
     const svg = page.locator("svg[id^='mermaid-svg']");
     const node = svg.locator("g.node").filter({ hasText: "Start" }).first();
-    await node.click({ force: true });
+    await node.click();
 
     const bubble = page.locator("[data-comment-bubble]");
     await expect(bubble).toBeVisible({ timeout: 10000 });

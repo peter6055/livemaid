@@ -149,7 +149,13 @@ export function generateSequenceParticipantId(code: string): string {
     const c = String.fromCharCode(65 + i);
     if (!usedIds.has(c)) return c;
   }
-  return `P${Date.now().toString().slice(-3)}`;
+  let candidate = `P${Date.now()}`;
+  let suffix = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `P${Date.now()}${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
 }
 
 // Keep the generated human-readable label unique as well. Sequence Mermaid allows repeated

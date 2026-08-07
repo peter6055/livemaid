@@ -82,7 +82,8 @@ test.describe("Flowchart edge label editing (Issue #69)", () => {
     const labelCount = await labelText.count();
     expect(labelCount).toBeGreaterThanOrEqual(1);
 
-    await request.delete(`/api/diagrams/${doc.id}`);
+    const deleteRes = await request.delete(`/api/diagrams/${doc.id}`);
+    expect(deleteRes.ok()).toBeTruthy();
   });
 });
 

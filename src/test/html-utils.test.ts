@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  htmlToPlainText,
-  containsHtml,
-  normalizeHtmlForMermaid,
-  sanitizeHtml,
-} from "@/lib/utils";
+import { htmlToPlainText, containsHtml, normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 
 describe("htmlToPlainText", () => {
   it("strips simple tags", () => {
@@ -214,21 +209,17 @@ describe("normalizeHtmlForMermaid", () => {
   });
 
   it("strips javascript: URLs", () => {
-    expect(
-      normalizeHtmlForMermaid('<a href="javascript:alert(1)">link</a>'),
-    ).toBe("link");
+    expect(normalizeHtmlForMermaid('<a href="javascript:alert(1)">link</a>')).toBe("link");
   });
 
   it("strips style attributes that are not text-align", () => {
-    expect(
-      normalizeHtmlForMermaid('<span style="color:red">Red</span>'),
-    ).toBe("<span>Red</span>");
+    expect(normalizeHtmlForMermaid('<span style="color:red">Red</span>')).toBe("<span>Red</span>");
   });
 
   it("keeps text-align style attributes", () => {
-    expect(
-      normalizeHtmlForMermaid('<div style="text-align:center;">Centered</div>'),
-    ).toBe('<div style="text-align:center;">Centered');
+    expect(normalizeHtmlForMermaid('<div style="text-align:center;">Centered</div>')).toBe(
+      '<div style="text-align:center;">Centered',
+    );
   });
 });
 

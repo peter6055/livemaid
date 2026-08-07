@@ -85,9 +85,7 @@ test.describe("inline editor formatting toolbar", () => {
     await expect(page.locator('[data-inline-editor][contenteditable="true"]')).toHaveCount(0);
   });
 
-  test("Align Left / Align Right visually move the text, not just wrap it", async ({
-    page,
-  }) => {
+  test("Align Left / Align Right visually move the text, not just wrap it", async ({ page }) => {
     const { editor } = await openEditor(page);
 
     // Helper: gap between the editor's left edge and the actual text start (viewport coords).
@@ -128,8 +126,12 @@ test.describe("inline editor formatting toolbar", () => {
   });
 
   test("empty save closes silently and keeps the label", async ({ page }) => {
-    const { svg } = await openEditor(page);
+    const { svg, editor } = await openEditor(page);
 
+    await editor.click();
+    await page.keyboard.press("Control+a");
+    await page.keyboard.press("Delete");
+    await expect(editor).toHaveText("");
     await page.keyboard.press("Control+Enter");
     await expect(page.locator('[data-inline-editor][contenteditable="true"]')).toHaveCount(0);
     await expect(svg.locator("text, p, div, span", { hasText: "Start" }).first()).toBeVisible();
