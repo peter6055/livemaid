@@ -1,6 +1,12 @@
 import { RefObject, useEffect, useLayoutEffect, useCallback, useRef, useState } from "react";
 import { Bold, Italic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { sanitizeHtml } from "@/lib/utils";
+import {
+  isFormatTag,
+  getTextNodesInRange,
+  isAllContentFormatted,
+  coversAllContent,
+} from "@/lib/formatting-helpers";
 
 interface InlineTextEditorProps {
   isInlineEditing: boolean;
@@ -17,64 +23,6 @@ interface InlineTextEditorProps {
   handleFormatText?: (format: string, colorValue?: string) => void;
 }
 
-function isFormatTag(node: Node, format: "bold" | "italic"): boolean {
-  if (!(node instanceof HTMLElement)) return false;
-  const tag = node.tagName.toLowerCase();
-  return format === "bold" ? tag === "b" || tag === "strong" : tag === "i" || tag === "em";
-}
-
-function getTextNodesInRange(range: Range, el: HTMLElement): Text[] {
-  if (range.collapsed) {
-    const textNodes: Text[] = [];
-    const node = range.startContainer;
-    if (node.nodeType === Node.TEXT_NODE) {
-      textNodes.push(node as Text);
-    } else if (node instanceof HTMLElement && node === el) {
-      const child = node.childNodes[range.startOffset];
-      if (child && child.nodeType === Node.TEXT_NODE) {
-        textNodes.push(child as Text);
-      } else {
-        const prev = node.childNodes[range.startOffset - 1];
-        if (prev && prev.nodeType === Node.TEXT_NODE) textNodes.push(prev as Text);
-      }
-    }
-    return textNodes.filter((n) => n.textContent?.trim());
-  }
-
-  const textNodes: Text[] = [];
-  const iterator = document.createNodeIterator(range.commonAncestorContainer, NodeFilter.SHOW_TEXT);
-  let node: Node | null;
-  while ((node = iterator.nextNode())) {
-    if (range.intersectsNode(node) && node.textContent?.trim()) {
-      textNodes.push(node as Text);
-    }
-  }
-  return textNodes;
-}
-
-function isAllContentFormatted(el: HTMLElement, format: "bold" | "italic"): boolean {
-  const textNodes: Text[] = [];
-  const collect = (node: Node) => {
-    node.childNodes.forEach((child) => {
-      if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
-        textNodes.push(child as Text);
-      } else if (child.nodeType === Node.ELEMENT_NODE) {
-        collect(child);
-      }
-    });
-  };
-  collect(el);
-  if (textNodes.length === 0) return false;
-  return textNodes.every((textNode) => {
-    let node: Node | null = textNode.parentNode;
-    while (node && node !== el) {
-      if (isFormatTag(node, format)) return true;
-      node = node.parentNode;
-    }
-    return false;
-  });
-}
-
 export function getActiveFormats(el: HTMLElement | null): {
   bold: boolean;
   italic: boolean;
@@ -84,12 +32,6 @@ export function getActiveFormats(el: HTMLElement | null): {
 
   const sel = window.getSelection();
   const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
-
-  const coversAllContent = (r: Range) =>
-    r.startContainer === el &&
-    r.startOffset === 0 &&
-    r.endContainer === el &&
-    r.endOffset === el.childNodes.length;
 
   const getAlignment = (r: Range | null) => {
     let node: Node | null = r ? r.commonAncestorContainer : el;
@@ -124,7 +66,7 @@ export function getActiveFormats(el: HTMLElement | null): {
     // No valid selection inside the editor: check the whole editor content.
     bold = isAllContentFormatted(el, "bold");
     italic = isAllContentFormatted(el, "italic");
-  } else if (range.collapsed || coversAllContent(range)) {
+  } else if (range.collapsed || coversAllContent(el, range)) {
     const textNodes = getTextNodesInRange(range, el);
     if (textNodes.length === 0) {
       bold = isAllContentFormatted(el, "bold");
@@ -319,7 +261,9 @@ export function InlineTextEditor({
     el.style.height = "auto";
     const minHeight = Math.max(textBox.height * scale, 24);
     el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
-    setMeasuredHeight(el.getBoundingClientRect().height);
+    // getBoundingClientRect includes the CSS scale() transform, so divide
+    // by the current zoom to get the unscaled height used for positioning.
+    setMeasuredHeight(el.getBoundingClientRect().height / scale);
   }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox, scale]);
 
   // Keep the floating editor and its toolbar below the sticky app header (h-14).

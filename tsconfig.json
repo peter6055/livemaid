@@ -44,7 +44,13 @@
     "/root/projects/livemaid/tmp/livemaid-test-next-t3CvjO/types/**/*.ts",
     "/root/projects/livemaid/tmp/livemaid-test-next-t3CvjO/dev/types/**/*.ts",
     "/root/projects/livemaid/tmp/livemaid-test-next-g3Q2qG/types/**/*.ts",
-    "/root/projects/livemaid/tmp/livemaid-test-next-g3Q2qG/dev/types/**/*.ts"
+    "/root/projects/livemaid/tmp/livemaid-test-next-g3Q2qG/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-IM8wbA/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-IM8wbA/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-s70MK8/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-s70MK8/dev/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-F55TJU/types/**/*.ts",
+    "/root/projects/livemaid/tmp/livemaid-test-next-F55TJU/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

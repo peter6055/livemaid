@@ -6,7 +6,7 @@ import {
   matchFlowchartLinkLine,
 } from "@/lib/diagrams/utils";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
-import { containsHtml } from "@/lib/utils";
+import { containsHtml, escapeRegExp } from "@/lib/utils";
 import {
   getSequenceNoteRectForText,
   getSequenceNoteTextElementAtIndex,
@@ -3518,7 +3518,7 @@ export function useCanvasInteraction({
         // This must be separate because the generic regex's closing group
         // contains \) which matches parentheses inside label text.
         const quoteBracketRegex = new RegExp(
-          `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
+          `(^|[^a-zA-Z0-9_])(${escapeRegExp(targetNodeId)}\\s*\\[\\s*["'])([\\s\\S]*?)(["']\\s*\\])`,
           "m",
         );
         let match = code.match(quoteBracketRegex);
@@ -3526,7 +3526,7 @@ export function useCanvasInteraction({
           currentText = match[3].replace(/<br\s*\/?>/gi, "<br/>");
         } else {
           const nodeRegex = new RegExp(
-            `(^|[^a-zA-Z0-9_])(${targetNodeId}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\]))`,
+            `(^|[^a-zA-Z0-9_])(${escapeRegExp(targetNodeId)}\\s*(?:\\@\\{\\s*shape:[^,]+,\\s*label:\\s*|\\(\\(\\(|\\[\\/|\\[\\\\|\\[\\(|\\[\\[|\\(\\[|\\(\\(|\\{\\{|\\[|\\(|\\{|\\>)\\s*["']?)([\\s\\S]*?)(["']?\\s*(?:\\)\\)\\)|\\)\\]|\\)\\)|\\}\\}|\\/\\]|\\\\\\]|\\]\\]|\\s*\\}|\\]|\\)|\\]))`,
             "m",
           );
           match = code.match(nodeRegex);

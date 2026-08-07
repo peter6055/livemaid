@@ -1,13 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
-
-function getRandomPort(min = 20000, max = 30000) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+import { getRandomPort } from "./get-random-port.mjs";
 
 export default async function globalSetup() {
-  const port = getRandomPort();
+  const port = await getRandomPort();
   const tmpRoot = join(process.cwd(), "tmp");
   mkdirSync(tmpRoot, { recursive: true });
   const distDir = mkdtempSync(join(tmpRoot, "livemaid-test-next-"));
@@ -58,6 +55,25 @@ export default async function globalSetup() {
   );
 
   return async () => {
-    proc.kill("SIGTERM");
+    // Graceful shutdown: try SIGTERM first, then SIGKILL after a short delay.
+    try {
+      proc.kill("SIGTERM");
+      await new Promise((resolve) => {
+        const forceKill = setTimeout(() => {
+          try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+          resolve(undefined);
+        }, 5000);
+        proc.on("exit", () => {
+          clearTimeout(forceKill);
+          resolve(undefined);
+        });
+        proc.on("error", () => {
+          clearTimeout(forceKill);
+          resolve(undefined);
+        });
+      });
+    } catch {
+      // Process already exited.
+    }
   };
 }

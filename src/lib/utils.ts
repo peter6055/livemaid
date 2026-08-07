@@ -57,6 +57,14 @@ const ALLOWED_TAGS = [
 const ALLOWED_TAG_NAMES = new Set(ALLOWED_TAGS);
 
 /**
+ * Escapes special regex characters in a string so it can be safely used in
+ * `new RegExp(...)` as a literal match.
+ */
+export function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
  * Sanitizes untrusted HTML so it is safe to store and render as a Mermaid label.
  */
 export function sanitizeHtml(html: string): string {

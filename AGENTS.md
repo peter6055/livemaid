@@ -88,8 +88,18 @@ tmux kill-session -t livemaid-test 2>/dev/null
 # Start agent's test server on a random free port in a detached tmux session
 cd /path/to/project && tmux new-session -d -s livemaid-test 'npm run test:dev'
 
-# Read the assigned port from the tmux output
-PORT=$(tmux capture-pane -t livemaid-test -p -S -20 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
+# Wait for the port to appear in tmux output (bounded extraction loop)
+PORT=""
+for i in $(seq 1 20); do
+  PORT=$(tmux capture-pane -t livemaid-test -p -S -50 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
+  if [ -n "$PORT" ]; then break; fi
+  sleep 1
+done
+if [ -z "$PORT" ]; then
+  echo "ERROR: No port found after 20s. tmux output:" >&2
+  tmux capture-pane -t livemaid-test -p -S -50 >&2
+  exit 1
+fi
 
 # Poll until ready
 for i in $(seq 1 30); do
@@ -105,7 +115,17 @@ if ! curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; t
   echo "First attempt timed out, retrying..."
   tmux kill-session -t livemaid-test 2>/dev/null
   tmux new-session -d -s livemaid-test 'npm run test:dev'
-  PORT=$(tmux capture-pane -t livemaid-test -p -S -20 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
+  PORT=""
+  for i in $(seq 1 20); do
+    PORT=$(tmux capture-pane -t livemaid-test -p -S -50 | grep -oE 'http://localhost:[0-9]+' | head -1 | cut -d: -f3)
+    if [ -n "$PORT" ]; then break; fi
+    sleep 1
+  done
+  if [ -z "$PORT" ]; then
+    echo "ERROR: No port found on retry after 20s. tmux output:" >&2
+    tmux capture-pane -t livemaid-test -p -S -50 >&2
+    exit 1
+  fi
   for i in $(seq 1 30); do
     if curl -s -o /dev/null --max-time 2 "http://localhost:${PORT}" 2>/dev/null; then
       echo "Dev server ready on retry after ${i}s on port ${PORT}"

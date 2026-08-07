@@ -1,13 +1,10 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
-
-function getRandomPort(min = 20000, max = 30000) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+import { getRandomPort } from "./get-random-port.mjs";
 
 async function main() {
-  const port = getRandomPort();
+  const port = await getRandomPort();
   const tmpRoot = join(process.cwd(), "tmp");
   mkdirSync(tmpRoot, { recursive: true });
   const distDir = mkdtempSync(join(tmpRoot, "livemaid-test-next-"));

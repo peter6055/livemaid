@@ -26,7 +26,15 @@ import {
 } from "@/lib/diagrams/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
-import { normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
+import { normalizeHtmlForMermaid, sanitizeHtml, escapeRegExp } from "@/lib/utils";
+import {
+  isFormatTag,
+  getTextNodesInRange,
+  isAllContentFormatted,
+  coversAllContent,
+  getTextNodes,
+  isRangeFormatted,
+} from "@/lib/formatting-helpers";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { EditorHeader } from "./EditorHeader";
@@ -1943,7 +1951,7 @@ export function LiveMaidEditor({
     // 1. Remove style lines
     const lines = newCode.split("\n");
     const filteredLines = lines.filter((line) => {
-      const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\b`));
+      const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\b`));
       return !isStyleLine;
     });
     newCode = filteredLines.join("\n");
@@ -2600,7 +2608,7 @@ export function LiveMaidEditor({
     (property: string, value: string) => {
       if (!selectedNodeId) return;
       let newCode = code;
-      const styleRegex = new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m");
+      const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m");
       const match = newCode.match(styleRegex);
       if (match) {
         let styleProps = match[1];
@@ -2721,7 +2729,7 @@ export function LiveMaidEditor({
     (format: string, colorValue?: string) => {
       if (!selectedNodeId) return;
       const getStyleVal = (property: string): string | null => {
-        const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m"));
+        const match = code.match(new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m"));
         if (match) {
           const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
           return propMatch ? propMatch[1] : null;
@@ -2753,72 +2761,6 @@ export function LiveMaidEditor({
       const el = inlineInputRef.current;
       el.focus();
 
-      const isFormatTag = (node: Node, fmt: "bold" | "italic") => {
-        if (!(node instanceof HTMLElement)) return false;
-        const tag = node.tagName.toLowerCase();
-        return fmt === "bold" ? tag === "b" || tag === "strong" : tag === "i" || tag === "em";
-      };
-
-      const getTextNodes = (node: Node): Text[] => {
-        const nodes: Text[] = [];
-        node.childNodes.forEach((child) => {
-          if (child.nodeType === Node.TEXT_NODE && child.textContent?.trim()) {
-            nodes.push(child as Text);
-          } else if (child.nodeType === Node.ELEMENT_NODE) {
-            nodes.push(...getTextNodes(child));
-          }
-        });
-        return nodes;
-      };
-
-      const isAllContentFormatted = (fmt: "bold" | "italic") => {
-        const textNodes = getTextNodes(el);
-        if (textNodes.length === 0) return false;
-        return textNodes.every((textNode) => {
-          let node: Node | null = textNode.parentNode;
-          while (node && node !== el) {
-            if (isFormatTag(node, fmt)) return true;
-            node = node.parentNode;
-          }
-          return false;
-        });
-      };
-
-      const getTextNodesInRange = (range: Range): Text[] => {
-        if (range.collapsed) return [];
-        const nodes: Text[] = [];
-        const iterator = document.createNodeIterator(
-          range.commonAncestorContainer,
-          NodeFilter.SHOW_TEXT,
-        );
-        let node: Node | null;
-        while ((node = iterator.nextNode())) {
-          if (range.intersectsNode(node) && node.textContent?.trim()) {
-            nodes.push(node as Text);
-          }
-        }
-        return nodes;
-      };
-
-      const isRangeFormatted = (range: Range, fmt: "bold" | "italic") => {
-        const textNodes = getTextNodesInRange(range);
-        if (textNodes.length === 0) return isAllContentFormatted(fmt);
-        return textNodes.every((textNode) => {
-          let node: Node | null = textNode.parentNode;
-          while (node && node !== el) {
-            if (isFormatTag(node, fmt)) return true;
-            node = node.parentNode;
-          }
-          return false;
-        });
-      };
-
-      const coversAllContent = (range: Range) =>
-        range.startContainer === el &&
-        range.startOffset === 0 &&
-        range.endContainer === el &&
-        range.endOffset === el.childNodes.length;
-
       const unwrapAll = (fmt: "bold" | "italic") => {
         const tags = fmt === "bold" ? ["b", "strong"] : ["i", "em"];
         el.querySelectorAll(tags.join(",")).forEach((elem) => {
@@ -2849,7 +2791,7 @@ export function LiveMaidEditor({
       };
 
       const toggleEntireContent = (fmt: "bold" | "italic") => {
-        if (isAllContentFormatted(fmt)) {
+        if (isAllContentFormatted(el, fmt)) {
           unwrapAll(fmt);
         } else {
           const wrapper = document.createElement(fmt === "bold" ? "b" : "i");
@@ -2914,13 +2856,13 @@ export function LiveMaidEditor({
 
       if (format === "bold" || format === "italic") {
         const fmt = format as "bold" | "italic";
-        const active = coversAllContent(range)
-          ? isAllContentFormatted(fmt)
-          : isRangeFormatted(range, fmt);
+        const active = coversAllContent(el, range)
+          ? isAllContentFormatted(el, fmt)
+          : isRangeFormatted(el, range, fmt);
 
         if (active) {
           unwrapAll(fmt);
-        } else if (coversAllContent(range)) {
+        } else if (coversAllContent(el, range)) {
           // When the whole editor is selected, wrap the entire content so the
           // alignment wrapper (if any) stays at the top level.
           toggleEntireContent(fmt);
@@ -2940,7 +2882,7 @@ export function LiveMaidEditor({
           }
         }
       } else if (format === "color" && colorValue) {
-        if (coversAllContent(range)) {
+        if (coversAllContent(el, range)) {
           const wrapper = document.createElement("span");
           wrapper.style.color = colorValue;
           wrapEntireContent(wrapper);
@@ -3278,7 +3220,7 @@ export function LiveMaidEditor({
             renameIndex = lines.findIndex((line) => {
               const trimmed = line.trim();
               if (!trimmed.startsWith("subgraph ")) return false;
-              return new RegExp(`^subgraph\\s+${selectedNodeId}\\b`).test(trimmed);
+              return new RegExp(`^subgraph\\s+${escapeRegExp(selectedNodeId)}\\b`).test(trimmed);
             });
           }
 
@@ -3320,7 +3262,7 @@ export function LiveMaidEditor({
             const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
             newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
           } else {
-            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${selectedNodeId}(\\s*)($|\\r?\\n)`);
+            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${escapeRegExp(selectedNodeId)}(\\s*)($|\\r?\\n)`);
             if (standaloneRegex.test(newCode)) {
               newCode = newCode.replace(
                 standaloneRegex,
@@ -3959,7 +3901,7 @@ export function LiveMaidEditor({
 
       const lines = newCode.split("\n");
       const filteredLines = lines.filter((line) => {
-        const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${selectedNodeId}([^a-zA-Z0-9_]|$)`);
+        const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapeRegExp(selectedNodeId)}([^a-zA-Z0-9_]|$)`);
         return !mentionRegex.test(line);
       });
 
