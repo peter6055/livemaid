@@ -118,7 +118,9 @@ function constrainStyleAttributes(html: string): string {
     const styleMatch = attrs.match(STYLE_ATTR_RE);
     if (!styleMatch) return full;
     const styleValue = (styleMatch[1] ?? styleMatch[2] ?? "").trim();
-    if (/^[\s;]*text-align\s*:\s*(left|center|right|start|end|justify)\s*;?[\s;]*$/i.test(styleValue)) {
+    if (
+      /^[\s;]*text-align\s*:\s*(left|center|right|start|end|justify)\s*;?[\s;]*$/i.test(styleValue)
+    ) {
       return `<${name} style="${styleValue}"${slash ? " /" : ""}>`;
     }
     // Strip the dangerous style attribute entirely.
@@ -173,7 +175,9 @@ function stripDisallowedHtml(html: string): string {
     const styleValue = (styleMatch[1] ?? styleMatch[2] ?? "").trim();
     // Keep only benign text-align declarations; strip url()/expression()/
     // javascript: payloads and any other property.
-    if (/^[\s;]*text-align\s*:\s*(left|center|right|start|end|justify)\s*;?[\s;]*$/i.test(styleValue)) {
+    if (
+      /^[\s;]*text-align\s*:\s*(left|center|right|start|end|justify)\s*;?[\s;]*$/i.test(styleValue)
+    ) {
       return `<${name} style="${styleValue}">`;
     }
     return `<${name}>`;
@@ -181,9 +185,8 @@ function stripDisallowedHtml(html: string): string {
 
   // 4. Normalize closing tags for allowlisted elements; drop closers for
   //    anything that slipped past step 2.
-  value = value.replace(
-    /<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>/g,
-    (_full, tagName) => (ALLOWED_TAG_NAMES.has(tagName.toLowerCase()) ? `</${tagName.toLowerCase()}>` : ""),
+  value = value.replace(/<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>/g, (_full, tagName) =>
+    ALLOWED_TAG_NAMES.has(tagName.toLowerCase()) ? `</${tagName.toLowerCase()}>` : "",
   );
 
   // 5. Collapse whitespace that the stripping steps may have introduced.
@@ -198,26 +201,28 @@ function stripDisallowedHtml(html: string): string {
  * - Decodes HTML entities
  */
 export function htmlToPlainText(html: string): string {
-  return html
-    .replace(/<br\s*\/?>/gi, "\n") // <br> → newline
-    .replace(/<\/?(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "\n") // Block elements → newline
-    .replace(/<[^>]+>/g, "") // Strip all other tags
-    // Decode HTML entities in a single pass so a decoded '&' is never
-    // re-processed by a later replacement (e.g. `&amp;lt;` stays `&lt;`).
-    .replace(
-      /&(amp|lt|gt|quot|#39|nbsp);/g,
-      (entity) =>
-        ({
-          "&amp;": "&",
-          "&lt;": "<",
-          "&gt;": ">",
-          "&quot;": '"',
-          "&#39;": "'",
-          "&nbsp;": " ",
-        })[entity] ?? entity,
-    )
-    .replace(/\n{3,}/g, "\n\n") // Collapse multiple newlines
-    .trim();
+  return (
+    html
+      .replace(/<br\s*\/?>/gi, "\n") // <br> → newline
+      .replace(/<\/?(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "\n") // Block elements → newline
+      .replace(/<[^>]+>/g, "") // Strip all other tags
+      // Decode HTML entities in a single pass so a decoded '&' is never
+      // re-processed by a later replacement (e.g. `&amp;lt;` stays `&lt;`).
+      .replace(
+        /&(amp|lt|gt|quot|#39|nbsp);/g,
+        (entity) =>
+          ({
+            "&amp;": "&",
+            "&lt;": "<",
+            "&gt;": ">",
+            "&quot;": '"',
+            "&#39;": "'",
+            "&nbsp;": " ",
+          })[entity] ?? entity,
+      )
+      .replace(/\n{3,}/g, "\n\n") // Collapse multiple newlines
+      .trim()
+  );
 }
 
 /**

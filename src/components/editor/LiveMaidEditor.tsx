@@ -1951,7 +1951,9 @@ export function LiveMaidEditor({
     // 1. Remove style lines
     const lines = newCode.split("\n");
     const filteredLines = lines.filter((line) => {
-      const isStyleLine = line.match(new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\b`));
+      const isStyleLine = line.match(
+        new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\b`),
+      );
       return !isStyleLine;
     });
     newCode = filteredLines.join("\n");
@@ -2729,7 +2731,9 @@ export function LiveMaidEditor({
     (format: string, colorValue?: string) => {
       if (!selectedNodeId) return;
       const getStyleVal = (property: string): string | null => {
-        const match = code.match(new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m"));
+        const match = code.match(
+          new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m"),
+        );
         if (match) {
           const propMatch = match[1].match(new RegExp(`${property}:\\s*([^,;\\s]+)`));
           return propMatch ? propMatch[1] : null;
@@ -3262,7 +3266,9 @@ export function LiveMaidEditor({
             const nodeRegexGlobal = new RegExp(nodeRegex.source, "gm");
             newCode = newCode.replace(nodeRegexGlobal, `$1$2${editingTextForSave}$4`);
           } else {
-            const standaloneRegex = new RegExp(`(^|\\n)(\\s*)${escapeRegExp(selectedNodeId)}(\\s*)($|\\r?\\n)`);
+            const standaloneRegex = new RegExp(
+              `(^|\\n)(\\s*)${escapeRegExp(selectedNodeId)}(\\s*)($|\\r?\\n)`,
+            );
             if (standaloneRegex.test(newCode)) {
               newCode = newCode.replace(
                 standaloneRegex,
@@ -3901,7 +3907,9 @@ export function LiveMaidEditor({
 
       const lines = newCode.split("\n");
       const filteredLines = lines.filter((line) => {
-        const mentionRegex = new RegExp(`(^|[^a-zA-Z0-9_])${escapeRegExp(selectedNodeId)}([^a-zA-Z0-9_]|$)`);
+        const mentionRegex = new RegExp(
+          `(^|[^a-zA-Z0-9_])${escapeRegExp(selectedNodeId)}([^a-zA-Z0-9_]|$)`,
+        );
         return !mentionRegex.test(line);
       });
 

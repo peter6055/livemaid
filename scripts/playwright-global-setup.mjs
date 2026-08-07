@@ -60,7 +60,11 @@ export default async function globalSetup() {
       proc.kill("SIGTERM");
       await new Promise((resolve) => {
         const forceKill = setTimeout(() => {
-          try { proc.kill("SIGKILL"); } catch { /* already dead */ }
+          try {
+            proc.kill("SIGKILL");
+          } catch {
+            /* already dead */
+          }
           resolve(undefined);
         }, 5000);
         proc.on("exit", () => {
