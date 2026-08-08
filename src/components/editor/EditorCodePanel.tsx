@@ -100,25 +100,6 @@ export function EditorCodePanel({
         toast.info("Already formatted");
         return;
       }
-      if (result.status === "skipped-indent-sensitive") {
-        if (result.formatted !== code) {
-          const editor = editorRef.current;
-          if (editor) {
-            const model = editor.getModel();
-            if (model) {
-              editor.pushUndoStop();
-              editor.executeEdits("format", [
-                { range: model.getFullModelRange(), text: result.formatted, forceMoveMarkers: true },
-              ]);
-            }
-          }
-          handleCodeChange(result.formatted);
-        }
-        toast.info(
-          `Structural formatting skipped for ${result.diagramType} (indent is semantic)`,
-        );
-        return;
-      }
       const editor = editorRef.current;
       if (editor) {
         const model = editor.getModel();
@@ -127,10 +108,15 @@ export function EditorCodePanel({
           editor.executeEdits("format", [
             { range: model.getFullModelRange(), text: result.formatted, forceMoveMarkers: true },
           ]);
+          editor.pushUndoStop();
         }
       }
       handleCodeChange(result.formatted);
-      toast.success("Code formatted");
+      if (result.skippedIndentSensitive) {
+        toast.info(`Structural formatting skipped for ${result.diagramType} (indent is semantic)`);
+      } else {
+        toast.success("Code formatted");
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       toast.error(`Formatting failed: ${message}`);

@@ -1,20 +1,19 @@
 import { determineDiagramType } from "@/lib/diagrams/utils";
 
-export type MermaidFormatStatus =
-  | "changed"
-  | "unchanged"
-  | "skipped-indent-sensitive";
+export type MermaidFormatStatus = "changed" | "unchanged";
 
 export type MermaidFormatResult = {
   formatted: string;
   status: MermaidFormatStatus;
   diagramType: string;
+  skippedIndentSensitive?: boolean;
 };
 
 const DEFAULT_INDENT = "    ";
 
 const BLOCK_OPEN = new Set([
   "subgraph",
+  "box",
   "loop",
   "alt",
   "opt",
@@ -28,11 +27,50 @@ const BLOCK_SAME = new Set(["else", "and", "option"]);
 
 const INDENT_SENSITIVE = new Set(["mindmap", "timeline"]);
 
-const BRACE_KEYWORD_OPEN =
-  /^(?:class|state|namespace)\s+\S[\s\S]*\{\s*$/i;
+const BRACE_KEYWORD_OPEN = /^(?:class|state|namespace)\s+\S[\s\S]*\{\s*$/i;
 
 /** ER entity bodies and similar: `CUSTOMER {` / `ORDER {` */
 const BRACE_GENERIC_OPEN = /^[A-Za-z_][\w-]*\s*\{\s*$/;
+
+const DIAGRAM_DECLARATIONS = new Set([
+  "flowchart",
+  "flowchart-elk",
+  "graph",
+  "sequencediagram",
+  "classdiagram",
+  "classdiagram-v2",
+  "erdiagram",
+  "statediagram",
+  "statediagram-v2",
+  "gitgraph",
+  "requirementdiagram",
+  "gantt",
+  "pie",
+  "journey",
+  "mindmap",
+  "timeline",
+  "quadrantchart",
+  "sankey",
+  "sankey-beta",
+  "xychart",
+  "xychart-beta",
+  "block",
+  "block-beta",
+  "architecture-beta",
+  "kanban",
+  "packet",
+  "packet-beta",
+  "radar",
+  "radar-beta",
+  "treemap",
+  "treemap-beta",
+  "zenuml",
+  "c4context",
+  "c4container",
+  "c4component",
+  "c4dynamic",
+  "c4deployment",
+]);
 
 function isBraceOpen(stripped: string): boolean {
   return BRACE_KEYWORD_OPEN.test(stripped) || BRACE_GENERIC_OPEN.test(stripped);
@@ -77,13 +115,8 @@ function collapseBlankLines(lines: string[]): string[] {
 
 function isDiagramDeclaration(stripped: string): boolean {
   if (!stripped || stripped.startsWith("%%")) return false;
-  return (
-    /^(?:flowchart|graph)(?:\s|$)/i.test(stripped) ||
-    /^(?:sequenceDiagram|classDiagram(?:-v2)?|erDiagram|stateDiagram(?:-v2)?|gitGraph|requirementDiagram|gantt|pie|journey|mindmap|timeline|quadrantChart|sankey(?:-beta)?|xychart(?:-beta)?|block(?:-beta)?|architecture-beta)\b/.test(
-      stripped,
-    ) ||
-    /^C4(?:Context|Container|Component|Dynamic|Deployment)\b/.test(stripped)
-  );
+  const firstWord = stripped.split(/\s+/)[0].toLowerCase();
+  return DIAGRAM_DECLARATIONS.has(firstWord);
 }
 
 /**
@@ -127,7 +160,7 @@ function formatBody(bodyLines: string[], indentUnit: string): string[] {
     }
 
     let depth: number;
-    if (isDecl || stripped.startsWith("%%{")) {
+    if (isDecl) {
       depth = 0;
     } else {
       const base = seenDiagramDecl ? 1 : 0;
@@ -135,8 +168,6 @@ function formatBody(bodyLines: string[], indentUnit: string): string[] {
         depth = base + braceDepth + Math.max(0, endBlockDepth - 1);
       } else if (stripped === "}") {
         depth = base + braceDepth;
-      } else if (firstWord === "end") {
-        depth = base + braceDepth + endBlockDepth;
       } else {
         depth = base + braceDepth + endBlockDepth;
       }
@@ -159,7 +190,9 @@ function formatBody(bodyLines: string[], indentUnit: string): string[] {
 
 /**
  * Format Mermaid source for LiveMaid's editor Format action.
- * Preserves YAML front matter. Skips structural re-indent for mindmap/timeline.
+ * Preserves YAML front matter. Indent-sensitive diagrams (mindmap/timeline) get
+ * light cleanup only and report `skippedIndentSensitive` so callers can explain
+ * that structural re-indentation is skipped.
  */
 export function formatMermaidSource(
   code: string,
@@ -170,23 +203,27 @@ export function formatMermaidSource(
   const lines = code.split("\n");
   const { frontMatterLines, bodyStartIndex } = extractFrontMatter(lines);
   const bodyLines = lines.slice(bodyStartIndex);
-  const frontMatter =
-    frontMatterLines.length > 0 ? frontMatterLines.join("\n") + "\n" : "";
+  const frontMatter = frontMatterLines.length > 0 ? frontMatterLines.join("\n") + "\n" : "";
+  const trailingNewline = code.endsWith("\n");
+  const newlineSuffix = trailingNewline ? "\n" : "";
 
   if (INDENT_SENSITIVE.has(diagramType)) {
     const cleaned = lightCleanupPreserveIndent(bodyLines);
-    const formatted = frontMatter + cleaned.join("\n");
-    if (formatted === code) {
-      return { formatted: code, status: "unchanged", diagramType };
-    }
-    return { formatted, status: "skipped-indent-sensitive", diagramType };
+    const formatted = frontMatter + cleaned.join("\n") + newlineSuffix;
+    return {
+      formatted,
+      status: formatted === code ? "unchanged" : "changed",
+      diagramType,
+      skippedIndentSensitive: true,
+    };
   }
 
   const reformatted = formatBody(bodyLines, indentUnit);
-  const formatted = frontMatter + reformatted.join("\n");
+  const formatted = frontMatter + reformatted.join("\n") + newlineSuffix;
 
-  if (formatted === code) {
-    return { formatted, status: "unchanged", diagramType };
-  }
-  return { formatted, status: "changed", diagramType };
+  return {
+    formatted,
+    status: formatted === code ? "unchanged" : "changed",
+    diagramType,
+  };
 }
