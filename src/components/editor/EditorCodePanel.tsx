@@ -2,6 +2,7 @@ import Editor, { type OnMount, type BeforeMount, type Monaco } from "@monaco-edi
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef } from "react";
 import { registerMermaidLanguage } from "@/lib/diagrams/mermaidMonarch";
+import { formatMermaidSource } from "@/lib/mermaid-format";
 import { Copy, AlignLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -93,107 +94,47 @@ export function EditorCodePanel({
   }, [code]);
 
   const handleFormat = useCallback(() => {
-    const INDENT = "    ";
-    const BLOCK_OPEN = new Set([
-      "subgraph",
-      "loop",
-      "alt",
-      "opt",
-      "par",
-      "critical",
-      "break",
-      "rect",
-    ]);
-    const BLOCK_SAME = new Set(["else", "and", "option"]);
-    const BLOCK_CLOSE = "end";
-
-    const lines = code.split("\n");
-
-    // Extract and preserve YAML front matter (--- … ---) at the start.
-    let frontMatterLines: string[] = [];
-    let bodyStartIndex = 0;
-    if (lines.length > 0 && lines[0].trim() === "---") {
-      const endIndex = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
-      if (endIndex > 0) {
-        frontMatterLines = lines.slice(0, endIndex + 1);
-        bodyStartIndex = endIndex + 1;
-        // Skip blank lines between front matter and body.
-        while (bodyStartIndex < lines.length && lines[bodyStartIndex].trim() === "") {
-          bodyStartIndex++;
+    try {
+      const result = formatMermaidSource(code);
+      if (result.status === "unchanged") {
+        toast.info("Already formatted");
+        return;
+      }
+      if (result.status === "skipped-indent-sensitive") {
+        if (result.formatted !== code) {
+          const editor = editorRef.current;
+          if (editor) {
+            const model = editor.getModel();
+            if (model) {
+              editor.pushUndoStop();
+              editor.executeEdits("format", [
+                { range: model.getFullModelRange(), text: result.formatted, forceMoveMarkers: true },
+              ]);
+            }
+          }
+          handleCodeChange(result.formatted);
+        }
+        toast.info(
+          `Structural formatting skipped for ${result.diagramType} (indent is semantic)`,
+        );
+        return;
+      }
+      const editor = editorRef.current;
+      if (editor) {
+        const model = editor.getModel();
+        if (model) {
+          editor.pushUndoStop();
+          editor.executeEdits("format", [
+            { range: model.getFullModelRange(), text: result.formatted, forceMoveMarkers: true },
+          ]);
         }
       }
+      handleCodeChange(result.formatted);
+      toast.success("Code formatted");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      toast.error(`Formatting failed: ${message}`);
     }
-    const bodyLines = lines.slice(bodyStartIndex);
-
-    // Pass 1: trim trailing whitespace on every line.
-    const trimmed = bodyLines.map((l) => l.replace(/\s+$/, ""));
-
-    // Pass 2: collapse consecutive blank lines, keep leading/trailing blanks.
-    const collapsed: string[] = [];
-    let prevBlank = false;
-    for (const line of trimmed) {
-      const isBlank = line.trim() === "";
-      if (isBlank && prevBlank) continue;
-      collapsed.push(line);
-      prevBlank = isBlank;
-    }
-    while (collapsed.length > 0 && collapsed[0].trim() === "") collapsed.shift();
-    while (collapsed.length > 0 && collapsed[collapsed.length - 1].trim() === "") collapsed.pop();
-
-    // Pass 3: re-indent based on block depth.
-    let depth = 0;
-    const reformatted: string[] = [];
-    for (const rawLine of collapsed) {
-      const stripped = rawLine.trim();
-      if (stripped === "") {
-        reformatted.push("");
-        continue;
-      }
-
-      // Extract the first keyword (case-insensitive).
-      const firstWord = stripped.split(/\s+/)[0].toLowerCase();
-
-      // "end" closes a block — outdent BEFORE printing.
-      if (firstWord === BLOCK_CLOSE) {
-        depth = Math.max(0, depth - 1);
-        reformatted.push(INDENT.repeat(depth) + stripped);
-        continue;
-      }
-
-      // "else", "and", "option" are at the SAME level as their parent block.
-      if (BLOCK_SAME.has(firstWord)) {
-        reformatted.push(INDENT.repeat(Math.max(0, depth - 1)) + stripped);
-        continue;
-      }
-
-      // Normal line — print at current depth.
-      reformatted.push(INDENT.repeat(depth) + stripped);
-
-      // If this line opens a block, increase depth for subsequent lines.
-      if (BLOCK_OPEN.has(firstWord)) {
-        depth++;
-      }
-    }
-
-    const bodyFormatted = reformatted.join("\n");
-    const frontMatter = frontMatterLines.length > 0 ? frontMatterLines.join("\n") + "\n" : "";
-    const formatted = frontMatter + bodyFormatted;
-    if (formatted === code) {
-      toast.info("Already formatted");
-      return;
-    }
-    const editor = editorRef.current;
-    if (editor) {
-      const model = editor.getModel();
-      if (model) {
-        editor.pushUndoStop();
-        editor.executeEdits("format", [
-          { range: model.getFullModelRange(), text: formatted, forceMoveMarkers: true },
-        ]);
-      }
-    }
-    handleCodeChange(formatted);
-    toast.success("Code formatted");
   }, [code, handleCodeChange]);
 
   return (
