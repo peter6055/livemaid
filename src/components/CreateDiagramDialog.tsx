@@ -313,7 +313,11 @@ export function CreateDiagramDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={!canCreate}>
+          <Button
+            onClick={() => void submit()}
+            disabled={!canCreate}
+            className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white"
+          >
             Create diagram
           </Button>
         </DialogFooter>
