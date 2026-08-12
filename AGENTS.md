@@ -179,6 +179,29 @@ The regression plan identifies which existing features are at risk of breaking d
 
 <!-- END:regression-planning-rules -->
 
+<!-- BEGIN:issue-tracking-rules -->
+
+# Issue Tracking & Private Planning Repo
+
+LiveMaid uses two GitHub repositories for issue tracking:
+
+| Repository           | URL                                             | Purpose                                                         |
+| -------------------- | ----------------------------------------------- | --------------------------------------------------------------- |
+| **Public code**      | `https://github.com/peter6055/livemaid`         | Sanitized, contributor-facing bugs and features only            |
+| **Private planning** | `https://github.com/peter6055/livemaid-project` | Internal issues, full epics, handover notes, agent session logs |
+
+## Rules for agents
+
+1. **Default to `livemaid-project`** for all internal work: full epics, handover notes, session transcripts, and any content with private diagram data, credentials, or non-public context.
+2. **Use public `livemaid` issues only** when content is fully sanitized and ready for open-source contributors.
+3. **Never post** private spec text, handover logs, or sensitive context on public issues, PRs, commits, or code comments.
+4. **Cross-link** when both repos track related work: `Private spec: peter6055/livemaid-project#N`.
+5. Access to `livemaid-project` is limited to the maintainer, AI agents, and verified contributors.
+
+Full reporting workflow: [`reference/skills/reporting-bugs-and-epics.md`](reference/skills/reporting-bugs-and-epics.md).
+
+<!-- END:issue-tracking-rules -->
+
 <!-- BEGIN:git-workflow-rules -->
 
 # Git Workflow & Commit Rules

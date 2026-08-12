@@ -48,20 +48,20 @@ import {
 } from "@/lib/diagrams/stateDiagram";
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { getMindmapNode, parseMindmap, type MindmapShapeKind } from "@/lib/diagrams/mindmap";
+import {
+  findTimelineSvgElementByNodeId,
+  getTimelineDirection,
+  getTimelineNode,
+  timelineHasNodes,
+  timelineRenderOrder,
+  type TimelineNodeKind,
+} from "@/lib/diagrams/timeline";
+import { TimelineNodeToolbar } from "./TimelineNodeToolbar";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
 import { findSeqReorderTargetSlot } from "@/lib/diagrams/sequenceReorder";
-import {
-  CSSProperties,
-  RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
@@ -233,6 +233,18 @@ interface EditorCanvasProps {
   onAddMindmapChild?: (nodeId: string) => void;
   onDeleteMindmapNode?: (nodeId: string) => void;
   onChangeMindmapShape?: (nodeId: string, shape: MindmapShapeKind) => void;
+  /** Timeline: add an event before/after an event, or append one to a period. */
+  onTimelineAddEvent?: (nodeId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new period above/below the target event or period. */
+  onTimelineAddPeriod?: (nodeId: string, placement: "above" | "below") => void;
+  /** Timeline: add a new period above/below the periods of a section. */
+  onTimelineAddPeriodToSection?: (sectionId: string, placement: "above" | "below") => void;
+  /** Timeline: add a new section. */
+  onTimelineAddSection?: () => void;
+  /** Timeline: delete a node (event/period/section). */
+  onTimelineDelete?: (nodeId: string) => void;
+  /** Timeline: drag-reorder a node before/after another node. */
+  onTimelineMove?: (sourceId: string, targetId: string, placement: "before" | "after") => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -386,6 +398,15 @@ function CommentFocusSync({
   return null;
 }
 
+type TimelineReorderNode = {
+  id: string;
+  kind: TimelineNodeKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export function EditorCanvas({
   code,
   parseError,
@@ -501,6 +522,12 @@ export function EditorCanvas({
   onAddMindmapChild,
   onDeleteMindmapNode,
   onChangeMindmapShape,
+  onTimelineAddEvent,
+  onTimelineAddPeriod,
+  onTimelineAddPeriodToSection,
+  onTimelineAddSection,
+  onTimelineDelete,
+  onTimelineMove,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -654,6 +681,29 @@ export function EditorCanvas({
     slots: Array<{ slot: number; x: number; w: number }>;
     cursorX: number;
     targetSlot: number | null;
+  } | null>(null);
+  // Viewport-space (canvasShellRef-relative) state for dragging a selected timeline node's grip to
+  // reorder it before/after another node. Lives outside the TransformWrapper; canvas panning is
+  // disabled while active (mirrors seqReorder). `nodes` holds every node's live screen-space box so
+  // target resolution and the drop indicator share one consistent coordinate system.
+  const [timelineReorder, setTimelineReorder] = useState<{
+    fromId: string;
+    fromKind: TimelineNodeKind;
+    cursorX: number;
+    cursorY: number;
+    nodes: TimelineReorderNode[];
+    contentBounds: { minX: number; minY: number; maxX: number; maxY: number };
+    slots: Array<{
+      id: string;
+      placement: "before" | "after";
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      guidePos: number;
+    }>;
+    targetId: string | null;
+    placement: "before" | "after" | null;
   } | null>(null);
   // Class-diagram connection drag (the purple +). All viewport-space (canvasShellRef-relative),
   // rendered outside TransformWrapper so pan/zoom never distorts it. `classConnecting` disables
@@ -835,6 +885,7 @@ export function EditorCanvas({
           el.closest?.("[data-scale-lock-shadow]") ||
           el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
+          el.closest?.(".timeline-reorder-handle") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
         ),
       );
@@ -1372,6 +1423,88 @@ export function EditorCanvas({
     [code, currentType],
   );
 
+  const selectedTimelineNode = useMemo(() => {
+    if (currentType !== "timeline" || !selectedNodeId?.startsWith("TIMELINE_")) return null;
+    return getTimelineNode(code, selectedNodeId);
+  }, [code, currentType, selectedNodeId]);
+
+  // Canvas-space hit boxes for every timeline node so click+drag reorders without select-first
+  // (mirrors sequenceMessageTriggerAreas). Measured from live SVG after each re-render.
+  const [timelineHitAreas, setTimelineHitAreas] = useState<
+    Array<{ id: string; x: number; y: number; width: number; height: number }>
+  >([]);
+
+  useEffect(() => {
+    if (currentType !== "timeline") {
+      setTimelineHitAreas([]);
+      return;
+    }
+    let rafId = 0;
+    let attempts = 0;
+    let settledFrames = 0;
+    let prevKey = "";
+    let lastAreas: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    const total = timelineRenderOrder(code).length;
+    const MAX_ATTEMPTS = 200;
+    // RerenderSettle: `centerOnInit` animates the zoom/pan transform over several
+    // frames, so a single snapshot is mid-animation and lands in stale coords.
+    // Keep measuring every frame until identical measurements repeat (2 frames).
+    const compute = (): string => {
+      const container = containerRef.current;
+      if (!container) return "";
+      const containerRect = container.getBoundingClientRect();
+      const scale = containerRect.width / (container.offsetWidth || 1) || 1;
+      const areas: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      for (const entry of timelineRenderOrder(code)) {
+        const el = findTimelineSvgElementByNodeId(code, container, entry.id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        areas.push({
+          id: entry.id,
+          x: (r.left - containerRect.left) / scale,
+          y: (r.top - containerRect.top) / scale,
+          width: r.width / scale,
+          height: r.height / scale,
+        });
+      }
+      if (areas.length < total) return "";
+      lastAreas = areas;
+      return areas
+        .map((a) => `${a.id}:${a.x.toFixed(2)},${a.y.toFixed(2)},${a.width.toFixed(2)}`)
+        .join("|");
+    };
+    const tick = () => {
+      const key = compute();
+      if (key && key === prevKey) {
+        settledFrames += 1;
+      } else {
+        settledFrames = 0;
+      }
+      prevKey = key;
+      if (settledFrames >= 2 && key) {
+        setTimelineHitAreas(lastAreas);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        if (lastAreas.length > 0) setTimelineHitAreas(lastAreas);
+        else setTimelineHitAreas([]);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [currentType, code, svgContent, containerRef]);
+
+  const timelineHasAnyNodes = useMemo(
+    () => (currentType === "timeline" ? timelineHasNodes(code) : true),
+    [code, currentType],
+  );
+
   const connectSourceStateIsComposite = useMemo(
     () => (connectSourceState ? isCompositeState(code, connectSourceState) : false),
     [connectSourceState, code],
@@ -1860,6 +1993,203 @@ export function EditorCanvas({
     window.addEventListener("mouseup", onUp);
   };
 
+  // Begin dragging a timeline node to reorder it before/after another node (sequence-style
+  // direct-drag — no select-first). Node boxes are captured live from the DOM in viewport
+  // (canvasShellRef-relative) space so pan/zoom never distorts coordinates (panning is also
+  // disabled while active). Only same-kind moves are valid for sections and periods; events may
+  // be dropped before/after another event OR a period (moving between sections). Click without
+  // drag selects the node (handle is excluded from the document-capture selector).
+  const startTimelineReorderDrag = (e: React.MouseEvent<HTMLDivElement>, fromId: string) => {
+    e.stopPropagation();
+    const shell = canvasShellRef.current;
+    const container = containerRef.current;
+    if (!shell || !container) return;
+    const shellRect = shell.getBoundingClientRect();
+    const horizontal = getTimelineDirection(code) === "LR";
+    const nodes: TimelineReorderNode[] = [];
+    for (const entry of timelineRenderOrder(code)) {
+      const el = findTimelineSvgElementByNodeId(code, container, entry.id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      nodes.push({
+        id: entry.id,
+        kind: entry.kind,
+        x: r.left - shellRect.left,
+        y: r.top - shellRect.top,
+        w: r.width,
+        h: r.height,
+      });
+    }
+
+    const selectFromNode = () => {
+      const el = findTimelineSvgElementByNodeId(code, container, fromId);
+      if (!el) return;
+      const syntheticEvent = {
+        target: el,
+        currentTarget: container,
+        detail: e.detail,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        stopPropagation: () => {},
+        preventDefault: () => {},
+      } as unknown as React.MouseEvent<HTMLDivElement>;
+      handleSvgClick(syntheticEvent);
+    };
+
+    const source = nodes.find((n) => n.id === fromId);
+    if (!source || nodes.length < 2) {
+      selectFromNode();
+      return;
+    }
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.w);
+      maxY = Math.max(maxY, n.y + n.h);
+    }
+    const contentBounds = { minX, minY, maxX, maxY };
+    const contentW = Math.max(0, maxX - minX);
+    const contentH = Math.max(0, maxY - minY);
+
+    const SLOT_THICK = 22;
+    const HIT_TOL = 34;
+    const slots: Array<{
+      id: string;
+      placement: "before" | "after";
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      guidePos: number;
+    }> = [];
+    for (const n of nodes) {
+      if (n.id === fromId) continue;
+      if (source.kind === "section" && n.kind !== "section") continue;
+      if (source.kind === "period" && n.kind !== "period") continue;
+      if (source.kind === "event" && n.kind !== "event" && n.kind !== "period") continue;
+      const inset = 5;
+      if (horizontal) {
+        const beforeGuide = n.x - inset;
+        const afterGuide = n.x + n.w + inset;
+        slots.push({
+          id: n.id,
+          placement: "before",
+          x: beforeGuide - SLOT_THICK / 2,
+          y: minY,
+          w: SLOT_THICK,
+          h: contentH,
+          guidePos: beforeGuide,
+        });
+        slots.push({
+          id: n.id,
+          placement: "after",
+          x: afterGuide - SLOT_THICK / 2,
+          y: minY,
+          w: SLOT_THICK,
+          h: contentH,
+          guidePos: afterGuide,
+        });
+      } else {
+        const beforeGuide = n.y - inset;
+        const afterGuide = n.y + n.h + inset;
+        slots.push({
+          id: n.id,
+          placement: "before",
+          x: minX,
+          y: beforeGuide - SLOT_THICK / 2,
+          w: contentW,
+          h: SLOT_THICK,
+          guidePos: beforeGuide,
+        });
+        slots.push({
+          id: n.id,
+          placement: "after",
+          x: minX,
+          y: afterGuide - SLOT_THICK / 2,
+          w: contentW,
+          h: SLOT_THICK,
+          guidePos: afterGuide,
+        });
+      }
+    }
+    if (slots.length === 0) {
+      selectFromNode();
+      return;
+    }
+
+    e.preventDefault();
+
+    const findTarget = (cursorX: number, cursorY: number) => {
+      let best: { id: string; placement: "before" | "after" } | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const s of slots) {
+        const cx = s.x + s.w / 2;
+        const cy = s.y + s.h / 2;
+        const dist = horizontal ? Math.abs(cursorX - cx) : Math.abs(cursorY - cy);
+        const tol = horizontal ? s.w / 2 + HIT_TOL : s.h / 2 + HIT_TOL;
+        if (dist <= tol && dist < bestDist) {
+          bestDist = dist;
+          best = { id: s.id, placement: s.placement };
+        }
+      }
+      return best;
+    };
+
+    let dragging = false;
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+        if (selectedNodeId && selectedNodeId !== fromId) {
+          onDeselect?.();
+        }
+      }
+      if (!dragging) return;
+      ev.preventDefault();
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
+      const target = findTarget(cursorX, cursorY);
+      setTimelineReorder({
+        fromId,
+        fromKind: source.kind,
+        cursorX,
+        cursorY,
+        nodes,
+        contentBounds,
+        slots,
+        targetId: target?.id ?? null,
+        placement: target?.placement ?? null,
+      });
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (dragging) {
+        const cursorX = ev.clientX - shellRect.left;
+        const cursorY = ev.clientY - shellRect.top;
+        const target = findTarget(cursorX, cursorY);
+        if (target) {
+          onTimelineMove?.(fromId, target.id, target.placement);
+        }
+      } else {
+        selectFromNode();
+      }
+      setTimelineReorder(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div
       ref={canvasShellRef}
@@ -1892,6 +2222,7 @@ export function EditorCanvas({
             !!seqReorder ||
             seqEndpointDragging ||
             !!seqLifelineReorder ||
+            !!timelineReorder ||
             classConnecting ||
             erConnecting ||
             stateConnecting,
@@ -1900,6 +2231,7 @@ export function EditorCanvas({
             "seq-msg-reorder-handle",
             "seq-endpoint-handle",
             "seq-actor-reorder-handle",
+            "timeline-reorder-handle",
             "class-connect-btn",
             "class-relation-hit-target",
             "er-connect-btn",
@@ -2051,7 +2383,8 @@ export function EditorCanvas({
               >
                 {parseError &&
                   !isBlankDiagram &&
-                  !(currentType === "mindmap" && !mindmapHasNodes) && (
+                  !(currentType === "mindmap" && !mindmapHasNodes) &&
+                  !(currentType === "timeline" && !timelineHasAnyNodes) && (
                     <div
                       className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
                       onClick={(e) => e.stopPropagation()}
@@ -2563,6 +2896,32 @@ export function EditorCanvas({
                     />
                   )}
 
+                {/* Timeline reorder grab overlays — DIRECT-DRAG on any node (sequence-style), no
+                    select-first. Canvas-space boxes from timelineHitAreas. Class
+                    `timeline-reorder-handle` is in panning.excluded; click-select /
+                    dblclick-rename resolve the SVG behind via elementsFromPoint. */}
+                {!isInlineEditing &&
+                  currentType === "timeline" &&
+                  !isLocked &&
+                  !isCommentMode &&
+                  !timelineReorder &&
+                  timelineHitAreas.map((area) => (
+                    <div
+                      key={`timeline-hit-${area.id}`}
+                      data-timeline-reorder-handle
+                      data-timeline-reorder-node={area.id}
+                      className="timeline-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                      style={{
+                        left: area.x - 4 / state.scale,
+                        top: area.y - 4 / state.scale,
+                        width: area.width + 8 / state.scale,
+                        height: area.height + 8 / state.scale,
+                      }}
+                      title="Drag to reorder · click to select · double-click to rename"
+                      onMouseDown={(e) => startTimelineReorderDrag(e, area.id)}
+                    />
+                  ))}
+
                 {selectionBox && !isLocked && (
                   <div
                     data-scale-lock-border
@@ -2808,11 +3167,28 @@ export function EditorCanvas({
                           }
                           onDelete={() => onDeleteMindmapNode?.(selectedMindmapNode.id)}
                         />
+                      ) : currentType === "timeline" && selectedTimelineNode ? (
+                        <TimelineNodeToolbar
+                          scale={state.scale}
+                          nodeKind={selectedTimelineNode.kind}
+                          onAddEvent={(placement) =>
+                            onTimelineAddEvent?.(selectedTimelineNode.id, placement)
+                          }
+                          onAddPeriod={(placement) =>
+                            selectedTimelineNode.kind === "section"
+                              ? onTimelineAddPeriodToSection?.(selectedTimelineNode.id, placement)
+                              : onTimelineAddPeriod?.(selectedTimelineNode.id, placement)
+                          }
+                          onAddSection={() => onTimelineAddSection?.()}
+                          onEditLabel={(e) => handleEditClick(e)}
+                          onDelete={() => onTimelineDelete?.(selectedTimelineNode.id)}
+                        />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||
                         currentType === "erDiagram" ||
                         currentType === "stateDiagram" ||
-                        currentType === "mindmap" ? null : (
+                        currentType === "mindmap" ||
+                        currentType === "timeline" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -2900,11 +3276,44 @@ export function EditorCanvas({
                       )}
 
                     {!isInlineEditing &&
+                      currentType === "timeline" &&
+                      selectedTimelineNode &&
+                      selectedTimelineNode.kind !== "section" &&
+                      selectionBox && (
+                        <div
+                          data-scale-lock
+                          data-base-transform="translateX(-50%) translateY(100%)"
+                          className="absolute left-1/2 pointer-events-auto origin-top"
+                          style={{
+                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onTimelineAddEvent?.(selectedTimelineNode.id, "after");
+                            }}
+                            className="h-5 w-5 rounded-full bg-indigo-500 text-white shadow-md transition-transform hover:scale-110 hover:bg-indigo-600 flex items-center justify-center"
+                            title="Click to add event"
+                          >
+                            <Plus className="h-3 w-3 pointer-events-none" />
+                          </button>
+                        </div>
+                      )}
+
+                    {!isInlineEditing &&
                       currentType !== "sequence" &&
                       currentType !== "classDiagram" &&
                       currentType !== "erDiagram" &&
                       currentType !== "stateDiagram" &&
                       currentType !== "mindmap" &&
+                      currentType !== "timeline" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -3471,6 +3880,99 @@ export function EditorCanvas({
               borderRadius: 9999,
             }}
           />
+        </div>
+      )}
+
+      {/* Timeline reorder drop slots — viewport-relative (canvasShellRef), outside TransformWrapper,
+          so pan/zoom never shifts them (panning disabled during drag). Mirrors sequence lifeline
+          reorder: hatched candidate slot markers + active highlight + cursor placement guide. */}
+      {timelineReorder && (
+        <div
+          className="absolute inset-0 pointer-events-none z-30"
+          data-timeline-reorder-overlay
+          data-timeline-reorder-target={timelineReorder.targetId ?? "none"}
+          data-timeline-reorder-placement={timelineReorder.placement ?? "none"}
+        >
+          {timelineReorder.slots.map((s) => {
+            const active =
+              timelineReorder.targetId === s.id && timelineReorder.placement === s.placement;
+            const alpha = active ? 0.38 : 0.16;
+            const w = active ? Math.min(s.w + 6, s.w * 1.6 + 2) : s.w;
+            const h = active ? Math.min(s.h + 6, s.h * 1.6 + 2) : s.h;
+            const horizontal = getTimelineDirection(code) === "LR";
+            return (
+              <div
+                key={`timeline-drop-${s.id}-${s.placement}`}
+                className="absolute rounded-md"
+                style={{
+                  left: horizontal ? s.x + (s.w - w) / 2 : s.x,
+                  top: horizontal ? s.y : s.y + (s.h - h) / 2,
+                  width: horizontal ? w : s.w,
+                  height: horizontal ? s.h : h,
+                  border: active ? "2px solid #4f46e5" : "1.5px dashed #818cf8",
+                  backgroundImage: `repeating-linear-gradient(45deg, rgba(99,102,241,${alpha}) 0, rgba(99,102,241,${alpha}) 6px, transparent 6px, transparent 12px)`,
+                  transition:
+                    "left 60ms linear, top 60ms linear, width 60ms linear, height 60ms linear",
+                }}
+              />
+            );
+          })}
+          {(() => {
+            const horizontal = getTimelineDirection(code) === "LR";
+            // Span the full diagram extent (all nodes), not just the first/top slot item.
+            let minX = Number.POSITIVE_INFINITY;
+            let minY = Number.POSITIVE_INFINITY;
+            let maxX = Number.NEGATIVE_INFINITY;
+            let maxY = Number.NEGATIVE_INFINITY;
+            for (const n of timelineReorder.nodes) {
+              minX = Math.min(minX, n.x);
+              minY = Math.min(minY, n.y);
+              maxX = Math.max(maxX, n.x + n.w);
+              maxY = Math.max(maxY, n.y + n.h);
+            }
+            if (!Number.isFinite(minX)) {
+              for (const s of timelineReorder.slots) {
+                minX = Math.min(minX, s.x);
+                minY = Math.min(minY, s.y);
+                maxX = Math.max(maxX, s.x + s.w);
+                maxY = Math.max(maxY, s.y + s.h);
+              }
+            }
+            // Snap the guide to the active slot's insertion position so the indicator
+            // always shows the EXACT drop position rather than tracking the cursor.
+            const activeSlot = timelineReorder.slots.find(
+              (s) => timelineReorder.targetId === s.id && timelineReorder.placement === s.placement,
+            );
+            const guideX = activeSlot ? activeSlot.guidePos : timelineReorder.cursorX;
+            const guideY = activeSlot ? activeSlot.guidePos : timelineReorder.cursorY;
+            return (
+              <div
+                className="absolute"
+                data-timeline-reorder-guide
+                style={
+                  horizontal
+                    ? {
+                        top: minY,
+                        height: Math.max(0, maxY - minY),
+                        left: guideX - 1.5,
+                        width: 3,
+                        background: "#4f46e5",
+                        opacity: 0.85,
+                        borderRadius: 9999,
+                      }
+                    : {
+                        left: minX,
+                        width: Math.max(0, maxX - minX),
+                        top: guideY - 1.5,
+                        height: 3,
+                        background: "#4f46e5",
+                        opacity: 0.85,
+                        borderRadius: 9999,
+                      }
+                }
+              />
+            );
+          })()}
         </div>
       )}
 

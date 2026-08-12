@@ -13,6 +13,11 @@ import {
   getSortedSequenceNoteTextElements,
 } from "@/lib/diagrams/sequenceNotes";
 import { findMindmapSvgElementByNodeId, mindmapNodeIdFromSvgElement } from "@/lib/diagrams/mindmap";
+import {
+  findTimelineSvgElementByNodeId,
+  timelineNodeIdFromSvgElement,
+  timelineNodeLabel,
+} from "@/lib/diagrams/timeline";
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
 // produce the unified hover/selection border box. The hover box and the selection box
@@ -2026,6 +2031,7 @@ export function useCanvasInteraction({
       // State-diagram transition edge ids are kept verbatim too (`STATE_EDGE_edge<N>`).
       if (id.startsWith("STATE_EDGE_")) return id;
       if (id.startsWith("MINDMAP_")) return id;
+      if (id.startsWith("TIMELINE_")) return id;
       let cleanId = id.replace("-hit-target", "");
 
       // 1. Remove render ID prefix if present
@@ -2104,6 +2110,12 @@ export function useCanvasInteraction({
       }
     } else if (selectedNodeId.startsWith("MINDMAP_")) {
       const node = findMindmapSvgElementByNodeId(code, containerRef.current, selectedNodeId);
+      if (node) {
+        foundElement = node;
+        foundRawSvgId = node.id || null;
+      }
+    } else if (selectedNodeId.startsWith("TIMELINE_")) {
+      const node = findTimelineSvgElementByNodeId(code, containerRef.current, selectedNodeId);
       if (node) {
         foundElement = node;
         foundRawSvgId = node.id || null;
@@ -2571,6 +2583,19 @@ export function useCanvasInteraction({
           }
         }
 
+        if (currentDiagramType === "timeline") {
+          const timelineNodeId = containerRef.current
+            ? timelineNodeIdFromSvgElement(code, containerRef.current, currentNode)
+            : null;
+          if (timelineNodeId) {
+            const group = currentNode.closest("g.timeline-node");
+            foundNodeClass = true;
+            nodeId = timelineNodeId;
+            currentNode = (group ?? currentNode) as SVGElement;
+            break;
+          }
+        }
+
         if (
           currentNode.classList?.contains("node") ||
           currentNode.classList?.contains("cluster") ||
@@ -2855,7 +2880,8 @@ export function useCanvasInteraction({
             nodeId.startsWith("CLASS_EDGE_") ||
             nodeId.startsWith("ER_EDGE_") ||
             nodeId.startsWith("STATE_EDGE_") ||
-            nodeId.startsWith("MINDMAP_")
+            nodeId.startsWith("MINDMAP_") ||
+            nodeId.startsWith("TIMELINE_")
             ? nodeId
             : normalizeId(nodeId)
           : null;
@@ -3145,7 +3171,14 @@ export function useCanvasInteraction({
       if ("stopPropagation" in e) e.stopPropagation();
 
       const currentType = determineDiagramType(code);
-      if (!(currentType === "graph" || currentType === "flowchart" || currentType === "sequence")) {
+      if (
+        !(
+          currentType === "graph" ||
+          currentType === "flowchart" ||
+          currentType === "sequence" ||
+          currentType === "timeline"
+        )
+      ) {
         return;
       }
 
@@ -3412,6 +3445,11 @@ export function useCanvasInteraction({
       } else if (targetNodeId.startsWith("SEQ_")) {
         currentText = targetNodeId.replace("SEQ_", "");
         currentText = currentText.replace(/<br\/>/g, "\n");
+      } else if (targetNodeId.startsWith("TIMELINE_")) {
+        // Timeline event/period/section label — resolve directly from the parsed model
+        // (the SVG group carries no stable id, so source-based label lookup is the
+        // single reliable path for inline editing).
+        currentText = timelineNodeLabel(code, targetNodeId) ?? "";
       } else if (isEdgeId(targetNodeId)) {
         // Distinguish a real edge (path / edgeLabel) from a node whose Mermaid
         // SVG id just happens to start with `L_` / `L-` / `e_` (e.g. a node
@@ -3512,6 +3550,7 @@ export function useCanvasInteraction({
       }
       if (
         !targetNodeId.startsWith("SEQ_") &&
+        !targetNodeId.startsWith("TIMELINE_") &&
         (!isEdgeId(targetNodeId) || currentText === targetNodeId)
       ) {
         // Try ["..."] shape first (e.g. NODE["label with (parens)"])

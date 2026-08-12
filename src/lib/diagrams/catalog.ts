@@ -50,7 +50,9 @@ export const DIAGRAM_CATALOG: DiagramCatalogItem[] = [
                 ? "Sketch entities, attributes, and relationships."
                 : item.id === "stateDiagram"
                   ? "Represent states, transitions, and composite states."
-                  : "Create a hierarchical mindmap from Mermaid text.",
+                  : item.id === "mindmap"
+                    ? "Create a hierarchical mindmap from Mermaid text."
+                    : "Show chronological events by period or section with two-way editing.",
       capability: TWO_WAY_TYPES.has(item.id) ? "two-way" : "code-only",
       group: "template",
     }),
@@ -77,18 +79,6 @@ export const DIAGRAM_CATALOG: DiagramCatalogItem[] = [
     "Flowcharts" : 45
     "Sequences" : 30
     "Other" : 25`,
-    group: "code-only",
-  },
-  {
-    id: "timeline",
-    label: "Timeline",
-    description: "Show chronological events by period or section.",
-    capability: "code-only",
-    defaultCode: `timeline
-    title Product Milestones
-    2026 Q1 : Research
-    2026 Q2 : Build
-    2026 Q3 : Launch`,
     group: "code-only",
   },
   {

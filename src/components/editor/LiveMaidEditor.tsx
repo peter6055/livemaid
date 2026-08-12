@@ -170,6 +170,16 @@ import {
   mindmapLineFromNodeId,
   type MindmapShapeKind,
 } from "@/lib/diagrams/mindmap";
+import {
+  addTimelineEventToPeriod,
+  addTimelinePeriodNear,
+  addTimelinePeriodToSection,
+  addTimelineSection,
+  deleteTimelineNode,
+  getTimelineNode,
+  moveTimelineNode,
+  renameTimelineNode,
+} from "@/lib/diagrams/timeline";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -536,6 +546,76 @@ export function LiveMaidEditor({
       if (newCode !== code) handleCodeChange(newCode);
     },
     [code, handleCodeChange],
+  );
+
+  const handleTimelineAddEvent = useCallback(
+    (nodeId: string, placement: "before" | "after") => {
+      const result = addTimelineEventToPeriod(code, nodeId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddPeriod = useCallback(
+    (nodeId: string, placement: "above" | "below") => {
+      const target = getTimelineNode(code, nodeId);
+      const result =
+        target?.kind === "section"
+          ? addTimelinePeriodToSection(code, nodeId, placement)
+          : addTimelinePeriodNear(code, nodeId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddPeriodToSection = useCallback(
+    (sectionId: string, placement: "above" | "below") => {
+      const result = addTimelinePeriodToSection(code, sectionId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddSection = useCallback(() => {
+    const result = addTimelineSection(code);
+    if (result.code !== code) {
+      handleCodeChange(result.code);
+      setSelectedNodeId(result.nodeId);
+      setSelectedSvgId(null);
+    }
+  }, [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId]);
+
+  const handleTimelineDelete = useCallback(
+    (nodeId: string) => {
+      const newCode = deleteTimelineNode(code, nodeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleTimelineMove = useCallback(
+    (sourceId: string, targetId: string, placement: "before" | "after") => {
+      const newCode = moveTimelineNode(code, sourceId, targetId, placement);
+      if (newCode !== code) {
+        handleCodeChange(newCode);
+        setSelectedNodeId(targetId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
   );
 
   // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
@@ -3147,6 +3227,10 @@ export function LiveMaidEditor({
           return line;
         })
         .join("\n");
+    } else if (selectedNodeId.startsWith("TIMELINE_")) {
+      const newText = latestEditingText.replace(/\n/g, " ").trim();
+      const renamed = renameTimelineNode(code, selectedNodeId, newText);
+      if (renamed !== code) newCode = renamed;
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
@@ -5009,6 +5093,12 @@ export function LiveMaidEditor({
               onAddMindmapChild={handleAddMindmapChild}
               onDeleteMindmapNode={handleDeleteMindmapNode}
               onChangeMindmapShape={handleChangeMindmapShape}
+              onTimelineAddEvent={handleTimelineAddEvent}
+              onTimelineAddPeriod={handleTimelineAddPeriod}
+              onTimelineAddPeriodToSection={handleTimelineAddPeriodToSection}
+              onTimelineAddSection={handleTimelineAddSection}
+              onTimelineDelete={handleTimelineDelete}
+              onTimelineMove={handleTimelineMove}
               handleUpdateStyle={handleUpdateStyle}
               handleFormatNodeLabel={handleFormatNodeLabel}
               handleChangeShape={handleChangeShape}
