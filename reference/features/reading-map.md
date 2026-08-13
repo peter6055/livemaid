@@ -24,10 +24,10 @@ Then read the relevant deep-dive:
 
 ## Support Matrix
 
-- Two-way canvas editing: `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`, `erDiagram`, `stateDiagram` / `stateDiagram-v2`, and `mindmap`.
+- Two-way canvas editing: `flowchart`/`graph`, `sequenceDiagram`, `classDiagram`, `erDiagram`, `stateDiagram` / `stateDiagram-v2`, `timeline`, and `mindmap`.
 - Other Mermaid types are code-only render/preview; code is the only editing surface.
 - Diagram type detection: `determineDiagramType` in `src/lib/diagrams/utils.ts`.
-- Registered two-way plugins in `src/lib/diagrams/registry.ts`: `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`, `mindmap`.
+- Registered two-way plugins in `src/lib/diagrams/registry.ts`: `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`, `timeline`, `mindmap`.
 
 ## Global Editor Invariants
 

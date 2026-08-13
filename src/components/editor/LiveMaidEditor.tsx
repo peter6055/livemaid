@@ -177,8 +177,11 @@ import {
   addTimelineSection,
   deleteTimelineNode,
   getTimelineNode,
+  getTimelineTitle,
   moveTimelineNode,
+  removeTimelineTitle,
   renameTimelineNode,
+  upsertTimelineTitle,
 } from "@/lib/diagrams/timeline";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
@@ -643,6 +646,13 @@ export function LiveMaidEditor({
     rect: { left: number; top: number; width: number; height: number };
   } | null>(null);
 
+  // Timeline inline TITLE editor (double-click the diagram title to edit, click outside to exit).
+  // Reuses the shared `ClassTextEditor` overlay (kind="title").
+  const [timelineTitleEdit, setTimelineTitleEdit] = useState<{
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
   // ER-diagram inline relationship LABEL editor (US4). Double-click an edge / its label (or the edge
   // toolbar pencil) to edit the `: "label"` inline; commits live per-keystroke (debounced) AND on
   // Enter / blur. `lineIndex` is the relationship's source line, resolved at open time.
@@ -699,6 +709,9 @@ export function LiveMaidEditor({
     }
     if (determineDiagramType(code) !== "stateDiagram") {
       setStateTextEdit(null);
+    }
+    if (determineDiagramType(code) !== "timeline") {
+      setTimelineTitleEdit(null);
     }
   }, [code]);
 
@@ -1072,6 +1085,52 @@ export function LiveMaidEditor({
             rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
           });
         }
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0;
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code]);
+
+  // Double-click routing for timeline diagrams: the diagram title (`.timelineDiagramTitleText`)
+  // enters inline text-edit mode using the same TIMING technique as other diagram types.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "timeline") return;
+
+    const route = (clientX: number, clientY: number) => {
+      if (isLockedRef.current) return;
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest(
+            "[data-inline-editor],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
+          ),
+        )
+      ) {
+        return;
+      }
+      // Timeline title — `text.timelineDiagramTitleText` (added by addInteractionHelpersToSvg).
+      const titleEl = els.find((el) => el.classList?.contains("timelineDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setTimelineTitleEdit({
+          value: getTimelineTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
       }
     };
 
@@ -1656,6 +1715,18 @@ export function LiveMaidEditor({
       const newCode = trimmed ? upsertErTitle(code, trimmed) : removeErTitle(code);
       if (newCode !== code) handleCodeChange(newCode);
       setErTitleEdit(null);
+    },
+    [code, handleCodeChange],
+  );
+
+  // Commit the inline timeline title edit: an empty value removes the title statement, otherwise
+  // it upserts `title <text>`. Routes through handleCodeChange so it is a single undo step.
+  const commitTimelineTitleEdit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      const newCode = trimmed ? upsertTimelineTitle(code, trimmed) : removeTimelineTitle(code);
+      if (newCode !== code) handleCodeChange(newCode);
+      setTimelineTitleEdit(null);
     },
     [code, handleCodeChange],
   );
@@ -4224,7 +4295,12 @@ export function LiveMaidEditor({
       // (e.g. due to a re-render race), select-all is confined to the active
       // editor textarea instead of selecting everything on the page.
       const isAnyInlineEditing =
-        isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+        isInlineEditing ||
+        classTextEdit ||
+        stateTextEdit ||
+        erTitleEdit ||
+        erEdgeLabelEdit ||
+        timelineTitleEdit;
       if (isAnyInlineEditing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
         e.stopPropagation();
@@ -4298,6 +4374,7 @@ export function LiveMaidEditor({
     stateTextEdit,
     erTitleEdit,
     erEdgeLabelEdit,
+    timelineTitleEdit,
     selectedNodeId,
     handleDeleteEdge,
     handleDeleteNode,
@@ -4308,7 +4385,12 @@ export function LiveMaidEditor({
     const onKeyDownCapture = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
         const isAnyInlineEditing =
-          isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+          isInlineEditing ||
+          classTextEdit ||
+          stateTextEdit ||
+          erTitleEdit ||
+          erEdgeLabelEdit ||
+          timelineTitleEdit;
         if (!isAnyInlineEditing) return;
         e.preventDefault();
         const textarea =
@@ -4325,7 +4407,14 @@ export function LiveMaidEditor({
     };
     document.addEventListener("keydown", onKeyDownCapture, true);
     return () => document.removeEventListener("keydown", onKeyDownCapture, true);
-  }, [isInlineEditing, classTextEdit, stateTextEdit, erTitleEdit, erEdgeLabelEdit]);
+  }, [
+    isInlineEditing,
+    classTextEdit,
+    stateTextEdit,
+    erTitleEdit,
+    erEdgeLabelEdit,
+    timelineTitleEdit,
+  ]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -5195,6 +5284,19 @@ export function LiveMaidEditor({
           rect={erTitleEdit.rect}
           onCommit={commitErTitleEdit}
           onCancel={() => setErTitleEdit(null)}
+        />
+      )}
+
+      {/* Timeline title inline editor (double-click the title to edit, click outside to exit).
+          Reuses the shared ClassTextEditor overlay (kind="title"). Enter commits; Escape cancels. */}
+      {timelineTitleEdit && (
+        <ClassTextEditor
+          kind="title"
+          initialValue={timelineTitleEdit.value}
+          rect={timelineTitleEdit.rect}
+          onCommit={commitTimelineTitleEdit}
+          onCancel={() => setTimelineTitleEdit(null)}
+          commitOnEnter
         />
       )}
 

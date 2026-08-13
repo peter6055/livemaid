@@ -413,6 +413,14 @@ function addInteractionHelpersToSvg(svgString: string): string {
       }
     });
 
+    // Timeline diagram title — Mermaid's timeline renderer draws the title as a plain `<text>`
+    // element (without any CSS class). Add `timelineDiagramTitleText` so double-click detection
+    // and pointer-cursor styling work consistently with ER/Class/State diagram titles.
+    const timelineTitleText = doc.querySelector('svg > text[font-weight="bold"][font-size="4ex"]');
+    if (timelineTitleText) {
+      timelineTitleText.classList.add("timelineDiagramTitleText");
+    }
+
     const serializer = new XMLSerializer();
     return serializer.serializeToString(doc);
   } catch (error) {

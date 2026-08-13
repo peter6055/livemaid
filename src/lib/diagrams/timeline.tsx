@@ -1,6 +1,6 @@
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Plus } from "lucide-react";
+import { ArrowRight, Plus, Type } from "lucide-react";
 
 /**
  * Two-way Mermaid Timeline diagram plugin.
@@ -868,6 +868,39 @@ export function timelineNodeIdFromSvgElement(
   return timelineRenderOrder(code)[index]?.id ?? null;
 }
 
+/** Read the current timeline title from the source, or "" if none. */
+export function getTimelineTitle(code: string): string {
+  return parseTimeline(code).title ?? "";
+}
+
+/**
+ * Insert or replace the timeline `title` statement.
+ * The title line is placed right after the header line, before any sections/periods.
+ */
+export function upsertTimelineTitle(code: string, title: string): string {
+  const parsed = parseTimeline(code);
+  const lines = code.split("\n");
+  const clean = title.trim();
+  if (parsed.titleLineIndex >= 0) {
+    const indent = leadingIndent(lines[parsed.titleLineIndex]);
+    lines[parsed.titleLineIndex] = `${indent}title ${clean}`;
+  } else {
+    const insertAt = parsed.headerLineIndex + 1;
+    const indent = leadingIndent(lines[insertAt] ?? "");
+    lines.splice(insertAt, 0, `${indent}title ${clean}`);
+  }
+  return lines.join("\n");
+}
+
+/** Remove the timeline `title` statement. */
+export function removeTimelineTitle(code: string): string {
+  const parsed = parseTimeline(code);
+  if (parsed.titleLineIndex < 0) return code;
+  const lines = code.split("\n");
+  lines.splice(parsed.titleLineIndex, 1);
+  return lines.join("\n");
+}
+
 export function findTimelineSvgElementByNodeId(
   code: string,
   container: Element,
@@ -886,10 +919,31 @@ export function findTimelineSvgElementByNodeId(
   return null;
 }
 
-function TimelineHeaderToolbar({ code, setCode }: EditorContext) {
+function TimelineHeaderToolbar({ code, setCode, requestConfirm }: EditorContext) {
   const parsed = parseTimeline(code);
   if (parsed.headerLineIndex < 0) return null;
   const hasNodes = timelineHasNodes(code);
+  const hasTitle = !!parsed.title?.trim();
+
+  const handleToggleTitle = async () => {
+    if (!hasTitle) {
+      setCode(upsertTimelineTitle(code, "Diagram Title"));
+      return;
+    }
+    const current = parsed.title?.trim() ?? "";
+    const description = `Turning off the title removes it from the diagram. The current title${
+      current ? ` ("${current}")` : ""
+    } will be lost.`;
+    const ok = requestConfirm
+      ? await requestConfirm({
+          title: "Remove diagram title?",
+          description,
+          confirmLabel: "Remove title",
+          destructive: true,
+        })
+      : window.confirm(`Remove diagram title?\n\n${description}`);
+    if (ok) setCode(removeTimelineTitle(code));
+  };
 
   return (
     <>
@@ -906,6 +960,30 @@ function TimelineHeaderToolbar({ code, setCode }: EditorContext) {
           <span>{parsed.direction === "TD" ? "Vertical" : "Horizontal"}</span>
         </button>
       )}
+
+      {/* Title toggle — same pill-switch styling as ER/Class/State diagram title toggles. */}
+      <div className="flex items-center gap-2 px-2 h-8 select-none">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground whitespace-nowrap">
+          <Type className="h-3.5 w-3.5 shrink-0 text-indigo-500" />
+          <span>Title</span>
+        </span>
+        <button
+          type="button"
+          onClick={handleToggleTitle}
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+            hasTitle ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          }`}
+          aria-label="Toggle diagram title"
+          aria-pressed={hasTitle}
+        >
+          <span
+            className={`pointer-events-none block h-4 w-4 rounded-full bg-white shadow-sm ring-0 transition-transform duration-200 ${
+              hasTitle ? "translate-x-[18px]" : "translate-x-0.5"
+            }`}
+          />
+        </button>
+      </div>
+
       <Button
         size="sm"
         variant="ghost"

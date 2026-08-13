@@ -6,11 +6,14 @@ import {
   addTimelineSection,
   deleteTimelineNode,
   getTimelineDirection,
+  getTimelineTitle,
   moveTimelineNode,
   parseTimeline,
+  removeTimelineTitle,
   renameTimelineNode,
   setTimelineDirection,
   timelineRenderOrder,
+  upsertTimelineTitle,
   type TimelineNode,
 } from "@/lib/diagrams/timeline";
 
@@ -412,5 +415,58 @@ describe("timeline period insertion (addTimelinePeriodNear)", () => {
     expect(result.code).toBe(`timeline
     section S
         New Period 1 : New Event 1`);
+  });
+});
+
+describe("timeline title", () => {
+  const WITH_TITLE = `timeline
+    title Product Milestones
+    section Planning
+        2026 Q1 : Research`;
+
+  const WITHOUT_TITLE = `timeline
+    section Planning
+        2026 Q1 : Research`;
+
+  it("reads the current title", () => {
+    expect(getTimelineTitle(WITH_TITLE)).toBe("Product Milestones");
+    expect(getTimelineTitle(WITHOUT_TITLE)).toBe("");
+  });
+
+  it("replaces an existing title in place", () => {
+    const result = upsertTimelineTitle(WITH_TITLE, "Renamed");
+    expect(result).toContain("    title Renamed\n");
+    expect(result).not.toContain("Monestones");
+    // The rest of the diagram is preserved.
+    expect(result).toContain("section Planning");
+    expect(result).toContain("2026 Q1 : Research");
+  });
+
+  it("inserts a title after the header when none exists", () => {
+    const result = upsertTimelineTitle(WITHOUT_TITLE, "Diagram Title");
+    expect(result).toBe(`timeline
+    title Diagram Title
+    section Planning
+        2026 Q1 : Research`);
+  });
+
+  it("removes an existing title and keeps the diagram intact", () => {
+    const result = removeTimelineTitle(WITH_TITLE);
+    expect(result).toBe(`timeline
+    section Planning
+        2026 Q1 : Research`);
+    expect(getTimelineTitle(result)).toBe("");
+  });
+
+  it("is a no-op when removing a non-existent title", () => {
+    const result = removeTimelineTitle(WITHOUT_TITLE);
+    expect(result).toBe(WITHOUT_TITLE);
+  });
+
+  it("round-trips a title change through parse + upsert", () => {
+    const next = upsertTimelineTitle(WITH_TITLE, "Round Trip");
+    const parsed = parseTimeline(next);
+    expect(parsed.title).toBe("Round Trip");
+    expect(parsed.titleLineIndex).toBeGreaterThanOrEqual(0);
   });
 });
