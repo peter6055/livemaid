@@ -315,10 +315,12 @@ export function InlineTextEditor({
   const targetVisualWidth = Math.max(textBox.width * scale, 24);
   const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 24);
 
+  const isDark = theme === "dark";
+
   const activeButtonClass =
-    "h-7 w-7 flex items-center justify-center rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 transition-colors";
+    "h-7 w-7 flex items-center justify-center rounded bg-indigo-900/50 text-indigo-400 transition-colors";
   const inactiveButtonClass =
-    "h-7 w-7 flex items-center justify-center rounded hover:bg-accent hover:text-accent-foreground transition-colors";
+    "h-7 w-7 flex items-center justify-center rounded text-zinc-400 hover:bg-zinc-700 hover:text-white transition-colors";
 
   return (
     <>
@@ -341,7 +343,7 @@ export function InlineTextEditor({
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex items-center gap-0.5 bg-background border border-border rounded-lg px-1.5 py-0.5 shadow-lg">
+          <div className="flex items-center gap-0.5 bg-[#1c1c21] border border-zinc-600/50 rounded-lg px-1.5 py-0.5 shadow-lg">
             <button
               type="button"
               onMouseDown={(e) => {
@@ -381,7 +383,7 @@ export function InlineTextEditor({
               <Italic className="w-3.5 h-3.5" />
             </button>
 
-            <div className="w-px h-4 bg-border mx-0.5" />
+            <div className="w-px h-4 bg-zinc-600 mx-0.5" />
 
             <button
               type="button"
@@ -452,7 +454,7 @@ export function InlineTextEditor({
         ref={inlineInputRef}
         contentEditable
         suppressContentEditableWarning
-        className="absolute bg-white pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white cursor-text"
+        className={`absolute pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white cursor-text ${isDark ? "bg-[#1c1c21]" : "bg-white"}`}
         onInput={handleInput}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
@@ -512,7 +514,7 @@ export function InlineTextEditor({
           fontSize: `${fontSize}px`,
           lineHeight: 1.5,
           fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
-          color: "#1c1c21",
+          color: isDark ? "#e2e8f0" : "#1c1c21",
           whiteSpace: "break-spaces",
           // Column flex keeps text vertically centered (justify-content on the main
           // axis) while the default align-items: stretch lets the alignment wrapper
