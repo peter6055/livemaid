@@ -1,6 +1,12 @@
 import { DiagramPlugin, EditorContext } from "./types";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Plus, Type } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ArrowDown, ArrowRight, Check, Plus, Type, Workflow } from "lucide-react";
 
 /**
  * Two-way Mermaid Timeline diagram plugin.
@@ -919,6 +925,15 @@ export function findTimelineSvgElementByNodeId(
   return null;
 }
 
+const TIMELINE_DIRECTION_OPTIONS: Array<{
+  id: TimelineDirection;
+  label: string;
+  icon: React.ReactNode;
+}> = [
+  { id: "LR", label: "Horizontal", icon: <ArrowRight className="w-4 h-4" /> },
+  { id: "TD", label: "Vertical", icon: <ArrowDown className="w-4 h-4" /> },
+];
+
 function TimelineHeaderToolbar({ code, setCode, requestConfirm }: EditorContext) {
   const parsed = parseTimeline(code);
   if (parsed.headerLineIndex < 0) return null;
@@ -948,17 +963,43 @@ function TimelineHeaderToolbar({ code, setCode, requestConfirm }: EditorContext)
   return (
     <>
       {hasNodes && (
-        <button
-          type="button"
-          onClick={() =>
-            setCode(setTimelineDirection(code, parsed.direction === "TD" ? "LR" : "TD"))
-          }
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-          title="Toggle diagram orientation (LR/TD)"
-        >
-          <ArrowRight className={`h-3.5 w-3.5 ${parsed.direction === "TD" ? "rotate-90" : ""}`} />
-          <span>{parsed.direction === "TD" ? "Vertical" : "Horizontal"}</span>
-        </button>
+        <>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 shrink-0 rounded-md px-2.5 text-foreground hover:bg-accent hover:text-accent-foreground flex items-center gap-2"
+                />
+              }
+            >
+              <Workflow className="w-4 h-4" />
+              <span className="text-sm font-medium">Direction</span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              className="w-48 p-2 bg-background border-border rounded-xl flex flex-col gap-1"
+              sideOffset={10}
+              align="start"
+            >
+              <div className="flex flex-col">
+                {TIMELINE_DIRECTION_OPTIONS.map((d) => (
+                  <DropdownMenuItem
+                    key={d.id}
+                    onClick={() => setCode(setTimelineDirection(code, d.id))}
+                    className="flex items-center gap-3 cursor-pointer rounded-md hover:bg-slate-100 dark:hover:bg-accent"
+                  >
+                    {d.icon}
+                    <span className="flex-1 text-sm font-medium">{d.label}</span>
+                    {parsed.direction === d.id && <Check className="w-4 h-4 text-indigo-500" />}
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <div className="h-5 w-px bg-border" />
+        </>
       )}
 
       {/* Title toggle — same pill-switch styling as ER/Class/State diagram title toggles. */}
@@ -983,6 +1024,8 @@ function TimelineHeaderToolbar({ code, setCode, requestConfirm }: EditorContext)
           />
         </button>
       </div>
+
+      <div className="h-5 w-px bg-border" />
 
       <Button
         size="sm"
