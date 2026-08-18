@@ -1179,6 +1179,42 @@ export function useCanvasInteraction({
     const candidateBounds = candidate.getBoundingClientRect();
     if (candidateBounds.width <= 0 || candidateBounds.height <= 0) return candidate;
 
+    // Text glyphs (text.actor / tspan) carry the `actor` class but are NOT the shape. Resolve
+    // them to the compact shape so the seq-actor- id + selection/editing boxes hug the real
+    // object: prefer a sibling rect.actor (plain participants), then the closest ancestor group
+    // (g.actor-man / g.actor for Actor/Boundary/Control/Entity/Database/Queue), then any ancestor
+    // rect.actor. Database/queue render the label in a wrapper sibling to the cylinder group, so
+    // when the ancestor walk fails we fall back to geometry: the actor shape whose horizontal
+    // center matches the glyph's column (vertical closeness then disambiguates the top/bottom twin).
+    if (candidate.tagName === "text" || candidate.tagName === "tspan") {
+      const siblingRect = candidate.parentElement?.querySelector(
+        ":scope > rect.actor",
+      ) as SVGElement | null;
+      if (siblingRect) return siblingRect;
+      const group = candidate.closest("g.actor-man, g.actor") as SVGElement | null;
+      if (group) return group;
+      const ancestorRect = candidate.closest("rect.actor") as SVGElement | null;
+      if (ancestorRect) return ancestorRect;
+      const c = candidate.getBoundingClientRect();
+      const cx = c.left + c.width / 2;
+      const cy = c.top + c.height / 2;
+      let best: Element | null = null;
+      let bestScore = Number.POSITIVE_INFINITY;
+      for (const el of Array.from(container.querySelectorAll("rect.actor, g.actor, g.actor-man"))) {
+        const b = el.getBoundingClientRect();
+        if (b.width <= 0 || b.height <= 0) continue;
+        const dx = Math.abs(b.left + b.width / 2 - cx);
+        const dy = Math.abs(b.top + b.height / 2 - cy);
+        const score = dx < 10 ? dy : dx * 4 + dy;
+        if (score < bestScore) {
+          bestScore = score;
+          best = el;
+        }
+      }
+      if (best) return best;
+      return candidate;
+    }
+
     const lifelines = container.querySelectorAll("line.actor-line");
     let containsLifeline = false;
     for (const line of lifelines) {
@@ -2356,9 +2392,13 @@ export function useCanvasInteraction({
       const scale = containerRect.width / containerRef.current.offsetWidth;
 
       let elementToMeasure = foundElement;
-      const innerText = foundElement.querySelector(
-        ".label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label",
-      );
+      // For sequence actors the compact shape is already the correct element;
+      // skip the inner-text query so we don't shrink to the text glyph.
+      const innerText = selectedNodeId.startsWith("SEQ_ACTOR_")
+        ? null
+        : foundElement.querySelector(
+            ".label > div, foreignObject > div, .label, foreignObject, text, .messageText, .noteText, .nodeLabel, .cluster-label",
+          );
       if (innerText) {
         elementToMeasure = innerText as SVGElement;
       } else if (
@@ -2759,7 +2799,10 @@ export function useCanvasInteraction({
         // class). With CSS `pointer-events: bounding-box` on these groups, a click in their interior
         // whitespace lands on the group element itself, so resolving it here makes the whole shape
         // selectable. (`actor-line` lifelines are excluded — classList.contains('actor') is a token
-        // match and never matches 'actor-line'.)
+        // match and never matches 'actor-line'.) Note the class also sits directly on
+        // `text.actor`/`text.actor-box` glyphs; the measurement block below resolves those to the
+        // real actor shape (sibling rect or containing group) so the inline editor always sizes to
+        // the object, never the text glyph.
         if (
           currentNode.classList?.contains("actor") ||
           currentNode.classList?.contains("actor-man")
@@ -3004,9 +3047,10 @@ export function useCanvasInteraction({
             elementToMeasure = currentNode;
             rect = currentNode.getBoundingClientRect();
           } else {
-            // Narrow text label clicked: use the rect.actor in the SAME tight <g> wrapper (scoped to
-            // direct siblings so it can't reach into another actor/twin); fall back to the clicked
-            // element's own box.
+            // Narrow text label clicked: resolve to the nearest actor shape by walking up
+            // the DOM. Prefer a direct sibling rect.actor, then the closest ancestor group
+            // (g.actor-man / g.actor), then any ancestor rect.actor, before falling back
+            // to the clicked element's own box.
             const siblingRect = currentNode.parentElement?.querySelector(
               ":scope > rect.actor",
             ) as SVGElement | null;
@@ -3014,8 +3058,22 @@ export function useCanvasInteraction({
               elementToMeasure = siblingRect;
               rect = siblingRect.getBoundingClientRect();
             } else {
-              elementToMeasure = currentNode;
-              rect = currentNode.getBoundingClientRect();
+              const actorGroup = currentNode.closest("g.actor-man, g.actor") as SVGElement | null;
+              if (actorGroup) {
+                elementToMeasure = actorGroup;
+                rect = actorGroup.getBoundingClientRect();
+              } else {
+                const ancestorRect = currentNode.parentElement?.closest(
+                  "rect.actor",
+                ) as SVGElement | null;
+                if (ancestorRect) {
+                  elementToMeasure = ancestorRect;
+                  rect = ancestorRect.getBoundingClientRect();
+                } else {
+                  elementToMeasure = currentNode;
+                  rect = currentNode.getBoundingClientRect();
+                }
+              }
             }
           }
         } else {
