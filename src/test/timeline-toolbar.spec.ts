@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-// Timeline two-way editing: node selection shows the timeline toolbar, which can add
-// events/periods/sections, rename, delete, and drag-reorder nodes.
+// Timeline two-way editing: node selection shows the timeline toolbar with directional
+// + buttons (add event/period/section before/after along the component's rendered axis),
+// plus rename, delete, and drag-reorder nodes.
 const SEED_CODE = `timeline
     title Product Milestones
     section Phase 1
@@ -42,8 +43,19 @@ function toolbar(page: import("@playwright/test").Page) {
   return page.locator("[data-timeline-node-toolbar]");
 }
 
-async function selectNode(page: import("@playwright/test").Page, text: string) {
-  const svg = await openTimelineEditor(page);
+function addButton(
+  page: import("@playwright/test").Page,
+  kind: "event" | "period" | "section",
+  placement: string,
+) {
+  return page.locator(`[data-timeline-add-${kind}="${placement}"]`);
+}
+
+async function clickNode(
+  svg: import("@playwright/test").Locator,
+  page: import("@playwright/test").Page,
+  text: string,
+) {
   const node = nodeByLabel(svg, text);
   await expect(node).toBeVisible({ timeout: 15000 });
   const box = await node.boundingBox();
@@ -51,44 +63,160 @@ async function selectNode(page: import("@playwright/test").Page, text: string) {
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
   await page.waitForTimeout(700);
   await expect(toolbar(page)).toBeVisible({ timeout: 10000 });
+}
+
+async function selectNode(page: import("@playwright/test").Page, text: string) {
+  const svg = await openTimelineEditor(page);
+  await clickNode(svg, page, text);
   return svg;
 }
 
 test.describe("timeline node toolbar", () => {
-  test("selecting an event shows the timeline toolbar with add/rename/delete actions", async ({
-    page,
-  }) => {
+  test("selecting an event shows event add buttons + rename/delete actions", async ({ page }) => {
     await selectNode(page, "Research");
-    await expect(toolbar(page).locator('button[title="Add event"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-period]")).toHaveCount(0);
+    await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
     await expect(toolbar(page).locator('button[title="Rename element"]')).toBeVisible();
     await expect(toolbar(page).locator('button[title="Delete element"]')).toBeVisible();
   });
 
   test("adding an event after the target renders a new event", async ({ page }) => {
     const svg = await selectNode(page, "Research");
-    await toolbar(page).locator('button[title="Add event"]').click();
-    await toolbar(page).getByText("Insert event after").click();
+    await addButton(page, "event", "after").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
   test("adding an event before the target renders a new event", async ({ page }) => {
     const svg = await selectNode(page, "Build");
-    await toolbar(page).locator('button[title="Add event"]').click();
-    await toolbar(page).getByText("Insert event before").click();
+    await addButton(page, "event", "before").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
-  test("adding a period below the selected period renders a new period", async ({ page }) => {
+  test("selecting a period shows before/after + child event-add buttons", async ({ page }) => {
+    await selectNode(page, "2026 Q1");
+    await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event-to-period="true"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-period]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-event-to-period]")).toHaveCount(1);
+    await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
+  });
+
+  test("adding an event to the selected period via the child button renders a new event", async ({
+    page,
+  }) => {
     const svg = await selectNode(page, "2026 Q1");
-    await toolbar(page).locator('button[title="Add period"]').click();
-    await toolbar(page).getByText("Add period below").click();
+    await page.locator('[data-timeline-add-event-to-period="true"]').click();
+    await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("adding a period after the selected period renders a new period", async ({ page }) => {
+    const svg = await selectNode(page, "2026 Q1");
+    await addButton(page, "period", "after").click();
+    await expect(nodeByLabel(svg, "New Period 1")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("selecting a section shows before/after + child period-add buttons", async ({ page }) => {
+    await selectNode(page, "Phase 1");
+    await expect(page.locator('[data-timeline-add-section="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-section="after"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-period-to-section="true"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-section]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-period-to-section]")).toHaveCount(1);
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(0);
+  });
+
+  test("adding a period to the selected section via the child button renders a new period", async ({
+    page,
+  }) => {
+    const svg = await selectNode(page, "Phase 1");
+    await page.locator('[data-timeline-add-period-to-section="true"]').click();
     await expect(nodeByLabel(svg, "New Period 1")).toBeVisible({ timeout: 15000 });
   });
 
   test("adding a section appends a new section block", async ({ page }) => {
     const svg = await selectNode(page, "Phase 1");
-    await toolbar(page).locator('button[title="Add section"]').click();
+    await addButton(page, "section", "after").click();
     await expect(nodeByLabel(svg, "New Section 1")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("adding a section after a multi-period section inserts after its subtree", async ({
+    page,
+  }) => {
+    const svg = await selectNode(page, "Phase 1");
+    await addButton(page, "section", "after").click();
+    await page.waitForTimeout(1500);
+
+    const newSection = nodeByLabel(svg, "New Section 1");
+    const phase2 = nodeByLabel(svg, "Phase 2");
+    const newBox = await newSection.boundingBox();
+    const phase2Box = await phase2.boundingBox();
+    expect(newBox).not.toBeNull();
+    expect(phase2Box).not.toBeNull();
+    // In LR mode the new section renders between Phase 1 and Phase 2.
+    expect(newBox!.x).toBeLessThan(phase2Box!.x);
+
+    // Phase 2's period/event children are untouched.
+    await expect(nodeByLabel(svg, "Launch")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("adding a section before the target inserts it immediately before", async ({ page }) => {
+    const svg = await selectNode(page, "Phase 2");
+    await addButton(page, "section", "before").click();
+    await page.waitForTimeout(1500);
+
+    const newSection = nodeByLabel(svg, "New Section 1");
+    const phase2 = nodeByLabel(svg, "Phase 2");
+    await expect(newSection).toBeVisible({ timeout: 15000 });
+    const newBox = await newSection.boundingBox();
+    const phase2Box = await phase2.boundingBox();
+    expect(newBox).not.toBeNull();
+    expect(phase2Box).not.toBeNull();
+    expect(newBox!.x).toBeLessThan(phase2Box!.x);
+  });
+
+  test("inserted section title enters inline edit for immediate renaming", async ({ page }) => {
+    const svg = await selectNode(page, "Phase 1");
+    await addButton(page, "section", "after").click();
+    await page.waitForTimeout(800);
+    const editor = page.locator('[contenteditable="true"]').first();
+    await expect(editor).toBeVisible({ timeout: 10000 });
+    await expect(editor).toHaveText("New Section 1");
+
+    await editor.click();
+    await editor.fill("Refactor Phase");
+    await page.keyboard.press("Control+Enter");
+    await page.waitForTimeout(1500);
+    await expect(nodeByLabel(svg, "Refactor Phase")).toBeVisible({ timeout: 15000 });
+    await expect(nodeByLabel(svg, "New Section 1")).toHaveCount(0);
+  });
+
+  test("vertical direction shows top/bottom before/after + right child buttons", async ({
+    page,
+  }) => {
+    const svg = await openTimelineEditor(page);
+    // Switch direction to Vertical via the header toolbar.
+    await page.getByRole("button", { name: "Direction" }).click();
+    await page.getByRole("menuitem", { name: "Vertical" }).click();
+    await page.waitForTimeout(1500);
+
+    // A selected period gets top/bottom (before/after) buttons plus a right child button in TD mode.
+    await clickNode(svg, page, "2026 Q1");
+    await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event-to-period="true"]')).toBeVisible();
+
+    // A selected event gets top/bottom (before/after) buttons in TD mode, and insertion works.
+    await clickNode(svg, page, "Research");
+    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
+    await addButton(page, "event", "after").click();
+    await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
   test("renaming an event via the toolbar updates the canvas label", async ({ page }) => {

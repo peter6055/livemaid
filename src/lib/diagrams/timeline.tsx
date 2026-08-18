@@ -488,11 +488,33 @@ export function addTimelineSection(code: string): { code: string; nodeId: string
   return { code: lines.join("\n"), nodeId: timelineSectionId(insertAt) };
 }
 
+/**
+ * Insert a new empty section immediately before or after the target section.
+ * `placement` "before" inserts at the target section's own line (AST index `i`);
+ * "after" inserts after the target section's complete subtree — all of its
+ * periods/events and any trailing blank/comment lines — i.e. AST index `i + 1`.
+ */
+export function addTimelineSectionAt(
+  code: string,
+  targetSectionId: string,
+  placement: "before" | "after",
+): { code: string; nodeId: string } {
+  const source = ensureTimelineHeader(code);
+  const target = getTimelineNode(source, targetSectionId);
+  if (!target || target.kind !== "section") return { code, nodeId: targetSectionId };
+  const lines = source.split("\n");
+  const sectionLabel = uniqueLabel(source, "New Section");
+  const newLine = `    section ${sectionLabel}`;
+  const insertAt = placement === "before" ? target.lineIndex : sectionBlockEnd(lines, target) + 1;
+  lines.splice(insertAt, 0, newLine);
+  return { code: lines.join("\n"), nodeId: timelineSectionId(insertAt) };
+}
+
 /** Add a new period (with one event) to the given section, above or below its existing periods. */
 export function addTimelinePeriodToSection(
   code: string,
   sectionId: string,
-  placement: "above" | "below",
+  placement: "before" | "after",
 ): { code: string; nodeId: string } {
   const source = ensureTimelineHeader(code);
   const section = getTimelineNode(source, sectionId);
@@ -505,7 +527,7 @@ export function addTimelinePeriodToSection(
   const firstPeriod = section.periods[0];
   const lastPeriod = section.periods[section.periods.length - 1];
   const insertAt =
-    placement === "above"
+    placement === "before"
       ? firstPeriod
         ? firstPeriod.lineIndex
         : section.lineIndex + 1
@@ -516,14 +538,14 @@ export function addTimelinePeriodToSection(
   return { code: lines.join("\n"), nodeId: timelinePeriodId(insertAt) };
 }
 
-/** Add a new period (with one event) immediately above/below the period of `nodeId` (event or
+/** Add a new period (with one event) immediately before/after the period of `nodeId` (event or
  *  period target), or at the first/last slot of a section target. Unlike `addTimelinePeriodToSection`
  *  (which always inserts at the section's edges), this anchors to the TARGET's own position so a
- *  mid-section event gets its new period directly above/below its own period. */
+ *  mid-section event gets its new period directly before/after its own period. */
 export function addTimelinePeriodNear(
   code: string,
   nodeId: string,
-  placement: "above" | "below",
+  placement: "before" | "after",
 ): { code: string; nodeId: string } {
   const source = ensureTimelineHeader(code);
   const target = getTimelineNode(source, nodeId);
@@ -534,7 +556,7 @@ export function addTimelinePeriodNear(
     period = getTimelineNode(source, target.periodId) as TimelinePeriodNode | null;
   else if (target.kind === "section")
     period =
-      placement === "above"
+      placement === "before"
         ? (target.periods[0] ?? null)
         : (target.periods[target.periods.length - 1] ?? null);
   const lines = source.split("\n");
@@ -546,9 +568,9 @@ export function addTimelinePeriodNear(
     ? target.kind === "section"
       ? target.lineIndex + 1
       : lines.length
-    : placement === "above"
+    : placement === "before"
       ? period.lineIndex
-      : period.blockEndLineIndex + 1;
+      : periodBlockEnd(lines, period.lineIndex) + 1;
   lines.splice(insertAt, 0, newLine);
   return { code: lines.join("\n"), nodeId: timelinePeriodId(insertAt) };
 }

@@ -88,6 +88,9 @@ import {
   classNameFromSvgId,
   parseClassByName,
   applyClassEdits,
+  getClassStyle,
+  setClassStyle,
+  removeClassStyle,
   getClassTitle,
   upsertClassTitle,
   removeClassTitle,
@@ -174,13 +177,14 @@ import {
   addTimelineEventToPeriod,
   addTimelinePeriodNear,
   addTimelinePeriodToSection,
-  addTimelineSection,
+  addTimelineSectionAt,
   deleteTimelineNode,
   getTimelineNode,
   getTimelineTitle,
   moveTimelineNode,
   removeTimelineTitle,
   renameTimelineNode,
+  timelineNodeLabel,
   upsertTimelineTitle,
 } from "@/lib/diagrams/timeline";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
@@ -564,7 +568,7 @@ export function LiveMaidEditor({
   );
 
   const handleTimelineAddPeriod = useCallback(
-    (nodeId: string, placement: "above" | "below") => {
+    (nodeId: string, placement: "before" | "after") => {
       const target = getTimelineNode(code, nodeId);
       const result =
         target?.kind === "section"
@@ -580,7 +584,7 @@ export function LiveMaidEditor({
   );
 
   const handleTimelineAddPeriodToSection = useCallback(
-    (sectionId: string, placement: "above" | "below") => {
+    (sectionId: string, placement: "before" | "after") => {
       const result = addTimelinePeriodToSection(code, sectionId, placement);
       if (result.code !== code) {
         handleCodeChange(result.code);
@@ -591,14 +595,41 @@ export function LiveMaidEditor({
     [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
   );
 
-  const handleTimelineAddSection = useCallback(() => {
-    const result = addTimelineSection(code);
-    if (result.code !== code) {
+  const handleTimelineAddSection = useCallback(
+    (sectionId: string, placement: "before" | "after") => {
+      const result = addTimelineSectionAt(code, sectionId, placement);
+      if (result.code === code) return;
       handleCodeChange(result.code);
       setSelectedNodeId(result.nodeId);
       setSelectedSvgId(null);
-    }
-  }, [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId]);
+      // Enter inline edit on the new section's title once the canvas has
+      // re-rendered and the selection box has been recomputed for the new node.
+      const label = timelineNodeLabel(result.code, result.nodeId) ?? "";
+      window.setTimeout(() => {
+        setIsInlineEditing(true);
+        setEditingText(label);
+        window.setTimeout(() => {
+          if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            const range = document.createRange();
+            range.selectNodeContents(inlineInputRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        }, 10);
+      }, 120);
+    },
+    [
+      code,
+      handleCodeChange,
+      setSelectedNodeId,
+      setSelectedSvgId,
+      setIsInlineEditing,
+      setEditingText,
+      inlineInputRef,
+    ],
+  );
 
   const handleTimelineDelete = useCallback(
     (nodeId: string) => {
@@ -1698,6 +1729,30 @@ export function LiveMaidEditor({
   const handleResetEntityStyle = useCallback(
     (name: string) => {
       const newCode = removeEntityStyle(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  // The single-clicked class's current `style` properties — feeds the class node toolbar's style
+  // popover active states (mirrors the ER entity style customizer).
+  const currentClassStyle = useMemo(() => {
+    if (determineDiagramType(code) !== "classDiagram") return {};
+    const name = classNameFromSvgId(selectedSvgId);
+    return name ? getClassStyle(code, name) : {};
+  }, [code, selectedSvgId]);
+
+  const handleSetClassStyle = useCallback(
+    (name: string, patch: Record<string, string>) => {
+      const newCode = setClassStyle(code, name, patch);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleResetClassStyle = useCallback(
+    (name: string) => {
+      const newCode = removeClassStyle(code, name);
       if (newCode !== code) handleCodeChange(newCode);
     },
     [code, handleCodeChange],
@@ -3093,14 +3148,7 @@ export function LiveMaidEditor({
     latestEditingText = sanitizeHtml(latestEditingText);
 
     // The browser auto-closes unclosed HTML tags (e.g. <div>...) when set as innerHTML.
-    // Strip auto-added closing tags that weren't in the original Mermaid code so they
-    // don't get injected into the wrong position on save.
-    if (originalEditContentRef.current) {
-      const orig = originalEditContentRef.current;
-      if (!orig.includes("</div>")) latestEditingText = latestEditingText.replace(/<\/div>/gi, "");
-      if (!orig.includes("</span>"))
-        latestEditingText = latestEditingText.replace(/<\/span>/gi, "");
-    }
+    // normalizeHtmlForMermaid already produces the intended output, so no post-strip is needed.
 
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(latestEditingText);
@@ -5145,6 +5193,9 @@ export function LiveMaidEditor({
               onDeleteClassNode={handleDeleteClassNode}
               onDeleteClassNote={handleDeleteClassNote}
               onEditClassNode={handleEditClassNodeFromToolbar}
+              onSetClassStyle={handleSetClassStyle}
+              onResetClassStyle={handleResetClassStyle}
+              currentClassStyle={currentClassStyle}
               onDeleteClassNamespace={handleDeleteClassNamespace}
               onMoveClassToNamespace={handleMoveClassToNamespace}
               onMoveClassToNewNamespace={handleMoveClassToNewNamespace}

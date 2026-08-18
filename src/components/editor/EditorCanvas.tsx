@@ -58,6 +58,7 @@ import {
 } from "@/lib/diagrams/timeline";
 import { TimelineNodeToolbar } from "./TimelineNodeToolbar";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
+import { TimelineAddButtons } from "./TimelineNodeToolbar";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
 import { findSeqReorderTargetSlot } from "@/lib/diagrams/sequenceReorder";
@@ -184,6 +185,11 @@ interface EditorCanvasProps {
   onMoveClassToNamespace?: (className: string, target: string) => void;
   onMoveClassToNewNamespace?: (className: string) => void;
   onRemoveClassFromNamespace?: (className: string) => void;
+  /** Class-diagram node toolbar: localized `style <Class> …` overrides (mirrors ER / state). */
+  onSetClassStyle?: (name: string, patch: Record<string, string>) => void;
+  onResetClassStyle?: (name: string) => void;
+  /** The selected class's current `style` property map (for the style popover's active states). */
+  currentClassStyle?: Record<string, string>;
   /** ER-diagram property panel: the parsed entity currently selected (null otherwise). */
   selectedEntity?: ParsedEntity | null;
   onApplyEntityEdits?: (edits: EntityEdits) => void;
@@ -235,12 +241,12 @@ interface EditorCanvasProps {
   onChangeMindmapShape?: (nodeId: string, shape: MindmapShapeKind) => void;
   /** Timeline: add an event before/after an event, or append one to a period. */
   onTimelineAddEvent?: (nodeId: string, placement: "before" | "after") => void;
-  /** Timeline: add a new period above/below the target event or period. */
-  onTimelineAddPeriod?: (nodeId: string, placement: "above" | "below") => void;
-  /** Timeline: add a new period above/below the periods of a section. */
-  onTimelineAddPeriodToSection?: (sectionId: string, placement: "above" | "below") => void;
-  /** Timeline: add a new section. */
-  onTimelineAddSection?: () => void;
+  /** Timeline: add a new period before/after the target event or period. */
+  onTimelineAddPeriod?: (nodeId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new period before/after the periods of a section. */
+  onTimelineAddPeriodToSection?: (sectionId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new section before/after the target section. */
+  onTimelineAddSection?: (sectionId: string, placement: "before" | "after") => void;
   /** Timeline: delete a node (event/period/section). */
   onTimelineDelete?: (nodeId: string) => void;
   /** Timeline: drag-reorder a node before/after another node. */
@@ -489,6 +495,9 @@ export function EditorCanvas({
   onMoveClassToNamespace,
   onMoveClassToNewNamespace,
   onRemoveClassFromNamespace,
+  onSetClassStyle,
+  onResetClassStyle,
+  currentClassStyle,
   selectedEntity,
   onApplyEntityEdits,
   onCloseEntityPanel,
@@ -1433,6 +1442,21 @@ export function EditorCanvas({
   const [timelineHitAreas, setTimelineHitAreas] = useState<
     Array<{ id: string; x: number; y: number; width: number; height: number }>
   >([]);
+
+  // Hovered timeline node (id only) so we can preview the selection outline without selecting.
+  // Tracked locally on the reorder handles (which already cover every node), avoiding a change to
+  // the shared useCanvasInteraction hover pipeline.
+  const [timelineHoverId, setTimelineHoverId] = useState<string | null>(null);
+
+  const hoveredTimelineArea = useMemo(() => {
+    if (!timelineHoverId) return null;
+    return timelineHitAreas.find((area) => area.id === timelineHoverId) ?? null;
+  }, [timelineHoverId, timelineHitAreas]);
+
+  const hoveredTimelineNode = useMemo(() => {
+    if (currentType !== "timeline" || !timelineHoverId) return null;
+    return getTimelineNode(code, timelineHoverId);
+  }, [code, currentType, timelineHoverId]);
 
   useEffect(() => {
     if (currentType !== "timeline") {
@@ -2896,6 +2920,64 @@ export function EditorCanvas({
                     />
                   )}
 
+                {currentType === "timeline" &&
+                  hoveredTimelineArea &&
+                  !isInlineEditing &&
+                  !connectionState.active &&
+                  !selectionBox && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
+                      style={{
+                        left: hoveredTimelineArea.x - 3 / state.scale,
+                        top: hoveredTimelineArea.y - 3 / state.scale,
+                        width: hoveredTimelineArea.width + 6 / state.scale,
+                        height: hoveredTimelineArea.height + 6 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: "solid",
+                        opacity: 0.6,
+                      }}
+                    />
+                  )}
+
+                {/* Hover preview of the directional `+` add buttons — mirrors the selected-state
+                    toolbar but for the hovered (not selected) node. */}
+                {currentType === "timeline" &&
+                  hoveredTimelineArea &&
+                  hoveredTimelineNode &&
+                  !isInlineEditing &&
+                  !isLocked &&
+                  !isCommentMode &&
+                  !connectionState.active &&
+                  !selectionBox && (
+                    <div
+                      className="absolute z-[24] pointer-events-none"
+                      style={{
+                        left: hoveredTimelineArea.x - 4 / state.scale,
+                        top: hoveredTimelineArea.y - 4 / state.scale,
+                        width: hoveredTimelineArea.width + 8 / state.scale,
+                        height: hoveredTimelineArea.height + 8 / state.scale,
+                      }}
+                    >
+                      <TimelineAddButtons
+                        scale={state.scale}
+                        nodeKind={hoveredTimelineNode.kind}
+                        direction={getTimelineDirection(code)}
+                        onAddEvent={(placement) =>
+                          onTimelineAddEvent?.(hoveredTimelineNode.id, placement)
+                        }
+                        onAddPeriod={(placement) =>
+                          hoveredTimelineNode.kind === "section"
+                            ? onTimelineAddPeriodToSection?.(hoveredTimelineNode.id, placement)
+                            : onTimelineAddPeriod?.(hoveredTimelineNode.id, placement)
+                        }
+                        onAddSection={(placement) =>
+                          onTimelineAddSection?.(hoveredTimelineNode.id, placement)
+                        }
+                      />
+                    </div>
+                  )}
+
                 {/* Timeline reorder grab overlays — DIRECT-DRAG on any node (sequence-style), no
                     select-first. Canvas-space boxes from timelineHitAreas. Class
                     `timeline-reorder-handle` is in panning.excluded; click-select /
@@ -2919,6 +3001,20 @@ export function EditorCanvas({
                       }}
                       title="Drag to reorder · click to select · double-click to rename"
                       onMouseDown={(e) => startTimelineReorderDrag(e, area.id)}
+                      onMouseEnter={() => setTimelineHoverId(area.id)}
+                      onMouseLeave={(e) => {
+                        // Keep the hover preview alive when the pointer moves onto one of the
+                        // edge `+` buttons or its tooltip (both live outside the grab handle).
+                        const next = e.relatedTarget as Element | null;
+                        if (
+                          next?.closest?.(
+                            "[data-timeline-add-button], [data-slot='tooltip-content']",
+                          )
+                        ) {
+                          return;
+                        }
+                        setTimelineHoverId((id) => (id === area.id ? null : id));
+                      }}
                     />
                   ))}
 
@@ -3057,6 +3153,13 @@ export function EditorCanvas({
                               onDeleteClassNamespace?.(connectSourceNamespace);
                             else if (connectSourceClass) onDeleteClassNode?.(connectSourceClass);
                           }}
+                          currentStyle={currentClassStyle ?? {}}
+                          onSetStyle={(patch) => {
+                            if (connectSourceClass) onSetClassStyle?.(connectSourceClass, patch);
+                          }}
+                          onResetStyle={() => {
+                            if (connectSourceClass) onResetClassStyle?.(connectSourceClass);
+                          }}
                         />
                       ) : currentType === "erDiagram" && connectSourceEntity ? (
                         <ErNodeToolbar
@@ -3171,6 +3274,7 @@ export function EditorCanvas({
                         <TimelineNodeToolbar
                           scale={state.scale}
                           nodeKind={selectedTimelineNode.kind}
+                          direction={getTimelineDirection(code)}
                           onAddEvent={(placement) =>
                             onTimelineAddEvent?.(selectedTimelineNode.id, placement)
                           }
@@ -3179,7 +3283,9 @@ export function EditorCanvas({
                               ? onTimelineAddPeriodToSection?.(selectedTimelineNode.id, placement)
                               : onTimelineAddPeriod?.(selectedTimelineNode.id, placement)
                           }
-                          onAddSection={() => onTimelineAddSection?.()}
+                          onAddSection={(placement) =>
+                            onTimelineAddSection?.(selectedTimelineNode.id, placement)
+                          }
                           onEditLabel={(e) => handleEditClick(e)}
                           onDelete={() => onTimelineDelete?.(selectedTimelineNode.id)}
                         />
@@ -3239,7 +3345,14 @@ export function EditorCanvas({
                       editingText={editingText}
                       setEditingText={setEditingText}
                       handleEditSubmit={handleEditSubmit}
-                      handleFormatText={handleFormatText}
+                      // Only flowchart/graph labels render real HTML (foreignObject), so the
+                      // format toolbar (B/I/align) is only safe there. Sequence/timeline render
+                      // plain SVG text and would otherwise inject literal HTML markup.
+                      handleFormatText={
+                        currentType === "graph" || currentType === "flowchart"
+                          ? handleFormatText
+                          : undefined
+                      }
                       inlineInputRef={inlineInputRef}
                       selectedSvgId={selectedSvgId}
                     />
@@ -3269,38 +3382,6 @@ export function EditorCanvas({
                             }}
                             className="h-5 w-5 rounded-full bg-indigo-500 text-white shadow-md transition-transform hover:scale-110 hover:bg-indigo-600 flex items-center justify-center"
                             title="Click to add child element"
-                          >
-                            <Plus className="h-3 w-3 pointer-events-none" />
-                          </button>
-                        </div>
-                      )}
-
-                    {!isInlineEditing &&
-                      currentType === "timeline" &&
-                      selectedTimelineNode &&
-                      selectedTimelineNode.kind !== "section" &&
-                      selectionBox && (
-                        <div
-                          data-scale-lock
-                          data-base-transform="translateX(-50%) translateY(100%)"
-                          className="absolute left-1/2 pointer-events-auto origin-top"
-                          style={{
-                            bottom: `calc(-12px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                            transform: `translateX(-50%) translateY(100%) scale(var(--zoom-inverse-scale, ${1 / state.scale}))`,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                              e.preventDefault();
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onTimelineAddEvent?.(selectedTimelineNode.id, "after");
-                            }}
-                            className="h-5 w-5 rounded-full bg-indigo-500 text-white shadow-md transition-transform hover:scale-110 hover:bg-indigo-600 flex items-center justify-center"
-                            title="Click to add event"
                           >
                             <Plus className="h-3 w-3 pointer-events-none" />
                           </button>

@@ -42,9 +42,7 @@ function directionButton(page: import("@playwright/test").Page) {
 async function readSource(page: import("@playwright/test").Page) {
   return await page.evaluate(() => {
     const lines = Array.from(document.querySelectorAll(".monaco-editor .view-line"));
-    return lines
-      .map((l) => (l as HTMLElement).innerText ?? "")
-      .join("\n");
+    return lines.map((l) => (l as HTMLElement).innerText ?? "").join("\n");
   });
 }
 

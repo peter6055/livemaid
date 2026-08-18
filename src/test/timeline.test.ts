@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { timelineAddAxes } from "@/components/editor/TimelineNodeToolbar";
 import {
   addTimelineEvent,
   addTimelineEventToPeriod,
   addTimelinePeriodNear,
   addTimelineSection,
+  addTimelineSectionAt,
   deleteTimelineNode,
   getTimelineDirection,
   getTimelineTitle,
@@ -369,17 +371,166 @@ describe("timeline mutations", () => {
   });
 });
 
+describe("timeline section insertion (addTimelineSectionAt)", () => {
+  const THREE_SECTIONS = `timeline
+    section Planning
+        2026 Q1 : Research
+        : Prototype
+    section Build
+        2026 Q2 : Build : Test
+        2026 Q3 : Launch
+    section Release
+        2026 Q4 : Ship`;
+
+  it("inserts a section immediately before the target section", () => {
+    const result = addTimelineSectionAt(THREE_SECTIONS, byLabel(THREE_SECTIONS, "Build"), "before");
+    expect(result.code.split("\n")).toEqual([
+      "timeline",
+      "    section Planning",
+      "        2026 Q1 : Research",
+      "        : Prototype",
+      "    section New Section 1",
+      "    section Build",
+      "        2026 Q2 : Build : Test",
+      "        2026 Q3 : Launch",
+      "    section Release",
+      "        2026 Q4 : Ship",
+    ]);
+    const parsed = parseTimeline(result.code);
+    expect(parsed.sections.map((section) => section.label)).toEqual([
+      "Planning",
+      "New Section 1",
+      "Build",
+      "Release",
+    ]);
+    expect(parsed.sections[2].periods.map((period) => period.label)).toEqual([
+      "2026 Q2",
+      "2026 Q3",
+    ]);
+    expect(result.nodeId).toBe(parsed.sections[1].id);
+  });
+
+  it("inserts a section after the complete target subtree", () => {
+    const result = addTimelineSectionAt(THREE_SECTIONS, byLabel(THREE_SECTIONS, "Build"), "after");
+    expect(result.code.split("\n")).toEqual([
+      "timeline",
+      "    section Planning",
+      "        2026 Q1 : Research",
+      "        : Prototype",
+      "    section Build",
+      "        2026 Q2 : Build : Test",
+      "        2026 Q3 : Launch",
+      "    section New Section 1",
+      "    section Release",
+      "        2026 Q4 : Ship",
+    ]);
+    const parsed = parseTimeline(result.code);
+    expect(parsed.sections.map((section) => section.label)).toEqual([
+      "Planning",
+      "Build",
+      "New Section 1",
+      "Release",
+    ]);
+    // The target keeps all of its child periods/events.
+    expect(parsed.sections[1].periods.map((period) => period.label)).toEqual([
+      "2026 Q2",
+      "2026 Q3",
+    ]);
+    expect(result.nodeId).toBe(parsed.sections[2].id);
+  });
+
+  it("inserts before the first section", () => {
+    const result = addTimelineSectionAt(
+      THREE_SECTIONS,
+      byLabel(THREE_SECTIONS, "Planning"),
+      "before",
+    );
+    expect(parseTimeline(result.code).sections[0].label).toBe("New Section 1");
+    expect(parseTimeline(result.code).sections[1].label).toBe("Planning");
+  });
+
+  it("inserts after the last section", () => {
+    const result = addTimelineSectionAt(
+      THREE_SECTIONS,
+      byLabel(THREE_SECTIONS, "Release"),
+      "after",
+    );
+    const sections = parseTimeline(result.code).sections;
+    expect(sections[sections.length - 2].label).toBe("Release");
+    expect(sections[sections.length - 1].label).toBe("New Section 1");
+  });
+
+  it("inserts before/after a section with no child periods", () => {
+    const code = `timeline
+    section Empty
+    section Full
+        2026 Q1 : A`;
+    const before = addTimelineSectionAt(code, byLabel(code, "Empty"), "before");
+    expect(before.code.split("\n")[1]).toBe("    section New Section 1");
+    expect(before.code.split("\n")[2]).toBe("    section Empty");
+    const after = addTimelineSectionAt(code, byLabel(code, "Empty"), "after");
+    expect(after.code.split("\n")[1]).toBe("    section Empty");
+    expect(after.code.split("\n")[2]).toBe("    section New Section 1");
+    expect(after.code.split("\n")[3]).toBe("    section Full");
+  });
+
+  it("does not move child periods into the wrong section", () => {
+    const result = addTimelineSectionAt(THREE_SECTIONS, byLabel(THREE_SECTIONS, "Build"), "before");
+    const parsed = parseTimeline(result.code);
+    const build = parsed.sections.find((section) => section.label === "Build");
+    expect(build?.periods.map((period) => period.label)).toEqual(["2026 Q2", "2026 Q3"]);
+    expect(parsed.sections.find((section) => section.label === "New Section 1")?.periods).toEqual(
+      [],
+    );
+  });
+
+  it("auto-numbers section labels when inserting repeatedly", () => {
+    let code = THREE_SECTIONS;
+    code = addTimelineSectionAt(code, byLabel(code, "Build"), "before").code;
+    const result = addTimelineSectionAt(code, byLabel(code, "New Section 1"), "before");
+    expect(result.code).toContain("    section New Section 2\n    section New Section 1");
+  });
+
+  it("is a no-op when the target is not a section or does not exist", () => {
+    expect(addTimelineSectionAt(THREE_SECTIONS, "TIMELINE_SECTION_999", "before")).toEqual({
+      code: THREE_SECTIONS,
+      nodeId: "TIMELINE_SECTION_999",
+    });
+    const periodId = byLabel(THREE_SECTIONS, "2026 Q2");
+    expect(addTimelineSectionAt(THREE_SECTIONS, periodId, "after")).toEqual({
+      code: THREE_SECTIONS,
+      nodeId: periodId,
+    });
+  });
+
+  it("round-trips through parse for both placements", () => {
+    for (const placement of ["before", "after"] as const) {
+      const result = addTimelineSectionAt(
+        THREE_SECTIONS,
+        byLabel(THREE_SECTIONS, "Build"),
+        placement,
+      );
+      const parsed = parseTimeline(result.code);
+      expect(parsed.sections).toHaveLength(4);
+      expect(parsed.sections.map((section) => section.id)).toContain(result.nodeId);
+      expect(parsed.sections.find((section) => section.id === result.nodeId)?.label).toBe(
+        "New Section 1",
+      );
+    }
+  });
+});
+
 describe("timeline period insertion (addTimelinePeriodNear)", () => {
   it("adds a period above a default period", () => {
     const code = "timeline\n    2026 Q2 : Build";
-    const result = addTimelinePeriodNear(code, byLabel(code, "2026 Q2"), "above");
+    const result = addTimelinePeriodNear(code, byLabel(code, "2026 Q2"), "before");
     expect(result.code).toBe("timeline\n    New Period 1 : New Event 1\n    2026 Q2 : Build");
     expect(result.nodeId).toBe(byLabel(result.code, "New Period 1"));
   });
 
   it("adds a period below a default period including its continuation lines", () => {
     const code = "timeline\n    2026 Q1 : A\n    : B";
-    const result = addTimelinePeriodNear(code, byLabel(code, "2026 Q1"), "below");
+    const result = addTimelinePeriodNear(code, byLabel(code, "2026 Q1"), "after");
     expect(result.code).toBe("timeline\n    2026 Q1 : A\n    : B\n    New Period 1 : New Event 1");
   });
 
@@ -387,7 +538,7 @@ describe("timeline period insertion (addTimelinePeriodNear)", () => {
     const code = `timeline
     section S
         2026 Q2 : B : C`;
-    const result = addTimelinePeriodNear(code, byLabel(code, "C"), "above");
+    const result = addTimelinePeriodNear(code, byLabel(code, "C"), "before");
     expect(result.code).toBe(`timeline
     section S
         New Period 1 : New Event 1
@@ -400,7 +551,7 @@ describe("timeline period insertion (addTimelinePeriodNear)", () => {
         2026 Q1 : A
         2026 Q2 : B
         2026 Q3 : C`;
-    const result = addTimelinePeriodNear(code, byLabel(code, "B"), "below");
+    const result = addTimelinePeriodNear(code, byLabel(code, "B"), "after");
     expect(result.code).toBe(`timeline
     section S
         2026 Q1 : A
@@ -411,7 +562,7 @@ describe("timeline period insertion (addTimelinePeriodNear)", () => {
 
   it("adds a period into an empty section", () => {
     const code = "timeline\n    section S";
-    const result = addTimelinePeriodNear(code, byLabel(code, "S"), "below");
+    const result = addTimelinePeriodNear(code, byLabel(code, "S"), "after");
     expect(result.code).toBe(`timeline
     section S
         New Period 1 : New Event 1`);
@@ -468,5 +619,53 @@ describe("timeline title", () => {
     const parsed = parseTimeline(next);
     expect(parsed.title).toBe("Round Trip");
     expect(parsed.titleLineIndex).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("timelineAddAxes (directional add buttons)", () => {
+  it("maps an event in LR to top/bottom (before/after)", () => {
+    expect(timelineAddAxes("event", "LR")).toEqual([
+      { side: "top", action: { kind: "event", placement: "before" } },
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ]);
+  });
+
+  it("maps an event in TD to top/bottom (before/after)", () => {
+    expect(timelineAddAxes("event", "TD")).toEqual([
+      { side: "top", action: { kind: "event", placement: "before" } },
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ]);
+  });
+
+  it("maps a period in LR to left/right + bottom child button", () => {
+    expect(timelineAddAxes("period", "LR")).toEqual([
+      { side: "left", action: { kind: "period", placement: "before" } },
+      { side: "right", action: { kind: "period", placement: "after" } },
+      { side: "bottom", action: { kind: "event-to-period" } },
+    ]);
+  });
+
+  it("maps a period in TD to top/bottom + right child button", () => {
+    expect(timelineAddAxes("period", "TD")).toEqual([
+      { side: "top", action: { kind: "period", placement: "before" } },
+      { side: "bottom", action: { kind: "period", placement: "after" } },
+      { side: "right", action: { kind: "event-to-period" } },
+    ]);
+  });
+
+  it("maps a section in LR to left/right + bottom child button", () => {
+    expect(timelineAddAxes("section", "LR")).toEqual([
+      { side: "left", action: { kind: "section", placement: "before" } },
+      { side: "right", action: { kind: "section", placement: "after" } },
+      { side: "bottom", action: { kind: "period-to-section" } },
+    ]);
+  });
+
+  it("maps a section in TD to top/bottom + right child button", () => {
+    expect(timelineAddAxes("section", "TD")).toEqual([
+      { side: "top", action: { kind: "section", placement: "before" } },
+      { side: "bottom", action: { kind: "section", placement: "after" } },
+      { side: "right", action: { kind: "period-to-section" } },
+    ]);
   });
 });
