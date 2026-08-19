@@ -2992,7 +2992,7 @@ export function EditorCanvas({
                       key={`timeline-hit-${area.id}`}
                       data-timeline-reorder-handle
                       data-timeline-reorder-node={area.id}
-                      className="timeline-reorder-handle absolute z-[21] pointer-events-auto cursor-grab active:cursor-grabbing"
+                      className="timeline-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer active:cursor-grabbing"
                       style={{
                         left: area.x - 4 / state.scale,
                         top: area.y - 4 / state.scale,
