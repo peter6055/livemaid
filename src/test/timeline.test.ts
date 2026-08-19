@@ -16,6 +16,7 @@ import {
   renameTimelineNode,
   setTimelineDirection,
   timelineRenderOrder,
+  timelineSubtreeIds,
   upsertTimelineTitle,
   type TimelineEventNode,
   type TimelineNode,
@@ -768,5 +769,105 @@ describe("addTimelineEventToPeriod (before placement)", () => {
     const parsed = parseTimeline(res.code);
     const period = parsed.sections[0].periods[1];
     expect(period.events.map((e) => e.label)).toEqual(["Build", "New Event 1", "Test"]);
+  });
+});
+
+describe("timelineSubtreeIds", () => {
+  const CODE = `timeline
+    section Phase 1
+        2026 Q1 : Research : Prototype
+        : Pitch
+        2026 Q2 : Build
+    section Phase 2
+        2026 Q3 : Launch`;
+
+  it("returns only the event for an event id", () => {
+    const research = byLabel(CODE, "Research");
+    expect(timelineSubtreeIds(CODE, research)).toEqual([research]);
+  });
+
+  it("returns the period and its events for a period id", () => {
+    const q1 = byLabel(CODE, "2026 Q1");
+    const research = byLabel(CODE, "Research");
+    const prototype = byLabel(CODE, "Prototype");
+    const pitch = byLabel(CODE, "Pitch");
+    expect(timelineSubtreeIds(CODE, q1)).toEqual([q1, research, prototype, pitch]);
+  });
+
+  it("returns the section and every descendant for a section id", () => {
+    const phase1 = byLabel(CODE, "Phase 1");
+    const q1 = byLabel(CODE, "2026 Q1");
+    const research = byLabel(CODE, "Research");
+    const prototype = byLabel(CODE, "Prototype");
+    const pitch = byLabel(CODE, "Pitch");
+    const q2 = byLabel(CODE, "2026 Q2");
+    const build = byLabel(CODE, "Build");
+    expect(timelineSubtreeIds(CODE, phase1)).toEqual([
+      phase1,
+      q1,
+      research,
+      prototype,
+      pitch,
+      q2,
+      build,
+    ]);
+  });
+
+  it("returns an empty list for an unknown id", () => {
+    expect(timelineSubtreeIds(CODE, "TIMELINE_PERIOD_999")).toEqual([]);
+  });
+});
+
+describe("moveTimelineNode cross-period event placement", () => {
+  it("moves an event before another event in a different period", () => {
+    const code = `timeline
+    section S
+        2026 Q1 : A : B
+        2026 Q2 : C : D`;
+    const a = byLabel(code, "A");
+    const d = byLabel(code, "D");
+    const result = moveTimelineNode(code, a, d, "before");
+    const parsed = parseTimeline(result);
+    const q1 = parsed.sections[0].periods[0];
+    const q2 = parsed.sections[0].periods[1];
+    expect(q1.events.map((e) => e.label)).toEqual(["B"]);
+    expect(q2.events.map((e) => e.label)).toEqual(["C", "A", "D"]);
+  });
+
+  it("moves an event after another event in a different period", () => {
+    const code = `timeline
+    section S
+        2026 Q1 : A
+        2026 Q2 : B : C`;
+    const a = byLabel(code, "A");
+    const b = byLabel(code, "B");
+    const result = moveTimelineNode(code, a, b, "after");
+    const parsed = parseTimeline(result);
+    expect(parsed.sections[0].periods[0].events.map((e) => e.label)).toEqual([]);
+    expect(parsed.sections[0].periods[1].events.map((e) => e.label)).toEqual(["B", "A", "C"]);
+  });
+
+  it("moves an event before the first event of another period by rewriting the header line", () => {
+    const code = "timeline\n    2026 Q1 : A\n    2026 Q2 : B";
+    const a = byLabel(code, "A");
+    const b = byLabel(code, "B");
+    const result = moveTimelineNode(code, a, b, "before");
+    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : A\n    : B");
+  });
+
+  it("still appends into a target period (event → period target)", () => {
+    const code = "timeline\n    2026 Q1 : A\n    2026 Q2 : B";
+    const a = byLabel(code, "A");
+    const q2 = byLabel(code, "2026 Q2");
+    const result = moveTimelineNode(code, a, q2, "after");
+    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : B\n    : A");
+  });
+
+  it("moves an event into an empty period", () => {
+    const code = "timeline\n    2026 Q1 : A\n    2026 Q2";
+    const a = byLabel(code, "A");
+    const q2 = byLabel(code, "2026 Q2");
+    const result = moveTimelineNode(code, a, q2, "after");
+    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : A");
   });
 });

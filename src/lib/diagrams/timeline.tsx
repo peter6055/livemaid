@@ -354,6 +354,30 @@ export function timelineNodeLabel(code: string, nodeId: string | null | undefine
   return getTimelineNode(code, nodeId)?.label ?? null;
 }
 
+/**
+ * The set of node ids that move together with `nodeId` when it is dragged:
+ * a section carries all of its periods and events, a period carries its events,
+ * an event carries only itself.
+ */
+export function timelineSubtreeIds(code: string, nodeId: string): string[] {
+  const node = getTimelineNode(code, nodeId);
+  if (!node) return [];
+  const ids: string[] = [];
+  if (node.kind === "section") {
+    ids.push(node.id);
+    for (const period of node.periods) {
+      ids.push(period.id);
+      for (const event of period.events) ids.push(event.id);
+    }
+  } else if (node.kind === "period") {
+    ids.push(node.id);
+    for (const event of node.events) ids.push(event.id);
+  } else {
+    ids.push(node.id);
+  }
+  return ids;
+}
+
 export function timelineHasNodes(code: string): boolean {
   const parsed = parseTimeline(code);
   return parsed.sections.length > 0 || parsed.defaultPeriods.length > 0;
@@ -809,11 +833,12 @@ export function moveTimelineNode(
     return lines.join("\n");
   }
 
-  // Cross-period move. Resolve the target period and remember its first line's
-  // text so we can relocate it AFTER the source mutations shift line indices.
-  const targetPeriod = getTimelineNode(code, targetPeriodId);
-  if (!targetPeriod || targetPeriod.kind !== "period") return code;
-  const targetTrim = (lines[targetPeriod.lineIndex] ?? "").trim();
+  // Cross-period move. Resolve the target period's header line text up front (the source removal
+  // below shifts line indices, so the original target id can no longer be resolved by id).
+  const targetEventIndex = target.kind === "event" ? target.eventIndex : -1;
+  const targetPeriodByLabel = getTimelineNode(code, targetPeriodId);
+  if (!targetPeriodByLabel || targetPeriodByLabel.kind !== "period") return code;
+  const targetPeriodTrim = (lines[targetPeriodByLabel.lineIndex] ?? "").trim();
 
   // Reduce the source event onto its own movable continuation line.
   const sourcePeriod = getTimelineNode(code, event.periodId);
@@ -842,15 +867,66 @@ export function moveTimelineNode(
     movableStart = event.lineIndex + 1;
   }
 
-  const moved = removeLineBlock(movableStart, movableStart);
+  removeLineBlock(movableStart, movableStart);
 
-  // Recompute the target block position in the current (mutated) lines.
-  const targetIndex = lines.findIndex((line) => line.trim() === targetTrim);
-  if (targetIndex < 0) return code;
-  const targetEnd = periodBlockEnd(lines, targetIndex);
-  const insertAt = placement === "before" ? targetIndex + 1 : targetEnd + 1;
-  insertLines(insertAt, moved);
-  return lines.join("\n");
+  // Re-parse AFTER the source removal. Locate the target period by its unchanged header line
+  // text (its line index shifted), then the target event by its original in-period index.
+  const movedCode = lines.join("\n");
+  const freshLines = movedCode.split("\n");
+  const periodHeaderIndex = freshLines.findIndex((line) => line.trim() === targetPeriodTrim);
+  if (periodHeaderIndex < 0) return code;
+  const freshPeriod = getTimelineNode(movedCode, timelinePeriodId(periodHeaderIndex));
+  if (!freshPeriod || freshPeriod.kind !== "period") return code;
+
+  let freshAnchor: TimelineEventNode | null = null;
+  if (target.kind === "event") {
+    freshAnchor =
+      [...freshPeriod.events].sort(
+        (a, b) => a.lineIndex - b.lineIndex || a.segmentIndex - b.segmentIndex,
+      )[targetEventIndex] ?? null;
+    if (!freshAnchor) return code;
+  }
+
+  const events = [...freshPeriod.events].sort(
+    (a, b) => a.lineIndex - b.lineIndex || a.segmentIndex - b.segmentIndex,
+  );
+  let insertAt: number;
+  if (freshAnchor) {
+    insertAt = placement === "before" ? targetEventIndex : targetEventIndex + 1;
+  } else {
+    insertAt = placement === "before" ? 0 : events.length;
+  }
+  events.splice(insertAt, 0, {
+    id: event.id,
+    kind: "event",
+    label: event.label,
+    lineIndex: -1,
+    eventIndex: -1,
+    segmentIndex: -1,
+    periodId: freshPeriod.id,
+  } as TimelineEventNode);
+
+  // Rebuild the target block: period label on the first line, events following as
+  // continuation lines (mirrors the same-period reorder path).
+  const periodRaw = freshLines[freshPeriod.lineIndex] ?? "";
+  const periodIndent = leadingIndent(periodRaw);
+  const periodPart = splitPeriodAndEvents(periodRaw.trim()).period;
+  const blockLineCount = freshPeriod.blockEndLineIndex - freshPeriod.lineIndex + 1;
+  if (events.length < blockLineCount) {
+    freshLines.splice(freshPeriod.lineIndex + events.length, blockLineCount - events.length);
+  } else if (events.length > blockLineCount) {
+    freshLines.splice(
+      freshPeriod.lineIndex + blockLineCount,
+      0,
+      ...Array(events.length - blockLineCount).fill(""),
+    );
+  }
+  freshLines[freshPeriod.lineIndex] =
+    `${periodIndent}${periodPart}` + (events.length > 0 ? ` : ${events[0].label}` : "");
+  for (let i = 1; i < events.length; i += 1) {
+    freshLines[freshPeriod.lineIndex + i] = `${periodIndent}: ${events[i].label}`;
+  }
+  return freshLines.join("\n");
 }
 
 function sectionBlockEnd(lines: string[], section: TimelineSectionNode): number {
