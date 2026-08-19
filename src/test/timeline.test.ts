@@ -689,7 +689,10 @@ describe("timelineAddAxes (directional add buttons)", () => {
       { side: "bottom", action: { kind: "event-to-period" } },
     ]);
     expect(
-      timelineAddAxes(period({ events: [event(), event({ id: "TIMELINE_EVENT_2_1", eventIndex: 1 })] }), "LR"),
+      timelineAddAxes(
+        period({ events: [event(), event({ id: "TIMELINE_EVENT_2_1", eventIndex: 1 })] }),
+        "LR",
+      ),
     ).toEqual([
       { side: "left", action: { kind: "period", placement: "before" } },
       { side: "right", action: { kind: "period", placement: "after" } },
@@ -711,7 +714,10 @@ describe("timelineAddAxes (directional add buttons)", () => {
       { side: "bottom", action: { kind: "period-to-section" } },
     ]);
     expect(
-      timelineAddAxes(section({ periods: [period(), period({ id: "TIMELINE_PERIOD_3", lineIndex: 3 })] }), "LR"),
+      timelineAddAxes(
+        section({ periods: [period(), period({ id: "TIMELINE_PERIOD_3", lineIndex: 3 })] }),
+        "LR",
+      ),
     ).toEqual([
       { side: "left", action: { kind: "section", placement: "before" } },
       { side: "right", action: { kind: "section", placement: "after" } },

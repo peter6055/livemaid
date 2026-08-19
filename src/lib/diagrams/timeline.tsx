@@ -463,10 +463,7 @@ export function addTimelineEventToPeriod(
   if (target.kind === "section") return { code, nodeId: targetNodeId };
   const lines = source.split("\n");
   const eventLabel = uniqueLabel(source, "New Event");
-  const period = getTimelineNode(
-    source,
-    target.kind === "event" ? target.periodId : target.id,
-  );
+  const period = getTimelineNode(source, target.kind === "event" ? target.periodId : target.id);
 
   // Inserting "before" an event that sits on its period's header line cannot use a
   // separate continuation line: that line would land above the period header and be

@@ -83,7 +83,13 @@ export function determineDiagramType(sourceCode: string): string {
       return trimmed.split(/\s+/)[0];
 
     const match = trimmed.match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
-    if (match) return match[1];
+    if (match) {
+      const type = match[1];
+      // Mermaid's v2 variants are aliases; the editor plugin is registered under the canonical id.
+      if (type === "stateDiagram-v2") return "stateDiagram";
+      if (type === "classDiagram-v2") return "classDiagram";
+      return type;
+    }
   }
   return "blank";
 }

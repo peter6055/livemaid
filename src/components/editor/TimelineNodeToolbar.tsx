@@ -69,7 +69,8 @@ export function timelineAddAxes(
     { side: main[1], action: { ...placementBase, placement: "after" as const } },
   ];
 
-  const hasNoChildren = node.kind === "period" ? node.events.length === 0 : node.periods.length === 0;
+  const hasNoChildren =
+    node.kind === "period" ? node.events.length === 0 : node.periods.length === 0;
   if (hasNoChildren) {
     buttons.push({
       side: childSide,
@@ -207,9 +208,7 @@ export function TimelineAddButtons({
               >
                 <Plus className="w-3 h-3 pointer-events-none" />
               </TooltipTrigger>
-              <TooltipContent side={TOOLTIP_SIDE[side]}>
-                {addActionLabel(action)}
-              </TooltipContent>
+              <TooltipContent side={TOOLTIP_SIDE[side]}>{addActionLabel(action)}</TooltipContent>
             </Tooltip>
           </div>
         );

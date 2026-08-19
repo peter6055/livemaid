@@ -417,7 +417,10 @@ test.describe("timeline add-button tooltips", () => {
     const canvas = page.locator(".react-transform-component");
     const canvasBox = await canvas.boundingBox();
     expect(canvasBox).not.toBeNull();
-    await page.mouse.move(canvasBox!.x + canvasBox!.width / 2, canvasBox!.y + canvasBox!.height / 2);
+    await page.mouse.move(
+      canvasBox!.x + canvasBox!.width / 2,
+      canvasBox!.y + canvasBox!.height / 2,
+    );
     await page.mouse.wheel(0, -200);
     await page.waitForTimeout(800);
 
