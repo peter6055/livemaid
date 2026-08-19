@@ -77,10 +77,11 @@ async function selectNode(page: import("@playwright/test").Page, text: string) {
 test.describe("timeline node toolbar", () => {
   test("selecting an event shows event add buttons + rename/delete actions", async ({ page }) => {
     await selectNode(page, "Research");
-    // Research is the first (and only) event of 2026 Q1 → only the bottom/after `+` is shown.
-    await expect(page.locator('[data-timeline-add-event="before"]')).toHaveCount(0);
+    // Research is the first (and only) event of 2026 Q1. The before/top `+` is still
+    // shown so a new event can be inserted ahead of it.
+    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
-    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(1);
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(2);
     await expect(page.locator("[data-timeline-add-period]")).toHaveCount(0);
     await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
     await expect(toolbar(page).locator('button[title="Rename element"]')).toBeVisible();
@@ -97,6 +98,12 @@ test.describe("timeline node toolbar", () => {
   test("adding an event after the target renders a new event", async ({ page }) => {
     const svg = await selectNode(page, "Research");
     await addButton(page, "event", "after").click();
+    await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
+  });
+
+  test("adding an event before a first event renders a new event", async ({ page }) => {
+    const svg = await selectNode(page, "Research");
+    await addButton(page, "event", "before").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
@@ -244,9 +251,9 @@ test.describe("timeline node toolbar", () => {
     await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-event-to-period="true"]')).toBeVisible();
 
-    // A first event gets only the bottom/after button in TD mode, and insertion works.
+    // A first event shows both before/after buttons in TD mode, and insertion works.
     await clickNode(svg, page, "Research");
-    await expect(page.locator('[data-timeline-add-event="before"]')).toHaveCount(0);
+    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
     await addButton(page, "event", "after").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });

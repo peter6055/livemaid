@@ -8,6 +8,7 @@ import {
   addTimelineSectionAt,
   deleteTimelineNode,
   getTimelineDirection,
+  getTimelineNode,
   getTimelineTitle,
   moveTimelineNode,
   parseTimeline,
@@ -655,14 +656,16 @@ describe("timelineAddAxes (directional add buttons)", () => {
     ...overrides,
   });
 
-  it("hides the top/before button for the first event of a period (LR)", () => {
+  it("shows top/bottom before/after buttons for the first event of a period (LR)", () => {
     expect(timelineAddAxes(event({ eventIndex: 0 }), "LR")).toEqual([
+      { side: "top", action: { kind: "event", placement: "before" } },
       { side: "bottom", action: { kind: "event", placement: "after" } },
     ]);
   });
 
-  it("hides the top/before button for the first event of a period (TD)", () => {
+  it("shows top/bottom before/after buttons for the first event of a period (TD)", () => {
     expect(timelineAddAxes(event({ eventIndex: 0 }), "TD")).toEqual([
+      { side: "top", action: { kind: "event", placement: "before" } },
       { side: "bottom", action: { kind: "event", placement: "after" } },
     ]);
   });
@@ -721,5 +724,43 @@ describe("timelineAddAxes (directional add buttons)", () => {
       { side: "bottom", action: { kind: "section", placement: "after" } },
       { side: "right", action: { kind: "period-to-section" } },
     ]);
+  });
+});
+
+describe("addTimelineEventToPeriod (before placement)", () => {
+  const CODE = `timeline
+    title Product Milestones
+    section Phase 1
+    2026 Q1 : Research
+    2026 Q2 : Build : Test`;
+
+  it("inserts before the first event by splicing it into the period header line", () => {
+    const res = addTimelineEventToPeriod(CODE, "TIMELINE_EVENT_3_0", "before");
+    expect(res.code).toBe(`timeline
+    title Product Milestones
+    section Phase 1
+    2026 Q1 : New Event 1 : Research
+    2026 Q2 : Build : Test`);
+    expect(getTimelineNode(res.code, res.nodeId)?.kind).toBe("event");
+    // New Event 1 is now the first event of the period, ahead of Research.
+    const parsed = parseTimeline(res.code);
+    const period = parsed.sections[0].periods[0];
+    expect(period.events.map((e) => e.label)).toEqual(["New Event 1", "Research"]);
+  });
+
+  it("inserts before a mid-line event without reordering the existing events", () => {
+    const res = addTimelineEventToPeriod(CODE, "TIMELINE_EVENT_4_1", "before");
+    expect(res.code).toBe(`timeline
+    title Product Milestones
+    section Phase 1
+    2026 Q1 : Research
+    2026 Q2 : Build : New Event 1 : Test`);
+    const build = getTimelineNode(res.code, "TIMELINE_EVENT_4_0");
+    const test = getTimelineNode(res.code, "TIMELINE_EVENT_4_2");
+    expect(build?.kind === "event" ? build.label : "").toBe("Build");
+    expect(test?.kind === "event" ? test.label : "").toBe("Test");
+    const parsed = parseTimeline(res.code);
+    const period = parsed.sections[0].periods[1];
+    expect(period.events.map((e) => e.label)).toEqual(["Build", "New Event 1", "Test"]);
   });
 });

@@ -42,8 +42,8 @@ type TimelineAddAction =
  *   collection is empty.
  * - Events stack inside their period column, so their "before"/"after" buttons
  *   are always on the perpendicular axis (LR: top/bottom, TD: top/bottom).
- *   The first event of a period has no earlier sibling, so only the bottom
- *   (add-after) button is shown for it.
+ *   The before/top button inserts a new event ahead of the selected event, so it
+ *   is shown for every event, including the first one.
  */
 export function timelineAddAxes(
   node: TimelineNode,
@@ -56,12 +56,10 @@ export function timelineAddAxes(
   const childSide: TimelineAddAxis = horizontal ? "bottom" : "right";
 
   if (node.kind === "event") {
-    return node.eventIndex === 0
-      ? [{ side: "bottom", action: { kind: "event", placement: "after" } }]
-      : [
-          { side: "top", action: { kind: "event", placement: "before" } },
-          { side: "bottom", action: { kind: "event", placement: "after" } },
-        ];
+    return [
+      { side: "top", action: { kind: "event", placement: "before" } },
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ];
   }
 
   const placementBase =

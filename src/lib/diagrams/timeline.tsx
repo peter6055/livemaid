@@ -463,6 +463,32 @@ export function addTimelineEventToPeriod(
   if (target.kind === "section") return { code, nodeId: targetNodeId };
   const lines = source.split("\n");
   const eventLabel = uniqueLabel(source, "New Event");
+  const period = getTimelineNode(
+    source,
+    target.kind === "event" ? target.periodId : target.id,
+  );
+
+  // Inserting "before" an event that sits on its period's header line cannot use a
+  // separate continuation line: that line would land above the period header and be
+  // orphaned (malformed Mermaid), so the new event would never render. Instead splice
+  // the new event into the header line at the target's segment position.
+  if (
+    placement === "before" &&
+    target.kind === "event" &&
+    period?.kind === "period" &&
+    period.lineIndex === target.lineIndex
+  ) {
+    const raw = lines[target.lineIndex] ?? "";
+    const indent = leadingIndent(raw);
+    const { segments, rebuild } = splitLineSegments(raw.trim());
+    segments.splice(target.segmentIndex, 0, eventLabel);
+    lines[target.lineIndex] = `${indent}${rebuild(segments)}`;
+    return {
+      code: lines.join("\n"),
+      nodeId: timelineEventId(target.lineIndex, target.segmentIndex),
+    };
+  }
+
   const newLine = `    : ${eventLabel}`;
 
   const insertAt =
