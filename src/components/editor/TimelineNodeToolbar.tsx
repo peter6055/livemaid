@@ -196,7 +196,7 @@ export function TimelineAddButtons({
                 render={
                   <button
                     type="button"
-                    className="pointer-events-auto w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform outline-2 outline-white outline-offset-0"
+                    className="pointer-events-auto w-5 h-5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md transform hover:scale-110 transition-transform outline-2 outline-white outline-offset-0 cursor-pointer"
                   />
                 }
                 onClick={(e) => {
