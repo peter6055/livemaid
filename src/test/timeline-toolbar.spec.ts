@@ -7,9 +7,12 @@ const SEED_CODE = `timeline
     title Product Milestones
     section Phase 1
     2026 Q1 : Research
-    2026 Q2 : Build
+    2026 Q2 : Build : Test
     section Phase 2
-    2026 Q3 : Launch`;
+    2026 Q3 : Launch
+    section Phase 3
+    2027 Q1
+    section Phase 4`;
 
 let DIAGRAM_ID = "";
 
@@ -74,13 +77,21 @@ async function selectNode(page: import("@playwright/test").Page, text: string) {
 test.describe("timeline node toolbar", () => {
   test("selecting an event shows event add buttons + rename/delete actions", async ({ page }) => {
     await selectNode(page, "Research");
-    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
+    // Research is the first (and only) event of 2026 Q1 → only the bottom/after `+` is shown.
+    await expect(page.locator('[data-timeline-add-event="before"]')).toHaveCount(0);
     await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
-    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(1);
     await expect(page.locator("[data-timeline-add-period]")).toHaveCount(0);
     await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
     await expect(toolbar(page).locator('button[title="Rename element"]')).toBeVisible();
     await expect(toolbar(page).locator('button[title="Delete element"]')).toBeVisible();
+  });
+
+  test("selecting a non-first event shows both before and after buttons", async ({ page }) => {
+    await selectNode(page, "Test");
+    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(2);
   });
 
   test("adding an event after the target renders a new event", async ({ page }) => {
@@ -89,14 +100,25 @@ test.describe("timeline node toolbar", () => {
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
-  test("adding an event before the target renders a new event", async ({ page }) => {
-    const svg = await selectNode(page, "Build");
+  test("adding an event before a non-first event renders a new event", async ({ page }) => {
+    const svg = await selectNode(page, "Test");
     await addButton(page, "event", "before").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
-  test("selecting a period shows before/after + child event-add buttons", async ({ page }) => {
+  test("selecting a period with events hides the child event-add button", async ({ page }) => {
     await selectNode(page, "2026 Q1");
+    await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-period]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-event-to-period]")).toHaveCount(0);
+    await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
+  });
+
+  test("selecting an empty period shows before/after + the child event-add button", async ({
+    page,
+  }) => {
+    await selectNode(page, "2027 Q1");
     await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-event-to-period="true"]')).toBeVisible();
@@ -105,10 +127,10 @@ test.describe("timeline node toolbar", () => {
     await expect(page.locator("[data-timeline-add-section]")).toHaveCount(0);
   });
 
-  test("adding an event to the selected period via the child button renders a new event", async ({
+  test("adding an event to an empty period via the child button renders a new event", async ({
     page,
   }) => {
-    const svg = await selectNode(page, "2026 Q1");
+    const svg = await selectNode(page, "2027 Q1");
     await page.locator('[data-timeline-add-event-to-period="true"]').click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
@@ -119,8 +141,19 @@ test.describe("timeline node toolbar", () => {
     await expect(nodeByLabel(svg, "New Period 1")).toBeVisible({ timeout: 15000 });
   });
 
-  test("selecting a section shows before/after + child period-add buttons", async ({ page }) => {
+  test("selecting a section with periods hides the child period-add button", async ({ page }) => {
     await selectNode(page, "Phase 1");
+    await expect(page.locator('[data-timeline-add-section="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-section="after"]')).toBeVisible();
+    await expect(page.locator("[data-timeline-add-section]")).toHaveCount(2);
+    await expect(page.locator("[data-timeline-add-period-to-section]")).toHaveCount(0);
+    await expect(page.locator("[data-timeline-add-event]")).toHaveCount(0);
+  });
+
+  test("selecting an empty section shows before/after + the child period-add button", async ({
+    page,
+  }) => {
+    await selectNode(page, "Phase 4");
     await expect(page.locator('[data-timeline-add-section="before"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-section="after"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-period-to-section="true"]')).toBeVisible();
@@ -129,10 +162,10 @@ test.describe("timeline node toolbar", () => {
     await expect(page.locator("[data-timeline-add-event]")).toHaveCount(0);
   });
 
-  test("adding a period to the selected section via the child button renders a new period", async ({
+  test("adding a period to an empty section via the child button renders a new period", async ({
     page,
   }) => {
-    const svg = await selectNode(page, "Phase 1");
+    const svg = await selectNode(page, "Phase 4");
     await page.locator('[data-timeline-add-period-to-section="true"]').click();
     await expect(nodeByLabel(svg, "New Period 1")).toBeVisible({ timeout: 15000 });
   });
@@ -203,17 +236,17 @@ test.describe("timeline node toolbar", () => {
     await page.getByRole("menuitem", { name: "Vertical" }).click();
     await page.waitForTimeout(1500);
 
-    // A selected period gets top/bottom (before/after) buttons plus a right child button in TD mode.
-    await clickNode(svg, page, "2026 Q1");
+    // An empty period gets top/bottom (before/after) buttons plus a right child button in TD mode.
+    await clickNode(svg, page, "2027 Q1");
     await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible({
       timeout: 10000,
     });
     await expect(page.locator('[data-timeline-add-period="after"]')).toBeVisible();
     await expect(page.locator('[data-timeline-add-event-to-period="true"]')).toBeVisible();
 
-    // A selected event gets top/bottom (before/after) buttons in TD mode, and insertion works.
+    // A first event gets only the bottom/after button in TD mode, and insertion works.
     await clickNode(svg, page, "Research");
-    await expect(page.locator('[data-timeline-add-event="before"]')).toBeVisible();
+    await expect(page.locator('[data-timeline-add-event="before"]')).toHaveCount(0);
     await expect(page.locator('[data-timeline-add-event="after"]')).toBeVisible();
     await addButton(page, "event", "after").click();
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
@@ -303,5 +336,91 @@ test.describe("timeline node toolbar", () => {
     expect(q1).not.toBeNull();
     expect(q3).not.toBeNull();
     expect(q3!.x).toBeLessThan(q1!.x);
+  });
+});
+
+test.describe("timeline add-button tooltips", () => {
+  // The `+` can mount directly under the stationary pointer right after a node is
+  // selected (the pointer rests on the node's edge), which base-ui's hover hook
+  // legitimately treats as a hover and opens that `+`'s tooltip. To make each
+  // assertion deterministic we park the pointer away from the canvas first so only
+  // the tooltip we explicitly hover is open.
+  function tooltip(page: import("@playwright/test").Page) {
+    return page.locator("[data-slot='tooltip-content'][data-open]");
+  }
+
+  async function parkPointer(page: import("@playwright/test").Page) {
+    await page.mouse.move(30, 30);
+    await page.waitForTimeout(400);
+  }
+
+  test("tooltip appears immediately on hover with a descriptive label", async ({ page }) => {
+    await selectNode(page, "Test");
+    await parkPointer(page);
+    await page.hover('[data-timeline-add-event="before"]');
+    // delay is 0 — no artificial wait before the tooltip shows.
+    await expect(tooltip(page)).toBeVisible({ timeout: 1000 });
+    await expect(tooltip(page)).toHaveText("Add event before");
+  });
+
+  test("bottom + tooltip renders below the selected component", async ({ page }) => {
+    const svg = await openTimelineEditor(page);
+    // 2027 Q1 is an empty period → its bottom `+` is the child event-add button.
+    await clickNode(svg, page, "2027 Q1");
+    await parkPointer(page);
+    const nodeBox = await nodeByLabel(svg, "2027 Q1").boundingBox();
+    expect(nodeBox).not.toBeNull();
+
+    await page.hover('[data-timeline-add-event-to-period="true"]');
+    await expect(tooltip(page)).toBeVisible({ timeout: 1000 });
+    await expect(tooltip(page)).toHaveText("Add event");
+    const tipBox = await tooltip(page).boundingBox();
+    expect(tipBox).not.toBeNull();
+    // The tooltip must sit below the selected component, not on top of it.
+    expect(tipBox!.y).toBeGreaterThan(nodeBox!.y + nodeBox!.height);
+  });
+
+  test("tooltip is styled for both light and dark themes", async ({ page }) => {
+    await selectNode(page, "Test");
+    await parkPointer(page);
+    await page.hover('[data-timeline-add-event="before"]');
+    await expect(tooltip(page)).toBeVisible({ timeout: 1000 });
+    const lightBg = await tooltip(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+    await expect(tooltip(page)).toHaveText("Add event before");
+
+    // Toggle dark mode (the `.dark` class flips the `--foreground` token the tooltip uses).
+    await page.evaluate(() => document.documentElement.classList.add("dark"));
+    await page.mouse.move(30, 30);
+    await page.waitForTimeout(300);
+    await page.hover('[data-timeline-add-event="before"]');
+    await expect(tooltip(page)).toBeVisible({ timeout: 1000 });
+    const darkBg = await tooltip(page).evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    // Light theme uses a dark tooltip, dark theme a light tooltip.
+    expect(lightBg).not.toBe(darkBg);
+    await expect(tooltip(page)).toHaveText("Add event before");
+  });
+
+  test("tooltip stays positioned below the component after zoom", async ({ page }) => {
+    const svg = await openTimelineEditor(page);
+    await clickNode(svg, page, "2027 Q1");
+    await parkPointer(page);
+
+    // Zoom the canvas in by wheeling over the canvas surface.
+    const canvas = page.locator(".react-transform-component");
+    const canvasBox = await canvas.boundingBox();
+    expect(canvasBox).not.toBeNull();
+    await page.mouse.move(canvasBox!.x + canvasBox!.width / 2, canvasBox!.y + canvasBox!.height / 2);
+    await page.mouse.wheel(0, -200);
+    await page.waitForTimeout(800);
+
+    const nodeBox = await nodeByLabel(svg, "2027 Q1").boundingBox();
+    expect(nodeBox).not.toBeNull();
+    await page.hover('[data-timeline-add-event-to-period="true"]');
+    await expect(tooltip(page)).toBeVisible({ timeout: 1000 });
+    const tipBox = await tooltip(page).boundingBox();
+    expect(tipBox).not.toBeNull();
+    // Below the selected component after zooming.
+    expect(tipBox!.y).toBeGreaterThan(nodeBox!.y + nodeBox!.height);
   });
 });

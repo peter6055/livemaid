@@ -16,7 +16,10 @@ import {
   setTimelineDirection,
   timelineRenderOrder,
   upsertTimelineTitle,
+  type TimelineEventNode,
   type TimelineNode,
+  type TimelinePeriodNode,
+  type TimelineSectionNode,
 } from "@/lib/diagrams/timeline";
 
 const SAMPLE = `timeline
@@ -623,46 +626,97 @@ describe("timeline title", () => {
 });
 
 describe("timelineAddAxes (directional add buttons)", () => {
-  it("maps an event in LR to top/bottom (before/after)", () => {
-    expect(timelineAddAxes("event", "LR")).toEqual([
+  const section = (overrides: Partial<TimelineSectionNode> = {}): TimelineSectionNode => ({
+    id: "TIMELINE_SECTION_1",
+    kind: "section",
+    label: "S",
+    lineIndex: 1,
+    periods: [],
+    ...overrides,
+  });
+  const period = (overrides: Partial<TimelinePeriodNode> = {}): TimelinePeriodNode => ({
+    id: "TIMELINE_PERIOD_2",
+    kind: "period",
+    label: "P",
+    lineIndex: 2,
+    blockEndLineIndex: 2,
+    events: [],
+    sectionId: null,
+    ...overrides,
+  });
+  const event = (overrides: Partial<TimelineEventNode> = {}): TimelineEventNode => ({
+    id: "TIMELINE_EVENT_2_0",
+    kind: "event",
+    label: "E",
+    lineIndex: 2,
+    eventIndex: 0,
+    segmentIndex: 0,
+    periodId: "TIMELINE_PERIOD_2",
+    ...overrides,
+  });
+
+  it("hides the top/before button for the first event of a period (LR)", () => {
+    expect(timelineAddAxes(event({ eventIndex: 0 }), "LR")).toEqual([
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ]);
+  });
+
+  it("hides the top/before button for the first event of a period (TD)", () => {
+    expect(timelineAddAxes(event({ eventIndex: 0 }), "TD")).toEqual([
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ]);
+  });
+
+  it("shows top/bottom before/after buttons for a non-first event (LR/TD)", () => {
+    const axes = timelineAddAxes(event({ eventIndex: 1 }), "LR");
+    expect(axes).toEqual([
+      { side: "top", action: { kind: "event", placement: "before" } },
+      { side: "bottom", action: { kind: "event", placement: "after" } },
+    ]);
+    expect(timelineAddAxes(event({ eventIndex: 2 }), "TD")).toEqual([
       { side: "top", action: { kind: "event", placement: "before" } },
       { side: "bottom", action: { kind: "event", placement: "after" } },
     ]);
   });
 
-  it("maps an event in TD to top/bottom (before/after)", () => {
-    expect(timelineAddAxes("event", "TD")).toEqual([
-      { side: "top", action: { kind: "event", placement: "before" } },
-      { side: "bottom", action: { kind: "event", placement: "after" } },
-    ]);
-  });
-
-  it("maps a period in LR to left/right + bottom child button", () => {
-    expect(timelineAddAxes("period", "LR")).toEqual([
+  it("maps a period in LR to left/right plus a bottom child button only when it has no events", () => {
+    expect(timelineAddAxes(period(), "LR")).toEqual([
       { side: "left", action: { kind: "period", placement: "before" } },
       { side: "right", action: { kind: "period", placement: "after" } },
       { side: "bottom", action: { kind: "event-to-period" } },
     ]);
+    expect(
+      timelineAddAxes(period({ events: [event(), event({ id: "TIMELINE_EVENT_2_1", eventIndex: 1 })] }), "LR"),
+    ).toEqual([
+      { side: "left", action: { kind: "period", placement: "before" } },
+      { side: "right", action: { kind: "period", placement: "after" } },
+    ]);
   });
 
-  it("maps a period in TD to top/bottom + right child button", () => {
-    expect(timelineAddAxes("period", "TD")).toEqual([
+  it("maps a period in TD to top/bottom plus a right child button only when it has no events", () => {
+    expect(timelineAddAxes(period(), "TD")).toEqual([
       { side: "top", action: { kind: "period", placement: "before" } },
       { side: "bottom", action: { kind: "period", placement: "after" } },
       { side: "right", action: { kind: "event-to-period" } },
     ]);
   });
 
-  it("maps a section in LR to left/right + bottom child button", () => {
-    expect(timelineAddAxes("section", "LR")).toEqual([
+  it("maps a section in LR to left/right plus a bottom child button only when it has no periods", () => {
+    expect(timelineAddAxes(section(), "LR")).toEqual([
       { side: "left", action: { kind: "section", placement: "before" } },
       { side: "right", action: { kind: "section", placement: "after" } },
       { side: "bottom", action: { kind: "period-to-section" } },
     ]);
+    expect(
+      timelineAddAxes(section({ periods: [period(), period({ id: "TIMELINE_PERIOD_3", lineIndex: 3 })] }), "LR"),
+    ).toEqual([
+      { side: "left", action: { kind: "section", placement: "before" } },
+      { side: "right", action: { kind: "section", placement: "after" } },
+    ]);
   });
 
-  it("maps a section in TD to top/bottom + right child button", () => {
-    expect(timelineAddAxes("section", "TD")).toEqual([
+  it("maps a section in TD to top/bottom plus a right child button only when it has no periods", () => {
+    expect(timelineAddAxes(section(), "TD")).toEqual([
       { side: "top", action: { kind: "section", placement: "before" } },
       { side: "bottom", action: { kind: "section", placement: "after" } },
       { side: "right", action: { kind: "period-to-section" } },

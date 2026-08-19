@@ -1,13 +1,11 @@
 import { useEffect, useRef } from "react";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import type { TimelineDirection } from "@/lib/diagrams/timeline";
-
-type TimelineNodeKind = "section" | "period" | "event";
+import type { TimelineDirection, TimelineNode } from "@/lib/diagrams/timeline";
 
 interface TimelineNodeToolbarProps {
   scale: number;
-  nodeKind: TimelineNodeKind;
+  node: TimelineNode;
   direction: TimelineDirection;
   onAddEvent: (placement: "before" | "after") => void;
   onAddPeriod: (placement: "before" | "after") => void;
@@ -18,7 +16,7 @@ interface TimelineNodeToolbarProps {
 
 interface TimelineAddButtonsProps {
   scale: number;
-  nodeKind: TimelineNodeKind;
+  node: TimelineNode;
   direction: TimelineDirection;
   onAddEvent: (placement: "before" | "after") => void;
   onAddPeriod: (placement: "before" | "after") => void;
@@ -35,17 +33,20 @@ type TimelineAddAction =
   | { kind: "event-to-period" };
 
 /**
- * Map a selected node kind + diagram direction to the edge `+` buttons.
+ * Map a selected node + diagram direction to the edge `+` buttons.
  *
  * - Sections and Periods get "before"/"after" buttons on the timeline's main
  *   axis (LR: left/right, TD: top/bottom) and a child-add button on the
- *   perpendicular axis (LR: bottom, TD: right): section→add period,
- *   period→add event.
+ *   perpendicular axis (LR: bottom, TD: right): section→add first period,
+ *   period→add first event. The child button only appears when the child
+ *   collection is empty.
  * - Events stack inside their period column, so their "before"/"after" buttons
  *   are always on the perpendicular axis (LR: top/bottom, TD: top/bottom).
+ *   The first event of a period has no earlier sibling, so only the bottom
+ *   (add-after) button is shown for it.
  */
 export function timelineAddAxes(
-  nodeKind: TimelineNodeKind,
+  node: TimelineNode,
   direction: TimelineDirection,
 ): Array<{ side: TimelineAddAxis; action: TimelineAddAction }> {
   const horizontal = direction === "LR";
@@ -54,24 +55,30 @@ export function timelineAddAxes(
     : ["top", "bottom"];
   const childSide: TimelineAddAxis = horizontal ? "bottom" : "right";
 
-  if (nodeKind === "event") {
-    return [
-      { side: "top", action: { kind: "event", placement: "before" } },
-      { side: "bottom", action: { kind: "event", placement: "after" } },
-    ];
+  if (node.kind === "event") {
+    return node.eventIndex === 0
+      ? [{ side: "bottom", action: { kind: "event", placement: "after" } }]
+      : [
+          { side: "top", action: { kind: "event", placement: "before" } },
+          { side: "bottom", action: { kind: "event", placement: "after" } },
+        ];
   }
-  if (nodeKind === "period") {
-    return [
-      { side: main[0], action: { kind: "period", placement: "before" } },
-      { side: main[1], action: { kind: "period", placement: "after" } },
-      { side: childSide, action: { kind: "event-to-period" } },
-    ];
-  }
-  return [
-    { side: main[0], action: { kind: "section", placement: "before" } },
-    { side: main[1], action: { kind: "section", placement: "after" } },
-    { side: childSide, action: { kind: "period-to-section" } },
+
+  const placementBase =
+    node.kind === "period" ? { kind: "period" as const } : { kind: "section" as const };
+  const buttons: Array<{ side: TimelineAddAxis; action: TimelineAddAction }> = [
+    { side: main[0], action: { ...placementBase, placement: "before" as const } },
+    { side: main[1], action: { ...placementBase, placement: "after" as const } },
   ];
+
+  const hasNoChildren = node.kind === "period" ? node.events.length === 0 : node.periods.length === 0;
+  if (hasNoChildren) {
+    buttons.push({
+      side: childSide,
+      action: node.kind === "period" ? { kind: "event-to-period" } : { kind: "period-to-section" },
+    });
+  }
+  return buttons;
 }
 
 const EDGE_POSITION: Record<TimelineAddAxis, React.CSSProperties> = {
@@ -97,11 +104,20 @@ function addActionLabel(action: TimelineAddAction): string {
     case "section":
       return `Add section ${action.placement}`;
     case "period-to-section":
-      return "Add period to section";
+      return "Add period";
     case "event-to-period":
-      return "Add event to period";
+      return "Add event";
   }
 }
+
+/** The tooltip opens on the same side of the `+` that the button sits on, so it never
+ *  covers the selected component. */
+const TOOLTIP_SIDE: Record<TimelineAddAxis, "top" | "bottom" | "left" | "right"> = {
+  left: "left",
+  right: "right",
+  top: "top",
+  bottom: "bottom",
+};
 
 function addActionDataAttribute(action: TimelineAddAction): Record<string, string> {
   switch (action.kind) {
@@ -147,17 +163,17 @@ function runAddAction(
  */
 export function TimelineAddButtons({
   scale,
-  nodeKind,
+  node,
   direction,
   onAddEvent,
   onAddPeriod,
   onAddSection,
 }: TimelineAddButtonsProps) {
-  const addButtons = timelineAddAxes(nodeKind, direction);
+  const addButtons = timelineAddAxes(node, direction);
   const handlers = { onAddEvent, onAddPeriod, onAddSection };
 
   return (
-    <TooltipProvider delay={400}>
+    <TooltipProvider delay={0}>
       {addButtons.map(({ side, action }) => {
         const transform = EDGE_TRANSFORM[side];
         return (
@@ -193,7 +209,7 @@ export function TimelineAddButtons({
               >
                 <Plus className="w-3 h-3 pointer-events-none" />
               </TooltipTrigger>
-              <TooltipContent side={side === "top" || side === "bottom" ? "top" : "right"}>
+              <TooltipContent side={TOOLTIP_SIDE[side]}>
                 {addActionLabel(action)}
               </TooltipContent>
             </Tooltip>
@@ -206,7 +222,7 @@ export function TimelineAddButtons({
 
 export function TimelineNodeToolbar({
   scale,
-  nodeKind,
+  node,
   direction,
   onAddEvent,
   onAddPeriod,
@@ -281,7 +297,7 @@ export function TimelineNodeToolbar({
 
       <TimelineAddButtons
         scale={scale}
-        nodeKind={nodeKind}
+        node={node}
         direction={direction}
         onAddEvent={onAddEvent}
         onAddPeriod={onAddPeriod}

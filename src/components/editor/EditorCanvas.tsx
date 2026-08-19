@@ -2961,7 +2961,7 @@ export function EditorCanvas({
                     >
                       <TimelineAddButtons
                         scale={state.scale}
-                        nodeKind={hoveredTimelineNode.kind}
+                        node={hoveredTimelineNode}
                         direction={getTimelineDirection(code)}
                         onAddEvent={(placement) =>
                           onTimelineAddEvent?.(hoveredTimelineNode.id, placement)
@@ -3273,7 +3273,7 @@ export function EditorCanvas({
                       ) : currentType === "timeline" && selectedTimelineNode ? (
                         <TimelineNodeToolbar
                           scale={state.scale}
-                          nodeKind={selectedTimelineNode.kind}
+                          node={selectedTimelineNode}
                           direction={getTimelineDirection(code)}
                           onAddEvent={(placement) =>
                             onTimelineAddEvent?.(selectedTimelineNode.id, placement)
