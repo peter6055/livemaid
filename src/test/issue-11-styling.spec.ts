@@ -96,6 +96,232 @@ test.describe("issue 11 styling", () => {
     await request.delete(`/api/diagrams/${id}`);
   });
 
+  test("state toolbar reads classDef/class styles and reset removes the assignment", async ({
+    page,
+    request,
+  }) => {
+    const { id, svg } = await openEditor(page, request, {
+      name: "Issue 11 State ClassDef",
+      type: "stateDiagram",
+      code: [
+        "stateDiagram-v2",
+        "    [*] --> Still",
+        "    Still --> [*]",
+        "    Still --> Moving",
+        "    Moving --> Still",
+        "    Moving --> Crash",
+        "    Crash --> [*]",
+        "    classDef red fill:#ef4444",
+        "    class Still red",
+      ].join("\n"),
+    });
+
+    const node = svg.locator("g.statediagram-state").filter({ hasText: "Still" }).first();
+    await expect(node).toBeVisible({ timeout: 15000 });
+    const box = await node.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.waitForTimeout(700);
+
+    const toolbar = page.locator("[data-state-node-toolbar]");
+    await expect(toolbar).toBeVisible({ timeout: 10000 });
+    await toolbar.locator('button[title="Custom style"]').click();
+    await expect(toolbar.getByText("Fill", { exact: true })).toBeVisible();
+
+    // The Red fill swatch should already be active because classDef red is applied.
+    const fillRedClass = await page.evaluate(() => {
+      const root = document.querySelector("[data-state-node-toolbar]");
+      const fillLabel = Array.from(root?.querySelectorAll("span") ?? []).find(
+        (s) => s.textContent?.trim() === "Fill",
+      );
+      const fillRow = fillLabel?.closest("div.flex.flex-col");
+      const red = fillRow?.querySelector('button[title="Red"]') as HTMLButtonElement | null;
+      return red?.className ?? "";
+    });
+    expect(fillRedClass).toMatch(/ring-2/);
+
+    // Reset should remove the class assignment (not write a style line). Use a native click
+    // (HTMLElement.click) so the handler fires even though the diagram toolbox overlaps the button.
+    const resetClicked = await page.evaluate(() => {
+      const root = document.querySelector("[data-state-node-toolbar]");
+      const reset = Array.from(root?.querySelectorAll("button") ?? []).find(
+        (b) => b.textContent?.trim() === "Reset style",
+      ) as HTMLButtonElement | null;
+      reset?.click();
+      return !!reset;
+    });
+    expect(resetClicked).toBe(true);
+    await expect
+      .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
+      .not.toContain("class Still red");
+    const finalCode = await readDiagramCode(request, id);
+    expect(finalCode).not.toContain("style Still");
+
+    await request.delete(`/api/diagrams/${id}`);
+  });
+
+  test("state composite toolbar offers the style bar (regression: composites were excluded)", async ({
+    page,
+    request,
+  }) => {
+    const { id, svg } = await openEditor(page, request, {
+      name: "Issue 11 State Composite Style",
+      type: "stateDiagram",
+      code: [
+        "stateDiagram-v2",
+        "    [*] --> Parent",
+        "    state Parent {",
+        "        [*] --> Child",
+        "        Child --> [*]",
+        "    }",
+        "    Parent --> [*]",
+      ].join("\n"),
+    });
+
+    const cluster = svg.locator("g.statediagram-cluster").first();
+    await expect(cluster).toBeVisible({ timeout: 15000 });
+    // Click the composite's own title (the "Parent" cluster label), not its center — the center is
+    // occupied by the nested "Child" state, which would select the child instead.
+    const title = cluster
+      .locator(".state-title, .cluster-label, text, foreignObject div")
+      .filter({ hasText: "Parent" })
+      .first();
+    await title.click({ force: true });
+    await page.waitForTimeout(700);
+
+    const toolbar = page.locator("[data-state-node-toolbar]");
+    await expect(toolbar).toBeVisible({ timeout: 10000 });
+    await expect(toolbar.locator('button[title="Custom style"]')).toBeVisible();
+    // Shape morphing is state-nodes-only and must NOT appear for a composite.
+    await expect(toolbar.locator('button[title="Change shape"]')).toHaveCount(0);
+
+    await request.delete(`/api/diagrams/${id}`);
+  });
+
+  test("double-clicking a nested node inside a composite selects the node, not the composite", async ({
+    page,
+    request,
+  }) => {
+    const { id, svg } = await openEditor(page, request, {
+      name: "State Composite Inner Node Double-click",
+      type: "stateDiagram",
+      code: [
+        "stateDiagram-v2",
+        "    [*] --> Parent",
+        "    state Parent {",
+        "        [*] --> Child",
+        "        Child --> [*]",
+        "    }",
+        "    Parent --> [*]",
+      ].join("\n"),
+    });
+
+    const cluster = svg.locator("g.statediagram-cluster").first();
+    await expect(cluster).toBeVisible({ timeout: 15000 });
+
+    // Double-click the nested "Child" state that lives inside the composite. The first click must
+    // select the inner node (not the parent composite), so the state toolbar — with its
+    // state-only "Change shape" button — appears instead of the composite toolbar.
+    // NOTE: Mermaid renders the nested state as a sibling of the cluster group (its own
+    // `g.node.statediagram-state`), not as a DOM child of `g.statediagram-cluster`.
+    const child = svg.locator("g.statediagram-state").filter({ hasText: "Child" }).first();
+    await expect(child).toBeVisible({ timeout: 10000 });
+    const box = await child.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.dblclick(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.waitForTimeout(700);
+
+    const toolbar = page.locator("[data-state-node-toolbar]");
+    await expect(toolbar).toBeVisible({ timeout: 10000 });
+    // A nested state must show the state-only shape-morph control...
+    await expect(toolbar.locator('button[title="Change shape"]')).toBeVisible();
+    // ...and must NOT be misidentified as the composite (which never shows "Change shape").
+    await expect(toolbar.locator('button[title="Delete composite"]')).toHaveCount(0);
+
+    await request.delete(`/api/diagrams/${id}`);
+  });
+
+  test("double-clicking empty space inside a composite selects the composite", async ({
+    page,
+    request,
+  }) => {
+    const { id, svg } = await openEditor(page, request, {
+      name: "State Composite Empty Space Double-click",
+      type: "stateDiagram",
+      code: [
+        "stateDiagram-v2",
+        "    [*] --> Parent",
+        "    state Parent {",
+        "        [*] --> Child",
+        "        Child --> [*]",
+        "    }",
+        "    Parent --> [*]",
+      ].join("\n"),
+    });
+
+    const cluster = svg.locator("g.statediagram-cluster").first();
+    await expect(cluster).toBeVisible({ timeout: 15000 });
+
+    // Double-click a point inside the composite's interior but away from the nested "Child" state
+    // (which sits centered). The click must select the composite itself — the composite toolbar
+    // shows "Delete composite" and never the state-only "Change shape" button.
+    const clusterBox = await cluster.boundingBox();
+    const child = svg.locator("g.statediagram-state").filter({ hasText: "Child" }).first();
+    const childBox = await child.boundingBox();
+    expect(clusterBox).not.toBeNull();
+    expect(childBox).not.toBeNull();
+
+    // Pick a point left of the child but inside the composite interior.
+    const x = clusterBox!.x + 16;
+    const y = (clusterBox!.y + childBox!.y) / 2;
+    await page.mouse.dblclick(x, y);
+    await page.waitForTimeout(700);
+
+    const toolbar = page.locator("[data-state-node-toolbar]");
+    await expect(toolbar).toBeVisible({ timeout: 10000 });
+    await expect(toolbar.locator('button[title="Delete composite"]')).toBeVisible();
+    await expect(toolbar.locator('button[title="Change shape"]')).toHaveCount(0);
+
+    await request.delete(`/api/diagrams/${id}`);
+  });
+
+  test("double-clicking a composite title enters inline edit mode", async ({ page, request }) => {
+    const { id, svg } = await openEditor(page, request, {
+      name: "State Composite Title Double-click Edit",
+      type: "stateDiagram",
+      code: [
+        "stateDiagram-v2",
+        "    [*] --> parent_1",
+        "    state parent_1 {",
+        "        [*] --> Still",
+        "        Still --> [*]",
+        "    }",
+        "    parent_1 --> [*]",
+      ].join("\n"),
+    });
+
+    const cluster = svg.locator("g.statediagram-cluster").first();
+    await expect(cluster).toBeVisible({ timeout: 15000 });
+
+    // Double-click the composite's own title label. Mermaid forces the label's inner content to
+    // `pointer-events: none`, so we target the label group's bounding box rather than its text.
+    const title = cluster.locator(".cluster-label").first();
+    await expect(title).toBeVisible({ timeout: 10000 });
+    const box = await title.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.dblclick(box!.x + box!.width / 2, box!.y + box!.height / 2);
+    await page.waitForTimeout(700);
+
+    // The composite rename editor (a textarea) must open.
+    await expect(page.locator("[data-class-text-editor] textarea")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.locator("[data-class-text-editor] textarea")).toHaveValue("parent_1");
+
+    await page.keyboard.press("Escape");
+    await request.delete(`/api/diagrams/${id}`);
+  });
+
   test("sequence inline editor has no B/I/align toolbar", async ({ page, request }) => {
     const { id, svg } = await openEditor(page, request, {
       name: "Issue 11 Sequence Format",

@@ -2638,6 +2638,7 @@ export function useCanvasInteraction({
 
         if (
           currentNode.classList?.contains("node") ||
+          currentNode.classList?.contains("statediagram-state") ||
           currentNode.classList?.contains("cluster") ||
           currentNode.classList?.contains("statediagram-cluster")
         ) {

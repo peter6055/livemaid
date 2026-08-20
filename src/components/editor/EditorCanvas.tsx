@@ -63,6 +63,7 @@ import {
   timelineSubtreeIds,
   type TimelineNodeKind,
   type TimelinePeriodNode,
+  type TimelineSectionNode,
 } from "@/lib/diagrams/timeline";
 import { TimelineNodeToolbar } from "./TimelineNodeToolbar";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
@@ -452,6 +453,16 @@ type TimelineReorderSlot = {
   hitTol?: number;
 };
 
+/** Screenspace bounding box of a timeline section container, for section highlight on period drag. */
+type TimelineSectionBounds = {
+  sectionId: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export function EditorCanvas({
   code,
   parseError,
@@ -750,6 +761,10 @@ export function EditorCanvas({
     pan: { dx: number; dy: number };
     targetId: string | null;
     placement: "before" | "after" | null;
+    /** Bounding boxes of every section container, used for section highlight on period drag. */
+    sectionBounds: TimelineSectionBounds[];
+    /** Id of the section currently highlighted during a period boundary drag. */
+    highlightedSectionId: string | null;
   } | null>(null);
   // Class-diagram connection drag (the purple +). All viewport-space (canvasShellRef-relative),
   // rendered outside TransformWrapper so pan/zoom never distorts it. `classConnecting` disables
@@ -923,8 +938,11 @@ export function EditorCanvas({
       // text editors), never route it into canvas hit-testing. This prevents accidental
       // back-shape selection when clicking toolbar buttons near tight edges and keeps
       // the inline editor open when the user double-clicks to select text.
-      const hitFloatingUi = elements.some((el) =>
-        Boolean(
+      const hitFloatingUi = elements.some((el) => {
+        if (el instanceof HTMLElement && getComputedStyle(el).pointerEvents === "none") {
+          return false;
+        }
+        return Boolean(
           el.closest?.("[data-inline-editor]") ||
           el.closest?.("[data-class-text-editor]") ||
           el.closest?.("[data-scale-lock]") ||
@@ -936,8 +954,8 @@ export function EditorCanvas({
           el.closest?.(".seq-msg-reorder-handle") ||
           el.closest?.(".timeline-reorder-handle") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
-        ),
-      );
+        );
+      });
       if (hitFloatingUi) return;
 
       let target =
@@ -958,7 +976,9 @@ export function EditorCanvas({
         tag === "svg" || tag === "div" || tag === "g" || target === container;
 
       const candidates = Array.from(
-        container.querySelectorAll(".node, .cluster, path.flowchart-link, .edgeLabel"),
+        container.querySelectorAll(
+          ".node, .statediagram-state, .cluster, .statediagram-cluster, path.flowchart-link, .edgeLabel",
+        ),
       ) as SVGGraphicsElement[];
 
       const findBestAtPoint = () => {
@@ -1722,18 +1742,23 @@ export function EditorCanvas({
     ): { id: string; el: Element } | null => {
       const els = document.elementsFromPoint(clientX, clientY);
       for (const el of els) {
-        // A composite container (cluster) is a valid target too.
+        const g = el.closest("g.node, g.statediagram-state");
+        if (
+          g &&
+          !g.classList.contains("statediagram-cluster") &&
+          /-state-.+-\d+$/.test(g.id) &&
+          !/----note-\d+$/.test(g.id)
+        ) {
+          const id = stateNameFromSvgId(g.id);
+          if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
+          return { id, el: g };
+        }
         const cluster = el.closest("g.statediagram-cluster");
         if (cluster) {
           const id = stateNameFromSvgId(cluster.id);
           if (!id || id === sourceId) return null;
           return { id, el: cluster };
         }
-        const g = el.closest("g.node");
-        if (!g || !/-state-.+-\d+$/.test(g.id) || /----note-\d+$/.test(g.id)) continue;
-        const id = stateNameFromSvgId(g.id);
-        if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
-        return { id, el: g };
       }
       return null;
     };
@@ -2139,6 +2164,45 @@ export function EditorCanvas({
     }
     for (const period of parsedTimeline.defaultPeriods) walkPeriod(period);
 
+    // Compute bounding boxes for each section (section node + its periods + their events).
+    const sectionBounds: TimelineSectionBounds[] = [];
+    const periodToSection = new Map<string, TimelineSectionNode>();
+    for (const sec of parsedTimeline.sections) {
+      for (const p of sec.periods) periodToSection.set(p.id, sec);
+    }
+    for (const sec of parsedTimeline.sections) {
+      const sn = nodes.find((n) => n.id === sec.id);
+      if (!sn) continue;
+      let sx1 = sn.x,
+        sy1 = sn.y,
+        sx2 = sn.x + sn.w,
+        sy2 = sn.y + sn.h;
+      for (const p of sec.periods) {
+        const pn = nodes.find((n) => n.id === p.id);
+        if (!pn) continue;
+        sx1 = Math.min(sx1, pn.x);
+        sy1 = Math.min(sy1, pn.y);
+        sx2 = Math.max(sx2, pn.x + pn.w);
+        sy2 = Math.max(sy2, pn.y + pn.h);
+        for (const ev of p.events) {
+          const en = nodes.find((n) => n.id === ev.id);
+          if (!en) continue;
+          sx1 = Math.min(sx1, en.x);
+          sy1 = Math.min(sy1, en.y);
+          sx2 = Math.max(sx2, en.x + en.w);
+          sy2 = Math.max(sy2, en.y + en.h);
+        }
+      }
+      sectionBounds.push({
+        sectionId: sec.id,
+        label: sec.label,
+        x: sx1,
+        y: sy1,
+        w: sx2 - sx1,
+        h: sy2 - sy1,
+      });
+    }
+
     const SLOT_THICK = 22;
     const HIT_TOL = 34;
     const inset = 5;
@@ -2397,6 +2461,11 @@ export function EditorCanvas({
         panDelta = { dx: panDelta.dx + step.dx, dy: panDelta.dy + step.dy };
       }
       const target = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+      let highlightedSectionId: string | null = null;
+      if (target) {
+        const sec = periodToSection.get(target.id);
+        if (sec) highlightedSectionId = sec.id;
+      }
       setTimelineReorder({
         fromId,
         fromKind: source.kind,
@@ -2410,6 +2479,8 @@ export function EditorCanvas({
         pan: panDelta,
         targetId: target?.id ?? null,
         placement: target?.placement ?? null,
+        sectionBounds,
+        highlightedSectionId,
       });
     };
     const onUp = (ev: MouseEvent) => {
@@ -2600,8 +2671,17 @@ export function EditorCanvas({
                         // cursor is over the toolbar) still works.
                         const hitFloatingUi = document
                           .elementsFromPoint(e.clientX, e.clientY)
-                          .some((el) =>
-                            Boolean(
+                          .some((el) => {
+                            // Ignore the non-interactive selection overlay / hover chrome
+                            // (pointer-events: none) so a double-click passes through to the
+                            // element it covers (e.g. an inner node inside a selected composite).
+                            if (
+                              el instanceof HTMLElement &&
+                              getComputedStyle(el).pointerEvents === "none"
+                            ) {
+                              return false;
+                            }
+                            return Boolean(
                               el.closest?.("[data-inline-editor]") ||
                               el.closest?.("[data-class-text-editor]") ||
                               el.closest?.("[data-scale-lock]") ||
@@ -2610,8 +2690,8 @@ export function EditorCanvas({
                               el.closest?.("[data-scale-lock-border]") ||
                               el.closest?.("[data-scale-lock-shadow]") ||
                               el.closest?.('[data-slot^="dropdown-menu"]'),
-                            ),
-                          );
+                            );
+                          });
                         if (hitFloatingUi) return;
                         handleEditClick(e);
                       }
@@ -4194,6 +4274,33 @@ export function EditorCanvas({
           data-timeline-reorder-target={timelineReorder.targetId ?? "none"}
           data-timeline-reorder-placement={timelineReorder.placement ?? "none"}
         >
+          {/* Section boundary highlight — when dragging a period near section edges in
+              horizontal mode, glow the container that will receive the drop. */}
+          {(() => {
+            const hl = timelineReorder.highlightedSectionId;
+            const dir = getTimelineDirection(code);
+            if (!hl || dir !== "LR" || timelineReorder.fromKind !== "period") return null;
+            const sec = timelineReorder.sectionBounds.find((s) => s.sectionId === hl);
+            if (!sec) return null;
+            const pan = timelineReorder.pan;
+            return (
+              <div
+                className="absolute rounded-lg pointer-events-none"
+                style={{
+                  left: sec.x + pan.dx - 3,
+                  top: sec.y + pan.dy - 3,
+                  width: sec.w + 6,
+                  height: sec.h + 6,
+                  border: "2.5px solid #4f46e5",
+                  background: "rgba(99,102,241,0.07)",
+                  boxShadow: "0 0 20px rgba(79,70,229,0.2)",
+                  borderRadius: 12,
+                  transition: "left 60ms linear, top 60ms linear",
+                }}
+              />
+            );
+          })()}
+
           {timelineReorder.slots.map((s) => {
             const active =
               timelineReorder.targetId === s.id && timelineReorder.placement === s.placement;
@@ -4342,39 +4449,69 @@ export function EditorCanvas({
             );
           })()}
 
-          {/* Drag ghost — styled preview of the dragged node following the cursor. */}
-          {timelineReorder.ghost && (
-            <div
-              className="absolute pointer-events-none"
-              data-timeline-reorder-ghost
-              style={{
-                left: timelineReorder.cursorX + 16,
-                top: timelineReorder.cursorY + 16,
-                transform: "translate(-8px, -8px)",
-                width: Math.min(timelineReorder.ghost.w, 260),
-                minHeight: Math.min(timelineReorder.ghost.h, 40),
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                background: "rgba(255,255,255,0.92)",
-                border: "2px solid #6366f1",
-                borderRadius: 10,
-                boxShadow: "0 4px 16px rgba(79,70,229,0.25)",
-                color: "#4f46e5",
-                fontWeight: 600,
-                fontSize: 13,
-                padding: "4px 10px",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                {timelineReorder.ghost.label}
-                {timelineReorder.ghost.section ? " · section" : ""}
-              </span>
-            </div>
-          )}
+          {/* Drag ghost — styled preview of the dragged node following the cursor.
+              In vertical mode, when dragging inside a column (event drag), the ghost snaps
+              to the column's cross-axis center so it aligns with the drop slot. In horizontal
+              mode, the ghost snaps vertically to the column center. For section/period
+              boundary drags the ghost follows the cursor with an offset. */}
+          {timelineReorder.ghost &&
+            (() => {
+              const activeSlot = timelineReorder.slots.find(
+                (s) =>
+                  timelineReorder.targetId === s.id && timelineReorder.placement === s.placement,
+              );
+              const horizontal = getTimelineDirection(code) === "LR";
+              const pan = timelineReorder.pan;
+              let ghostL = timelineReorder.cursorX + 16;
+              let ghostT = timelineReorder.cursorY + 16;
+              if (activeSlot && activeSlot.columnMode) {
+                const ghostW = Math.min(timelineReorder.ghost!.w, 260);
+                const ghostH = Math.min(timelineReorder.ghost!.h, 40);
+                if (horizontal) {
+                  ghostL = activeSlot.guidePos + pan.dx - ghostW / 2;
+                  ghostT = activeSlot.spanStart + pan.dy + 4;
+                } else {
+                  ghostL =
+                    activeSlot.spanStart +
+                    pan.dx +
+                    (activeSlot.spanEnd - activeSlot.spanStart - ghostW) / 2;
+                  ghostT = activeSlot.guidePos + pan.dy - ghostH / 2;
+                }
+              }
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  data-timeline-reorder-ghost
+                  style={{
+                    left: ghostL,
+                    top: ghostT,
+                    transform:
+                      activeSlot && activeSlot.columnMode ? "none" : "translate(-8px, -8px)",
+                    width: Math.min(timelineReorder.ghost.w, 260),
+                    minHeight: Math.min(timelineReorder.ghost.h, 40),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(255,255,255,0.92)",
+                    border: "2px solid #6366f1",
+                    borderRadius: 10,
+                    boxShadow: "0 4px 16px rgba(79,70,229,0.25)",
+                    color: "#4f46e5",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    padding: "4px 10px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {timelineReorder.ghost.label}
+                    {timelineReorder.ghost.section ? " · section" : ""}
+                  </span>
+                </div>
+              );
+            })()}
         </div>
       )}
 

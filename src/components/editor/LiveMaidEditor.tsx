@@ -1048,33 +1048,16 @@ export function LiveMaidEditor({
         return;
       }
 
-      // Composite container — `g.statediagram-cluster` (renamed via the colon form on its id).
-      const clusterGroup = els
-        .map((el) => el.closest("g.statediagram-cluster"))
-        .find((g): g is Element => !!g);
-      if (clusterGroup) {
-        const id = stateNameFromSvgId(clusterGroup.id);
-        if (id) {
-          const labelEl = clusterGroup.querySelector(".cluster-label, text, foreignObject");
-          const anchor = labelEl ?? clusterGroup;
-          const r = anchor.getBoundingClientRect();
-          setStateTextEdit({
-            kind: "state",
-            id,
-            noteIndex: -1,
-            value: getStateLabel(code, id) || id,
-            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
-          });
-        }
-        return;
-      }
-
-      // Regular state node — `g.node` id `…-state-<Name>-<idx>` (excludes [*] pseudo + notes +
-      // shape-only choice/fork/join, which have no editable label).
+      // Nested state inside a composite first. Inner nodes live under `g.statediagram-cluster`,
+      // so a cluster-first lookup would steal every click on a child and never select/rename it.
       const stateGroup = els
-        .map((el) => el.closest("g.node"))
+        .map((el) => el.closest("g.node, g.statediagram-state"))
         .find(
-          (g): g is Element => !!g && /-state-.+-\d+$/.test(g.id) && !/----note-\d+$/.test(g.id),
+          (g): g is Element =>
+            !!g &&
+            !g.classList.contains("statediagram-cluster") &&
+            /-state-.+-\d+$/.test(g.id) &&
+            !/----note-\d+$/.test(g.id),
         );
       if (stateGroup) {
         const id = stateNameFromSvgId(stateGroup.id);
@@ -1087,6 +1070,41 @@ export function LiveMaidEditor({
             value: getStateLabel(code, id) || id,
             rect: { left: r.left, top: r.top, width: r.width, height: r.height },
           });
+        }
+        return;
+      }
+
+      // Composite container — empty interior selects via canvas click; only the title/label
+      // double-click opens rename so inner whitespace does not steal nested-node targeting.
+      const clusterGroup = els
+        .map((el) => el.closest("g.statediagram-cluster"))
+        .find((g): g is Element => !!g);
+      if (clusterGroup) {
+        // The cluster label's inner content is `pointer-events: none` (Mermaid forces it on the
+        // foreignObject), so `elementsFromPoint` reports the composite's background rect instead of
+        // the label. Detect the label hit by its bounding box as well as by DOM ancestry.
+        const labelEl = clusterGroup.querySelector(".cluster-label");
+        const labelBox = labelEl ? labelEl.getBoundingClientRect() : null;
+        const onCompositeLabel =
+          els.some((el) => Boolean(el.closest?.(".cluster-label, .state-title"))) ||
+          (labelBox !== null &&
+            clientX >= labelBox.left &&
+            clientX <= labelBox.right &&
+            clientY >= labelBox.top &&
+            clientY <= labelBox.bottom);
+        if (onCompositeLabel) {
+          const id = stateNameFromSvgId(clusterGroup.id);
+          if (id) {
+            const anchor = labelEl ?? clusterGroup;
+            const r = anchor.getBoundingClientRect();
+            setStateTextEdit({
+              kind: "state",
+              id,
+              noteIndex: -1,
+              value: getStateLabel(code, id) || id,
+              rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+            });
+          }
         }
         return;
       }
