@@ -235,6 +235,60 @@ export function classNameFromSvgId(svgId: string | null | undefined): string | n
  * (`class Foo` / `class Foo {`), falling back to the first colon-form member line (`Foo : +x`).
  * Returns -1 when the class isn't found. Used by the canvas→code highlight feature.
  */
+/* -------------------------------------------------------------------------- */
+/* Per-class styling (mirrors the ER / state `style <id> k:v,k:v` customizer)  */
+/* -------------------------------------------------------------------------- */
+
+const CLASS_STYLE_LINE_RE = (name: string) =>
+  new RegExp(`^([ \\t]*)style[ \\t]+${escapeForRegex(name)}[ \\t]+(.*)$`, "m");
+
+/** Parse a class's `style <name> k:v,k:v` line into a property map (empty when no style line exists). */
+export function getClassStyle(code: string, name: string): Record<string, string> {
+  const m = code.match(CLASS_STYLE_LINE_RE(name));
+  if (!m) return {};
+  const props: Record<string, string> = {};
+  m[2].split(",").forEach((pair) => {
+    const idx = pair.indexOf(":");
+    if (idx > 0) {
+      const key = pair.slice(0, idx).trim();
+      const val = pair.slice(idx + 1).trim();
+      if (key) props[key] = val;
+    }
+  });
+  return props;
+}
+
+/** Serialise a property map back into a `k:v,k:v` style-argument string. */
+function serializeClassStyleProps(props: Record<string, string>): string {
+  return Object.entries(props)
+    .filter(([, v]) => v !== undefined && v !== "")
+    .map(([k, v]) => `${k}:${v}`)
+    .join(",");
+}
+
+/**
+ * Merge `patch` into the class's `style <name> ...` line (upserting the line). Passing a property
+ * value of "" removes that single property; when no properties remain the whole line is removed.
+ */
+export function setClassStyle(code: string, name: string, patch: Record<string, string>): string {
+  const merged = { ...getClassStyle(code, name), ...patch };
+  Object.keys(merged).forEach((k) => {
+    if (merged[k] === "" || merged[k] === undefined) delete merged[k];
+  });
+  const without = removeClassStyle(code, name);
+  const serialized = serializeClassStyleProps(merged);
+  if (!serialized) return without;
+  return appendClassBodyLine(without, `    style ${name} ${serialized}`);
+}
+
+/** Remove the class's `style <name> ...` line entirely (revert to the active theme). */
+export function removeClassStyle(code: string, name: string): string {
+  return code
+    .split("\n")
+    .filter((line) => !CLASS_STYLE_LINE_RE(name).test(line))
+    .join("\n");
+}
+
 export function findClassDefinitionLine(code: string, name: string): number {
   const esc = escapeForRegex(name);
   const declRe = new RegExp(`^[ \\t]*class[ \\t]+${esc}\\b`);

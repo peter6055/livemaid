@@ -574,12 +574,59 @@ export function setStateNodeShape(code: string, id: string, shape: StateNodeShap
 const STATE_STYLE_LINE_RE = (id: string) =>
   new RegExp(`^([ \\t]*)style[ \\t]+${escapeForRegex(id)}[ \\t]+(.*)$`, "m");
 
-/** Parse a state's `style <id> k:v,k:v` line into a property map (empty when no style line exists). */
-export function getStateStyle(code: string, id: string): Record<string, string> {
-  const m = code.match(STATE_STYLE_LINE_RE(id));
-  if (!m) return {};
+const STATE_CLASSDEF_DEF_RE = /^[ \t]*classDef[ \t]+(\S+)[ \t]+(.*)$/gm;
+const STATE_CLASS_ASSIGN_RE = /^[ \t]*class[ \t]+(.+?)[ \t]+(\S+)[ \t]*(?:%%.*)?$/im;
+
+/** Parse every `classDef <name> k:v,k:v` definition into a name → property map. */
+function parseStateClassDefs(code: string): Record<string, Record<string, string>> {
+  const defs: Record<string, Record<string, string>> = {};
+  let m: RegExpExecArray | null;
+  while ((m = STATE_CLASSDEF_DEF_RE.exec(code)) !== null) {
+    const name = m[1].trim();
+    const props: Record<string, string> = {};
+    m[2].split(",").forEach((pair) => {
+      const idx = pair.indexOf(":");
+      if (idx > 0) {
+        const key = pair.slice(0, idx).trim();
+        const val = pair.slice(idx + 1).trim();
+        if (key) props[key] = val;
+      }
+    });
+    defs[name] = { ...(defs[name] || {}), ...props };
+  }
+  return defs;
+}
+
+/** Return every classDef name applied to `id` via `class <id> <name>` or `id:::<name>`. */
+function getStateClassNames(code: string, id: string): string[] {
+  const names = new Set<string>();
+  const esc = escapeForRegex(id);
+
+  // Standalone `class <id> <name>` (also `class <id1>, <id2> <name>`).
+  let m: RegExpExecArray | null;
+  const assignRe = new RegExp(`^[ \\t]*class[ \\t]+(.+?)[ \\t]+(\\S+)[ \\t]*(?:%%.*)?$`, "gim");
+  while ((m = assignRe.exec(code)) !== null) {
+    const ids = m[1].split(",").map((s) => s.trim());
+    if (ids.includes(id)) names.add(m[2].trim());
+  }
+
+  // Inline `id:::<name>` shorthand on transitions / references.
+  const shorthandRe = new RegExp(`(${esc})(:::+\\w+)+`, "g");
+  code.split("\n").forEach((line) => {
+    let match: RegExpExecArray | null;
+    while ((match = shorthandRe.exec(line)) !== null) {
+      const suffixes = match[0].slice(id.length).split(":::").filter(Boolean);
+      suffixes.forEach((s) => names.add(s.trim()));
+    }
+  });
+
+  return Array.from(names);
+}
+
+/** Parse a `style <id> k:v,k:v` line into a property map (empty when no style line exists). */
+function parseStyleLine(text: string): Record<string, string> {
   const props: Record<string, string> = {};
-  m[2].split(",").forEach((pair) => {
+  text.split(",").forEach((pair) => {
     const idx = pair.indexOf(":");
     if (idx > 0) {
       const key = pair.slice(0, idx).trim();
@@ -590,6 +637,21 @@ export function getStateStyle(code: string, id: string): Record<string, string> 
   return props;
 }
 
+/** Parse a state's `style <id> k:v,k:v` line into a property map (empty when no style line exists). */
+export function getStateStyle(code: string, id: string): Record<string, string> {
+  const classDefs = parseStateClassDefs(code);
+  const fromClass: Record<string, string> = {};
+  getStateClassNames(code, id).forEach((name) => {
+    Object.assign(fromClass, classDefs[name] || {});
+  });
+
+  const m = code.match(STATE_STYLE_LINE_RE(id));
+  const fromStyle = m ? parseStyleLine(m[2]) : {};
+
+  // `style <id>` has higher specificity than classDef, so it wins on conflicts.
+  return { ...fromClass, ...fromStyle };
+}
+
 /** Serialise a property map back into a `k:v,k:v` style-argument string. */
 function serializeStateStyleProps(props: Record<string, string>): string {
   return Object.entries(props)
@@ -598,27 +660,54 @@ function serializeStateStyleProps(props: Record<string, string>): string {
     .join(",");
 }
 
+/** Remove only the `style <id>` line (used by setStateStyle before re-inserting the merged line). */
+function removeStateStyleLineOnly(code: string, id: string): string {
+  return code
+    .split("\n")
+    .filter((line) => !STATE_STYLE_LINE_RE(id).test(line))
+    .join("\n");
+}
+
 /**
  * Merge `patch` into the state's `style <id> ...` line (upserting the line). Passing a property value
- * of "" removes that single property; when no properties remain the whole line is removed. The style
- * override is localised to this id and never leaks to other nodes (mirrors the ER style customizer).
+ * of "" removes that single property; when no properties remain the whole line is removed. Existing
+ * `classDef`/`class`/`:::` assignments are left untouched — `style <id>` has higher specificity in
+ * Mermaid, so it correctly overrides them.
  */
 export function setStateStyle(code: string, id: string, patch: Record<string, string>): string {
   const merged = { ...getStateStyle(code, id), ...patch };
   Object.keys(merged).forEach((k) => {
     if (merged[k] === "" || merged[k] === undefined) delete merged[k];
   });
-  const without = removeStateStyle(code, id);
+  const withoutStyleLine = removeStateStyleLineOnly(code, id);
   const serialized = serializeStateStyleProps(merged);
-  if (!serialized) return without;
-  return appendStateLine(without, `    style ${id} ${serialized}`);
+  if (!serialized) return withoutStyleLine;
+  return appendStateLine(withoutStyleLine, `    style ${id} ${serialized}`);
 }
 
-/** Remove the state's `style <id> ...` line entirely (revert to the active theme). */
+/** Remove every style override for the state: the `style <id>` line AND any `class`/`:::` assignment. */
 export function removeStateStyle(code: string, id: string): string {
+  const esc = escapeForRegex(id);
+  const shorthandRe = new RegExp(`(${esc})(:::+\\w+)+`, "g");
+
   return code
     .split("\n")
-    .filter((line) => !STATE_STYLE_LINE_RE(id).test(line))
+    .map((line) => {
+      if (STATE_STYLE_LINE_RE(id).test(line)) return null;
+
+      const classMatch = line.match(STATE_CLASS_ASSIGN_RE);
+      if (classMatch) {
+        const ids = classMatch[1].split(",").map((s) => s.trim());
+        if (ids.includes(id)) {
+          const remaining = ids.filter((x) => x !== id);
+          if (remaining.length === 0) return null;
+          return `    class ${remaining.join(", ")} ${classMatch[2]}`;
+        }
+      }
+
+      return line.replace(shorthandRe, "$1");
+    })
+    .filter((line): line is string => line !== null)
     .join("\n");
 }
 

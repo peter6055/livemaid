@@ -67,6 +67,7 @@ Source of truth for LiveMaid architecture, design, and features. **Read only wha
 
 ### `skills/` — Agent workflows
 
-| Doc                                                     | Topic                  |
-| ------------------------------------------------------- | ---------------------- |
-| [`opencode-workflow.md`](./skills/opencode-workflow.md) | OpenCode orchestration |
+| Doc                                                                   | Topic                             |
+| --------------------------------------------------------------------- | --------------------------------- |
+| [`opencode-workflow.md`](./skills/opencode-workflow.md)               | OpenCode orchestration            |
+| [`reporting-bugs-and-epics.md`](./skills/reporting-bugs-and-epics.md) | Bug/epic reporting & repo routing |

@@ -88,6 +88,9 @@ import {
   classNameFromSvgId,
   parseClassByName,
   applyClassEdits,
+  getClassStyle,
+  setClassStyle,
+  removeClassStyle,
   getClassTitle,
   upsertClassTitle,
   removeClassTitle,
@@ -170,6 +173,20 @@ import {
   mindmapLineFromNodeId,
   type MindmapShapeKind,
 } from "@/lib/diagrams/mindmap";
+import {
+  addTimelineEventToPeriod,
+  addTimelinePeriodNear,
+  addTimelinePeriodToSection,
+  addTimelineSectionAt,
+  deleteTimelineNode,
+  getTimelineNode,
+  getTimelineTitle,
+  moveTimelineNode,
+  removeTimelineTitle,
+  renameTimelineNode,
+  timelineNodeLabel,
+  upsertTimelineTitle,
+} from "@/lib/diagrams/timeline";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
 import { updateMermaidConfigProperty, updateMermaidFontFamily } from "@/lib/diagrams/utils";
 import { useRouter } from "next/navigation";
@@ -538,6 +555,103 @@ export function LiveMaidEditor({
     [code, handleCodeChange],
   );
 
+  const handleTimelineAddEvent = useCallback(
+    (nodeId: string, placement: "before" | "after") => {
+      const result = addTimelineEventToPeriod(code, nodeId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddPeriod = useCallback(
+    (nodeId: string, placement: "before" | "after") => {
+      const target = getTimelineNode(code, nodeId);
+      const result =
+        target?.kind === "section"
+          ? addTimelinePeriodToSection(code, nodeId, placement)
+          : addTimelinePeriodNear(code, nodeId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddPeriodToSection = useCallback(
+    (sectionId: string, placement: "before" | "after") => {
+      const result = addTimelinePeriodToSection(code, sectionId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.nodeId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
+  const handleTimelineAddSection = useCallback(
+    (sectionId: string, placement: "before" | "after") => {
+      const result = addTimelineSectionAt(code, sectionId, placement);
+      if (result.code === code) return;
+      handleCodeChange(result.code);
+      setSelectedNodeId(result.nodeId);
+      setSelectedSvgId(null);
+      // Enter inline edit on the new section's title once the canvas has
+      // re-rendered and the selection box has been recomputed for the new node.
+      const label = timelineNodeLabel(result.code, result.nodeId) ?? "";
+      window.setTimeout(() => {
+        setIsInlineEditing(true);
+        setEditingText(label);
+        window.setTimeout(() => {
+          if (inlineInputRef.current) {
+            inlineInputRef.current.focus();
+            const range = document.createRange();
+            range.selectNodeContents(inlineInputRef.current);
+            const sel = window.getSelection();
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        }, 10);
+      }, 120);
+    },
+    [
+      code,
+      handleCodeChange,
+      setSelectedNodeId,
+      setSelectedSvgId,
+      setIsInlineEditing,
+      setEditingText,
+      inlineInputRef,
+    ],
+  );
+
+  const handleTimelineDelete = useCallback(
+    (nodeId: string) => {
+      const newCode = deleteTimelineNode(code, nodeId);
+      if (newCode !== code) handleCodeChange(newCode);
+      handleDeselect();
+    },
+    [code, handleCodeChange, handleDeselect],
+  );
+
+  const handleTimelineMove = useCallback(
+    (sourceId: string, targetId: string, placement: "before" | "after") => {
+      const newCode = moveTimelineNode(code, sourceId, targetId, placement);
+      if (newCode !== code) {
+        handleCodeChange(newCode);
+        setSelectedNodeId(targetId);
+        setSelectedSvgId(null);
+      }
+    },
+    [code, handleCodeChange, setSelectedNodeId, setSelectedSvgId],
+  );
+
   // Class-diagram property panel state. `selectedClassName` is sticky: the interaction hook's
   // `recalculateSelection` clears the underlying canvas selection whenever it cannot re-resolve a
   // node after a re-render (which happens for class nodes on every member edit), so deriving the
@@ -559,6 +673,13 @@ export function LiveMaidEditor({
   // ER-diagram inline TITLE editor (double-click the diagram title to edit, click outside to exit).
   // Mirrors the class-diagram title editing flow and reuses the shared `ClassTextEditor` overlay.
   const [erTitleEdit, setErTitleEdit] = useState<{
+    value: string;
+    rect: { left: number; top: number; width: number; height: number };
+  } | null>(null);
+
+  // Timeline inline TITLE editor (double-click the diagram title to edit, click outside to exit).
+  // Reuses the shared `ClassTextEditor` overlay (kind="title").
+  const [timelineTitleEdit, setTimelineTitleEdit] = useState<{
     value: string;
     rect: { left: number; top: number; width: number; height: number };
   } | null>(null);
@@ -619,6 +740,9 @@ export function LiveMaidEditor({
     }
     if (determineDiagramType(code) !== "stateDiagram") {
       setStateTextEdit(null);
+    }
+    if (determineDiagramType(code) !== "timeline") {
+      setTimelineTitleEdit(null);
     }
   }, [code]);
 
@@ -924,33 +1048,16 @@ export function LiveMaidEditor({
         return;
       }
 
-      // Composite container — `g.statediagram-cluster` (renamed via the colon form on its id).
-      const clusterGroup = els
-        .map((el) => el.closest("g.statediagram-cluster"))
-        .find((g): g is Element => !!g);
-      if (clusterGroup) {
-        const id = stateNameFromSvgId(clusterGroup.id);
-        if (id) {
-          const labelEl = clusterGroup.querySelector(".cluster-label, text, foreignObject");
-          const anchor = labelEl ?? clusterGroup;
-          const r = anchor.getBoundingClientRect();
-          setStateTextEdit({
-            kind: "state",
-            id,
-            noteIndex: -1,
-            value: getStateLabel(code, id) || id,
-            rect: { left: r.left, top: r.top, width: r.width, height: r.height },
-          });
-        }
-        return;
-      }
-
-      // Regular state node — `g.node` id `…-state-<Name>-<idx>` (excludes [*] pseudo + notes +
-      // shape-only choice/fork/join, which have no editable label).
+      // Nested state inside a composite first. Inner nodes live under `g.statediagram-cluster`,
+      // so a cluster-first lookup would steal every click on a child and never select/rename it.
       const stateGroup = els
-        .map((el) => el.closest("g.node"))
+        .map((el) => el.closest("g.node, g.statediagram-state"))
         .find(
-          (g): g is Element => !!g && /-state-.+-\d+$/.test(g.id) && !/----note-\d+$/.test(g.id),
+          (g): g is Element =>
+            !!g &&
+            !g.classList.contains("statediagram-cluster") &&
+            /-state-.+-\d+$/.test(g.id) &&
+            !/----note-\d+$/.test(g.id),
         );
       if (stateGroup) {
         const id = stateNameFromSvgId(stateGroup.id);
@@ -963,6 +1070,41 @@ export function LiveMaidEditor({
             value: getStateLabel(code, id) || id,
             rect: { left: r.left, top: r.top, width: r.width, height: r.height },
           });
+        }
+        return;
+      }
+
+      // Composite container — empty interior selects via canvas click; only the title/label
+      // double-click opens rename so inner whitespace does not steal nested-node targeting.
+      const clusterGroup = els
+        .map((el) => el.closest("g.statediagram-cluster"))
+        .find((g): g is Element => !!g);
+      if (clusterGroup) {
+        // The cluster label's inner content is `pointer-events: none` (Mermaid forces it on the
+        // foreignObject), so `elementsFromPoint` reports the composite's background rect instead of
+        // the label. Detect the label hit by its bounding box as well as by DOM ancestry.
+        const labelEl = clusterGroup.querySelector(".cluster-label");
+        const labelBox = labelEl ? labelEl.getBoundingClientRect() : null;
+        const onCompositeLabel =
+          els.some((el) => Boolean(el.closest?.(".cluster-label, .state-title"))) ||
+          (labelBox !== null &&
+            clientX >= labelBox.left &&
+            clientX <= labelBox.right &&
+            clientY >= labelBox.top &&
+            clientY <= labelBox.bottom);
+        if (onCompositeLabel) {
+          const id = stateNameFromSvgId(clusterGroup.id);
+          if (id) {
+            const anchor = labelEl ?? clusterGroup;
+            const r = anchor.getBoundingClientRect();
+            setStateTextEdit({
+              kind: "state",
+              id,
+              noteIndex: -1,
+              value: getStateLabel(code, id) || id,
+              rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+            });
+          }
         }
         return;
       }
@@ -992,6 +1134,52 @@ export function LiveMaidEditor({
             rect: { left: clientX - 60, top: clientY - 14, width: 120, height: 28 },
           });
         }
+      }
+    };
+
+    const last = { x: 0, y: 0, t: 0 };
+    const onDown = (e: MouseEvent) => {
+      const now = Date.now();
+      const near = Math.abs(e.clientX - last.x) <= 6 && Math.abs(e.clientY - last.y) <= 6;
+      if (last.t && now - last.t <= 400 && near) {
+        route(e.clientX, e.clientY);
+        last.t = 0;
+      } else {
+        last.x = e.clientX;
+        last.y = e.clientY;
+        last.t = now;
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [code]);
+
+  // Double-click routing for timeline diagrams: the diagram title (`.timelineDiagramTitleText`)
+  // enters inline text-edit mode using the same TIMING technique as other diagram types.
+  useEffect(() => {
+    if (determineDiagramType(code) !== "timeline") return;
+
+    const route = (clientX: number, clientY: number) => {
+      if (isLockedRef.current) return;
+      const els = document.elementsFromPoint(clientX, clientY);
+      if (
+        els.some((el) =>
+          el.closest(
+            "[data-inline-editor],[data-class-text-editor],[data-inline-toolbar],.monaco-editor",
+          ),
+        )
+      ) {
+        return;
+      }
+      // Timeline title — `text.timelineDiagramTitleText` (added by addInteractionHelpersToSvg).
+      const titleEl = els.find((el) => el.classList?.contains("timelineDiagramTitleText"));
+      if (titleEl) {
+        const r = titleEl.getBoundingClientRect();
+        setTimelineTitleEdit({
+          value: getTimelineTitle(code),
+          rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        });
+        return;
       }
     };
 
@@ -1564,6 +1752,30 @@ export function LiveMaidEditor({
     [code, handleCodeChange],
   );
 
+  // The single-clicked class's current `style` properties — feeds the class node toolbar's style
+  // popover active states (mirrors the ER entity style customizer).
+  const currentClassStyle = useMemo(() => {
+    if (determineDiagramType(code) !== "classDiagram") return {};
+    const name = classNameFromSvgId(selectedSvgId);
+    return name ? getClassStyle(code, name) : {};
+  }, [code, selectedSvgId]);
+
+  const handleSetClassStyle = useCallback(
+    (name: string, patch: Record<string, string>) => {
+      const newCode = setClassStyle(code, name, patch);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
+  const handleResetClassStyle = useCallback(
+    (name: string) => {
+      const newCode = removeClassStyle(code, name);
+      if (newCode !== code) handleCodeChange(newCode);
+    },
+    [code, handleCodeChange],
+  );
+
   const handleCloseEntityPanel = useCallback(() => {
     setSelectedEntityName(null);
   }, []);
@@ -1576,6 +1788,18 @@ export function LiveMaidEditor({
       const newCode = trimmed ? upsertErTitle(code, trimmed) : removeErTitle(code);
       if (newCode !== code) handleCodeChange(newCode);
       setErTitleEdit(null);
+    },
+    [code, handleCodeChange],
+  );
+
+  // Commit the inline timeline title edit: an empty value removes the title statement, otherwise
+  // it upserts `title <text>`. Routes through handleCodeChange so it is a single undo step.
+  const commitTimelineTitleEdit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim();
+      const newCode = trimmed ? upsertTimelineTitle(code, trimmed) : removeTimelineTitle(code);
+      if (newCode !== code) handleCodeChange(newCode);
+      setTimelineTitleEdit(null);
     },
     [code, handleCodeChange],
   );
@@ -2942,14 +3166,7 @@ export function LiveMaidEditor({
     latestEditingText = sanitizeHtml(latestEditingText);
 
     // The browser auto-closes unclosed HTML tags (e.g. <div>...) when set as innerHTML.
-    // Strip auto-added closing tags that weren't in the original Mermaid code so they
-    // don't get injected into the wrong position on save.
-    if (originalEditContentRef.current) {
-      const orig = originalEditContentRef.current;
-      if (!orig.includes("</div>")) latestEditingText = latestEditingText.replace(/<\/div>/gi, "");
-      if (!orig.includes("</span>"))
-        latestEditingText = latestEditingText.replace(/<\/span>/gi, "");
-    }
+    // normalizeHtmlForMermaid already produces the intended output, so no post-strip is needed.
 
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(latestEditingText);
@@ -3147,6 +3364,10 @@ export function LiveMaidEditor({
           return line;
         })
         .join("\n");
+    } else if (selectedNodeId.startsWith("TIMELINE_")) {
+      const newText = latestEditingText.replace(/\n/g, " ").trim();
+      const renamed = renameTimelineNode(code, selectedNodeId, newText);
+      if (renamed !== code) newCode = renamed;
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
@@ -4140,7 +4361,12 @@ export function LiveMaidEditor({
       // (e.g. due to a re-render race), select-all is confined to the active
       // editor textarea instead of selecting everything on the page.
       const isAnyInlineEditing =
-        isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+        isInlineEditing ||
+        classTextEdit ||
+        stateTextEdit ||
+        erTitleEdit ||
+        erEdgeLabelEdit ||
+        timelineTitleEdit;
       if (isAnyInlineEditing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
         e.preventDefault();
         e.stopPropagation();
@@ -4214,6 +4440,7 @@ export function LiveMaidEditor({
     stateTextEdit,
     erTitleEdit,
     erEdgeLabelEdit,
+    timelineTitleEdit,
     selectedNodeId,
     handleDeleteEdge,
     handleDeleteNode,
@@ -4224,7 +4451,12 @@ export function LiveMaidEditor({
     const onKeyDownCapture = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
         const isAnyInlineEditing =
-          isInlineEditing || classTextEdit || stateTextEdit || erTitleEdit || erEdgeLabelEdit;
+          isInlineEditing ||
+          classTextEdit ||
+          stateTextEdit ||
+          erTitleEdit ||
+          erEdgeLabelEdit ||
+          timelineTitleEdit;
         if (!isAnyInlineEditing) return;
         e.preventDefault();
         const textarea =
@@ -4241,7 +4473,14 @@ export function LiveMaidEditor({
     };
     document.addEventListener("keydown", onKeyDownCapture, true);
     return () => document.removeEventListener("keydown", onKeyDownCapture, true);
-  }, [isInlineEditing, classTextEdit, stateTextEdit, erTitleEdit, erEdgeLabelEdit]);
+  }, [
+    isInlineEditing,
+    classTextEdit,
+    stateTextEdit,
+    erTitleEdit,
+    erEdgeLabelEdit,
+    timelineTitleEdit,
+  ]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -4972,6 +5211,9 @@ export function LiveMaidEditor({
               onDeleteClassNode={handleDeleteClassNode}
               onDeleteClassNote={handleDeleteClassNote}
               onEditClassNode={handleEditClassNodeFromToolbar}
+              onSetClassStyle={handleSetClassStyle}
+              onResetClassStyle={handleResetClassStyle}
+              currentClassStyle={currentClassStyle}
               onDeleteClassNamespace={handleDeleteClassNamespace}
               onMoveClassToNamespace={handleMoveClassToNamespace}
               onMoveClassToNewNamespace={handleMoveClassToNewNamespace}
@@ -5009,6 +5251,12 @@ export function LiveMaidEditor({
               onAddMindmapChild={handleAddMindmapChild}
               onDeleteMindmapNode={handleDeleteMindmapNode}
               onChangeMindmapShape={handleChangeMindmapShape}
+              onTimelineAddEvent={handleTimelineAddEvent}
+              onTimelineAddPeriod={handleTimelineAddPeriod}
+              onTimelineAddPeriodToSection={handleTimelineAddPeriodToSection}
+              onTimelineAddSection={handleTimelineAddSection}
+              onTimelineDelete={handleTimelineDelete}
+              onTimelineMove={handleTimelineMove}
               handleUpdateStyle={handleUpdateStyle}
               handleFormatNodeLabel={handleFormatNodeLabel}
               handleChangeShape={handleChangeShape}
@@ -5105,6 +5353,19 @@ export function LiveMaidEditor({
           rect={erTitleEdit.rect}
           onCommit={commitErTitleEdit}
           onCancel={() => setErTitleEdit(null)}
+        />
+      )}
+
+      {/* Timeline title inline editor (double-click the title to edit, click outside to exit).
+          Reuses the shared ClassTextEditor overlay (kind="title"). Enter commits; Escape cancels. */}
+      {timelineTitleEdit && (
+        <ClassTextEditor
+          kind="title"
+          initialValue={timelineTitleEdit.value}
+          rect={timelineTitleEdit.rect}
+          onCommit={commitTimelineTitleEdit}
+          onCancel={() => setTimelineTitleEdit(null)}
+          commitOnEnter
         />
       )}
 

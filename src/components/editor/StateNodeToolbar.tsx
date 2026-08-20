@@ -158,7 +158,9 @@ export function StateNodeToolbar({
   // The composites the selected node can move INTO (everything except the one it already lives in;
   // the canvas filters out a composite-node's own name before passing `composites`).
   const moveTargets = composites.filter((n) => n !== currentComposite);
-  const showStateActions = kind === "state";
+  // Composite containers get the same actions as plain states (move-into, style, note) but NOT
+  // shape morphing (that is state-nodes-only; `onChangeShape` is omitted for composites upstream).
+  const showStateActions = kind === "state" || kind === "composite";
 
   const renderColorRow = (label: string, prop: "stroke" | "color" | "fill") => (
     <div className="flex flex-col gap-1.5">

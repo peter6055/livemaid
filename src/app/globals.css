@@ -188,6 +188,11 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
+/* Timeline diagram title — double-click to edit, so show a pointer cursor over it. */
+.mermaid-container text.timelineDiagramTitleText {
+  cursor: pointer !important;
+}
+
 /* Class diagram connection handle (the purple +): grab cursor to signal drag-to-link. */
 .class-connect-btn {
   cursor: crosshair !important;
@@ -331,6 +336,14 @@ svg[aria-roledescription="error"],
 .mermaid-container g.statediagram-cluster *,
 .mermaid-container rect.divider {
   cursor: pointer !important;
+}
+
+/* State-diagram node labels are rendered as HTML inside a foreignObject. The inner div uses
+   `display: table-cell` but omits `vertical-align`, so single-line labels sit at the top of the
+   node instead of being vertically centered (flowchart labels are centered by default). Force
+   middle vertical alignment so state labels match flowchart behavior. */
+.mermaid-container g.statediagram-state foreignObject div {
+  vertical-align: middle !important;
 }
 
 /* State-diagram connection handle (the purple +): crosshair cursor to signal drag-to-connect. */

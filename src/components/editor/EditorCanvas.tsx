@@ -1,4 +1,9 @@
-import { TransformWrapper, TransformComponent, useControls } from "react-zoom-pan-pinch";
+import {
+  TransformWrapper,
+  TransformComponent,
+  useControls,
+  type ReactZoomPanPinchRef,
+} from "react-zoom-pan-pinch";
 import {
   Lock,
   Unlock,
@@ -48,20 +53,25 @@ import {
 } from "@/lib/diagrams/stateDiagram";
 import type { StateNodeShapeKind, StateShapeKind } from "@/lib/diagrams/stateDiagram";
 import { getMindmapNode, parseMindmap, type MindmapShapeKind } from "@/lib/diagrams/mindmap";
+import {
+  findTimelineSvgElementByNodeId,
+  getTimelineDirection,
+  getTimelineNode,
+  parseTimeline,
+  timelineHasNodes,
+  timelineRenderOrder,
+  timelineSubtreeIds,
+  type TimelineNodeKind,
+  type TimelinePeriodNode,
+  type TimelineSectionNode,
+} from "@/lib/diagrams/timeline";
+import { TimelineNodeToolbar } from "./TimelineNodeToolbar";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
+import { TimelineAddButtons } from "./TimelineNodeToolbar";
 import type { SequenceBlockArea, SequenceBlockType } from "@/hooks/useCanvasInteraction";
 import { findOwningLineForSequenceLabel } from "@/hooks/useCanvasInteraction";
 import { findSeqReorderTargetSlot } from "@/lib/diagrams/sequenceReorder";
-import {
-  CSSProperties,
-  RefObject,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
@@ -184,6 +194,11 @@ interface EditorCanvasProps {
   onMoveClassToNamespace?: (className: string, target: string) => void;
   onMoveClassToNewNamespace?: (className: string) => void;
   onRemoveClassFromNamespace?: (className: string) => void;
+  /** Class-diagram node toolbar: localized `style <Class> …` overrides (mirrors ER / state). */
+  onSetClassStyle?: (name: string, patch: Record<string, string>) => void;
+  onResetClassStyle?: (name: string) => void;
+  /** The selected class's current `style` property map (for the style popover's active states). */
+  currentClassStyle?: Record<string, string>;
   /** ER-diagram property panel: the parsed entity currently selected (null otherwise). */
   selectedEntity?: ParsedEntity | null;
   onApplyEntityEdits?: (edits: EntityEdits) => void;
@@ -233,6 +248,18 @@ interface EditorCanvasProps {
   onAddMindmapChild?: (nodeId: string) => void;
   onDeleteMindmapNode?: (nodeId: string) => void;
   onChangeMindmapShape?: (nodeId: string, shape: MindmapShapeKind) => void;
+  /** Timeline: add an event before/after an event, or append one to a period. */
+  onTimelineAddEvent?: (nodeId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new period before/after the target event or period. */
+  onTimelineAddPeriod?: (nodeId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new period before/after the periods of a section. */
+  onTimelineAddPeriodToSection?: (sectionId: string, placement: "before" | "after") => void;
+  /** Timeline: add a new section before/after the target section. */
+  onTimelineAddSection?: (sectionId: string, placement: "before" | "after") => void;
+  /** Timeline: delete a node (event/period/section). */
+  onTimelineDelete?: (nodeId: string) => void;
+  /** Timeline: drag-reorder a node before/after another node. */
+  onTimelineMove?: (sourceId: string, targetId: string, placement: "before" | "after") => void;
   handleAddNodeFromSelected: (
     startId: string | null,
     targetNodeId?: string,
@@ -386,6 +413,56 @@ function CommentFocusSync({
   return null;
 }
 
+type TimelineReorderNode = {
+  id: string;
+  kind: TimelineNodeKind;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
+/**
+ * A candidate drop slot during a timeline reorder drag. For sections/periods the slot is a
+ * boundary band between adjacent columns and the guide sits on that boundary (`columnMode: false`).
+ * For child events the slot spans the hovered parent period column and the guide is centered on the
+ * column's cross-axis (`columnMode: true`) so it never overlaps the column division lines.
+ * `axis` is the cursor axis used for hit-testing distance, `crossStart/crossEnd` the column span on
+ * the OTHER axis used for containment, and `guidePos` the guide line position (boundary position for
+ * columns, cross-axis center for events). `spanStart/spanEnd` bound the guide line's extent.
+ */
+type TimelineReorderSlot = {
+  id: string;
+  placement: "before" | "after";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  axis: "x" | "y";
+  crossStart: number;
+  crossEnd: number;
+  guidePos: number;
+  spanStart: number;
+  spanEnd: number;
+  columnMode: boolean;
+  /**
+   * Optional main-axis hit tolerance override. For child-event slots this covers the target
+   * event's own extent (e.g. 300px-wide TD events) so dropping anywhere on the event activates
+   * the slot; boundary slots fall back to the default (slot marker half-width + tolerance).
+   */
+  hitTol?: number;
+};
+
+/** Screenspace bounding box of a timeline section container, for section highlight on period drag. */
+type TimelineSectionBounds = {
+  sectionId: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+};
+
 export function EditorCanvas({
   code,
   parseError,
@@ -468,6 +545,9 @@ export function EditorCanvas({
   onMoveClassToNamespace,
   onMoveClassToNewNamespace,
   onRemoveClassFromNamespace,
+  onSetClassStyle,
+  onResetClassStyle,
+  currentClassStyle,
   selectedEntity,
   onApplyEntityEdits,
   onCloseEntityPanel,
@@ -501,6 +581,12 @@ export function EditorCanvas({
   onAddMindmapChild,
   onDeleteMindmapNode,
   onChangeMindmapShape,
+  onTimelineAddEvent,
+  onTimelineAddPeriod,
+  onTimelineAddPeriodToSection,
+  onTimelineAddSection,
+  onTimelineDelete,
+  onTimelineMove,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -655,6 +741,31 @@ export function EditorCanvas({
     cursorX: number;
     targetSlot: number | null;
   } | null>(null);
+  // Viewport-space (canvasShellRef-relative) state for dragging a selected timeline node's grip to
+  // reorder it before/after another node. Lives outside the TransformWrapper; canvas panning is
+  // disabled while active (mirrors seqReorder). `nodes` holds every node's live screen-space box so
+  // target resolution and the drop indicator share one consistent coordinate system.
+  const [timelineReorder, setTimelineReorder] = useState<{
+    fromId: string;
+    fromKind: TimelineNodeKind;
+    cursorX: number;
+    cursorY: number;
+    nodes: TimelineReorderNode[];
+    contentBounds: { minX: number; minY: number; maxX: number; maxY: number };
+    slots: TimelineReorderSlot[];
+    /** Node ids that travel with the dragged node (its whole subtree for sections/periods). */
+    movingIds: string[];
+    /** Styled ghost copy of the dragged node following the cursor. */
+    ghost: { w: number; h: number; label: string; section?: boolean } | null;
+    /** Accumulated auto-pan offset (content moved via setTransform) applied to captured coords. */
+    pan: { dx: number; dy: number };
+    targetId: string | null;
+    placement: "before" | "after" | null;
+    /** Bounding boxes of every section container, used for section highlight on period drag. */
+    sectionBounds: TimelineSectionBounds[];
+    /** Id of the section currently highlighted during a period boundary drag. */
+    highlightedSectionId: string | null;
+  } | null>(null);
   // Class-diagram connection drag (the purple +). All viewport-space (canvasShellRef-relative),
   // rendered outside TransformWrapper so pan/zoom never distorts it. `classConnecting` disables
   // canvas panning for the duration; `classConnect` is the live preview line + snap highlight;
@@ -703,6 +814,9 @@ export function EditorCanvas({
   const seqLastClickRef = useRef<{ time: number; key: string }>({ time: 0, key: "" });
   const fallbackRenderIdRef = useRef<string | null>(null);
   const lastScaleRef = useRef(0);
+  // Live react-zoom-pan-pinch instance (set in TransformWrapper onInit). Used to programmatically
+  // pan the canvas during timeline reorder auto-scroll.
+  const transformInstanceRef = useRef<ReactZoomPanPinchRef | null>(null);
   const commentAnchorRef = useRef<HTMLButtonElement | null>(null);
 
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
@@ -824,8 +938,11 @@ export function EditorCanvas({
       // text editors), never route it into canvas hit-testing. This prevents accidental
       // back-shape selection when clicking toolbar buttons near tight edges and keeps
       // the inline editor open when the user double-clicks to select text.
-      const hitFloatingUi = elements.some((el) =>
-        Boolean(
+      const hitFloatingUi = elements.some((el) => {
+        if (el instanceof HTMLElement && getComputedStyle(el).pointerEvents === "none") {
+          return false;
+        }
+        return Boolean(
           el.closest?.("[data-inline-editor]") ||
           el.closest?.("[data-class-text-editor]") ||
           el.closest?.("[data-scale-lock]") ||
@@ -835,9 +952,10 @@ export function EditorCanvas({
           el.closest?.("[data-scale-lock-shadow]") ||
           el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
+          el.closest?.(".timeline-reorder-handle") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
-        ),
-      );
+        );
+      });
       if (hitFloatingUi) return;
 
       let target =
@@ -858,7 +976,9 @@ export function EditorCanvas({
         tag === "svg" || tag === "div" || tag === "g" || target === container;
 
       const candidates = Array.from(
-        container.querySelectorAll(".node, .cluster, path.flowchart-link, .edgeLabel"),
+        container.querySelectorAll(
+          ".node, .statediagram-state, .cluster, .statediagram-cluster, path.flowchart-link, .edgeLabel",
+        ),
       ) as SVGGraphicsElement[];
 
       const findBestAtPoint = () => {
@@ -1372,6 +1492,103 @@ export function EditorCanvas({
     [code, currentType],
   );
 
+  const selectedTimelineNode = useMemo(() => {
+    if (currentType !== "timeline" || !selectedNodeId?.startsWith("TIMELINE_")) return null;
+    return getTimelineNode(code, selectedNodeId);
+  }, [code, currentType, selectedNodeId]);
+
+  // Canvas-space hit boxes for every timeline node so click+drag reorders without select-first
+  // (mirrors sequenceMessageTriggerAreas). Measured from live SVG after each re-render.
+  const [timelineHitAreas, setTimelineHitAreas] = useState<
+    Array<{ id: string; x: number; y: number; width: number; height: number }>
+  >([]);
+
+  // Hovered timeline node (id only) so we can preview the selection outline without selecting.
+  // Tracked locally on the reorder handles (which already cover every node), avoiding a change to
+  // the shared useCanvasInteraction hover pipeline.
+  const [timelineHoverId, setTimelineHoverId] = useState<string | null>(null);
+
+  const hoveredTimelineArea = useMemo(() => {
+    if (!timelineHoverId) return null;
+    return timelineHitAreas.find((area) => area.id === timelineHoverId) ?? null;
+  }, [timelineHoverId, timelineHitAreas]);
+
+  const hoveredTimelineNode = useMemo(() => {
+    if (currentType !== "timeline" || !timelineHoverId) return null;
+    return getTimelineNode(code, timelineHoverId);
+  }, [code, currentType, timelineHoverId]);
+
+  useEffect(() => {
+    if (currentType !== "timeline") {
+      setTimelineHitAreas([]);
+      return;
+    }
+    let rafId = 0;
+    let attempts = 0;
+    let settledFrames = 0;
+    let prevKey = "";
+    let lastAreas: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+    const total = timelineRenderOrder(code).length;
+    const MAX_ATTEMPTS = 200;
+    // RerenderSettle: `centerOnInit` animates the zoom/pan transform over several
+    // frames, so a single snapshot is mid-animation and lands in stale coords.
+    // Keep measuring every frame until identical measurements repeat (2 frames).
+    const compute = (): string => {
+      const container = containerRef.current;
+      if (!container) return "";
+      const containerRect = container.getBoundingClientRect();
+      const scale = containerRect.width / (container.offsetWidth || 1) || 1;
+      const areas: Array<{ id: string; x: number; y: number; width: number; height: number }> = [];
+      for (const entry of timelineRenderOrder(code)) {
+        const el = findTimelineSvgElementByNodeId(code, container, entry.id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+        areas.push({
+          id: entry.id,
+          x: (r.left - containerRect.left) / scale,
+          y: (r.top - containerRect.top) / scale,
+          width: r.width / scale,
+          height: r.height / scale,
+        });
+      }
+      if (areas.length < total) return "";
+      lastAreas = areas;
+      return areas
+        .map((a) => `${a.id}:${a.x.toFixed(2)},${a.y.toFixed(2)},${a.width.toFixed(2)}`)
+        .join("|");
+    };
+    const tick = () => {
+      const key = compute();
+      if (key && key === prevKey) {
+        settledFrames += 1;
+      } else {
+        settledFrames = 0;
+      }
+      prevKey = key;
+      if (settledFrames >= 2 && key) {
+        setTimelineHitAreas(lastAreas);
+        return;
+      }
+      attempts += 1;
+      if (attempts >= MAX_ATTEMPTS) {
+        if (lastAreas.length > 0) setTimelineHitAreas(lastAreas);
+        else setTimelineHitAreas([]);
+        return;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [currentType, code, svgContent, containerRef]);
+
+  const timelineHasAnyNodes = useMemo(
+    () => (currentType === "timeline" ? timelineHasNodes(code) : true),
+    [code, currentType],
+  );
+
   const connectSourceStateIsComposite = useMemo(
     () => (connectSourceState ? isCompositeState(code, connectSourceState) : false),
     [connectSourceState, code],
@@ -1525,18 +1742,23 @@ export function EditorCanvas({
     ): { id: string; el: Element } | null => {
       const els = document.elementsFromPoint(clientX, clientY);
       for (const el of els) {
-        // A composite container (cluster) is a valid target too.
+        const g = el.closest("g.node, g.statediagram-state");
+        if (
+          g &&
+          !g.classList.contains("statediagram-cluster") &&
+          /-state-.+-\d+$/.test(g.id) &&
+          !/----note-\d+$/.test(g.id)
+        ) {
+          const id = stateNameFromSvgId(g.id);
+          if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
+          return { id, el: g };
+        }
         const cluster = el.closest("g.statediagram-cluster");
         if (cluster) {
           const id = stateNameFromSvgId(cluster.id);
           if (!id || id === sourceId) return null;
           return { id, el: cluster };
         }
-        const g = el.closest("g.node");
-        if (!g || !/-state-.+-\d+$/.test(g.id) || /----note-\d+$/.test(g.id)) continue;
-        const id = stateNameFromSvgId(g.id);
-        if (!id || id === sourceId) return null; // self / [*] pseudo → ignore
-        return { id, el: g };
       }
       return null;
     };
@@ -1860,6 +2082,426 @@ export function EditorCanvas({
     window.addEventListener("mouseup", onUp);
   };
 
+  // Begin dragging a timeline node to reorder it before/after another node (sequence-style
+  // direct-drag — no select-first). Node boxes are captured live from the DOM in viewport
+  // (canvasShellRef-relative) space so pan/zoom never distorts coordinates (panning is also
+  // disabled while active). Drops are same-kind only (section → section, period → period,
+  // event → event). Sections and periods keep the boundary/gap drop behaviour; child events get
+  // a column-centered guide inside the hovered parent period column (issue #8). Click without
+  // drag selects the node (handle is excluded from the document-capture selector).
+  const startTimelineReorderDrag = (e: React.MouseEvent<HTMLDivElement>, fromId: string) => {
+    e.stopPropagation();
+    const shell = canvasShellRef.current;
+    const container = containerRef.current;
+    if (!shell || !container) return;
+    const shellRect = shell.getBoundingClientRect();
+    const horizontal = getTimelineDirection(code) === "LR";
+    const nodes: TimelineReorderNode[] = [];
+    for (const entry of timelineRenderOrder(code)) {
+      const el = findTimelineSvgElementByNodeId(code, container, entry.id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      nodes.push({
+        id: entry.id,
+        kind: entry.kind,
+        x: r.left - shellRect.left,
+        y: r.top - shellRect.top,
+        w: r.width,
+        h: r.height,
+      });
+    }
+
+    const selectFromNode = () => {
+      const el = findTimelineSvgElementByNodeId(code, container, fromId);
+      if (!el) return;
+      const syntheticEvent = {
+        target: el,
+        currentTarget: container,
+        detail: e.detail,
+        clientX: e.clientX,
+        clientY: e.clientY,
+        stopPropagation: () => {},
+        preventDefault: () => {},
+      } as unknown as React.MouseEvent<HTMLDivElement>;
+      handleSvgClick(syntheticEvent);
+    };
+
+    const source = nodes.find((n) => n.id === fromId);
+    if (!source || nodes.length < 2) {
+      selectFromNode();
+      return;
+    }
+
+    const startClientX = e.clientX;
+    const startClientY = e.clientY;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.w);
+      maxY = Math.max(maxY, n.y + n.h);
+    }
+    const contentBounds = { minX, minY, maxX, maxY };
+    const contentW = Math.max(0, maxX - minX);
+    const contentH = Math.max(0, maxY - minY);
+
+    // Map every event to its parent period node so the drag can resolve the "column" (the
+    // unioned bounds of a period and its events) that a target event belongs to.
+    const eventParent = new Map<string, string>();
+    const periodNodes = new Map<string, TimelineReorderNode>();
+    const parsedTimeline = parseTimeline(code);
+    const walkPeriod = (period: TimelinePeriodNode) => {
+      const pnode = nodes.find((n) => n.id === period.id);
+      if (pnode) periodNodes.set(period.id, pnode);
+      for (const ev of period.events) eventParent.set(ev.id, period.id);
+    };
+    for (const section of parsedTimeline.sections) {
+      for (const period of section.periods) walkPeriod(period);
+    }
+    for (const period of parsedTimeline.defaultPeriods) walkPeriod(period);
+
+    // Compute bounding boxes for each section (section node + its periods + their events).
+    const sectionBounds: TimelineSectionBounds[] = [];
+    const periodToSection = new Map<string, TimelineSectionNode>();
+    for (const sec of parsedTimeline.sections) {
+      for (const p of sec.periods) periodToSection.set(p.id, sec);
+    }
+    for (const sec of parsedTimeline.sections) {
+      const sn = nodes.find((n) => n.id === sec.id);
+      if (!sn) continue;
+      let sx1 = sn.x,
+        sy1 = sn.y,
+        sx2 = sn.x + sn.w,
+        sy2 = sn.y + sn.h;
+      for (const p of sec.periods) {
+        const pn = nodes.find((n) => n.id === p.id);
+        if (!pn) continue;
+        sx1 = Math.min(sx1, pn.x);
+        sy1 = Math.min(sy1, pn.y);
+        sx2 = Math.max(sx2, pn.x + pn.w);
+        sy2 = Math.max(sy2, pn.y + pn.h);
+        for (const ev of p.events) {
+          const en = nodes.find((n) => n.id === ev.id);
+          if (!en) continue;
+          sx1 = Math.min(sx1, en.x);
+          sy1 = Math.min(sy1, en.y);
+          sx2 = Math.max(sx2, en.x + en.w);
+          sy2 = Math.max(sy2, en.y + en.h);
+        }
+      }
+      sectionBounds.push({
+        sectionId: sec.id,
+        label: sec.label,
+        x: sx1,
+        y: sy1,
+        w: sx2 - sx1,
+        h: sy2 - sy1,
+      });
+    }
+
+    const SLOT_THICK = 22;
+    const HIT_TOL = 34;
+    const inset = 5;
+    const slots: TimelineReorderSlot[] = [];
+
+    for (const n of nodes) {
+      if (n.id === fromId) continue;
+      // Same-kind drops only: no cross-kind dragging.
+      if (source.kind === "section" && n.kind !== "section") continue;
+      if (source.kind === "period" && n.kind !== "period") continue;
+      if (source.kind === "event" && n.kind !== "event") continue;
+
+      if (source.kind === "event") {
+        // Child-event slots live inside the hovered parent period column: the marker spans the
+        // column's cross-axis width and the guide centers on the column's cross-axis center.
+        const parentId = eventParent.get(n.id);
+        const period = parentId ? periodNodes.get(parentId) : undefined;
+        if (!period) continue;
+        const col = {
+          x1: period.x,
+          y1: period.y,
+          x2: period.x + period.w,
+          y2: period.y + period.h,
+        };
+        for (const m of nodes) {
+          if (eventParent.get(m.id) !== parentId) continue;
+          col.x1 = Math.min(col.x1, m.x);
+          col.y1 = Math.min(col.y1, m.y);
+          col.x2 = Math.max(col.x2, m.x + m.w);
+          col.y2 = Math.max(col.y2, m.y + m.h);
+        }
+        const colCenter = horizontal ? (col.x1 + col.x2) / 2 : (col.y1 + col.y2) / 2;
+        if (horizontal) {
+          const beforeGuide = n.y - inset;
+          const afterGuide = n.y + n.h + inset;
+          slots.push({
+            id: n.id,
+            placement: "before",
+            x: col.x1,
+            y: beforeGuide - SLOT_THICK / 2,
+            w: col.x2 - col.x1,
+            h: SLOT_THICK,
+            axis: "y",
+            crossStart: col.x1,
+            crossEnd: col.x2,
+            guidePos: colCenter,
+            spanStart: col.y1,
+            spanEnd: col.y2,
+            columnMode: true,
+            hitTol: n.h + HIT_TOL,
+          });
+          slots.push({
+            id: n.id,
+            placement: "after",
+            x: col.x1,
+            y: afterGuide - SLOT_THICK / 2,
+            w: col.x2 - col.x1,
+            h: SLOT_THICK,
+            axis: "y",
+            crossStart: col.x1,
+            crossEnd: col.x2,
+            guidePos: colCenter,
+            spanStart: col.y1,
+            spanEnd: col.y2,
+            columnMode: true,
+            hitTol: n.h + HIT_TOL,
+          });
+        } else {
+          const beforeGuide = n.x - inset;
+          const afterGuide = n.x + n.w + inset;
+          slots.push({
+            id: n.id,
+            placement: "before",
+            x: beforeGuide - SLOT_THICK / 2,
+            y: col.y1,
+            w: SLOT_THICK,
+            h: col.y2 - col.y1,
+            axis: "x",
+            crossStart: col.y1,
+            crossEnd: col.y2,
+            guidePos: colCenter,
+            spanStart: col.x1,
+            spanEnd: col.x2,
+            columnMode: true,
+            hitTol: n.w + HIT_TOL,
+          });
+          slots.push({
+            id: n.id,
+            placement: "after",
+            x: afterGuide - SLOT_THICK / 2,
+            y: col.y1,
+            w: SLOT_THICK,
+            h: col.y2 - col.y1,
+            axis: "x",
+            crossStart: col.y1,
+            crossEnd: col.y2,
+            guidePos: colCenter,
+            spanStart: col.x1,
+            spanEnd: col.x2,
+            columnMode: true,
+            hitTol: n.w + HIT_TOL,
+          });
+        }
+        continue;
+      }
+
+      // Sections / periods: keep the existing boundary/gap drop behaviour.
+      if (horizontal) {
+        const beforeGuide = n.x - inset;
+        const afterGuide = n.x + n.w + inset;
+        slots.push({
+          id: n.id,
+          placement: "before",
+          x: beforeGuide - SLOT_THICK / 2,
+          y: minY,
+          w: SLOT_THICK,
+          h: contentH,
+          axis: "x",
+          crossStart: minY,
+          crossEnd: maxY,
+          guidePos: beforeGuide,
+          spanStart: minY,
+          spanEnd: maxY,
+          columnMode: false,
+        });
+        slots.push({
+          id: n.id,
+          placement: "after",
+          x: afterGuide - SLOT_THICK / 2,
+          y: minY,
+          w: SLOT_THICK,
+          h: contentH,
+          axis: "x",
+          crossStart: minY,
+          crossEnd: maxY,
+          guidePos: afterGuide,
+          spanStart: minY,
+          spanEnd: maxY,
+          columnMode: false,
+        });
+      } else {
+        const beforeGuide = n.y - inset;
+        const afterGuide = n.y + n.h + inset;
+        slots.push({
+          id: n.id,
+          placement: "before",
+          x: minX,
+          y: beforeGuide - SLOT_THICK / 2,
+          w: contentW,
+          h: SLOT_THICK,
+          axis: "y",
+          crossStart: minX,
+          crossEnd: maxX,
+          guidePos: beforeGuide,
+          spanStart: minX,
+          spanEnd: maxX,
+          columnMode: false,
+        });
+        slots.push({
+          id: n.id,
+          placement: "after",
+          x: minX,
+          y: afterGuide - SLOT_THICK / 2,
+          w: contentW,
+          h: SLOT_THICK,
+          axis: "y",
+          crossStart: minX,
+          crossEnd: maxX,
+          guidePos: afterGuide,
+          spanStart: minX,
+          spanEnd: maxX,
+          columnMode: false,
+        });
+      }
+    }
+    if (slots.length === 0) {
+      selectFromNode();
+      return;
+    }
+
+    // The node set that moves with the source (whole subtree for sections/periods).
+    const movingIds = timelineSubtreeIds(code, fromId);
+
+    // Styled ghost preview of the dragged node following the cursor.
+    const draggedNode = getTimelineNode(code, fromId);
+    const ghost = {
+      w: Math.max(source.w, 48),
+      h: Math.max(source.h, 24),
+      label: draggedNode?.label ?? "Element",
+      section: source.kind === "section",
+    };
+
+    e.preventDefault();
+
+    const findTarget = (cursorX: number, cursorY: number) => {
+      let best: { id: string; placement: "before" | "after" } | null = null;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const s of slots) {
+        const cx = s.x + s.w / 2;
+        const cy = s.y + s.h / 2;
+        const crossOk =
+          s.axis === "y"
+            ? cursorX >= s.crossStart - HIT_TOL && cursorX <= s.crossEnd + HIT_TOL
+            : cursorY >= s.crossStart - HIT_TOL && cursorY <= s.crossEnd + HIT_TOL;
+        if (!crossOk) continue;
+        const dist = s.axis === "y" ? Math.abs(cursorY - cy) : Math.abs(cursorX - cx);
+        const tol = s.hitTol ?? (s.axis === "y" ? s.h / 2 : s.w / 2) + HIT_TOL;
+        if (dist <= tol && dist < bestDist) {
+          bestDist = dist;
+          best = { id: s.id, placement: s.placement };
+        }
+      }
+      return best;
+    };
+
+    // Auto-scroll: pan the canvas when the cursor nears the shell edges (issue scope).
+    // Returns the applied pan delta (screen px) so callers can offset the captured coords.
+    const EDGE_MARGIN = 64;
+    const PAN_SPEED = 16;
+    const panStep = (cursorX: number, cursorY: number): { dx: number; dy: number } => {
+      const inst = transformInstanceRef.current;
+      if (!inst) return { dx: 0, dy: 0 };
+      let vx = 0;
+      let vy = 0;
+      if (cursorX < EDGE_MARGIN) vx = -(1 - cursorX / EDGE_MARGIN);
+      else if (cursorX > shellRect.width - EDGE_MARGIN)
+        vx = 1 - (shellRect.width - cursorX) / EDGE_MARGIN;
+      if (cursorY < EDGE_MARGIN) vy = -(1 - cursorY / EDGE_MARGIN);
+      else if (cursorY > shellRect.height - EDGE_MARGIN)
+        vy = 1 - (shellRect.height - cursorY) / EDGE_MARGIN;
+      if (vx === 0 && vy === 0) return { dx: 0, dy: 0 };
+      const dx = vx * PAN_SPEED;
+      const dy = vy * PAN_SPEED;
+      inst.setTransform(inst.state.positionX + dx, inst.state.positionY + dy, inst.state.scale, 0);
+      return { dx, dy };
+    };
+
+    let dragging = false;
+    let panDelta = { dx: 0, dy: 0 };
+    const onMove = (ev: MouseEvent) => {
+      if (
+        !dragging &&
+        (Math.abs(ev.clientX - startClientX) > 3 || Math.abs(ev.clientY - startClientY) > 3)
+      ) {
+        dragging = true;
+        if (selectedNodeId && selectedNodeId !== fromId) {
+          onDeselect?.();
+        }
+      }
+      if (!dragging) return;
+      ev.preventDefault();
+      const cursorX = ev.clientX - shellRect.left;
+      const cursorY = ev.clientY - shellRect.top;
+      const step = panStep(cursorX, cursorY);
+      if (step.dx !== 0 || step.dy !== 0) {
+        panDelta = { dx: panDelta.dx + step.dx, dy: panDelta.dy + step.dy };
+      }
+      const target = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+      let highlightedSectionId: string | null = null;
+      if (target) {
+        const sec = periodToSection.get(target.id);
+        if (sec) highlightedSectionId = sec.id;
+      }
+      setTimelineReorder({
+        fromId,
+        fromKind: source.kind,
+        cursorX,
+        cursorY,
+        nodes,
+        contentBounds,
+        slots,
+        movingIds,
+        ghost,
+        pan: panDelta,
+        targetId: target?.id ?? null,
+        placement: target?.placement ?? null,
+        sectionBounds,
+        highlightedSectionId,
+      });
+    };
+    const onUp = (ev: MouseEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (dragging) {
+        const cursorX = ev.clientX - shellRect.left;
+        const cursorY = ev.clientY - shellRect.top;
+        const target = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+        if (target) {
+          onTimelineMove?.(fromId, target.id, target.placement);
+        }
+      } else {
+        selectFromNode();
+      }
+      setTimelineReorder(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div
       ref={canvasShellRef}
@@ -1892,6 +2534,7 @@ export function EditorCanvas({
             !!seqReorder ||
             seqEndpointDragging ||
             !!seqLifelineReorder ||
+            !!timelineReorder ||
             classConnecting ||
             erConnecting ||
             stateConnecting,
@@ -1900,6 +2543,7 @@ export function EditorCanvas({
             "seq-msg-reorder-handle",
             "seq-endpoint-handle",
             "seq-actor-reorder-handle",
+            "timeline-reorder-handle",
             "class-connect-btn",
             "class-relation-hit-target",
             "er-connect-btn",
@@ -1912,6 +2556,7 @@ export function EditorCanvas({
         limitToBounds={false}
         doubleClick={{ disabled: true }}
         onInit={(ref) => {
+          transformInstanceRef.current = ref;
           lastScaleRef.current = ref.state.scale;
           if (containerRef.current) {
             containerRef.current.style.setProperty("--zoom-scale", String(ref.state.scale));
@@ -2026,8 +2671,17 @@ export function EditorCanvas({
                         // cursor is over the toolbar) still works.
                         const hitFloatingUi = document
                           .elementsFromPoint(e.clientX, e.clientY)
-                          .some((el) =>
-                            Boolean(
+                          .some((el) => {
+                            // Ignore the non-interactive selection overlay / hover chrome
+                            // (pointer-events: none) so a double-click passes through to the
+                            // element it covers (e.g. an inner node inside a selected composite).
+                            if (
+                              el instanceof HTMLElement &&
+                              getComputedStyle(el).pointerEvents === "none"
+                            ) {
+                              return false;
+                            }
+                            return Boolean(
                               el.closest?.("[data-inline-editor]") ||
                               el.closest?.("[data-class-text-editor]") ||
                               el.closest?.("[data-scale-lock]") ||
@@ -2036,8 +2690,8 @@ export function EditorCanvas({
                               el.closest?.("[data-scale-lock-border]") ||
                               el.closest?.("[data-scale-lock-shadow]") ||
                               el.closest?.('[data-slot^="dropdown-menu"]'),
-                            ),
-                          );
+                            );
+                          });
                         if (hitFloatingUi) return;
                         handleEditClick(e);
                       }
@@ -2051,7 +2705,8 @@ export function EditorCanvas({
               >
                 {parseError &&
                   !isBlankDiagram &&
-                  !(currentType === "mindmap" && !mindmapHasNodes) && (
+                  !(currentType === "mindmap" && !mindmapHasNodes) &&
+                  !(currentType === "timeline" && !timelineHasAnyNodes) && (
                     <div
                       className="absolute inset-0 z-40 bg-white/60 cursor-not-allowed flex items-center justify-center pointer-events-auto"
                       onClick={(e) => e.stopPropagation()}
@@ -2563,6 +3218,104 @@ export function EditorCanvas({
                     />
                   )}
 
+                {currentType === "timeline" &&
+                  hoveredTimelineArea &&
+                  !isInlineEditing &&
+                  !connectionState.active &&
+                  !selectionBox && (
+                    <div
+                      className="absolute pointer-events-none z-[19] border-indigo-400"
+                      style={{
+                        left: hoveredTimelineArea.x - 3 / state.scale,
+                        top: hoveredTimelineArea.y - 3 / state.scale,
+                        width: hoveredTimelineArea.width + 6 / state.scale,
+                        height: hoveredTimelineArea.height + 6 / state.scale,
+                        borderRadius: `${6 / state.scale}px`,
+                        borderWidth: `calc(1.5px * var(--zoom-inverse-scale, ${1 / state.scale}))`,
+                        borderStyle: "solid",
+                        opacity: 0.6,
+                      }}
+                    />
+                  )}
+
+                {/* Hover preview of the directional `+` add buttons — mirrors the selected-state
+                    toolbar but for the hovered (not selected) node. */}
+                {currentType === "timeline" &&
+                  hoveredTimelineArea &&
+                  hoveredTimelineNode &&
+                  !isInlineEditing &&
+                  !isLocked &&
+                  !isCommentMode &&
+                  !connectionState.active &&
+                  !selectionBox && (
+                    <div
+                      className="absolute z-[24] pointer-events-none"
+                      style={{
+                        left: hoveredTimelineArea.x - 4 / state.scale,
+                        top: hoveredTimelineArea.y - 4 / state.scale,
+                        width: hoveredTimelineArea.width + 8 / state.scale,
+                        height: hoveredTimelineArea.height + 8 / state.scale,
+                      }}
+                    >
+                      <TimelineAddButtons
+                        scale={state.scale}
+                        node={hoveredTimelineNode}
+                        direction={getTimelineDirection(code)}
+                        onAddEvent={(placement) =>
+                          onTimelineAddEvent?.(hoveredTimelineNode.id, placement)
+                        }
+                        onAddPeriod={(placement) =>
+                          hoveredTimelineNode.kind === "section"
+                            ? onTimelineAddPeriodToSection?.(hoveredTimelineNode.id, placement)
+                            : onTimelineAddPeriod?.(hoveredTimelineNode.id, placement)
+                        }
+                        onAddSection={(placement) =>
+                          onTimelineAddSection?.(hoveredTimelineNode.id, placement)
+                        }
+                      />
+                    </div>
+                  )}
+
+                {/* Timeline reorder grab overlays — DIRECT-DRAG on any node (sequence-style), no
+                    select-first. Canvas-space boxes from timelineHitAreas. Class
+                    `timeline-reorder-handle` is in panning.excluded; click-select /
+                    dblclick-rename resolve the SVG behind via elementsFromPoint. */}
+                {!isInlineEditing &&
+                  currentType === "timeline" &&
+                  !isLocked &&
+                  !isCommentMode &&
+                  !timelineReorder &&
+                  timelineHitAreas.map((area) => (
+                    <div
+                      key={`timeline-hit-${area.id}`}
+                      data-timeline-reorder-handle
+                      data-timeline-reorder-node={area.id}
+                      className="timeline-reorder-handle absolute z-[21] pointer-events-auto cursor-pointer active:cursor-grabbing"
+                      style={{
+                        left: area.x - 4 / state.scale,
+                        top: area.y - 4 / state.scale,
+                        width: area.width + 8 / state.scale,
+                        height: area.height + 8 / state.scale,
+                      }}
+                      title="Drag to reorder · click to select · double-click to rename"
+                      onMouseDown={(e) => startTimelineReorderDrag(e, area.id)}
+                      onMouseEnter={() => setTimelineHoverId(area.id)}
+                      onMouseLeave={(e) => {
+                        // Keep the hover preview alive when the pointer moves onto one of the
+                        // edge `+` buttons or its tooltip (both live outside the grab handle).
+                        const next = e.relatedTarget as Element | null;
+                        if (
+                          next?.closest?.(
+                            "[data-timeline-add-button], [data-slot='tooltip-content']",
+                          )
+                        ) {
+                          return;
+                        }
+                        setTimelineHoverId((id) => (id === area.id ? null : id));
+                      }}
+                    />
+                  ))}
+
                 {selectionBox && !isLocked && (
                   <div
                     data-scale-lock-border
@@ -2698,6 +3451,13 @@ export function EditorCanvas({
                               onDeleteClassNamespace?.(connectSourceNamespace);
                             else if (connectSourceClass) onDeleteClassNode?.(connectSourceClass);
                           }}
+                          currentStyle={currentClassStyle ?? {}}
+                          onSetStyle={(patch) => {
+                            if (connectSourceClass) onSetClassStyle?.(connectSourceClass, patch);
+                          }}
+                          onResetStyle={() => {
+                            if (connectSourceClass) onResetClassStyle?.(connectSourceClass);
+                          }}
                         />
                       ) : currentType === "erDiagram" && connectSourceEntity ? (
                         <ErNodeToolbar
@@ -2808,11 +3568,31 @@ export function EditorCanvas({
                           }
                           onDelete={() => onDeleteMindmapNode?.(selectedMindmapNode.id)}
                         />
+                      ) : currentType === "timeline" && selectedTimelineNode ? (
+                        <TimelineNodeToolbar
+                          scale={state.scale}
+                          node={selectedTimelineNode}
+                          direction={getTimelineDirection(code)}
+                          onAddEvent={(placement) =>
+                            onTimelineAddEvent?.(selectedTimelineNode.id, placement)
+                          }
+                          onAddPeriod={(placement) =>
+                            selectedTimelineNode.kind === "section"
+                              ? onTimelineAddPeriodToSection?.(selectedTimelineNode.id, placement)
+                              : onTimelineAddPeriod?.(selectedTimelineNode.id, placement)
+                          }
+                          onAddSection={(placement) =>
+                            onTimelineAddSection?.(selectedTimelineNode.id, placement)
+                          }
+                          onEditLabel={(e) => handleEditClick(e)}
+                          onDelete={() => onTimelineDelete?.(selectedTimelineNode.id)}
+                        />
                       ) : currentType === "sequence" ||
                         currentType === "classDiagram" ||
                         currentType === "erDiagram" ||
                         currentType === "stateDiagram" ||
-                        currentType === "mindmap" ? null : (
+                        currentType === "mindmap" ||
+                        currentType === "timeline" ? null : (
                         <NodeManipulationToolbar
                           code={code}
                           selectedNodeId={selectedNodeId}
@@ -2863,7 +3643,14 @@ export function EditorCanvas({
                       editingText={editingText}
                       setEditingText={setEditingText}
                       handleEditSubmit={handleEditSubmit}
-                      handleFormatText={handleFormatText}
+                      // Only flowchart/graph labels render real HTML (foreignObject), so the
+                      // format toolbar (B/I/align) is only safe there. Sequence/timeline render
+                      // plain SVG text and would otherwise inject literal HTML markup.
+                      handleFormatText={
+                        currentType === "graph" || currentType === "flowchart"
+                          ? handleFormatText
+                          : undefined
+                      }
                       inlineInputRef={inlineInputRef}
                       selectedSvgId={selectedSvgId}
                     />
@@ -2905,6 +3692,7 @@ export function EditorCanvas({
                       currentType !== "erDiagram" &&
                       currentType !== "stateDiagram" &&
                       currentType !== "mindmap" &&
+                      currentType !== "timeline" &&
                       (!selectedNodeId ||
                         (!isEdgeId(selectedNodeId) &&
                           !selectedNodeId.startsWith("SEQ_MSG_") &&
@@ -3471,6 +4259,259 @@ export function EditorCanvas({
               borderRadius: 9999,
             }}
           />
+        </div>
+      )}
+
+      {/* Timeline reorder drop slots — viewport-relative (canvasShellRef), outside TransformWrapper,
+          so pan/zoom never shifts them (panning disabled during drag). Mirrors sequence lifeline
+          reorder: hatched candidate slot markers + active highlight + cursor placement guide.
+          Child-event drags show a column-centered guide; section/period drags keep the boundary
+          guide. Auto-pan shifts all captured geometry by `timelineReorder.pan`. */}
+      {timelineReorder && (
+        <div
+          className="absolute inset-0 pointer-events-none z-30"
+          data-timeline-reorder-overlay
+          data-timeline-reorder-target={timelineReorder.targetId ?? "none"}
+          data-timeline-reorder-placement={timelineReorder.placement ?? "none"}
+        >
+          {/* Section boundary highlight — when dragging a period near section edges in
+              horizontal mode, glow the container that will receive the drop. */}
+          {(() => {
+            const hl = timelineReorder.highlightedSectionId;
+            const dir = getTimelineDirection(code);
+            if (!hl || dir !== "LR" || timelineReorder.fromKind !== "period") return null;
+            const sec = timelineReorder.sectionBounds.find((s) => s.sectionId === hl);
+            if (!sec) return null;
+            const pan = timelineReorder.pan;
+            return (
+              <div
+                className="absolute rounded-lg pointer-events-none"
+                style={{
+                  left: sec.x + pan.dx - 3,
+                  top: sec.y + pan.dy - 3,
+                  width: sec.w + 6,
+                  height: sec.h + 6,
+                  border: "2.5px solid #4f46e5",
+                  background: "rgba(99,102,241,0.07)",
+                  boxShadow: "0 0 20px rgba(79,70,229,0.2)",
+                  borderRadius: 12,
+                  transition: "left 60ms linear, top 60ms linear",
+                }}
+              />
+            );
+          })()}
+
+          {timelineReorder.slots.map((s) => {
+            const active =
+              timelineReorder.targetId === s.id && timelineReorder.placement === s.placement;
+            const alpha = active ? 0.38 : 0.16;
+            const w = active ? Math.min(s.w + 6, s.w * 1.6 + 2) : s.w;
+            const h = active ? Math.min(s.h + 6, s.h * 1.6 + 2) : s.h;
+            const horizontal = getTimelineDirection(code) === "LR";
+            const pan = timelineReorder.pan;
+            return (
+              <div
+                key={`timeline-drop-${s.id}-${s.placement}`}
+                className="absolute rounded-md"
+                style={{
+                  left: horizontal ? s.x + pan.dx + (s.w - w) / 2 : s.x + pan.dx,
+                  top: horizontal ? s.y + pan.dy : s.y + pan.dy + (s.h - h) / 2,
+                  width: horizontal ? w : s.w,
+                  height: horizontal ? s.h : h,
+                  border: active ? "2px solid #4f46e5" : "1.5px dashed #818cf8",
+                  backgroundImage: `repeating-linear-gradient(45deg, rgba(99,102,241,${alpha}) 0, rgba(99,102,241,${alpha}) 6px, transparent 6px, transparent 12px)`,
+                  transition:
+                    "left 60ms linear, top 60ms linear, width 60ms linear, height 60ms linear",
+                }}
+              />
+            );
+          })}
+
+          {/* "What moves" preview — dashed outline around the dragged node's subtree. */}
+          {(() => {
+            const pan = timelineReorder.pan;
+            const box = timelineReorder.nodes.filter((n) =>
+              timelineReorder.movingIds.includes(n.id),
+            );
+            if (box.length === 0) return null;
+            const x = Math.min(...box.map((n) => n.x)) + pan.dx;
+            const y = Math.min(...box.map((n) => n.y)) + pan.dy;
+            const x2 = Math.max(...box.map((n) => n.x + n.w)) + pan.dx;
+            const y2 = Math.max(...box.map((n) => n.y + n.h)) + pan.dy;
+            return (
+              <div
+                className="absolute pointer-events-none"
+                data-timeline-reorder-moving
+                style={{
+                  left: x - 3,
+                  top: y - 3,
+                  width: Math.max(0, x2 - x) + 6,
+                  height: Math.max(0, y2 - y) + 6,
+                  border: "1.5px dashed #6366f1",
+                  borderRadius: 8,
+                  opacity: 0.75,
+                }}
+              />
+            );
+          })()}
+
+          {(() => {
+            const horizontal = getTimelineDirection(code) === "LR";
+            const pan = timelineReorder.pan;
+            // Span the full diagram extent (all nodes), not just the first/top slot item.
+            let minX = Number.POSITIVE_INFINITY;
+            let minY = Number.POSITIVE_INFINITY;
+            let maxX = Number.NEGATIVE_INFINITY;
+            let maxY = Number.NEGATIVE_INFINITY;
+            for (const n of timelineReorder.nodes) {
+              minX = Math.min(minX, n.x);
+              minY = Math.min(minY, n.y);
+              maxX = Math.max(maxX, n.x + n.w);
+              maxY = Math.max(maxY, n.y + n.h);
+            }
+            if (!Number.isFinite(minX)) {
+              for (const s of timelineReorder.slots) {
+                minX = Math.min(minX, s.x);
+                minY = Math.min(minY, s.y);
+                maxX = Math.max(maxX, s.x + s.w);
+                maxY = Math.max(maxY, s.y + s.h);
+              }
+            }
+            // Snap the guide to the active slot so the indicator always shows the EXACT drop
+            // position rather than tracking the cursor. Child events (columnMode) center the
+            // guide on the hovered parent period column so it never overlaps the division lines.
+            const activeSlot = timelineReorder.slots.find(
+              (s) => timelineReorder.targetId === s.id && timelineReorder.placement === s.placement,
+            );
+            if (activeSlot && activeSlot.columnMode) {
+              const inset = 4;
+              const center = activeSlot.guidePos + (horizontal ? pan.dx : pan.dy);
+              const spanStart = activeSlot.spanStart + (horizontal ? pan.dy : pan.dx);
+              const spanEnd = activeSlot.spanEnd + (horizontal ? pan.dy : pan.dx);
+              const span = Math.max(2, spanEnd - spanStart - inset * 2);
+              return (
+                <div
+                  className="absolute"
+                  data-timeline-reorder-guide
+                  data-timeline-reorder-column-guide
+                  style={
+                    horizontal
+                      ? {
+                          top: spanStart + inset,
+                          height: span,
+                          left: center - 1.5,
+                          width: 3,
+                          background: "#4f46e5",
+                          opacity: 0.85,
+                          borderRadius: 9999,
+                        }
+                      : {
+                          left: spanStart + inset,
+                          width: span,
+                          top: center - 1.5,
+                          height: 3,
+                          background: "#4f46e5",
+                          opacity: 0.85,
+                          borderRadius: 9999,
+                        }
+                  }
+                />
+              );
+            }
+            const guideX = (activeSlot ? activeSlot.guidePos : timelineReorder.cursorX) + pan.dx;
+            const guideY = (activeSlot ? activeSlot.guidePos : timelineReorder.cursorY) + pan.dy;
+            return (
+              <div
+                className="absolute"
+                data-timeline-reorder-guide
+                style={
+                  horizontal
+                    ? {
+                        top: minY + pan.dy,
+                        height: Math.max(0, maxY - minY),
+                        left: guideX - 1.5,
+                        width: 3,
+                        background: "#4f46e5",
+                        opacity: 0.85,
+                        borderRadius: 9999,
+                      }
+                    : {
+                        left: minX + pan.dx,
+                        width: Math.max(0, maxX - minX),
+                        top: guideY - 1.5,
+                        height: 3,
+                        background: "#4f46e5",
+                        opacity: 0.85,
+                        borderRadius: 9999,
+                      }
+                }
+              />
+            );
+          })()}
+
+          {/* Drag ghost — styled preview of the dragged node following the cursor.
+              In vertical mode, when dragging inside a column (event drag), the ghost snaps
+              to the column's cross-axis center so it aligns with the drop slot. In horizontal
+              mode, the ghost snaps vertically to the column center. For section/period
+              boundary drags the ghost follows the cursor with an offset. */}
+          {timelineReorder.ghost &&
+            (() => {
+              const activeSlot = timelineReorder.slots.find(
+                (s) =>
+                  timelineReorder.targetId === s.id && timelineReorder.placement === s.placement,
+              );
+              const horizontal = getTimelineDirection(code) === "LR";
+              const pan = timelineReorder.pan;
+              let ghostL = timelineReorder.cursorX + 16;
+              let ghostT = timelineReorder.cursorY + 16;
+              if (activeSlot && activeSlot.columnMode) {
+                const ghostW = Math.min(timelineReorder.ghost!.w, 260);
+                const ghostH = Math.min(timelineReorder.ghost!.h, 40);
+                if (horizontal) {
+                  ghostL = activeSlot.guidePos + pan.dx - ghostW / 2;
+                  ghostT = activeSlot.spanStart + pan.dy + 4;
+                } else {
+                  ghostL =
+                    activeSlot.spanStart +
+                    pan.dx +
+                    (activeSlot.spanEnd - activeSlot.spanStart - ghostW) / 2;
+                  ghostT = activeSlot.guidePos + pan.dy - ghostH / 2;
+                }
+              }
+              return (
+                <div
+                  className="absolute pointer-events-none"
+                  data-timeline-reorder-ghost
+                  style={{
+                    left: ghostL,
+                    top: ghostT,
+                    transform:
+                      activeSlot && activeSlot.columnMode ? "none" : "translate(-8px, -8px)",
+                    width: Math.min(timelineReorder.ghost.w, 260),
+                    minHeight: Math.min(timelineReorder.ghost.h, 40),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(255,255,255,0.92)",
+                    border: "2px solid #6366f1",
+                    borderRadius: 10,
+                    boxShadow: "0 4px 16px rgba(79,70,229,0.25)",
+                    color: "#4f46e5",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    padding: "4px 10px",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {timelineReorder.ghost.label}
+                    {timelineReorder.ghost.section ? " · section" : ""}
+                  </span>
+                </div>
+              );
+            })()}
         </div>
       )}
 
