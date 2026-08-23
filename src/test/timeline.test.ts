@@ -355,10 +355,19 @@ describe("timeline mutations", () => {
     expect(result).toBe("timeline\n    2026 Q1 : A\n    2026 Q2 : C\n    : B");
   });
 
-  it("is a no-op when moving onto itself or a same-line event", () => {
+  it("is a no-op when moving onto itself", () => {
     const code = "timeline\n    2026 Q1 : A : B";
     expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "A"), "after")).toBe(code);
-    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "B"), "before")).toBe(code);
+  });
+
+  it("reorders same-line events within a period by rebuilding the block", () => {
+    const code = "timeline\n    2026 Q1 : A : B : C";
+    expect(moveTimelineNode(code, byLabel(code, "C"), byLabel(code, "A"), "after")).toBe(
+      "timeline\n    2026 Q1 : A\n    : C\n    : B",
+    );
+    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "B"), "after")).toBe(
+      "timeline\n    2026 Q1 : B\n    : A\n    : C",
+    );
   });
 
   it("reorders events within the same period", () => {
@@ -869,5 +878,35 @@ describe("moveTimelineNode cross-period event placement", () => {
     const q2 = byLabel(code, "2026 Q2");
     const result = moveTimelineNode(code, a, q2, "after");
     expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : A");
+  });
+
+  it("splices event between two events in another period (issue #13)", () => {
+    const code = `timeline TD
+    title Product Milestones
+    section Phase 1
+        2026 Q2 : Research
+        : Build
+        : Test
+        2026 Q1
+        : Pitch
+    section Phase 2
+        2026 Q3 : Prototype
+        : Launch
+    section Phase 3
+        2027 Q1`;
+    const build = byLabel(code, "Build");
+    const launch = byLabel(code, "Launch");
+    const result = moveTimelineNode(code, build, launch, "before");
+    const parsed = parseTimeline(result);
+    const q3 = parsed.sections[1].periods[0];
+    expect(q3.events.map((e) => e.label)).toEqual(["Prototype", "Build", "Launch"]);
+    // Verify all other events are still present
+    const allEvents = parsed.sections.flatMap((s) =>
+      s.periods.flatMap((p) => p.events.map((e) => e.label)),
+    );
+    expect(allEvents).toContain("Research");
+    expect(allEvents).toContain("Test");
+    expect(allEvents).toContain("Pitch");
+    expect(allEvents).toContain("Launch");
   });
 });

@@ -801,7 +801,8 @@ export function moveTimelineNode(
     // event sits on the period header line (the label would move with it) or when a continuation
     // line lands above the header (malformed Mermaid). The period label stays on the first line,
     // the reordered events follow (first event on the period line, the rest as continuation lines).
-    if (event.lineIndex === target.lineIndex) return code;
+    // Same-line events (e.g. `P : A : B`) are included — sort by segmentIndex, then rebuild.
+    if (event.id === target.id) return code;
     const period = getTimelineNode(code, event.periodId);
     if (!period || period.kind !== "period") return code;
     const events = [...period.events].sort(

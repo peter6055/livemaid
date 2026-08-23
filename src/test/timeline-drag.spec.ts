@@ -205,12 +205,9 @@ test.describe("timeline drag guide (issue #8)", () => {
     await startDrag(page, svg, "Prototype");
 
     const launch = nodeByLabel(svg, "Launch");
-    const period = nodeByLabel(svg, "2026 Q3");
     await expect(launch).toBeVisible();
     const launchBox = await launch.boundingBox();
-    const periodBox = await period.boundingBox();
     expect(launchBox).not.toBeNull();
-    expect(periodBox).not.toBeNull();
     await hoverTarget(page, svg, "Launch", "center", false);
 
     await expect(columnGuide(page)).toBeVisible({ timeout: 5000 });
@@ -218,8 +215,14 @@ test.describe("timeline drag guide (issue #8)", () => {
     const guideBox = await columnGuide(page).boundingBox();
     expect(guideBox).not.toBeNull();
     const guideCenterY = guideBox!.y + guideBox!.height / 2;
-    const periodCenterY = periodBox!.y + periodBox!.height / 2;
-    expect(Math.abs(guideCenterY - periodCenterY)).toBeLessThan(4);
+    // TD column guide sits on the before/after insert gap of the hovered event.
+    const beforeGapY = launchBox!.y - 5;
+    const afterGapY = launchBox!.y + launchBox!.height + 5;
+    const nearerGap =
+      Math.abs(guideCenterY - beforeGapY) <= Math.abs(guideCenterY - afterGapY)
+        ? beforeGapY
+        : afterGapY;
+    expect(Math.abs(guideCenterY - nearerGap)).toBeLessThan(8);
 
     await release(page);
     const code = await getDiagramCode(page);

@@ -65,6 +65,7 @@ import {
   type TimelinePeriodNode,
   type TimelineSectionNode,
 } from "@/lib/diagrams/timeline";
+import { selectTimelineDropTarget } from "@/lib/diagrams/timelineDropTarget";
 import { TimelineNodeToolbar } from "./TimelineNodeToolbar";
 import { StateConnectMenu, type StateConnectMenuState } from "./StateConnectMenu";
 import { TimelineAddButtons } from "./TimelineNodeToolbar";
@@ -2271,39 +2272,43 @@ export function EditorCanvas({
             hitTol: n.h + HIT_TOL,
           });
         } else {
-          const beforeGuide = n.x - inset;
-          const afterGuide = n.x + n.w + inset;
+          // TD: events stack vertically (same X, different Y). Hit slots must be Y-axis bands;
+          // X-axis bands collapse because every event shares the same x. guidePos is the insert
+          // gap Y so the horizontal column guide sits between events; spanStart/spanEnd are the
+          // column X extent.
+          const beforeGuide = n.y - inset;
+          const afterGuide = n.y + n.h + inset;
           slots.push({
             id: n.id,
             placement: "before",
-            x: beforeGuide - SLOT_THICK / 2,
-            y: col.y1,
-            w: SLOT_THICK,
-            h: col.y2 - col.y1,
-            axis: "x",
-            crossStart: col.y1,
-            crossEnd: col.y2,
-            guidePos: colCenter,
+            x: col.x1,
+            y: beforeGuide - SLOT_THICK / 2,
+            w: col.x2 - col.x1,
+            h: SLOT_THICK,
+            axis: "y",
+            crossStart: col.x1,
+            crossEnd: col.x2,
+            guidePos: beforeGuide,
             spanStart: col.x1,
             spanEnd: col.x2,
             columnMode: true,
-            hitTol: n.w + HIT_TOL,
+            hitTol: n.h + HIT_TOL,
           });
           slots.push({
             id: n.id,
             placement: "after",
-            x: afterGuide - SLOT_THICK / 2,
-            y: col.y1,
-            w: SLOT_THICK,
-            h: col.y2 - col.y1,
-            axis: "x",
-            crossStart: col.y1,
-            crossEnd: col.y2,
-            guidePos: colCenter,
+            x: col.x1,
+            y: afterGuide - SLOT_THICK / 2,
+            w: col.x2 - col.x1,
+            h: SLOT_THICK,
+            axis: "y",
+            crossStart: col.x1,
+            crossEnd: col.x2,
+            guidePos: afterGuide,
             spanStart: col.x1,
             spanEnd: col.x2,
             columnMode: true,
-            hitTol: n.w + HIT_TOL,
+            hitTol: n.h + HIT_TOL,
           });
         }
         continue;
@@ -2397,26 +2402,21 @@ export function EditorCanvas({
 
     e.preventDefault();
 
-    const findTarget = (cursorX: number, cursorY: number) => {
-      let best: { id: string; placement: "before" | "after" } | null = null;
-      let bestDist = Number.POSITIVE_INFINITY;
-      for (const s of slots) {
-        const cx = s.x + s.w / 2;
-        const cy = s.y + s.h / 2;
-        const crossOk =
-          s.axis === "y"
-            ? cursorX >= s.crossStart - HIT_TOL && cursorX <= s.crossEnd + HIT_TOL
-            : cursorY >= s.crossStart - HIT_TOL && cursorY <= s.crossEnd + HIT_TOL;
-        if (!crossOk) continue;
-        const dist = s.axis === "y" ? Math.abs(cursorY - cy) : Math.abs(cursorX - cx);
-        const tol = s.hitTol ?? (s.axis === "y" ? s.h / 2 : s.w / 2) + HIT_TOL;
-        if (dist <= tol && dist < bestDist) {
-          bestDist = dist;
-          best = { id: s.id, placement: s.placement };
-        }
-      }
-      return best;
-    };
+    // Boundary-aware drop targeting (issue #15): rival slots near a section boundary are
+    // arbitrated by which section's visible bounds sit closest to the cursor, so the
+    // indicator flips at the boundary instead of at a slot-centre midpoint.
+    const sourceSectionId = periodToSection.get(fromId)?.id ?? null;
+    const findTarget = (cursorX: number, cursorY: number) =>
+      selectTimelineDropTarget({
+        slots,
+        sectionBounds,
+        sectionOfNode: (nodeId) => periodToSection.get(nodeId)?.id ?? null,
+        sourceSectionId,
+        cursorX,
+        cursorY,
+        crossTolX: HIT_TOL,
+        crossTolY: HIT_TOL,
+      });
 
     // Auto-scroll: pan the canvas when the cursor nears the shell edges (issue scope).
     // Returns the applied pan delta (screen px) so callers can offset the captured coords.
@@ -2460,11 +2460,15 @@ export function EditorCanvas({
       if (step.dx !== 0 || step.dy !== 0) {
         panDelta = { dx: panDelta.dx + step.dx, dy: panDelta.dy + step.dy };
       }
-      const target = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+      const selection = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+      const target = selection.target;
       let highlightedSectionId: string | null = null;
       if (target) {
         const sec = periodToSection.get(target.id);
         if (sec) highlightedSectionId = sec.id;
+      } else if (sourceSectionId && selection.cursorInSectionId === sourceSectionId) {
+        // No pending move — the cursor rests inside the home section, so glow it (stay).
+        highlightedSectionId = sourceSectionId;
       }
       setTimelineReorder({
         fromId,
@@ -2489,9 +2493,9 @@ export function EditorCanvas({
       if (dragging) {
         const cursorX = ev.clientX - shellRect.left;
         const cursorY = ev.clientY - shellRect.top;
-        const target = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
-        if (target) {
-          onTimelineMove?.(fromId, target.id, target.placement);
+        const selection = findTarget(cursorX - panDelta.dx, cursorY - panDelta.dy);
+        if (selection.target) {
+          onTimelineMove?.(fromId, selection.target.id, selection.target.placement);
         }
       } else {
         selectFromNode();
@@ -4286,6 +4290,7 @@ export function EditorCanvas({
             return (
               <div
                 className="absolute rounded-lg pointer-events-none"
+                data-timeline-section-highlight={hl}
                 style={{
                   left: sec.x + pan.dx - 3,
                   top: sec.y + pan.dy - 3,
@@ -4471,11 +4476,12 @@ export function EditorCanvas({
                   ghostL = activeSlot.guidePos + pan.dx - ghostW / 2;
                   ghostT = activeSlot.spanStart + pan.dy + 4;
                 } else {
+                  // TD: center in column X; follow cursor Y (events stack vertically).
                   ghostL =
                     activeSlot.spanStart +
                     pan.dx +
                     (activeSlot.spanEnd - activeSlot.spanStart - ghostW) / 2;
-                  ghostT = activeSlot.guidePos + pan.dy - ghostH / 2;
+                  ghostT = timelineReorder.cursorY + 16;
                 }
               }
               return (
