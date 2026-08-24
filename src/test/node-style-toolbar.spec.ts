@@ -79,9 +79,6 @@ test.describe("node style toolbar", () => {
 
     const resetClicked = await page.evaluate(() => {
       const root = document.querySelector("[data-class-node-toolbar]");
-      const btn = root
-        ?.querySelector("button")
-        ?.parentElement?.querySelector("button:not([title])");
       const reset = Array.from(root?.querySelectorAll("button") ?? []).find(
         (b) => b.textContent?.trim() === "Reset style",
       ) as HTMLButtonElement | null;

@@ -483,31 +483,33 @@ export function addTimelineEventToPeriod(
 ): { code: string; nodeId: string } {
   const source = ensureTimelineHeader(code);
   const target = getTimelineNode(source, targetNodeId);
-  if (!target) return { code, nodeId: targetNodeId };
-  if (target.kind === "section") return { code, nodeId: targetNodeId };
+  if (!target || target.kind === "section") return { code, nodeId: targetNodeId };
   const lines = source.split("\n");
   const eventLabel = uniqueLabel(source, "New Event");
   const period = getTimelineNode(source, target.kind === "event" ? target.periodId : target.id);
 
-  // Inserting "before" an event that sits on its period's header line cannot use a
-  // separate continuation line: that line would land above the period header and be
-  // orphaned (malformed Mermaid), so the new event would never render. Instead splice
-  // the new event into the header line at the target's segment position.
-  if (
-    placement === "before" &&
-    target.kind === "event" &&
-    period?.kind === "period" &&
-    period.lineIndex === target.lineIndex
-  ) {
+  // Inserting relative to an event that shares its source line with other events
+  // (`P : Build : Test`) must splice into that line at the target's segment position:
+  // a separate continuation line would land after ALL events on the line instead of
+  // next to the target. "Before" an event on its period's header line must also
+  // splice — a continuation line inserted above a header would be orphaned
+  // (malformed Mermaid).
+  if (target.kind === "event") {
     const raw = lines[target.lineIndex] ?? "";
     const indent = leadingIndent(raw);
     const { segments, rebuild } = splitLineSegments(raw.trim());
-    segments.splice(target.segmentIndex, 0, eventLabel);
-    lines[target.lineIndex] = `${indent}${rebuild(segments)}`;
-    return {
-      code: lines.join("\n"),
-      nodeId: timelineEventId(target.lineIndex, target.segmentIndex),
-    };
+    const onHeaderLine = period?.kind === "period" && period.lineIndex === target.lineIndex;
+    const mustSplice = segments.length > 1 || (placement === "before" && onHeaderLine);
+
+    if (mustSplice) {
+      const insertIndex = placement === "before" ? target.segmentIndex : target.segmentIndex + 1;
+      segments.splice(insertIndex, 0, eventLabel);
+      lines[target.lineIndex] = `${indent}${rebuild(segments)}`;
+      return {
+        code: lines.join("\n"),
+        nodeId: timelineEventId(target.lineIndex, insertIndex),
+      };
+    }
   }
 
   const newLine = `    : ${eventLabel}`;

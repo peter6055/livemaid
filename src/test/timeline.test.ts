@@ -781,6 +781,42 @@ describe("addTimelineEventToPeriod (before placement)", () => {
   });
 });
 
+describe("addTimelineEventToPeriod (shared-line splice)", () => {
+  const CODE = `timeline
+    title Product Milestones
+    section Phase 1
+    2026 Q2 : Build : Test`;
+
+  it("inserts after a mid-line event by splicing inline, not after the whole line", () => {
+    const res = addTimelineEventToPeriod(CODE, "TIMELINE_EVENT_3_0", "after");
+    expect(res.code).toBe(`timeline
+    title Product Milestones
+    section Phase 1
+    2026 Q2 : Build : New Event 1 : Test`);
+    expect(getTimelineNode(res.code, res.nodeId)?.kind).toBe("event");
+    const parsed = parseTimeline(res.code);
+    expect(parsed.sections[0].periods[0].events.map((e) => e.label)).toEqual([
+      "Build",
+      "New Event 1",
+      "Test",
+    ]);
+  });
+
+  it("splices before an event on a multi-segment continuation line", () => {
+    const code = "timeline\n    2026 Q1 : A\n    : B : C";
+    const c = byLabel(code, "C");
+    const res = addTimelineEventToPeriod(code, c, "before");
+    expect(res.code).toBe("timeline\n    2026 Q1 : A\n    : B : New Event 1 : C");
+  });
+
+  it("splices after an event on a multi-segment continuation line", () => {
+    const code = "timeline\n    2026 Q1 : A\n    : B : C";
+    const b = byLabel(code, "B");
+    const res = addTimelineEventToPeriod(code, b, "after");
+    expect(res.code).toBe("timeline\n    2026 Q1 : A\n    : B : New Event 1 : C");
+  });
+});
+
 describe("timelineSubtreeIds", () => {
   const CODE = `timeline
     section Phase 1

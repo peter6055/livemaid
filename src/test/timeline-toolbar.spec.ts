@@ -113,6 +113,24 @@ test.describe("timeline node toolbar", () => {
     await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
   });
 
+  // Regression (PR #134 review): several events share one source line
+  // (`2026 Q2 : Build : Test`). Adding after `Build` must splice inline so the
+  // render order is Build -> New Event -> Test, not Build -> Test -> New Event.
+  test("adding an event after a mid-line event lands next to it", async ({ page }) => {
+    const svg = await selectNode(page, "Build");
+    await addButton(page, "event", "after").click();
+    await expect(nodeByLabel(svg, "New Event 1")).toBeVisible({ timeout: 15000 });
+    await expect
+      .poll(
+        async () => {
+          const res = await page.request.get(`/api/diagrams/${DIAGRAM_ID}`);
+          return ((await res.json()) as { code: string }).code;
+        },
+        { timeout: 10000 },
+      )
+      .toContain("2026 Q2 : Build : New Event 1 : Test");
+  });
+
   test("selecting a period with events hides the child event-add button", async ({ page }) => {
     await selectNode(page, "2026 Q1");
     await expect(page.locator('[data-timeline-add-period="before"]')).toBeVisible();

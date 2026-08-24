@@ -577,6 +577,15 @@ const STATE_STYLE_LINE_RE = (id: string) =>
 const STATE_CLASSDEF_DEF_RE = /^[ \t]*classDef[ \t]+(\S+)[ \t]+(.*)$/gm;
 const STATE_CLASS_ASSIGN_RE = /^[ \t]*class[ \t]+(.+?)[ \t]+(\S+)[ \t]*(?:%%.*)?$/im;
 
+/**
+ * Inline `id:::<name>` (optionally chained `id:::<a>:::<b>`) shorthand matcher. Anchored on both
+ * sides by an identifier boundary so querying `Still` does not match inside `NotStill:::red`, and
+ * accepting hyphenated class names (`id:::my-class`). Per the Mermaid docs a shorthand carries a
+ * single class name per occurrence.
+ */
+const stateShorthandRe = (id: string) =>
+  new RegExp(`(?<![\\w-])(${escapeForRegex(id)})(:::+[\\w-]+)+(?![\\w-])`, "g");
+
 /** Parse every `classDef <name> k:v,k:v` definition into a name → property map. */
 function parseStateClassDefs(code: string): Record<string, Record<string, string>> {
   const defs: Record<string, Record<string, string>> = {};
@@ -600,18 +609,22 @@ function parseStateClassDefs(code: string): Record<string, Record<string, string
 /** Return every classDef name applied to `id` via `class <id> <name>` or `id:::<name>`. */
 function getStateClassNames(code: string, id: string): string[] {
   const names = new Set<string>();
-  const esc = escapeForRegex(id);
 
   // Standalone `class <id> <name>` (also `class <id1>, <id2> <name>`).
   let m: RegExpExecArray | null;
   const assignRe = new RegExp(`^[ \\t]*class[ \\t]+(.+?)[ \\t]+(\\S+)[ \\t]*(?:%%.*)?$`, "gim");
   while ((m = assignRe.exec(code)) !== null) {
     const ids = m[1].split(",").map((s) => s.trim());
-    if (ids.includes(id)) names.add(m[2].trim());
+    if (!ids.includes(id)) continue;
+    m[2]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((n) => names.add(n));
   }
 
   // Inline `id:::<name>` shorthand on transitions / references.
-  const shorthandRe = new RegExp(`(${esc})(:::+\\w+)+`, "g");
+  const shorthandRe = stateShorthandRe(id);
   code.split("\n").forEach((line) => {
     let match: RegExpExecArray | null;
     while ((match = shorthandRe.exec(line)) !== null) {
@@ -669,26 +682,86 @@ function removeStateStyleLineOnly(code: string, id: string): string {
 }
 
 /**
- * Merge `patch` into the state's `style <id> ...` line (upserting the line). Passing a property value
- * of "" removes that single property; when no properties remain the whole line is removed. Existing
- * `classDef`/`class`/`:::` assignments are left untouched — `style <id>` has higher specificity in
- * Mermaid, so it correctly overrides them.
+ * Remove only the given class assignments for `id`: drop `id` from matching
+ * `class <ids> <names>` statements (removing the line when nothing remains) and strip the matching
+ * shorthand suffixes from `<id>:::<name>` occurrences. Other states and other classDef names are
+ * left untouched.
+ */
+function removeAssignedClasses(code: string, id: string, names: Set<string>): string {
+  const shorthandRe = stateShorthandRe(id);
+  return code
+    .split("\n")
+    .map((line) => {
+      if (shorthandRe.test(line))
+        return line.replace(shorthandRe, (full) => {
+          const suffixes = full
+            .slice(id.length)
+            .split(":::")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          const kept = suffixes.filter((s) => !names.has(s));
+          return kept.length > 0 ? `${id}${kept.map((s) => `:::${s}`).join("")}` : id;
+        });
+
+      const classMatch = line.match(STATE_CLASS_ASSIGN_RE);
+      if (!classMatch) return line;
+      const classNames = classMatch[2].split(",").map((s) => s.trim());
+      if (!classNames.some((n) => names.has(n))) return line;
+      const ids = classMatch[1].split(",").map((s) => s.trim());
+      if (!ids.includes(id)) return line;
+      // Another listed class still applies to `id`, so keep the whole statement.
+      const keptNames = classNames.filter((n) => !names.has(n));
+      if (keptNames.length > 0) return line;
+
+      const remainingIds = ids.filter((x) => x !== id);
+      if (remainingIds.length === 0) return null;
+      return `    class ${remainingIds.join(", ")} ${classMatch[2]}`;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
+/**
+ * Merge `patch` into the state's explicit `style <id> ...` line (upserting it) without copying
+ * inherited classDef values into it. Passing a property value of "" clears that property:
+ * an explicitly overridden property is dropped from the style line (revealing any inherited
+ * value), while a property that is only inherited from a classDef has its class assignment(s)
+ * removed — otherwise clearing a highlighted swatch would be a silent no-op.
  */
 export function setStateStyle(code: string, id: string, patch: Record<string, string>): string {
-  const merged = { ...getStateStyle(code, id), ...patch };
-  Object.keys(merged).forEach((k) => {
-    if (merged[k] === "" || merged[k] === undefined) delete merged[k];
+  const m = code.match(STATE_STYLE_LINE_RE(id));
+  const explicit = m ? parseStyleLine(m[2]) : {};
+
+  const assignedNames = getStateClassNames(code, id);
+  const classDefs = parseStateClassDefs(code);
+  const namesToRemove = new Set<string>();
+  Object.entries(patch).forEach(([key, value]) => {
+    if (value === "" || value === undefined) {
+      const hadExplicit = Object.prototype.hasOwnProperty.call(explicit, key);
+      delete explicit[key];
+      if (!hadExplicit) {
+        // Not overridden by the style line — the value must come from inheritance.
+        assignedNames.forEach((name) => {
+          if (Object.prototype.hasOwnProperty.call(classDefs[name] || {}, key)) {
+            namesToRemove.add(name);
+          }
+        });
+      }
+    } else {
+      explicit[key] = value;
+    }
   });
-  const withoutStyleLine = removeStateStyleLineOnly(code, id);
-  const serialized = serializeStateStyleProps(merged);
+
+  const stripped = namesToRemove.size > 0 ? removeAssignedClasses(code, id, namesToRemove) : code;
+  const withoutStyleLine = removeStateStyleLineOnly(stripped, id);
+  const serialized = serializeStateStyleProps(explicit);
   if (!serialized) return withoutStyleLine;
   return appendStateLine(withoutStyleLine, `    style ${id} ${serialized}`);
 }
 
 /** Remove every style override for the state: the `style <id>` line AND any `class`/`:::` assignment. */
 export function removeStateStyle(code: string, id: string): string {
-  const esc = escapeForRegex(id);
-  const shorthandRe = new RegExp(`(${esc})(:::+\\w+)+`, "g");
+  const shorthandRe = stateShorthandRe(id);
 
   return code
     .split("\n")

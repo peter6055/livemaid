@@ -45,6 +45,17 @@ describe("getStateStyle", () => {
     const code = `${BASE_CODE}\n    classDef red fill:#ff0000\n    class Moving red`;
     expect(getStateStyle(code, "Still")).toEqual({});
   });
+
+  it("does not match the id inside a longer id using ::: shorthand", () => {
+    const code = `${BASE_CODE}\n    classDef red fill:#ff0000\n    NotStill:::red --> [*]`;
+    expect(getStateStyle(code, "Still")).toEqual({});
+    expect(getStateStyle(code, "NotStill")).toEqual({ fill: "#ff0000" });
+  });
+
+  it("reads hyphenated class names from ::: shorthand", () => {
+    const code = `${BASE_CODE}\n    classDef my-red fill:#ff0000\n    Still:::my-red --> [*]`;
+    expect(getStateStyle(code, "Still")).toEqual({ fill: "#ff0000" });
+  });
 });
 
 describe("setStateStyle", () => {
@@ -67,6 +78,54 @@ describe("setStateStyle", () => {
     const code = `${BASE_CODE}\n    style Still fill:#ff0000`;
     const out = setStateStyle(code, "Still", { fill: "" });
     expect(out).not.toContain("style Still");
+  });
+
+  it("does not copy inherited classDef properties into the style line", () => {
+    const code = `${BASE_CODE}\n    classDef red fill:#ff0000,stroke:#cc0000\n    class Still red`;
+    const out = setStateStyle(code, "Still", { "stroke-width": "2px" });
+    expect(out).toContain("style Still stroke-width:2px");
+    expect(out).toContain("class Still red");
+    expect(getStateStyle(out, "Still")).toEqual({
+      fill: "#ff0000",
+      stroke: "#cc0000",
+      "stroke-width": "2px",
+    });
+  });
+
+  it("clearing an inherited-only property removes the class assignment", () => {
+    const code = `${BASE_CODE}\n    classDef red fill:#ff0000,stroke:#cc0000\n    class Still red`;
+    const out = setStateStyle(code, "Still", { fill: "" });
+    expect(out).not.toContain("class Still red");
+    expect(out).not.toContain("style Still");
+    expect(getStateStyle(out, "Still")).toEqual({});
+  });
+
+  it("clearing an explicit override over an inherited value falls back to the classDef", () => {
+    const code =
+      `${BASE_CODE}\n    classDef red fill:#ff0000\n    class Still red\n` +
+      "    style Still fill:#22c55e";
+    const out = setStateStyle(code, "Still", { fill: "" });
+    expect(out).not.toContain("style Still");
+    expect(out).toContain("class Still red");
+    expect(getStateStyle(out, "Still")).toEqual({ fill: "#ff0000" });
+  });
+
+  it("clearing an inherited-only property strips the ::: shorthand suffix", () => {
+    const code = `${BASE_CODE}\n    classDef red fill:#ff0000\n    [*] --> Still:::red`;
+    const out = setStateStyle(code, "Still", { fill: "" });
+    expect(out).toContain("[*] --> Still");
+    expect(out).not.toContain("Still:::red");
+    expect(getStateStyle(out, "Still")).toEqual({});
+  });
+
+  it("clearing an inherited value keeps unrelated class assignments", () => {
+    const code =
+      `${BASE_CODE}\n    classDef red fill:#ff0000\n    classDef bold stroke-width:2px\n` +
+      "    class Still red\n    class Still bold";
+    const out = setStateStyle(code, "Still", { fill: "" });
+    expect(out).toContain("class Still bold");
+    expect(out).not.toContain("class Still red");
+    expect(getStateStyle(out, "Still")).toEqual({ "stroke-width": "2px" });
   });
 });
 
