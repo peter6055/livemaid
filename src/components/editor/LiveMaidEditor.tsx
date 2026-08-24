@@ -642,10 +642,10 @@ export function LiveMaidEditor({
 
   const handleTimelineMove = useCallback(
     (sourceId: string, targetId: string, placement: "before" | "after") => {
-      const newCode = moveTimelineNode(code, sourceId, targetId, placement);
-      if (newCode !== code) {
-        handleCodeChange(newCode);
-        setSelectedNodeId(targetId);
+      const result = moveTimelineNode(code, sourceId, targetId, placement);
+      if (result.code !== code) {
+        handleCodeChange(result.code);
+        setSelectedNodeId(result.movedNodeId);
         setSelectedSvgId(null);
       }
     },

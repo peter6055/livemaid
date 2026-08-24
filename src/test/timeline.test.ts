@@ -285,7 +285,7 @@ describe("timeline mutations", () => {
         2026 Q3 : C`;
     const q2 = byLabel(code, "2026 Q2");
     const q1 = byLabel(code, "2026 Q1");
-    expect(moveTimelineNode(code, q2, q1, "before")).toBe(`timeline
+    expect(moveTimelineNode(code, q2, q1, "before").code).toBe(`timeline
     section S
         2026 Q2 : B
         2026 Q1 : A
@@ -301,7 +301,7 @@ describe("timeline mutations", () => {
         2026 Q3 : Z`;
     const q3 = byLabel(code, "2026 Q3");
     const q1 = byLabel(code, "2026 Q1");
-    expect(moveTimelineNode(code, q3, q1, "before")).toBe(`timeline
+    expect(moveTimelineNode(code, q3, q1, "before").code).toBe(`timeline
     section A
         2026 Q3 : Z
         2026 Q1 : X
@@ -317,7 +317,7 @@ describe("timeline mutations", () => {
         2026 Q2 : Y`;
     const q1 = byLabel(code, "2026 Q1");
     const b = byLabel(code, "B");
-    expect(moveTimelineNode(code, q1, b, "after")).toBe(`timeline
+    expect(moveTimelineNode(code, q1, b, "after").code).toBe(`timeline
     section A
     section B
         2026 Q2 : Y
@@ -332,7 +332,7 @@ describe("timeline mutations", () => {
         2026 Q2 : Y`;
     const b = byLabel(code, "B");
     const a = byLabel(code, "A");
-    expect(moveTimelineNode(code, b, a, "before")).toBe(`timeline
+    expect(moveTimelineNode(code, b, a, "before").code).toBe(`timeline
     section B
         2026 Q2 : Y
     section A
@@ -343,7 +343,7 @@ describe("timeline mutations", () => {
     const code = "timeline\n    2026 Q1 : A\n    2026 Q2 : B";
     const a = byLabel(code, "A");
     const q2 = byLabel(code, "2026 Q2");
-    expect(moveTimelineNode(code, a, q2, "after")).toBe(
+    expect(moveTimelineNode(code, a, q2, "after").code).toBe(
       "timeline\n    2026 Q1\n    2026 Q2 : B\n    : A",
     );
   });
@@ -352,34 +352,34 @@ describe("timeline mutations", () => {
     const code = "timeline\n    2026 Q1 : A : B\n    2026 Q2 : C";
     const b = byLabel(code, "B");
     const result = moveTimelineNode(code, b, byLabel(code, "2026 Q2"), "after");
-    expect(result).toBe("timeline\n    2026 Q1 : A\n    2026 Q2 : C\n    : B");
+    expect(result.code).toBe("timeline\n    2026 Q1 : A\n    2026 Q2 : C\n    : B");
   });
 
   it("is a no-op when moving onto itself", () => {
     const code = "timeline\n    2026 Q1 : A : B";
-    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "A"), "after")).toBe(code);
+    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "A"), "after").code).toBe(code);
   });
 
   it("reorders same-line events within a period by rebuilding the block", () => {
     const code = "timeline\n    2026 Q1 : A : B : C";
-    expect(moveTimelineNode(code, byLabel(code, "C"), byLabel(code, "A"), "after")).toBe(
+    expect(moveTimelineNode(code, byLabel(code, "C"), byLabel(code, "A"), "after").code).toBe(
       "timeline\n    2026 Q1 : A\n    : C\n    : B",
     );
-    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "B"), "after")).toBe(
+    expect(moveTimelineNode(code, byLabel(code, "A"), byLabel(code, "B"), "after").code).toBe(
       "timeline\n    2026 Q1 : B\n    : A\n    : C",
     );
   });
 
   it("reorders events within the same period", () => {
     const code = "timeline\n    2026 Q1 : A\n    : B\n    : C";
-    expect(moveTimelineNode(code, byLabel(code, "C"), byLabel(code, "A"), "before")).toBe(
+    expect(moveTimelineNode(code, byLabel(code, "C"), byLabel(code, "A"), "before").code).toBe(
       "timeline\n    2026 Q1 : C\n    : A\n    : B",
     );
   });
 
   it("moves an event to sit before another event in the same period block", () => {
     const code = "timeline\n    2026 Q1 : A\n    : B\n    : C";
-    expect(moveTimelineNode(code, byLabel(code, "B"), byLabel(code, "C"), "after")).toBe(
+    expect(moveTimelineNode(code, byLabel(code, "B"), byLabel(code, "C"), "after").code).toBe(
       "timeline\n    2026 Q1 : A\n    : C\n    : B",
     );
   });
@@ -836,7 +836,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const a = byLabel(code, "A");
     const d = byLabel(code, "D");
     const result = moveTimelineNode(code, a, d, "before");
-    const parsed = parseTimeline(result);
+    const parsed = parseTimeline(result.code);
     const q1 = parsed.sections[0].periods[0];
     const q2 = parsed.sections[0].periods[1];
     expect(q1.events.map((e) => e.label)).toEqual(["B"]);
@@ -851,7 +851,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const a = byLabel(code, "A");
     const b = byLabel(code, "B");
     const result = moveTimelineNode(code, a, b, "after");
-    const parsed = parseTimeline(result);
+    const parsed = parseTimeline(result.code);
     expect(parsed.sections[0].periods[0].events.map((e) => e.label)).toEqual([]);
     expect(parsed.sections[0].periods[1].events.map((e) => e.label)).toEqual(["B", "A", "C"]);
   });
@@ -861,7 +861,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const a = byLabel(code, "A");
     const b = byLabel(code, "B");
     const result = moveTimelineNode(code, a, b, "before");
-    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : A\n    : B");
+    expect(result.code).toBe("timeline\n    2026 Q1\n    2026 Q2 : A\n    : B");
   });
 
   it("still appends into a target period (event → period target)", () => {
@@ -869,7 +869,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const a = byLabel(code, "A");
     const q2 = byLabel(code, "2026 Q2");
     const result = moveTimelineNode(code, a, q2, "after");
-    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : B\n    : A");
+    expect(result.code).toBe("timeline\n    2026 Q1\n    2026 Q2 : B\n    : A");
   });
 
   it("moves an event into an empty period", () => {
@@ -877,7 +877,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const a = byLabel(code, "A");
     const q2 = byLabel(code, "2026 Q2");
     const result = moveTimelineNode(code, a, q2, "after");
-    expect(result).toBe("timeline\n    2026 Q1\n    2026 Q2 : A");
+    expect(result.code).toBe("timeline\n    2026 Q1\n    2026 Q2 : A");
   });
 
   it("splices event between two events in another period (issue #13)", () => {
@@ -897,7 +897,7 @@ describe("moveTimelineNode cross-period event placement", () => {
     const build = byLabel(code, "Build");
     const launch = byLabel(code, "Launch");
     const result = moveTimelineNode(code, build, launch, "before");
-    const parsed = parseTimeline(result);
+    const parsed = parseTimeline(result.code);
     const q3 = parsed.sections[1].periods[0];
     expect(q3.events.map((e) => e.label)).toEqual(["Prototype", "Build", "Launch"]);
     // Verify all other events are still present
@@ -908,5 +908,102 @@ describe("moveTimelineNode cross-period event placement", () => {
     expect(allEvents).toContain("Test");
     expect(allEvents).toContain("Pitch");
     expect(allEvents).toContain("Launch");
+  });
+});
+
+describe("moveTimelineNode movedNodeId exactness (issue #17)", () => {
+  const expectSameKindAndLabel = (
+    code: string,
+    sourceId: string,
+    result: { code: string; movedNodeId: string },
+  ) => {
+    const source = getTimelineNode(code, sourceId);
+    const moved = getTimelineNode(result.code, result.movedNodeId);
+    expect(source).not.toBeNull();
+    expect(moved?.kind).toBe(source?.kind);
+    expect(moved?.label).toBe(source?.label);
+    return moved;
+  };
+
+  it("reports the section header line where a moved section landed", () => {
+    const code = `timeline
+    section A
+        2026 Q1 : X
+    section B
+        2026 Q2 : Y`;
+    const result = moveTimelineNode(code, byLabel(code, "B"), byLabel(code, "A"), "before");
+    // Section B's block is spliced at the target section header's line (index 1).
+    expect(result.movedNodeId).toBe("TIMELINE_SECTION_1");
+    expectSameKindAndLabel(code, byLabel(code, "B"), result);
+  });
+
+  it("reports the period header line where a moved period landed", () => {
+    const code = `timeline
+    section S
+        2026 Q1 : A
+        2026 Q2 : B
+        2026 Q3 : C`;
+    const q2 = byLabel(code, "2026 Q2");
+    const result = moveTimelineNode(code, q2, byLabel(code, "2026 Q1"), "before");
+    // Q2 moves above Q1: its single-line block lands on Q1's old header line (index 2).
+    expect(result.movedNodeId).toBe("TIMELINE_PERIOD_2");
+    expectSameKindAndLabel(code, q2, result);
+  });
+
+  it("reports the splice index when a period drops into another section", () => {
+    const code = `timeline
+    section A
+        2026 Q1 : X
+    section B
+        2026 Q2 : Y`;
+    const result = moveTimelineNode(code, byLabel(code, "2026 Q1"), byLabel(code, "B"), "after");
+    // Q1 is appended after B's last period block (line 4) and keeps that header line.
+    expect(result.movedNodeId).toBe("TIMELINE_PERIOD_4");
+    expectSameKindAndLabel(code, byLabel(code, "2026 Q1"), result);
+  });
+
+  it("reports the rebuilt line for a same-period reorder across a multi-event line", () => {
+    const code = "timeline\n    2026 Q1 : A : B";
+    const b = byLabel(code, "B");
+    const result = moveTimelineNode(code, b, byLabel(code, "A"), "before");
+    expect(result.code).toBe("timeline\n    2026 Q1 : B\n    : A");
+    // B is rewritten as the first event of the period (header line 1).
+    expect(result.movedNodeId).toBe("TIMELINE_EVENT_1_0");
+    expect(getTimelineNode(result.code, result.movedNodeId)?.label).toBe("B");
+    expectSameKindAndLabel(code, b, result);
+  });
+
+  it("reports the rebuilt line for a cross-period move into an indented period", () => {
+    const code = `timeline
+    section S
+        2026 Q1 : A
+        2026 Q2 : B : C`;
+    const a = byLabel(code, "A");
+    const result = moveTimelineNode(code, a, byLabel(code, "B"), "before");
+    // A becomes the first event of Q2; the rebuilt block starts at Q2's header line (index 3).
+    expect(result.code).toBe(
+      `timeline
+    section S
+        2026 Q1
+        2026 Q2 : A
+        : B
+        : C`,
+    );
+    expect(result.movedNodeId).toBe("TIMELINE_EVENT_3_0");
+    expectSameKindAndLabel(code, a, result);
+  });
+
+  it("keeps sourceId as movedNodeId for no-op stay-put moves", () => {
+    const code = "timeline\n    2026 Q1 : A : B";
+    const a = byLabel(code, "A");
+    const result = moveTimelineNode(code, a, a, "after");
+    expect(result.code).toBe(code);
+    expect(result.movedNodeId).toBe(a);
+
+    const periodCode = "timeline\n    2026 Q1 : A\n    2026 Q2 : B";
+    const q1 = byLabel(periodCode, "2026 Q1");
+    const samePeriod = moveTimelineNode(periodCode, q1, byLabel(periodCode, "A"), "before");
+    expect(samePeriod.code).toBe(periodCode);
+    expect(samePeriod.movedNodeId).toBe(q1);
   });
 });

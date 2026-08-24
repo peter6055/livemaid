@@ -727,16 +727,21 @@ export function renameTimelineNode(code: string, nodeId: string, label: string):
  *  - period → period (before/after)
  *  - period → section (relocate into the section)
  *  - section → section (before/after)
+ *
+ * Returns the new code together with the dragged node's EXACT id in that code,
+ * so callers can keep the dragged node selected across the re-render. When the
+ * call is a no-op (`result.code === code`) `movedNodeId` is the unchanged
+ * `sourceId`.
  */
 export function moveTimelineNode(
   code: string,
   sourceId: string,
   targetId: string,
   placement: "before" | "after",
-): string {
+): { code: string; movedNodeId: string } {
   const source = getTimelineNode(code, sourceId);
   const target = getTimelineNode(code, targetId);
-  if (!source || !target || sourceId === targetId) return code;
+  if (!source || !target || sourceId === targetId) return { code, movedNodeId: sourceId };
   const lines = code.split("\n");
 
   const removeLineBlock = (start: number, end: number): string[] => {
@@ -752,14 +757,16 @@ export function moveTimelineNode(
     const sourceEnd = sectionBlockEnd(lines, source);
     const targetStart = target.lineIndex;
     const targetEnd = sectionBlockEnd(lines, target);
-    if (sourceStart <= targetEnd && targetStart <= sourceEnd) return code;
+    if (sourceStart <= targetEnd && targetStart <= sourceEnd) {
+      return { code, movedNodeId: sourceId };
+    }
     const block = removeLineBlock(sourceStart, sourceEnd);
     const delta = block.length;
     let insertAt = targetStart;
     if (placement === "after") insertAt = targetEnd + 1;
     if (sourceStart < insertAt) insertAt -= delta;
     insertLines(insertAt, block);
-    return lines.join("\n");
+    return { code: lines.join("\n"), movedNodeId: timelineSectionId(insertAt) };
   }
 
   if (source.kind === "period") {
@@ -768,29 +775,37 @@ export function moveTimelineNode(
       const sourceEnd = source.blockEndLineIndex;
       const targetStart = target.lineIndex;
       const targetEnd = target.blockEndLineIndex;
-      if (sourceStart <= targetEnd && targetStart <= sourceEnd) return code;
+      if (sourceStart <= targetEnd && targetStart <= sourceEnd) {
+        return { code, movedNodeId: sourceId };
+      }
       const block = removeLineBlock(sourceStart, sourceEnd);
       const delta = block.length;
       let insertAt = targetStart;
       if (placement === "after") insertAt = targetEnd + 1;
       if (sourceStart < insertAt) insertAt -= delta;
       insertLines(insertAt, block);
-      return lines.join("\n");
+      return { code: lines.join("\n"), movedNodeId: timelinePeriodId(insertAt) };
     }
     if (target.kind === "section") {
       const targetSection = target;
       const lastPeriod = targetSection.periods[targetSection.periods.length - 1];
       const insertAt = lastPeriod ? lastPeriod.blockEndLineIndex + 1 : targetSection.lineIndex + 1;
       const block = removeLineBlock(source.lineIndex, source.blockEndLineIndex);
-      insertLines(insertAt, block);
-      return lines.join("\n");
+      // `insertAt` was computed against pre-removal line indices; Array.prototype.splice
+      // clamps an out-of-range start to the current length, so the block physically
+      // lands at the clamped index — report exactly that line as the moved period's id.
+      const landedAt = Math.min(insertAt, lines.length);
+      insertLines(landedAt, block);
+      return { code: lines.join("\n"), movedNodeId: timelinePeriodId(landedAt) };
     }
-    return code;
+    return { code, movedNodeId: sourceId };
   }
 
   // Event moves.
-  if (source.kind !== "event") return code;
-  if (target.kind !== "event" && target.kind !== "period") return code;
+  if (source.kind !== "event") return { code, movedNodeId: sourceId };
+  if (target.kind !== "event" && target.kind !== "period") {
+    return { code, movedNodeId: sourceId };
+  }
   const event = source;
   const targetPeriodId = target.kind === "event" ? target.periodId : target.id;
   const samePeriod = event.periodId === targetPeriodId;
@@ -802,19 +817,23 @@ export function moveTimelineNode(
     // line lands above the header (malformed Mermaid). The period label stays on the first line,
     // the reordered events follow (first event on the period line, the rest as continuation lines).
     // Same-line events (e.g. `P : A : B`) are included — sort by segmentIndex, then rebuild.
-    if (event.id === target.id) return code;
+    if (event.id === target.id) return { code, movedNodeId: sourceId };
     const period = getTimelineNode(code, event.periodId);
-    if (!period || period.kind !== "period") return code;
+    if (!period || period.kind !== "period") return { code, movedNodeId: sourceId };
     const events = [...period.events].sort(
       (a, b) => a.lineIndex - b.lineIndex || a.segmentIndex - b.segmentIndex,
     );
     const fromIndex = events.findIndex((e) => e.id === event.id);
     const targetIndex = events.findIndex((e) => e.id === target.id);
-    if (fromIndex < 0 || targetIndex < 0) return code;
+    if (fromIndex < 0 || targetIndex < 0) return { code, movedNodeId: sourceId };
     const next = [...events];
     const [moved] = next.splice(fromIndex, 1);
     const anchor = targetIndex > fromIndex ? targetIndex - 1 : targetIndex;
     next.splice(placement === "after" ? anchor + 1 : anchor, 0, moved);
+    // The rebuild writes exactly one event per line starting at the period header, so
+    // the moved event's new line is `period.lineIndex + movedIndex` and its per-period
+    // event index equals its array index (both feed the positional event id).
+    const movedIndex = next.findIndex((e) => e.id === event.id);
 
     const raw = lines[period.lineIndex] ?? "";
     const indent = leadingIndent(raw);
@@ -831,14 +850,19 @@ export function moveTimelineNode(
     for (let i = 1; i < next.length; i += 1) {
       lines[period.lineIndex + i] = `${indent}: ${next[i].label}`;
     }
-    return lines.join("\n");
+    return {
+      code: lines.join("\n"),
+      movedNodeId: timelineEventId(period.lineIndex + movedIndex, movedIndex),
+    };
   }
 
   // Cross-period move. Resolve the target period's header line text up front (the source removal
   // below shifts line indices, so the original target id can no longer be resolved by id).
   const targetEventIndex = target.kind === "event" ? target.eventIndex : -1;
   const targetPeriodByLabel = getTimelineNode(code, targetPeriodId);
-  if (!targetPeriodByLabel || targetPeriodByLabel.kind !== "period") return code;
+  if (!targetPeriodByLabel || targetPeriodByLabel.kind !== "period") {
+    return { code, movedNodeId: sourceId };
+  }
   const targetPeriodTrim = (lines[targetPeriodByLabel.lineIndex] ?? "").trim();
 
   // Reduce the source event onto its own movable continuation line.
@@ -875,9 +899,9 @@ export function moveTimelineNode(
   const movedCode = lines.join("\n");
   const freshLines = movedCode.split("\n");
   const periodHeaderIndex = freshLines.findIndex((line) => line.trim() === targetPeriodTrim);
-  if (periodHeaderIndex < 0) return code;
+  if (periodHeaderIndex < 0) return { code, movedNodeId: sourceId };
   const freshPeriod = getTimelineNode(movedCode, timelinePeriodId(periodHeaderIndex));
-  if (!freshPeriod || freshPeriod.kind !== "period") return code;
+  if (!freshPeriod || freshPeriod.kind !== "period") return { code, movedNodeId: sourceId };
 
   let freshAnchor: TimelineEventNode | null = null;
   if (target.kind === "event") {
@@ -885,7 +909,7 @@ export function moveTimelineNode(
       [...freshPeriod.events].sort(
         (a, b) => a.lineIndex - b.lineIndex || a.segmentIndex - b.segmentIndex,
       )[targetEventIndex] ?? null;
-    if (!freshAnchor) return code;
+    if (!freshAnchor) return { code, movedNodeId: sourceId };
   }
 
   const events = [...freshPeriod.events].sort(
@@ -927,7 +951,13 @@ export function moveTimelineNode(
   for (let i = 1; i < events.length; i += 1) {
     freshLines[freshPeriod.lineIndex + i] = `${periodIndent}: ${events[i].label}`;
   }
-  return freshLines.join("\n");
+  // The rebuild writes exactly one event per line starting at the target period header, so
+  // the moved event's new line is `freshPeriod.lineIndex + insertAt` and its per-period
+  // event index equals `insertAt` (both feed the positional event id).
+  return {
+    code: freshLines.join("\n"),
+    movedNodeId: timelineEventId(freshPeriod.lineIndex + insertAt, insertAt),
+  };
 }
 
 function sectionBlockEnd(lines: string[], section: TimelineSectionNode): number {
