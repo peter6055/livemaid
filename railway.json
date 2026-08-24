@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "environments": {
+    "pr": {
+      "deploy": {
+        "multiRegionConfig": {
+          "us-west2": {
+            "numReplicas": 1
+          }
+        }
+      }
+    }
+  }
+}
