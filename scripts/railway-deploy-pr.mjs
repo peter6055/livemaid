@@ -63,6 +63,30 @@ export async function findEnvironmentId(tokenInfo, projectId, candidates) {
   );
 }
 
+export async function resolveServiceId(tokenInfo, projectId, serviceName) {
+  const data = await gql(
+    tokenInfo,
+    `query project($id: String!) {
+      project(id: $id) {
+        services {
+          edges { node { id name } }
+        }
+      }
+    }`,
+    { id: projectId },
+  );
+  const services = data.project.services.edges.map((edge) => edge.node);
+  const match = services.find((service) => service.name === serviceName);
+  if (!match) {
+    throw new Error(
+      `No Railway service named "${serviceName}" found. Available: ${services
+        .map((s) => s.name)
+        .join(", ")}`,
+    );
+  }
+  return match.id;
+}
+
 export async function updateRegion(tokenInfo, serviceId, environmentId, regionId) {
   const input = {
     multiRegionConfig: { [regionId]: { numReplicas: 1 } },
@@ -87,7 +111,7 @@ export async function updateRegion(tokenInfo, serviceId, environmentId, regionId
 
 async function main() {
   const projectId = requireEnv("RAILWAY_PROJECT_ID");
-  const serviceId = requireEnv("RAILWAY_SERVICE_ID");
+  const serviceName = requireEnv("RAILWAY_SERVICE_NAME");
   const prNumber = requireEnv("PR_NUMBER");
   const tokenInfo = pickToken();
 
@@ -98,6 +122,9 @@ async function main() {
     );
   }
   console.log(`Picked off-peak region: ${region.id} (${region.label})`);
+
+  const serviceId = await resolveServiceId(tokenInfo, projectId, serviceName);
+  console.log(`Resolved service: ${serviceName} (${serviceId})`);
 
   const candidates = [`livemaid-pr-${prNumber}`, `pr-${prNumber}`];
   const env = await findEnvironmentId(tokenInfo, projectId, candidates);
@@ -122,7 +149,7 @@ async function main() {
       "--environment",
       env.name,
       "--service",
-      serviceId,
+      serviceName,
     ],
     { stdio: "inherit", env: childEnv },
   );

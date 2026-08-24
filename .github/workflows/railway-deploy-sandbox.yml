@@ -36,7 +36,7 @@ jobs:
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID || github.event.repository.name }}
+          RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME || github.event.repository.name }}
           RAILWAY_ENVIRONMENT: sandbox
 
       - name: Bake version from release tag and deploy
@@ -50,11 +50,11 @@ jobs:
           printf '%s\n' "$VERSION" > .build-version
           echo "Baking version ${VERSION} from release tag ${TAG}"
           railway variable set "VERSION=$VERSION" --skip-deploys \
-            --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+            --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE_NAME"
           railway up --detach --no-gitignore \
-            --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE"
+            --project "$RAILWAY_PROJECT_ID" --environment "$RAILWAY_ENVIRONMENT" --service "$RAILWAY_SERVICE_NAME"
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_ENVIRONMENT: sandbox
-          RAILWAY_SERVICE: ${{ vars.RAILWAY_SERVICE || github.event.repository.name }}
+          RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME || github.event.repository.name }}

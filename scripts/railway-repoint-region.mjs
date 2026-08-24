@@ -1,9 +1,15 @@
-import { findEnvironmentId, requireEnv, pickToken, updateRegion } from "./railway-deploy-pr.mjs";
+import {
+  findEnvironmentId,
+  requireEnv,
+  pickToken,
+  resolveServiceId,
+  updateRegion,
+} from "./railway-deploy-pr.mjs";
 import { pickOffPeakRegion } from "./railway-region.mjs";
 
 async function main() {
   const projectId = requireEnv("RAILWAY_PROJECT_ID");
-  const serviceId = requireEnv("RAILWAY_SERVICE_ID");
+  const serviceName = requireEnv("RAILWAY_SERVICE_NAME");
   const environment = requireEnv("RAILWAY_ENVIRONMENT");
   const tokenInfo = pickToken();
 
@@ -15,6 +21,7 @@ async function main() {
   }
   console.log(`Picked off-peak region: ${region.id} (${region.label})`);
 
+  const serviceId = await resolveServiceId(tokenInfo, projectId, serviceName);
   const env = await findEnvironmentId(tokenInfo, projectId, [environment]);
   await updateRegion(tokenInfo, serviceId, env.id, region.id);
   console.log(`Set region of ${env.name} to ${region.id}`);
