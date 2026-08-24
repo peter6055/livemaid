@@ -1,8 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-// Issue #11: flowchart styling is the reference. Class diagrams get the same
-// `style <id>` popover; sequence/timeline must not offer B/I/align (those types
-// render labels as plain SVG text, so markup would show as literal HTML).
+// Flowchart styling is the reference. Class diagrams get the same `style <id>`
+// popover; sequence/timeline must not offer B/I/align (those types render labels
+// as plain SVG text, so markup would show as literal HTML).
 
 async function readDiagramCode(request: import("@playwright/test").APIRequestContext, id: string) {
   const res = await request.get(`/api/diagrams/${id}`);
@@ -42,10 +42,10 @@ async function clickFillRedSwatch(page: import("@playwright/test").Page) {
   });
 }
 
-test.describe("issue 11 styling", () => {
+test.describe("node style toolbar", () => {
   test("class toolbar applies and resets a fill style statement", async ({ page, request }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 Class Style",
+      name: "Node Style Class",
       type: "classDiagram",
       code: [
         "classDiagram",
@@ -101,7 +101,7 @@ test.describe("issue 11 styling", () => {
     request,
   }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 State ClassDef",
+      name: "Node Style State ClassDef",
       type: "stateDiagram",
       code: [
         "stateDiagram-v2",
@@ -165,7 +165,7 @@ test.describe("issue 11 styling", () => {
     request,
   }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 State Composite Style",
+      name: "Node Style State Composite",
       type: "stateDiagram",
       code: [
         "stateDiagram-v2",
@@ -324,7 +324,7 @@ test.describe("issue 11 styling", () => {
 
   test("sequence inline editor has no B/I/align toolbar", async ({ page, request }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 Sequence Format",
+      name: "Node Style Sequence Format",
       type: "sequence",
       code: [
         "sequenceDiagram",
@@ -350,7 +350,7 @@ test.describe("issue 11 styling", () => {
 
   test("timeline rename editor has no B/I/align toolbar", async ({ page, request }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 Timeline Format",
+      name: "Node Style Timeline Format",
       type: "timeline",
       code: [
         "timeline",
@@ -384,7 +384,7 @@ test.describe("issue 11 styling", () => {
     request,
   }) => {
     const { id, svg } = await openEditor(page, request, {
-      name: "Issue 11 Flowchart Format",
+      name: "Node Style Flowchart Format",
       type: "flowchart",
       code: ["graph TD", "    A[Start] -->|Process| B[End]"].join("\n"),
     });
