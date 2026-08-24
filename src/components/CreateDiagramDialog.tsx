@@ -208,7 +208,7 @@ export function CreateDiagramDialog({
         className={`group rounded-xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background h-full ${
           active
             ? "border-indigo-500 bg-indigo-500/10 shadow-sm"
-            : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-white"
+            : "border-border bg-card hover:border-indigo-300 hover:bg-accent/50"
         }`}
       >
         <div className="flex items-center gap-3">
@@ -216,12 +216,12 @@ export function CreateDiagramDialog({
             className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
               active
                 ? "bg-indigo-500 text-white"
-                : "bg-slate-100 text-slate-500 group-hover:text-slate-700"
+                : "bg-muted text-muted-foreground group-hover:text-foreground"
             }`}
           >
             <Icon className="h-4 w-4" />
           </span>
-          <span className="block text-sm font-semibold text-slate-900">{item.label}</span>
+          <span className="block text-sm font-semibold text-foreground">{item.label}</span>
         </div>
       </button>
     );
@@ -237,7 +237,7 @@ export function CreateDiagramDialog({
         <div className="grid gap-5 overflow-y-auto py-4 pr-1 lg:grid-cols-[1fr_280px]">
           <div className="space-y-5">
             <div>
-              <label htmlFor="create-diagram-name" className="text-sm font-medium text-slate-700">
+              <label htmlFor="create-diagram-name" className="text-sm font-medium text-foreground">
                 Diagram name
               </label>
               <Input
@@ -253,16 +253,16 @@ export function CreateDiagramDialog({
             </div>
 
             <div>
-              <p className="text-sm font-medium text-slate-700">What are you trying to map?</p>
+              <p className="text-sm font-medium text-foreground">What are you trying to map?</p>
 
-              <p className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <p className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Editable on canvas
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {twoWayOptions.map((item) => renderOption(item))}
               </div>
 
-              <p className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <p className="mt-4 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Code-only
               </p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -276,7 +276,7 @@ export function CreateDiagramDialog({
               className={`w-full rounded-xl border p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                 selectedId === "blank"
                   ? "border-indigo-500 bg-indigo-500/10 shadow-sm"
-                  : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-white"
+                  : "border-border bg-card hover:border-indigo-300 hover:bg-accent/50"
               }`}
             >
               <div className="flex items-center gap-3">
@@ -284,21 +284,23 @@ export function CreateDiagramDialog({
                   className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                     selectedId === "blank"
                       ? "bg-indigo-500 text-white"
-                      : "bg-slate-100 text-slate-500"
+                      : "bg-muted text-muted-foreground"
                   }`}
                 >
                   <Braces className="h-4 w-4" />
                 </span>
-                <span className="block text-sm font-semibold text-slate-900">Start from blank</span>
+                <span className="block text-sm font-semibold text-foreground">
+                  Start from blank
+                </span>
               </div>
             </button>
           </div>
 
-          <aside className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
+          <aside className="space-y-4 rounded-2xl border border-border bg-card p-4">
             <BlueprintPreview selected={selected} />
             <div>
-              <p className="text-sm font-semibold text-slate-900">{selected.label}</p>
-              <p className="mt-1 text-sm leading-6 text-slate-500">
+              <p className="text-sm font-semibold text-foreground">{selected.label}</p>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 {selected.capability === "two-way"
                   ? "Editable on the canvas and in Mermaid code."
                   : "Opens in LiveMaid as a Mermaid code workspace."}
@@ -311,7 +313,11 @@ export function CreateDiagramDialog({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={() => void submit()} disabled={!canCreate}>
+          <Button
+            onClick={() => void submit()}
+            disabled={!canCreate}
+            className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white"
+          >
             Create diagram
           </Button>
         </DialogFooter>

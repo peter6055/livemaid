@@ -48,6 +48,17 @@ describe("diagram type detection", () => {
     );
     expect(determineDiagramType('C4Context\nPerson(user, "User")')).toBe("C4Context");
   });
+
+  it("normalizes Mermaid v2 aliases to the canonical two-way plugin id", () => {
+    expect(determineDiagramType("stateDiagram-v2\n  [*] --> Still")).toBe("stateDiagram");
+    expect(determineDiagramType("classDiagram-v2\n  class A")).toBe("classDiagram");
+    expect(getDiagramCapability(determineDiagramType("stateDiagram-v2\n  [*] --> Still"))).toBe(
+      "two-way",
+    );
+    expect(getDiagramCapability(determineDiagramType("classDiagram-v2\n  class A"))).toBe(
+      "two-way",
+    );
+  });
 });
 
 describe("starred metadata normalization", () => {

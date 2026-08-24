@@ -19,6 +19,12 @@ interface ClassTextEditorProps {
    * behaviour is unchanged (commit on blur/Enter only).
    */
   onLiveChange?: (value: string) => void;
+  /**
+   * When true, a plain Enter commits the edit. Diagram titles are single-line so Enter-saves
+   * (used by the timeline title editor). Off by default — notes/relationship/state labels keep the
+   * textarea's default Enter behaviour.
+   */
+  commitOnEnter?: boolean;
 }
 
 /**
@@ -34,6 +40,7 @@ export function ClassTextEditor({
   onCommit,
   onCancel,
   onLiveChange,
+  commitOnEnter = false,
 }: ClassTextEditorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -118,6 +125,11 @@ export function ClassTextEditor({
         onDoubleClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Enter" && commitOnEnter) {
+            // Single-line diagram titles: plain Enter commits the edit (used by the timeline title
+            // editor). Off for notes/relationship labels so they keep multiline behaviour.
             e.preventDefault();
             commit();
           } else if (e.key === "Escape") {

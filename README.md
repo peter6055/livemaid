@@ -67,6 +67,7 @@ These diagram types support full two-way interaction — you can click and manip
 | **Class Diagram**    | Supported                   |
 | **ER Diagram**       | Supported                   |
 | **State Diagram**    | Supported                   |
+| **Timeline**         | Supported                   |
 | **Mindmap**          | Supported                   |
 
 ### 🔲 Code Only (render + preview)

@@ -24,6 +24,7 @@ Source of truth for LiveMaid architecture, design, and features. **Read only wha
 | [`editor/flowchart.md`](./features/editor/flowchart.md)                             | Flowchart interaction                   |
 | [`editor/sequence.md`](./features/editor/sequence.md)                               | Sequence messages, hover, reorder       |
 | [`editor/sequence-plus-placement.md`](./features/editor/sequence-plus-placement.md) | Lifeline `+` slot model                 |
+| [`editor/timeline-drop-target.md`](./features/editor/timeline-drop-target.md)       | Timeline drag drop-target arbitration   |
 | [`editor/canvas-highlighting.md`](./features/editor/canvas-highlighting.md)         | Canvas-to-Monaco highlight              |
 | [`editor/demo-chrome.md`](./features/editor/demo-chrome.md)                         | Demo mode, header chrome                |
 | [`diagrams/overview.md`](./features/diagrams/overview.md)                           | All diagram plugins                     |
@@ -67,6 +68,8 @@ Source of truth for LiveMaid architecture, design, and features. **Read only wha
 
 ### `skills/` — Agent workflows
 
-| Doc                                                     | Topic                  |
-| ------------------------------------------------------- | ---------------------- |
-| [`opencode-workflow.md`](./skills/opencode-workflow.md) | OpenCode orchestration |
+| Doc                                                                   | Topic                             |
+| --------------------------------------------------------------------- | --------------------------------- |
+| [`opencode-workflow.md`](./skills/opencode-workflow.md)               | OpenCode orchestration            |
+| [`orchestration.md`](./skills/orchestration.md)                       | Main-agent/subagent task standard |
+| [`reporting-bugs-and-epics.md`](./skills/reporting-bugs-and-epics.md) | Bug/epic reporting & repo routing |

@@ -5,6 +5,7 @@ import { ClassDiagramPlugin } from "./classDiagram";
 import { ErDiagramPlugin } from "./erDiagram";
 import { StateDiagramPlugin } from "./stateDiagram";
 import { MindmapPlugin } from "./mindmap";
+import { TimelinePlugin } from "./timeline";
 
 export const DiagramRegistry: Record<string, DiagramPlugin> = {
   flowchart: FlowchartPlugin,
@@ -13,4 +14,5 @@ export const DiagramRegistry: Record<string, DiagramPlugin> = {
   erDiagram: ErDiagramPlugin,
   stateDiagram: StateDiagramPlugin,
   mindmap: MindmapPlugin,
+  timeline: TimelinePlugin,
 };

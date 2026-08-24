@@ -47,6 +47,10 @@ By submitting a Pull Request, you confirm that:
 - Your contribution may be distributed under the [LSAL-1.0](LICENSE) license governing this repository.
 - You are not required to assign copyright — you retain ownership of your contribution — but you grant the project the right to use it under LSAL-1.0.
 
+### Issue Tracking & Private Notes
+
+LiveMaid keeps **internal planning and handover notes in a separate private repository** (`livemaid-project`), which is limited to the maintainer, AI agents, and verified contributors. Please do **not** post private specs, handover logs, personal context, credentials, or secrets on public issues, PRs, or comments in this repository. Public issues should only contain sanitized, contributor-facing information.
+
 ## 🚀 Getting Started
 
 Follow these instructions to set up the project locally for development.
