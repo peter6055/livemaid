@@ -2419,7 +2419,12 @@ export function EditorCanvas({
       });
 
     // Auto-scroll: pan the canvas when the cursor nears the shell edges (issue scope).
-    // Returns the applied pan delta (screen px) so callers can offset the captured coords.
+    // positionX/Y are content translations (positive positionX renders the content further
+    // RIGHT on screen), so revealing more content past an edge requires shifting the content
+    // toward the OPPOSITE screen direction: drag right → dx negative (content moves left),
+    // drag left → dx positive, drag bottom → dy negative (content moves up), drag top → dy
+    // positive. Returns the applied pan delta (screen px) so callers can offset the coords
+    // captured at drag start.
     const EDGE_MARGIN = 64;
     const PAN_SPEED = 16;
     const panStep = (cursorX: number, cursorY: number): { dx: number; dy: number } => {
@@ -2427,12 +2432,12 @@ export function EditorCanvas({
       if (!inst) return { dx: 0, dy: 0 };
       let vx = 0;
       let vy = 0;
-      if (cursorX < EDGE_MARGIN) vx = -(1 - cursorX / EDGE_MARGIN);
+      if (cursorX < EDGE_MARGIN) vx = 1 - cursorX / EDGE_MARGIN;
       else if (cursorX > shellRect.width - EDGE_MARGIN)
-        vx = 1 - (shellRect.width - cursorX) / EDGE_MARGIN;
-      if (cursorY < EDGE_MARGIN) vy = -(1 - cursorY / EDGE_MARGIN);
+        vx = -(1 - (shellRect.width - cursorX) / EDGE_MARGIN);
+      if (cursorY < EDGE_MARGIN) vy = 1 - cursorY / EDGE_MARGIN;
       else if (cursorY > shellRect.height - EDGE_MARGIN)
-        vy = 1 - (shellRect.height - cursorY) / EDGE_MARGIN;
+        vy = -(1 - (shellRect.height - cursorY) / EDGE_MARGIN);
       if (vx === 0 && vy === 0) return { dx: 0, dy: 0 };
       const dx = vx * PAN_SPEED;
       const dy = vy * PAN_SPEED;
