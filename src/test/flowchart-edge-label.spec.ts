@@ -85,6 +85,55 @@ test.describe("Flowchart edge label editing (Issue #69)", () => {
     const deleteRes = await request.delete(`/api/diagrams/${doc.id}`);
     expect(deleteRes.ok()).toBeTruthy();
   });
+
+  test("double-clicking the edge label opens the editor with the label text", async ({
+    page,
+    request,
+  }) => {
+    // Regression: double-clicking the "|Process|" label used to open the inline
+    // editor pre-filled with the raw edge id (e.g. L_A_B_0) because clicks land
+    // on the invisible rect.edge-label-hit-target, which carries no identity —
+    // resolution must walk up to the parent g.edgeLabel.
+    const res = await request.post("/api/diagrams", {
+      data: {
+        name: "Edge Label DblClick Regression",
+        type: "flowchart",
+        code: `graph TD
+    A[Start] -->|Process| B[End]`,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const doc = await res.json();
+
+    try {
+      await page.goto(`/editor/${doc.id}`);
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForSelector("svg[id^='mermaid-svg']", { timeout: 20000 });
+      await page.waitForTimeout(2000);
+
+      const svg = page.locator("svg[id^='mermaid-svg']");
+      const editor = page.locator('[data-inline-editor][contenteditable="true"]');
+
+      // Case 1: double-click the visible label area (via its hit-target rect).
+      const hitRect = svg.locator("rect.edge-label-hit-target").first();
+      await expect(hitRect).toHaveCount(1);
+      const hb = await hitRect.boundingBox();
+      await page.mouse.dblclick(hb!.x + hb!.width / 2, hb!.y + hb!.height / 2);
+      await expect(editor).toBeVisible({ timeout: 10000 });
+      await expect(editor).toHaveText("Process");
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
+
+      // Case 2 (control): double-click the edge line itself.
+      const line = svg.locator("path.flowchart-link:not([class*='hit-target'])").first();
+      const lb = await line.boundingBox();
+      await page.mouse.dblclick(lb!.x + lb!.width / 2, lb!.y + lb!.height / 2);
+      await expect(editor).toBeVisible({ timeout: 10000 });
+      await expect(editor).toHaveText("Process");
+    } finally {
+      await request.delete(`/api/diagrams/${doc.id}`);
+    }
+  });
 });
 
 test.describe("Sequence diagram message endpoints (Issue #60)", () => {

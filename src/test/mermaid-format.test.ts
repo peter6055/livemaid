@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatMermaidSource } from "@/lib/mermaid-format";
+import { parseTimeline } from "@/lib/diagrams/timeline";
 
 describe("formatMermaidSource", () => {
   describe("status model", () => {
@@ -16,9 +17,9 @@ describe("formatMermaidSource", () => {
       expect(result.formatted).toBe("flowchart LR\n    A --> B\n");
     });
 
-    it("reports skippedIndentSensitive only for indent-sensitive types", () => {
+    it("reports skippedIndentSensitive only for mindmap", () => {
       expect(formatMermaidSource("mindmap\n  root\n").skippedIndentSensitive).toBe(true);
-      expect(formatMermaidSource("timeline\n  title A\n").skippedIndentSensitive).toBe(true);
+      expect(formatMermaidSource("timeline\n  title A\n").skippedIndentSensitive).toBeUndefined();
       expect(
         formatMermaidSource("flowchart LR\n    A --> B\n").skippedIndentSensitive,
       ).toBeUndefined();
@@ -126,11 +127,113 @@ describe("formatMermaidSource", () => {
     });
 
     it("applies light cleanup (trailing whitespace) without re-indenting", () => {
-      const code = "timeline\n  title A  \n";
+      const code = "mindmap\n  root  \n";
       const result = formatMermaidSource(code);
       expect(result.status).toBe("changed");
       expect(result.skippedIndentSensitive).toBe(true);
-      expect(result.formatted).toBe("timeline\n  title A\n");
+      expect(result.formatted).toBe("mindmap\n  root\n");
+    });
+  });
+
+  describe("timeline", () => {
+    it("re-indents a fully unformatted timeline to canonical indentation", () => {
+      // Repro from peter6055/livemaid-project#26.
+      const unformatted = [
+        "timeline LR",
+        "     title Product Milestones",
+        "    section Phase 2",
+        "     2026 Q3",
+        "      2026 Q2 : New Event 1",
+        "    : Test",
+        "     : Launch",
+        "      : Build",
+        " : New Event 2",
+        "    section Phase 3",
+        "    2027 Q1",
+        "     : New Event 4",
+        "    section Phase",
+        "    2026 Q4",
+        "    : Research",
+        "    : New Event 5",
+        "    section Phase 4",
+        "            New Period 1 : New Event 3",
+        "",
+      ].join("\n");
+      const expected = [
+        "timeline LR",
+        "    title Product Milestones",
+        "    section Phase 2",
+        "        2026 Q3",
+        "        2026 Q2 : New Event 1",
+        "        : Test",
+        "        : Launch",
+        "        : Build",
+        "        : New Event 2",
+        "    section Phase 3",
+        "        2027 Q1",
+        "        : New Event 4",
+        "    section Phase",
+        "        2026 Q4",
+        "        : Research",
+        "        : New Event 5",
+        "    section Phase 4",
+        "        New Period 1 : New Event 3",
+        "",
+      ].join("\n");
+
+      const result = formatMermaidSource(unformatted);
+      expect(result.status).toBe("changed");
+      expect(result.skippedIndentSensitive).toBeUndefined();
+      expect(result.formatted).toBe(expected);
+    });
+
+    it("preserves the parsed model across formatting (parse round-trip)", () => {
+      const unformatted = [
+        "timeline LR",
+        "     title Product Milestones",
+        "    section Phase 2",
+        "     2026 Q3",
+        "      2026 Q2 : New Event 1",
+        "    : Test",
+        "     : Launch",
+        "      : Build",
+        " : New Event 2",
+        "    section Phase 3",
+        "    2027 Q1",
+        "     : New Event 4",
+        "",
+      ].join("\n");
+      const { formatted } = formatMermaidSource(unformatted);
+
+      const before = parseTimeline(unformatted);
+      const after = parseTimeline(formatted);
+      expect(after.title).toBe(before.title);
+      expect(after.direction).toBe(before.direction);
+      expect(
+        after.sections.map((s) => [
+          s.label,
+          s.periods.map((p) => [p.label, p.events.map((e) => e.label)]),
+        ]),
+      ).toEqual(
+        before.sections.map((s) => [
+          s.label,
+          s.periods.map((p) => [p.label, p.events.map((e) => e.label)]),
+        ]),
+      );
+    });
+
+    it("reports already-formatted timelines as unchanged", () => {
+      const code = "timeline\n    title A\n    2024 Q1 : Launch\n";
+      const result = formatMermaidSource(code);
+      expect(result.status).toBe("unchanged");
+      expect(result.formatted).toBe(code);
+    });
+
+    it("indents periods one level outside sections and two levels inside", () => {
+      const result = formatMermaidSource("timeline\n2024 Q1 : A\n:B\nsection S\nP : C\n: D\n");
+      expect(result.formatted).toBe(
+        "timeline\n    2024 Q1 : A\n    :B\n    section S\n        P : C\n        : D\n",
+      );
     });
   });
 });

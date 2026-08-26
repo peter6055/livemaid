@@ -7,7 +7,7 @@
 // concrete backend — they only use the façade in `storage.ts` — so migrating backends is a
 // localized change.
 
-import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 
 export interface DiagramDocument {
   id: string;

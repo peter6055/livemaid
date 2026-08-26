@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDiagram, saveDiagram, IS_DEMO_MODE, type DiagramComment } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
-import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;

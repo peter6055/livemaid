@@ -3,7 +3,7 @@ import {
   selectTimelineDropTarget,
   type TimelineDropSectionRect,
   type TimelineDropSlot,
-} from "@/lib/diagrams/timelineDropTarget";
+} from "@/lib/diagrams/timeline/dropTarget";
 
 /**
  * Geometry mirrors the LR fixture from issue #15:

@@ -22,10 +22,11 @@ import {
   findFlowchartNodeLine,
   findFlowchartEdgeLine,
   findFlowchartSubgraphLine,
-  findSequenceParticipantLine,
-} from "@/lib/diagrams/selectionLineMap";
-import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
-import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
+} from "@/lib/diagrams/flowchart/selectionLineMap";
+import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
+import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
+import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequence/reorder";
 import { normalizeHtmlForMermaid, sanitizeHtml, escapeRegExp } from "@/lib/utils";
 import {
   isFormatTag,
@@ -184,6 +185,7 @@ import {
   moveTimelineNode,
   removeTimelineTitle,
   renameTimelineNode,
+  timelineLinesFromNodeId,
   timelineNodeLabel,
   upsertTimelineTitle,
 } from "@/lib/diagrams/timeline";
@@ -1961,64 +1963,7 @@ export function LiveMaidEditor({
     [code],
   );
 
-  const isSequenceMessageLine = useCallback((line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("%%")) return false;
-    const keywords = [
-      "sequenceDiagram",
-      "Note",
-      "note",
-      "rect",
-      "alt",
-      "opt",
-      "loop",
-      "par",
-      "critical",
-      "option",
-      "else",
-      "end",
-      "participant",
-      "actor",
-      "autonumber",
-      "activate",
-      "deactivate",
-      "box",
-      "links",
-      "link",
-      "properties",
-      "details",
-    ];
-    if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
-    return trimmed.includes(":");
-  }, []);
-
-  const getSequenceMessageEntries = useCallback(
-    (sourceCode: string) => {
-      const lines = sourceCode.split("\n");
-      const entries: Array<{ index: number; line: string }> = [];
-      let inFrontmatter = false;
-
-      for (let i = 0; i < lines.length; i += 1) {
-        const trimmed = lines[i].trim();
-        if (trimmed === "---") {
-          inFrontmatter = !inFrontmatter;
-          continue;
-        }
-        if (inFrontmatter) continue;
-        if (isSequenceMessageLine(lines[i])) {
-          entries.push({ index: i, line: lines[i] });
-        }
-      }
-
-      return entries;
-    },
-    [isSequenceMessageLine],
-  );
-
-  const sequenceMessageEntries = useMemo(
-    () => getSequenceMessageEntries(code),
-    [code, getSequenceMessageEntries],
-  );
+  const sequenceMessageEntries = useMemo(() => getSequenceMessageEntries(code), [code]);
 
   const getSelectedSequenceParticipantForNote = useCallback(() => {
     if (!selectedNodeId) return null;
@@ -2359,6 +2304,14 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("MINDMAP_")) {
       return toRange(mindmapLineFromNodeId(selectedNodeId) ?? -1);
+    }
+
+    // Timeline: node ids embed their source lineIndex
+    // (`TIMELINE_SECTION_<line>` / `TIMELINE_PERIOD_<line>` / `TIMELINE_EVENT_<line>_<n>`);
+    // multiple events can share one line, so highlight the min/max range.
+    if (selectedNodeId.startsWith("TIMELINE_")) {
+      const lines = timelineLinesFromNodeId(selectedNodeId);
+      return lines.length ? { startLine: Math.min(...lines), endLine: Math.max(...lines) } : null;
     }
 
     if (isEdgeId(selectedNodeId)) {
@@ -3170,6 +3123,19 @@ export function LiveMaidEditor({
 
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(latestEditingText);
+
+    // An EMPTY save is a cancel, not a deletion: writing an empty label into the
+    // source would produce degenerate Mermaid (`A[]`, `A -->|| B`) and wipe the
+    // rendered label. Elements are removed via their toolbar instead. Close
+    // silently and keep the existing label.
+    if (!normalizedText.trim()) {
+      setIsInlineEditing(false);
+      setSelectedNodeId(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
+      return;
+    }
 
     // Compare with original content - if no real changes, just close
     const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);

@@ -34,13 +34,14 @@ Source of truth for LiveMaid architecture, design, and features. **Read only wha
 
 ### `architecture/` — System design
 
-| Doc                                                           | Topic                             |
-| ------------------------------------------------------------- | --------------------------------- |
-| [`overview.md`](./architecture/overview.md)                   | Full architecture reference       |
-| [`storage.md`](./architecture/storage.md)                     | Local-first storage, adapter seam |
-| [`editor-split.md`](./architecture/editor-split.md)           | Split-screen WYSIWYG model        |
-| [`plugins.md`](./architecture/plugins.md)                     | Diagram plugin architecture       |
-| [`mongodb-migration.md`](./architecture/mongodb-migration.md) | Deferred MongoDB plan             |
+| Doc                                                                               | Topic                                                   |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| [`overview.md`](./architecture/overview.md)                                       | Full architecture reference                             |
+| [`storage.md`](./architecture/storage.md)                                         | Local-first storage, adapter seam                       |
+| [`editor-split.md`](./architecture/editor-split.md)                               | Split-screen WYSIWYG model                              |
+| [`plugins.md`](./architecture/plugins.md)                                         | Diagram plugin architecture                             |
+| [`canvas-interaction-boundary.md`](./architecture/canvas-interaction-boundary.md) | Where interaction logic lives (hooks vs canvas modules) |
+| [`mongodb-migration.md`](./architecture/mongodb-migration.md)                     | Deferred MongoDB plan                                   |
 
 ### `standards/` — Conventions & rules
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSequenceMessageTriggerAreas,
   type SequenceMessageVisual,
-} from "@/hooks/useCanvasInteraction";
+} from "@/lib/diagrams/sequence/geometry";
 
 function visual(
   index: number,

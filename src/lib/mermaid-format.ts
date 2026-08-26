@@ -25,7 +25,8 @@ const BLOCK_OPEN = new Set([
 
 const BLOCK_SAME = new Set(["else", "and", "option"]);
 
-const INDENT_SENSITIVE = new Set(["mindmap", "timeline"]);
+/** Diagrams whose indentation IS semantic and must not be re-indented. */
+const INDENT_SENSITIVE_TYPE = "mindmap";
 
 const BRACE_KEYWORD_OPEN = /^(?:class|state|namespace)\s+\S[\s\S]*\{\s*$/i;
 
@@ -189,10 +190,65 @@ function formatBody(bodyLines: string[], indentUnit: string): string[] {
 }
 
 /**
+ * Format a timeline body. Timeline structure is statement-per-line and
+ * indentation carries NO meaning (unlike mindmap), so re-indentation cannot
+ * change how Mermaid parses the diagram. Canonical style mirrors the timeline
+ * plugin's own mutations in `src/lib/diagrams/timeline.tsx`:
+ *   - header/directives at column 0
+ *   - title / section at one level
+ *   - periods at one level outside sections, two levels inside a section
+ *   - `: event` continuation lines at their period's level
+ */
+function formatTimelineBody(bodyLines: string[], indentUnit: string): string[] {
+  const trimmed = bodyLines.map((l) => l.replace(/\s+$/, ""));
+  const collapsed = collapseBlankLines(trimmed);
+
+  const reformatted: string[] = [];
+  let seenHeader = false;
+  let inSection = false;
+
+  for (const rawLine of collapsed) {
+    const stripped = rawLine.trim();
+    if (stripped === "") {
+      reformatted.push("");
+      continue;
+    }
+
+    // Directives stay at column 0.
+    if (stripped.startsWith("%%{")) {
+      reformatted.push(stripped);
+      continue;
+    }
+
+    if (!seenHeader) {
+      const isHeader = /^timeline\b/i.test(stripped);
+      reformatted.push(isHeader || stripped.startsWith("%%") ? stripped : indentUnit + stripped);
+      if (isHeader) seenHeader = true;
+      continue;
+    }
+
+    if (/^section\b/i.test(stripped)) {
+      inSection = true;
+      reformatted.push(indentUnit + stripped);
+      continue;
+    }
+    if (/^title\b/i.test(stripped)) {
+      reformatted.push(indentUnit + stripped);
+      continue;
+    }
+    // Periods and `: event` continuation lines share the period's depth.
+    reformatted.push(indentUnit.repeat(inSection ? 2 : 1) + stripped);
+  }
+
+  return reformatted;
+}
+
+/**
  * Format Mermaid source for LiveMaid's editor Format action.
- * Preserves YAML front matter. Indent-sensitive diagrams (mindmap/timeline) get
- * light cleanup only and report `skippedIndentSensitive` so callers can explain
- * that structural re-indentation is skipped.
+ * Preserves YAML front matter. Mindmaps get light cleanup only — their
+ * indentation IS semantic — and report `skippedIndentSensitive` so callers can
+ * explain that structural re-indentation is skipped. Timelines are fully
+ * formatted because their grammar is line-based, not indentation-based.
  */
 export function formatMermaidSource(
   code: string,
@@ -207,7 +263,7 @@ export function formatMermaidSource(
   const trailingNewline = code.endsWith("\n");
   const newlineSuffix = trailingNewline ? "\n" : "";
 
-  if (INDENT_SENSITIVE.has(diagramType)) {
+  if (diagramType === INDENT_SENSITIVE_TYPE) {
     const cleaned = lightCleanupPreserveIndent(bodyLines);
     const formatted = frontMatter + cleaned.join("\n") + newlineSuffix;
     return {
@@ -218,7 +274,10 @@ export function formatMermaidSource(
     };
   }
 
-  const reformatted = formatBody(bodyLines, indentUnit);
+  const reformatted =
+    diagramType === "timeline"
+      ? formatTimelineBody(bodyLines, indentUnit)
+      : formatBody(bodyLines, indentUnit);
   const formatted = frontMatter + reformatted.join("\n") + newlineSuffix;
 
   return {

@@ -7,16 +7,17 @@ import { CommentPin } from "./comments/CommentPin";
 import {
   findSequenceMessageIndexByAnchor,
   type SequenceMessageAnchorSignature,
-} from "@/lib/diagrams/sequenceCommentAnchor";
+} from "@/lib/diagrams/sequence/commentAnchor";
 import {
   getSequenceNoteRectForText,
   getSortedSequenceNoteTextElements,
-} from "@/lib/diagrams/sequenceNotes";
+} from "@/lib/diagrams/sequence/notes";
 import {
   getVisibleSequenceMessageTexts,
   findOwningLineForSequenceLabel,
-} from "@/hooks/useCanvasInteraction";
+} from "@/lib/diagrams/sequence/geometry";
 import { findMindmapSvgElementByNodeId } from "@/lib/diagrams/mindmap";
+import { findSequenceActorElement } from "@/lib/diagrams/sequence/actors";
 
 const SHAPE_COMMENT_OFFSET = 4;
 const SEQUENCE_COMMENT_OFFSET = 5;
@@ -307,10 +308,17 @@ export function CommentLayer({
         }
 
         if (!missingTarget && !hasSequenceSignature) {
-          const match = elements.find((el) => {
-            const candidateId = el.getAttribute("data-id") || el.id;
-            return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
-          });
+          // Sequence participants render without usable element ids; resolve
+          // them via lifeline/declaration-order geometry.
+          const seqActorMatch = comment.anchor.shapeId?.startsWith("SEQ_ACTOR_")
+            ? findSequenceActorElement(safeContainer, code, comment.anchor.shapeId)
+            : null;
+          const match =
+            seqActorMatch ??
+            elements.find((el) => {
+              const candidateId = el.getAttribute("data-id") || el.id;
+              return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
+            });
           if (match) {
             const rect = match.getBoundingClientRect();
             const isSequenceMessage =

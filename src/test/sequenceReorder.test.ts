@@ -4,7 +4,7 @@ import {
   applyReorder,
   findSeqReorderTargetSlot,
   type UnifiedRow,
-} from "./sequenceReorder";
+} from "@/lib/diagrams/sequence/reorder";
 
 describe("sequenceReorder", () => {
   describe("computeInsertionIndex", () => {
