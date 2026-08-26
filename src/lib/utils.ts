@@ -200,6 +200,17 @@ export function htmlToPlainText(html: string): string {
   if (typeof document !== "undefined") {
     const container = document.createElement("div");
     container.innerHTML = sanitizeHtml(html);
+    // textContent drops <br> and block-element boundaries ("First<div>Second</div>"
+    // would read as "FirstSecond"), so splice a newline text node at each boundary
+    // first — same conversion the non-DOM fallback below applies via regex.
+    for (const el of Array.from(
+      container.querySelectorAll("br,div,p,h1,h2,h3,h4,h5,h6,li,blockquote"),
+    )) {
+      el.parentNode?.insertBefore(document.createTextNode("\n"), el);
+      if (el.tagName !== "BR") {
+        el.parentNode?.insertBefore(document.createTextNode("\n"), el.nextSibling);
+      }
+    }
     return (container.textContent ?? "")
       .replace(/\u00a0/g, " ")
       .replace(/\n{3,}/g, "\n\n")

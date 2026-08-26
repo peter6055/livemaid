@@ -72,8 +72,10 @@ export function CanvasZoomControls({
           if (onDeselect) onDeselect();
           zoomIn();
         }}
+        title="Zoom in"
+        aria-label="Zoom in"
       >
-        <Plus className="w-4 h-4" />
+        <Plus className="w-4 h-4" aria-hidden="true" />
       </Button>
       <div className="h-px bg-border" />
       <Button
@@ -84,6 +86,7 @@ export function CanvasZoomControls({
           if (onDeselect) onDeselect();
           resetTransform();
         }}
+        title="Reset zoom"
       >
         <span className="text-[10px] font-bold">1:1</span>
       </Button>
@@ -96,8 +99,10 @@ export function CanvasZoomControls({
           if (onDeselect) onDeselect();
           zoomOut();
         }}
+        title="Zoom out"
+        aria-label="Zoom out"
       >
-        <svg viewBox="0 0 24 24" className="w-4 h-4">
+        <svg viewBox="0 0 24 24" className="w-4 h-4" aria-hidden="true">
           <path fill="currentColor" d="M19 13H5v-2h14v2z" />
         </svg>
       </Button>

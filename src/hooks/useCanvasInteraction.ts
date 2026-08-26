@@ -771,7 +771,6 @@ export function useCanvasInteraction({
       inlineInputRef,
       setEditingText,
       setIsInlineEditing,
-      findNearestLineForText,
       clearSequenceMessageHoverHighlight,
       hoveredSequenceTargetsRef,
       sequenceMessageVisualsRef,

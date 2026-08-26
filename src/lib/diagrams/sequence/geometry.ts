@@ -1,6 +1,7 @@
 /**
- * Pure sequence diagram geometry: message visual model, trigger areas, block
- * types/parsers, and line/label resolution. No React / no "use client".
+ * Sequence diagram geometry: pure parsing/math (message visual model, trigger
+ * areas, block types/parsers, line/label resolution) plus DOM-measuring
+ * helpers. No React / no "use client".
  */
 
 // Padding (canvas units) added around a sequence message's raw line+label bounds to
@@ -351,8 +352,10 @@ export function isSequenceMessageLine(line: string): boolean {
     "loop",
     "par",
     "critical",
+    "break",
     "option",
     "else",
+    "and",
     "end",
     "participant",
     "actor",

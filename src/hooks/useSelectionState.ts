@@ -465,7 +465,17 @@ export function useSelectionState({
         height: rect.height / scale,
       };
 
-      setSelectionBox(newSelectionBox);
+      // Reuse the previous object when unchanged so recalculateSelection's
+      // identity (and thus the 50ms recalc timer) stays stable while static.
+      setSelectionBox((prev) =>
+        prev &&
+        prev.x === newSelectionBox.x &&
+        prev.y === newSelectionBox.y &&
+        prev.width === newSelectionBox.width &&
+        prev.height === newSelectionBox.height
+          ? prev
+          : newSelectionBox,
+      );
       deps.setTextBox(newTextBox);
       setSelectedSvgIdWithRef(foundRawSvgId);
     } else {

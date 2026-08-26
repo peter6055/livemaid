@@ -328,7 +328,7 @@ export function useSequenceHover({
       if (determineDiagramType(code) !== "sequence" || isInlineEditing) return;
       setHoveredSequenceMessage(index);
     },
-    [code, isInlineEditing, setHoveredSequenceMessage],
+    [code, determineDiagramType, isInlineEditing, setHoveredSequenceMessage],
   );
 
   const handleSequenceMessageHoverMove = useCallback(

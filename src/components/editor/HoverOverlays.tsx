@@ -120,6 +120,7 @@ export function HoverOverlays({
                       note's mousedown registers the unified drag / mouseup select-edit path. */}
       {currentType === "sequence" &&
         hoveredSequenceNoteBox &&
+        !isLocked &&
         !isCommentMode &&
         !isInlineEditing &&
         !connectionState.active &&

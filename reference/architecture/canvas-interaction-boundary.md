@@ -11,7 +11,7 @@ Uniform rule for where diagram-type interaction logic lives, applied to all 7 tw
 
 | Concern                                                                               | Home                                                                                                                           |
 | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Sequence geometry (visual model, trigger/block areas, line/label resolution, parsers) | `src/lib/diagrams/sequence/geometry.ts` (pure)                                                                                 |
+| Sequence geometry (visual model, trigger/block areas, line/label resolution, parsers) | `src/lib/diagrams/sequence/geometry.ts` (pure parsing/math + DOM-measuring helpers)                                            |
 | Sequence code mutations (insert/move/delete messages & notes, participant entries)    | `src/lib/diagrams/sequence/mutations.ts` (pure)                                                                                |
 | Sequence hover state + hit-testing                                                    | `src/hooks/useSequenceHover.ts`                                                                                                |
 | Sequence selection re-resolution                                                      | `src/hooks/useSequenceSelection.ts`                                                                                            |
@@ -32,6 +32,6 @@ All component modules live under `src/components/editor/`.
 
 1. **One layer per operation.** The same operation (e.g. drag-to-connect) lives in the same file family for every type. No diagram-type interaction logic may be split across the hook and EditorCanvas.
 2. **The orchestrator stays generic.** `useCanvasInteraction.ts` owns type-agnostic pointer plumbing only; type-specific starters/machines are injected from the editor-component layer.
-3. **Pure stays pure.** Modules under `src/lib/diagrams/**` must not import React, touch DOM, or carry `"use client"`.
+3. **Pure stays pure.** Parsing/math/model logic in `src/lib/diagrams/**` must not import React and must not carry `"use client"`. DOM-measuring helpers (`querySelector`, `getBoundingClientRect`) are permitted in these modules, but they too must never import React or carry `"use client"`.
 4. **DOM frame is fixed.** `canvasShellRef` > `TransformWrapper` > `TransformComponent` > `containerRef`; extractions replace JSX at identical positions with no added wrappers.
 5. **Public shapes stable.** Hook/component prop surfaces change only alongside both callers in the same PR.

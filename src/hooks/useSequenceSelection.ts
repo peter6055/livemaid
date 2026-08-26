@@ -27,7 +27,6 @@ export function useSequenceSelection({
   inlineInputRef,
   setEditingText,
   setIsInlineEditing,
-  findNearestLineForText,
   clearSequenceMessageHoverHighlight,
   hoveredSequenceTargetsRef,
   sequenceMessageVisualsRef,
@@ -49,7 +48,6 @@ export function useSequenceSelection({
   inlineInputRef: MutableRefObject<HTMLDivElement | null>;
   setEditingText: (text: string) => void;
   setIsInlineEditing: (editing: boolean) => void;
-  findNearestLineForText: (textEl: SVGElement, lineEls: SVGElement[]) => SVGElement | null;
   clearSequenceMessageHoverHighlight: () => void;
   hoveredSequenceTargetsRef: MutableRefObject<{
     labelEls: SVGElement[];
@@ -135,7 +133,6 @@ export function useSequenceSelection({
       clearSequenceMessageHoverHighlight,
       containerRef,
       getSequenceMessageLineByIndex,
-      findNearestLineForText,
       getSequenceMessageEntries,
       code,
       setSelectedNodeIdWithRef,

@@ -3146,7 +3146,11 @@ export function LiveMaidEditor({
     // source would produce degenerate Mermaid (`A[]`, `A -->|| B`) and wipe the
     // rendered label. Elements are removed via their toolbar instead. Close
     // silently and keep the existing label.
-    if (!normalizedText.trim()) {
+    // Exceptions: sequence block labels may be cleared to valid bare keywords
+    // (`loop`, `alt`, …) and flowchart edges keep their connector when only the
+    // label is removed — those branches handle an empty value themselves.
+    const allowsEmptyLabel = selectedNodeId.startsWith("SEQ_BLK_") || isEdgeId(selectedNodeId);
+    if (!allowsEmptyLabel && !normalizedText.trim()) {
       setIsInlineEditing(false);
       setSelectedNodeId(null);
       setSelectedSvgId(null);
@@ -3324,7 +3328,10 @@ export function LiveMaidEditor({
       // label portion after the keyword is rewritten; the keyword + indentation are preserved.
       // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
       const lineIdx = parseInt(selectedNodeId.replace("SEQ_BLK_", ""), 10);
-      const newText = latestEditingText.replace(/\n/g, " ").trim();
+      const newText = latestEditingText
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/\n/g, " ")
+        .trim();
       const lines = code.split("\n");
       const line = lines[lineIdx];
       if (line != null) {
@@ -3357,6 +3364,17 @@ export function LiveMaidEditor({
       // line breaks / block markup the contentEditable editor produced and
       // decode entities (&nbsp; etc.) so the source stays clean.
       const newText = htmlToPlainText(latestEditingText).replace(/\s+/g, " ").trim();
+      // An allowlisted empty wrapper (e.g. <u></u>) survives the normalized-text
+      // check above but flattens to "" here — treat it like an empty save and
+      // cancel instead of renaming to renameMindmapNode's default label.
+      if (!newText) {
+        setIsInlineEditing(false);
+        setSelectedNodeId(null);
+        setSelectedSvgId(null);
+        setSelectionBox(null);
+        setTextBox(null);
+        return;
+      }
       const renamed = renameMindmapNode(code, selectedNodeId, newText);
       if (renamed !== code) newCode = renamed;
     } else if (isEdgeId(selectedNodeId)) {
@@ -3770,6 +3788,7 @@ export function LiveMaidEditor({
   // lines (blocks, participants) stay put. Routes through handleCodeChange (undo/autonumber).
   const handleReorderSequenceItem = useCallback(
     (item: { kind: "msg" | "note"; index: number }, toSlot: number) => {
+      if (isLocked) return;
       const msgs = getSequenceMessageEntries(code).map((e, i) => ({
         srcIndex: e.index,
         kind: "msg" as const,
@@ -3805,6 +3824,7 @@ export function LiveMaidEditor({
       getSequenceMessageEntries,
       getSequenceNoteEntries,
       handleCodeChange,
+      isLocked,
       setSelectionBox,
       setSelectedNodeId,
     ],

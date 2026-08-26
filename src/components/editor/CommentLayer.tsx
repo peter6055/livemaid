@@ -230,15 +230,12 @@ export function CommentLayer({
         const directSequenceNoteIndex = Number(
           comment.anchor.shapeId?.match(/^SEQ_NOTE_(\d+)$/)?.[1] ?? -1,
         );
-        let sequenceIndex =
-          Number.isFinite(directSequenceIndex) && directSequenceIndex >= 0
-            ? directSequenceIndex
-            : hasSequenceSignature
-              ? findSequenceMessageIndexByAnchor(
-                  sequenceMessageEntries,
-                  comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
-                )
-              : directSequenceIndex;
+        let sequenceIndex = hasSequenceSignature
+          ? findSequenceMessageIndexByAnchor(
+              sequenceMessageEntries,
+              comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
+            )
+          : directSequenceIndex;
 
         if (Number.isFinite(directSequenceNoteIndex) && directSequenceNoteIndex >= 0) {
           const notePos = getSequenceNoteCanvasPosition(directSequenceNoteIndex);

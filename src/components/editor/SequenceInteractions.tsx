@@ -91,6 +91,7 @@ export function useSequenceDragMachines({
     cursorX: number;
     targetSlot: number | null;
   } | null>(null);
+  // Begin dragging a sequence ROW (message OR note) to reorder it. The dragged row is ALWAYS the
   // one under the cursor at mousedown (grabbed directly on hover — no select-first). All geometry
   // is computed in viewport space (relative to canvasShellRef) from the live DOM, mirroring the
   // lifeline `+` drag pattern. Panning is suppressed via the `seq-msg-reorder-handle` class
