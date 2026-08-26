@@ -773,7 +773,11 @@ export function LiveMaidEditor({
       }
 
       // Title — `text.classDiagramTitleText` (direct child of the svg).
-      const titleEl = els.find((el) => el.classList?.contains("classDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("classDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "classDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setSelectedClassName(null);
@@ -938,7 +942,11 @@ export function LiveMaidEditor({
       }
       // Diagram title — `text.erDiagramTitleText`. Double-click to inline-edit (same as the class
       // diagram title). Opens the shared `ClassTextEditor` seeded from the frontmatter `title:`.
-      const titleEl = els.find((el) => el.classList?.contains("erDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("erDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "erDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setErTitleEdit({
@@ -1018,7 +1026,11 @@ export function LiveMaidEditor({
 
       // Diagram title — `text.statediagramTitleText` (Mermaid renders the state title with a
       // lowercase "diagram" segment). Opens the shared editor seeded from the title.
-      const titleEl = els.find((el) => el.classList?.contains("statediagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("statediagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "statediagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setStateTextEdit({
@@ -1176,7 +1188,11 @@ export function LiveMaidEditor({
         return;
       }
       // Timeline title — `text.timelineDiagramTitleText` (added by addInteractionHelpersToSvg).
-      const titleEl = els.find((el) => el.classList?.contains("timelineDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("timelineDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "timelineDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setTimelineTitleEdit({
