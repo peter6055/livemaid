@@ -280,6 +280,15 @@ export function CommentLayer({
           sequenceIndex = bestIndex;
         }
 
+        // Semantic anchor resolved but target no longer exists (edited/deleted message) — use fallback.
+        if (hasSequenceSignature && sequenceIndex < 0 && comment.anchor.fallbackPos) {
+          x = comment.anchor.fallbackPos.x;
+          y = comment.anchor.fallbackPos.y;
+          missingTarget = true;
+          entries.set(comment.id, { x, y, missingTarget });
+          continue;
+        }
+
         if (Number.isFinite(sequenceIndex) && sequenceIndex >= 0) {
           const index = sequenceIndex;
           const textEl = messageTextEls[index] ?? null;

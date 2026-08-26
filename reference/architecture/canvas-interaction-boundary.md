@@ -31,7 +31,7 @@ All component modules live under `src/components/editor/`.
 ## Invariants
 
 1. **One layer per operation.** The same operation (e.g. drag-to-connect) lives in the same file family for every type. No diagram-type interaction logic may be split across the hook and EditorCanvas.
-2. **The orchestrator stays generic.** `useCanvasInteraction.ts` owns type-agnostic pointer plumbing only; type-specific starters/machines are injected from the editor-component layer.
+2. **The orchestrator stays generic.** `useCanvasInteraction.ts` owns type-agnostic pointer plumbing only; type-specific starters/machines are injected from the editor-component layer. _Known exception:_ `useSequenceConnectHandlers` is instantiated inside `useCanvasInteraction` (rather than injected by EditorCanvas) because it reads and mutates the orchestrator's internal `connectionStateRef`. This direction is intentionally documented; a follow-up may lift the call to EditorCanvas and thread the functions as props if the ref coupling is removed.
 3. **Pure stays pure.** Parsing/math/model logic in `src/lib/diagrams/**` must not import React and must not carry `"use client"`. DOM-measuring helpers (`querySelector`, `getBoundingClientRect`) are permitted in these modules, but they too must never import React or carry `"use client"`.
 4. **DOM frame is fixed.** `canvasShellRef` > `TransformWrapper` > `TransformComponent` > `containerRef`; extractions replace JSX at identical positions with no added wrappers.
 5. **Public shapes stable.** Hook/component prop surfaces change only alongside both callers in the same PR.

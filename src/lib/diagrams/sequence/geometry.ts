@@ -459,7 +459,9 @@ export function parseSequenceMessageActors(line: string): { from: string; to: st
   // sender id intact for dotted/cross messages.
   const match = line
     .trim()
-    .match(/^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:/);
+    .match(
+      /^(\S+?)\s*(?:<<-->>|<<->>|-->>|--x|--\)|--\|\\|--\|\/|--\\|-->|->>|-x|-\)|-\|\\|-\|\/|-\\|->)\s*(\S+)\s*:/,
+    );
   if (!match) return null;
   return {
     from: match[1],

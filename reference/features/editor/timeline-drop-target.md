@@ -5,7 +5,7 @@ How timeline reorder drags pick their drop target, and how section boundaries ar
 ## Where
 
 - Pure selection logic: `src/lib/diagrams/timeline/dropTarget.ts` (`selectTimelineDropTarget`) — unit tests in `src/test/timeline-drop-target.test.ts`.
-- Slot construction, drag lifecycle, overlay rendering: `src/components/editor/EditorCanvas.tsx` (`findTarget`, `onMove`, `onUp` of the timeline reorder handler; overlay under `[data-timeline-reorder-overlay]`).
+- Slot construction, drag lifecycle, overlay rendering: `src/components/editor/TimelineInteractions.tsx` (`findTarget`, `onMove`, `onUp` of the timeline reorder handler; overlay under `[data-timeline-reorder-overlay]`).
 - E2E coverage: `src/test/timeline-boundary-target.spec.ts`.
 
 ## Slot model

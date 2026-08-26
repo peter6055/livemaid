@@ -204,7 +204,7 @@ export function htmlToPlainText(html: string): string {
     // would read as "FirstSecond"), so splice a newline text node at each boundary
     // first — same conversion the non-DOM fallback below applies via regex.
     for (const el of Array.from(
-      container.querySelectorAll("br,div,p,h1,h2,h3,h4,h5,h6,li,blockquote"),
+      container.querySelectorAll("br,div,p,h1,h2,h3,h4,h5,h6,pre,ul,ol,li,blockquote"),
     )) {
       el.parentNode?.insertBefore(document.createTextNode("\n"), el);
       if (el.tagName !== "BR") {
@@ -221,7 +221,7 @@ export function htmlToPlainText(html: string): string {
   // tag stripping until stable so nested/overlapping patterns cannot reappear.
   let value = sanitizeHtml(html)
     .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/?(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "\n");
+    .replace(/<\/?(div|p|h[1-6]|pre|ul|ol|li|blockquote)[^>]*>/gi, "\n");
   let previous = "";
   while (value !== previous) {
     previous = value;
