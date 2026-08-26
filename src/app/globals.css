@@ -178,18 +178,22 @@ svg[aria-roledescription="error"],
   cursor: pointer !important;
 }
 
-/* Class diagram title — double-click to edit, so show a pointer cursor over it. */
-.mermaid-container text.classDiagramTitleText {
+/* Class diagram title — pointer cursor over the text and its hit-target rect. */
+.mermaid-container text.classDiagramTitleText,
+.mermaid-container text.statediagramTitleText,
+.mermaid-container [data-title-hit-target] {
   cursor: pointer !important;
 }
 
-/* ER diagram title — double-click to edit, so show a pointer cursor over it. */
-.mermaid-container text.erDiagramTitleText {
+/* ER diagram title — pointer cursor over the text and its hit-target rect. */
+.mermaid-container text.erDiagramTitleText,
+.mermaid-container [data-title-hit-target] {
   cursor: pointer !important;
 }
 
-/* Timeline diagram title — double-click to edit, so show a pointer cursor over it. */
-.mermaid-container text.timelineDiagramTitleText {
+/* Timeline diagram title — pointer cursor over the text and its hit-target rect. */
+.mermaid-container text.timelineDiagramTitleText,
+.mermaid-container [data-title-hit-target] {
   cursor: pointer !important;
 }
 

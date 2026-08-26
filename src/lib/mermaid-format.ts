@@ -6,7 +6,6 @@ export type MermaidFormatResult = {
   formatted: string;
   status: MermaidFormatStatus;
   diagramType: string;
-  skippedIndentSensitive?: boolean;
 };
 
 const DEFAULT_INDENT = "    ";
@@ -25,8 +24,8 @@ const BLOCK_OPEN = new Set([
 
 const BLOCK_SAME = new Set(["else", "and", "option"]);
 
-/** Diagrams whose indentation IS semantic and must not be re-indented. */
-const INDENT_SENSITIVE_TYPE = "mindmap";
+const MINDMAP_MD_OPEN = '["`';
+const MINDMAP_MD_CLOSE = '`"';
 
 const BRACE_KEYWORD_OPEN = /^(?:class|state|namespace)\s+\S[\s\S]*\{\s*$/i;
 
@@ -121,12 +120,71 @@ function isDiagramDeclaration(stripped: string): boolean {
 }
 
 /**
- * Light cleanup for indent-sensitive diagrams: trim trailing whitespace and
- * collapse blank lines without changing leading indentation of content.
+ * Format a mindmap body. Mindmap indentation is semantic, but only RELATIVE
+ * (official grammar: a node's parent is the nearest preceding line with a
+ * smaller leading-whitespace length, and unclear indentation is compensated),
+ * so re-indenting to canonical depth preserves the exact tree. The exception
+ * is a multi-line markdown string (`["` ... `"`]): inner lines are label
+ * content and pass through verbatim. Comments and `::icon(` / `:::` lines are
+ * ignored by the parser; they are anchored at the depth of the node they
+ * follow.
  */
-function lightCleanupPreserveIndent(bodyLines: string[]): string[] {
+function formatMindmapBody(bodyLines: string[], indentUnit: string): string[] {
   const trimmed = bodyLines.map((l) => l.replace(/\s+$/, ""));
-  return collapseBlankLines(trimmed);
+  const collapsed = collapseBlankLines(trimmed);
+
+  const reformatted: string[] = [];
+  const stack: number[] = [];
+  let lastNodeDepth = 0;
+  let seenHeader = false;
+  let inMdString = false;
+
+  for (const rawLine of collapsed) {
+    if (inMdString) {
+      reformatted.push(rawLine);
+      if (rawLine.includes(MINDMAP_MD_CLOSE)) inMdString = false;
+      continue;
+    }
+
+    const stripped = rawLine.trim();
+    if (stripped === "") {
+      reformatted.push("");
+      continue;
+    }
+
+    if (!seenHeader && /^mindmap\b/i.test(stripped)) {
+      seenHeader = true;
+      reformatted.push(stripped);
+      continue;
+    }
+    if (!seenHeader) {
+      reformatted.push(stripped);
+      continue;
+    }
+
+    // Parser-invisible lines (mindmap.jison: SPACELINE / decorateNode only).
+    if (stripped.startsWith("%%") || stripped.startsWith("::icon(") || stripped.startsWith(":::")) {
+      reformatted.push(indentUnit.repeat(lastNodeDepth) + stripped);
+      continue;
+    }
+
+    const width = rawLine.length - stripped.length;
+    while (stack.length > 0 && width <= stack[stack.length - 1]) stack.pop();
+    const depth = stack.length + 1;
+    stack.push(width);
+    lastNodeDepth = depth;
+    reformatted.push(indentUnit.repeat(depth) + stripped);
+
+    const openIdx = stripped.indexOf(MINDMAP_MD_OPEN);
+    if (
+      openIdx >= 0 &&
+      !stripped.slice(openIdx + MINDMAP_MD_OPEN.length).includes(MINDMAP_MD_CLOSE)
+    ) {
+      inMdString = true;
+    }
+  }
+
+  return reformatted;
 }
 
 function formatBody(bodyLines: string[], indentUnit: string): string[] {
@@ -245,10 +303,9 @@ function formatTimelineBody(bodyLines: string[], indentUnit: string): string[] {
 
 /**
  * Format Mermaid source for LiveMaid's editor Format action.
- * Preserves YAML front matter. Mindmaps get light cleanup only — their
- * indentation IS semantic — and report `skippedIndentSensitive` so callers can
- * explain that structural re-indentation is skipped. Timelines are fully
- * formatted because their grammar is line-based, not indentation-based.
+ * Preserves YAML front matter. Mindmaps are re-indented by relative depth
+ * (see `formatMindmapBody`); timelines are fully formatted because their
+ * grammar is line-based, not indentation-based.
  */
 export function formatMermaidSource(
   code: string,
@@ -263,21 +320,12 @@ export function formatMermaidSource(
   const trailingNewline = code.endsWith("\n");
   const newlineSuffix = trailingNewline ? "\n" : "";
 
-  if (diagramType === INDENT_SENSITIVE_TYPE) {
-    const cleaned = lightCleanupPreserveIndent(bodyLines);
-    const formatted = frontMatter + cleaned.join("\n") + newlineSuffix;
-    return {
-      formatted,
-      status: formatted === code ? "unchanged" : "changed",
-      diagramType,
-      skippedIndentSensitive: true,
-    };
-  }
-
   const reformatted =
-    diagramType === "timeline"
-      ? formatTimelineBody(bodyLines, indentUnit)
-      : formatBody(bodyLines, indentUnit);
+    diagramType === "mindmap"
+      ? formatMindmapBody(bodyLines, indentUnit)
+      : diagramType === "timeline"
+        ? formatTimelineBody(bodyLines, indentUnit)
+        : formatBody(bodyLines, indentUnit);
   const formatted = frontMatter + reformatted.join("\n") + newlineSuffix;
 
   return {

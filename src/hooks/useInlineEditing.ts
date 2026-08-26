@@ -11,6 +11,7 @@ import {
   getSequenceMessageEntries,
 } from "@/lib/diagrams/sequence/geometry";
 import { timelineNodeLabel } from "@/lib/diagrams/timeline";
+import { getMindmapNode } from "@/lib/diagrams/mindmap";
 
 /**
  * Inline-editing state + entry logic extracted verbatim from useCanvasInteraction
@@ -124,7 +125,8 @@ export function useInlineEditing({
           currentType === "graph" ||
           currentType === "flowchart" ||
           currentType === "sequence" ||
-          currentType === "timeline"
+          currentType === "timeline" ||
+          currentType === "mindmap"
         )
       ) {
         return;
@@ -398,6 +400,10 @@ export function useInlineEditing({
         // (the SVG group carries no stable id, so source-based label lookup is the
         // single reliable path for inline editing).
         currentText = timelineNodeLabel(code, targetNodeId) ?? "";
+      } else if (targetNodeId.startsWith("MINDMAP_")) {
+        // Mindmap node label — resolve from the parsed model (source line → shape-aware
+        // label), NOT from the raw source line which would include shape delimiters.
+        currentText = getMindmapNode(code, targetNodeId)?.label ?? "";
       } else if (isEdgeId(targetNodeId)) {
         // Distinguish a real edge (path / edgeLabel) from a node whose Mermaid
         // SVG id just happens to start with `L_` / `L-` / `e_` (e.g. a node
@@ -499,6 +505,7 @@ export function useInlineEditing({
       if (
         !targetNodeId.startsWith("SEQ_") &&
         !targetNodeId.startsWith("TIMELINE_") &&
+        !targetNodeId.startsWith("MINDMAP_") &&
         (!isEdgeId(targetNodeId) || currentText === targetNodeId)
       ) {
         // Try ["..."] shape first (e.g. NODE["label with (parens)"])

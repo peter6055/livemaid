@@ -27,7 +27,7 @@ import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLi
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequence/reorder";
-import { normalizeHtmlForMermaid, sanitizeHtml, escapeRegExp } from "@/lib/utils";
+import { escapeRegExp, htmlToPlainText, normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 import {
   isFormatTag,
   getTextNodesInRange,
@@ -172,6 +172,7 @@ import {
   changeMindmapNodeShape,
   deleteMindmapNode,
   mindmapLineFromNodeId,
+  renameMindmapNode,
   type MindmapShapeKind,
 } from "@/lib/diagrams/mindmap";
 import {
@@ -1015,8 +1016,9 @@ export function LiveMaidEditor({
 
       const container = document.querySelector(".mermaid-container");
 
-      // Diagram title — `text.stateDiagramTitleText`. Opens the shared editor seeded from the title.
-      const titleEl = els.find((el) => el.classList?.contains("stateDiagramTitleText"));
+      // Diagram title — `text.statediagramTitleText` (Mermaid renders the state title with a
+      // lowercase "diagram" segment). Opens the shared editor seeded from the title.
+      const titleEl = els.find((el) => el.classList?.contains("statediagramTitleText"));
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setStateTextEdit({
@@ -3334,6 +3336,13 @@ export function LiveMaidEditor({
       const newText = latestEditingText.replace(/\n/g, " ").trim();
       const renamed = renameTimelineNode(code, selectedNodeId, newText);
       if (renamed !== code) newCode = renamed;
+    } else if (selectedNodeId.startsWith("MINDMAP_")) {
+      // Mindmap labels are single-line plain text in the source — flatten any
+      // line breaks / block markup the contentEditable editor produced and
+      // decode entities (&nbsp; etc.) so the source stays clean.
+      const newText = htmlToPlainText(latestEditingText).replace(/\s+/g, " ").trim();
+      const renamed = renameMindmapNode(code, selectedNodeId, newText);
+      if (renamed !== code) newCode = renamed;
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
@@ -5298,7 +5307,8 @@ export function LiveMaidEditor({
         )}
       </div>
 
-      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
+      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit).
+          Titles are single-line so Enter commits; notes/labels keep multiline Enter. */}
       {classTextEdit && (
         <ClassTextEditor
           key={`${classTextEdit.kind}-${classTextEdit.noteIndex}`}
@@ -5307,11 +5317,12 @@ export function LiveMaidEditor({
           rect={classTextEdit.rect}
           onCommit={commitClassTextEdit}
           onCancel={() => setClassTextEdit(null)}
+          commitOnEnter={classTextEdit.kind === "title"}
         />
       )}
 
       {/* ER-diagram title inline editor (double-click the title to edit, click outside to exit).
-          Reuses the shared ClassTextEditor overlay (kind="title"). */}
+          Reuses the shared ClassTextEditor overlay (kind="title"). Enter commits; Escape cancels. */}
       {erTitleEdit && (
         <ClassTextEditor
           kind="title"
@@ -5319,6 +5330,7 @@ export function LiveMaidEditor({
           rect={erTitleEdit.rect}
           onCommit={commitErTitleEdit}
           onCancel={() => setErTitleEdit(null)}
+          commitOnEnter
         />
       )}
 
@@ -5367,6 +5379,7 @@ export function LiveMaidEditor({
           rect={stateTextEdit.rect}
           onCommit={commitStateTextEdit}
           onCancel={() => setStateTextEdit(null)}
+          commitOnEnter={stateTextEdit.kind === "title"}
         />
       )}
 

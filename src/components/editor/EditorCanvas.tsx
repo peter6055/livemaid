@@ -1190,13 +1190,6 @@ export function EditorCanvas({
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
-                        console.log(
-                          "[onDblClick] fired, elementsFromPoint:",
-                          document
-                            .elementsFromPoint(e.clientX, e.clientY)
-                            .slice(0, 3)
-                            .map((el) => el.tagName + (el.id ? "#" + el.id : "")),
-                        );
                         // Ignore double-clicks that land on a floating toolbar / overlay control
                         // (including inline text editors) so they never enter the underlying
                         // element's edit mode or close an active inline editor. This guard lives on
