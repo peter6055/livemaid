@@ -84,7 +84,7 @@ export function selectTimelineDropTarget(params: {
     const cx = s.x + s.w / 2;
     const cy = s.y + s.h / 2;
     const dist = s.axis === "y" ? Math.abs(cursorY - cy) : Math.abs(cursorX - cx);
-    const tol = s.hitTol ?? (s.axis === "y" ? s.h / 2 : s.w / 2) + crossTolX;
+    const tol = s.hitTol ?? (s.axis === "y" ? s.h / 2 + crossTolY : s.w / 2 + crossTolX);
     if (dist > tol) continue;
     const key = sectionOfNode(s.id) ?? "";
     const cur = bestBySection.get(key);

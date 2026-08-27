@@ -15,6 +15,7 @@ import {
   removeTimelineTitle,
   renameTimelineNode,
   setTimelineDirection,
+  timelineLinesFromNodeId,
   timelineRenderOrder,
   timelineSubtreeIds,
   upsertTimelineTitle,
@@ -1041,5 +1042,42 @@ describe("moveTimelineNode movedNodeId exactness (issue #17)", () => {
     const samePeriod = moveTimelineNode(periodCode, q1, byLabel(periodCode, "A"), "before");
     expect(samePeriod.code).toBe(periodCode);
     expect(samePeriod.movedNodeId).toBe(q1);
+  });
+});
+
+describe("timelineLinesFromNodeId (canvas-to-code highlight)", () => {
+  it("resolves section, period, and event ids to their source line", () => {
+    expect(timelineLinesFromNodeId("TIMELINE_SECTION_3")).toEqual([3]);
+    expect(timelineLinesFromNodeId("TIMELINE_PERIOD_5")).toEqual([5]);
+    expect(timelineLinesFromNodeId("TIMELINE_EVENT_7_2")).toEqual([7]);
+  });
+
+  it("returns no lines for null, empty, or unknown ids", () => {
+    expect(timelineLinesFromNodeId(null)).toEqual([]);
+    expect(timelineLinesFromNodeId(undefined)).toEqual([]);
+    expect(timelineLinesFromNodeId("")).toEqual([]);
+    expect(timelineLinesFromNodeId("TIMELINE_BOGUS_1")).toEqual([]);
+    // Flowchart-style ids must never leak into the timeline mapping.
+    expect(timelineLinesFromNodeId("SEQ_MSG_3")).toEqual([]);
+  });
+
+  it("maps ids produced by parseTimeline to real code lines", () => {
+    const code = [
+      "timeline",
+      "    title History",
+      "    2002 : LinkedIn",
+      "    2004 : Facebook : Google",
+    ].join("\n");
+    const parsed = parseTimeline(code);
+    const sharedLinePeriod = parsed.defaultPeriods[1];
+    const event1 = sharedLinePeriod.events[0];
+    const event2 = sharedLinePeriod.events[1];
+    expect(sharedLinePeriod.id).toBe(`TIMELINE_PERIOD_${sharedLinePeriod.lineIndex}`);
+    expect(event1.id).toBe(`TIMELINE_EVENT_${event1.lineIndex}_${0}`);
+    expect(event2.id).toBe(`TIMELINE_EVENT_${event2.lineIndex}_${1}`);
+    // Both events share one physical line; the range form covers them.
+    expect(timelineLinesFromNodeId(event1.id)).toEqual([3]);
+    expect(timelineLinesFromNodeId(event2.id)).toEqual([3]);
+    expect(timelineLinesFromNodeId(sharedLinePeriod.id)).toEqual([3]);
   });
 });

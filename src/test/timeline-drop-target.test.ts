@@ -3,7 +3,7 @@ import {
   selectTimelineDropTarget,
   type TimelineDropSectionRect,
   type TimelineDropSlot,
-} from "@/lib/diagrams/timelineDropTarget";
+} from "@/lib/diagrams/timeline/dropTarget";
 
 /**
  * Geometry mirrors the LR fixture from issue #15:
@@ -255,5 +255,136 @@ describe("selectTimelineDropTarget (issue #15)", () => {
       crossTolY: 34,
     });
     expect(sel.target).toEqual({ id: "Q3", placement: "before" });
+  });
+});
+
+describe("selectTimelineDropTarget tolerance axes", () => {
+  const noSections = {
+    sectionBounds: [] as TimelineDropSectionRect[],
+    sectionOfNode: () => null,
+    sourceSectionId: null as string | null,
+  };
+
+  it("uses crossTolX for the along-axis fallback of x-axis slots", () => {
+    const slots: TimelineDropSlot[] = [
+      {
+        id: "QX",
+        placement: "before",
+        axis: "x",
+        x: 100,
+        y: 293,
+        w: 22,
+        h: 192,
+        crossStart: 293,
+        crossEnd: 485,
+      },
+    ];
+    // cx = 111. dist 55 ≤ w/2(11) + crossTolX(50); dist 62 exceeds it.
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots,
+        cursorX: 166,
+        cursorY: 360,
+        crossTolX: 50,
+        crossTolY: 0,
+      }).target,
+    ).toEqual({ id: "QX", placement: "before" });
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots,
+        cursorX: 173,
+        cursorY: 360,
+        crossTolX: 50,
+        crossTolY: 0,
+      }).target,
+    ).toBeNull();
+  });
+
+  it("uses crossTolY for the along-axis fallback of y-axis slots", () => {
+    const slots: TimelineDropSlot[] = [
+      {
+        id: "PY",
+        placement: "after",
+        axis: "y",
+        x: 100,
+        y: 463,
+        w: 400,
+        h: 22,
+        crossStart: 100,
+        crossEnd: 500,
+      },
+    ];
+    // cy = 474. dist 55 ≤ h/2(11) + crossTolY(50); dist 62 exceeds it.
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots,
+        cursorX: 300,
+        cursorY: 529,
+        crossTolX: 0,
+        crossTolY: 50,
+      }).target,
+    ).toEqual({ id: "PY", placement: "after" });
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots,
+        cursorX: 300,
+        cursorY: 536,
+        crossTolX: 0,
+        crossTolY: 50,
+      }).target,
+    ).toBeNull();
+  });
+
+  it("explicit hitTol overrides both axis fallbacks", () => {
+    const tightX: TimelineDropSlot = {
+      id: "QT",
+      placement: "before",
+      axis: "x",
+      x: 100,
+      y: 293,
+      w: 22,
+      h: 192,
+      crossStart: 293,
+      crossEnd: 485,
+      hitTol: 5,
+    };
+    const looseY: TimelineDropSlot = {
+      id: "PL",
+      placement: "after",
+      axis: "y",
+      x: 100,
+      y: 463,
+      w: 400,
+      h: 22,
+      crossStart: 100,
+      crossEnd: 500,
+      hitTol: 100,
+    };
+    // dist 8 would fit the default fallback (≤ 61) but exceeds hitTol 5.
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots: [tightX],
+        cursorX: 119,
+        cursorY: 360,
+        crossTolX: 50,
+        crossTolY: 0,
+      }).target,
+    ).toBeNull();
+    // dist 90 exceeds the default fallback (> 61) but fits hitTol 100.
+    expect(
+      selectTimelineDropTarget({
+        ...noSections,
+        slots: [looseY],
+        cursorX: 300,
+        cursorY: 564,
+        crossTolX: 0,
+        crossTolY: 50,
+      }).target,
+    ).toEqual({ id: "PL", placement: "after" });
   });
 });

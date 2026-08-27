@@ -3,7 +3,7 @@ import {
   getSortedSequenceNoteTextElements,
   getSequenceNoteTextElementAtIndex,
   getSequenceNoteRectForText,
-} from "./sequenceNotes";
+} from "@/lib/diagrams/sequence/notes";
 
 // ---------------------------------------------------------------------------
 // Minimal SVG-element mocks — the production code only needs:

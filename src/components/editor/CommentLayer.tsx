@@ -7,16 +7,17 @@ import { CommentPin } from "./comments/CommentPin";
 import {
   findSequenceMessageIndexByAnchor,
   type SequenceMessageAnchorSignature,
-} from "@/lib/diagrams/sequenceCommentAnchor";
+} from "@/lib/diagrams/sequence/commentAnchor";
 import {
   getSequenceNoteRectForText,
   getSortedSequenceNoteTextElements,
-} from "@/lib/diagrams/sequenceNotes";
+} from "@/lib/diagrams/sequence/notes";
 import {
   getVisibleSequenceMessageTexts,
   findOwningLineForSequenceLabel,
-} from "@/hooks/useCanvasInteraction";
+} from "@/lib/diagrams/sequence/geometry";
 import { findMindmapSvgElementByNodeId } from "@/lib/diagrams/mindmap";
+import { findSequenceActorElement } from "@/lib/diagrams/sequence/actors";
 
 const SHAPE_COMMENT_OFFSET = 4;
 const SEQUENCE_COMMENT_OFFSET = 5;
@@ -229,15 +230,12 @@ export function CommentLayer({
         const directSequenceNoteIndex = Number(
           comment.anchor.shapeId?.match(/^SEQ_NOTE_(\d+)$/)?.[1] ?? -1,
         );
-        let sequenceIndex =
-          Number.isFinite(directSequenceIndex) && directSequenceIndex >= 0
-            ? directSequenceIndex
-            : hasSequenceSignature
-              ? findSequenceMessageIndexByAnchor(
-                  sequenceMessageEntries,
-                  comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
-                )
-              : directSequenceIndex;
+        let sequenceIndex = hasSequenceSignature
+          ? findSequenceMessageIndexByAnchor(
+              sequenceMessageEntries,
+              comment.anchor.sequenceMessage as SequenceMessageAnchorSignature,
+            )
+          : directSequenceIndex;
 
         if (Number.isFinite(directSequenceNoteIndex) && directSequenceNoteIndex >= 0) {
           const notePos = getSequenceNoteCanvasPosition(directSequenceNoteIndex);
@@ -282,6 +280,15 @@ export function CommentLayer({
           sequenceIndex = bestIndex;
         }
 
+        // Semantic anchor resolved but target no longer exists (edited/deleted message) — use fallback.
+        if (hasSequenceSignature && sequenceIndex < 0 && comment.anchor.fallbackPos) {
+          x = comment.anchor.fallbackPos.x;
+          y = comment.anchor.fallbackPos.y;
+          missingTarget = true;
+          entries.set(comment.id, { x, y, missingTarget });
+          continue;
+        }
+
         if (Number.isFinite(sequenceIndex) && sequenceIndex >= 0) {
           const index = sequenceIndex;
           const textEl = messageTextEls[index] ?? null;
@@ -307,10 +314,17 @@ export function CommentLayer({
         }
 
         if (!missingTarget && !hasSequenceSignature) {
-          const match = elements.find((el) => {
-            const candidateId = el.getAttribute("data-id") || el.id;
-            return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
-          });
+          // Sequence participants render without usable element ids; resolve
+          // them via lifeline/declaration-order geometry.
+          const seqActorMatch = comment.anchor.shapeId?.startsWith("SEQ_ACTOR_")
+            ? findSequenceActorElement(safeContainer, code, comment.anchor.shapeId)
+            : null;
+          const match =
+            seqActorMatch ??
+            elements.find((el) => {
+              const candidateId = el.getAttribute("data-id") || el.id;
+              return normalizeSvgId(candidateId, renderId) === comment.anchor.shapeId;
+            });
           if (match) {
             const rect = match.getBoundingClientRect();
             const isSequenceMessage =

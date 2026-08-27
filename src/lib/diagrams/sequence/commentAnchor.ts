@@ -7,7 +7,7 @@ export interface SequenceMessageAnchorSignature {
 }
 
 const SEQUENCE_MESSAGE_RE =
-  /^(\S+?)\s*(<<-->>|<<->>|-->>|--x|--\)|-->|->>|-x|-\)|->)\s*(\S+)\s*:(.*)$/;
+  /^(\S+?)\s*(<<-->>|<<->>|-->>|--x|--\)|--\|\\|--\|\/|--\\|-->|->>|-x|-\)|-\|\\|-\|\/|-\\|->)\s*(\S+)\s*:(.*)$/;
 
 export function parseSequenceMessageLine(line: string) {
   const match = line.trim().match(SEQUENCE_MESSAGE_RE);

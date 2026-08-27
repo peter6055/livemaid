@@ -22,11 +22,12 @@ import {
   findFlowchartNodeLine,
   findFlowchartEdgeLine,
   findFlowchartSubgraphLine,
-  findSequenceParticipantLine,
-} from "@/lib/diagrams/selectionLineMap";
-import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequenceCommentAnchor";
-import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequenceReorder";
-import { normalizeHtmlForMermaid, sanitizeHtml, escapeRegExp } from "@/lib/utils";
+} from "@/lib/diagrams/flowchart/selectionLineMap";
+import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
+import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
+import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
+import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequence/reorder";
+import { escapeRegExp, htmlToPlainText, normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 import {
   isFormatTag,
   getTextNodesInRange,
@@ -171,6 +172,7 @@ import {
   changeMindmapNodeShape,
   deleteMindmapNode,
   mindmapLineFromNodeId,
+  renameMindmapNode,
   type MindmapShapeKind,
 } from "@/lib/diagrams/mindmap";
 import {
@@ -184,6 +186,7 @@ import {
   moveTimelineNode,
   removeTimelineTitle,
   renameTimelineNode,
+  timelineLinesFromNodeId,
   timelineNodeLabel,
   upsertTimelineTitle,
 } from "@/lib/diagrams/timeline";
@@ -770,7 +773,11 @@ export function LiveMaidEditor({
       }
 
       // Title — `text.classDiagramTitleText` (direct child of the svg).
-      const titleEl = els.find((el) => el.classList?.contains("classDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("classDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "classDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setSelectedClassName(null);
@@ -935,7 +942,11 @@ export function LiveMaidEditor({
       }
       // Diagram title — `text.erDiagramTitleText`. Double-click to inline-edit (same as the class
       // diagram title). Opens the shared `ClassTextEditor` seeded from the frontmatter `title:`.
-      const titleEl = els.find((el) => el.classList?.contains("erDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("erDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "erDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setErTitleEdit({
@@ -1013,8 +1024,13 @@ export function LiveMaidEditor({
 
       const container = document.querySelector(".mermaid-container");
 
-      // Diagram title — `text.stateDiagramTitleText`. Opens the shared editor seeded from the title.
-      const titleEl = els.find((el) => el.classList?.contains("stateDiagramTitleText"));
+      // Diagram title — `text.statediagramTitleText` (Mermaid renders the state title with a
+      // lowercase "diagram" segment). Opens the shared editor seeded from the title.
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("statediagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "statediagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setStateTextEdit({
@@ -1172,7 +1188,11 @@ export function LiveMaidEditor({
         return;
       }
       // Timeline title — `text.timelineDiagramTitleText` (added by addInteractionHelpersToSvg).
-      const titleEl = els.find((el) => el.classList?.contains("timelineDiagramTitleText"));
+      const titleEl = els.find(
+        (el) =>
+          el.classList?.contains("timelineDiagramTitleText") ||
+          el.getAttribute("data-title-hit-target") === "timelineDiagramTitleText",
+      );
       if (titleEl) {
         const r = titleEl.getBoundingClientRect();
         setTimelineTitleEdit({
@@ -1961,64 +1981,7 @@ export function LiveMaidEditor({
     [code],
   );
 
-  const isSequenceMessageLine = useCallback((line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("%%")) return false;
-    const keywords = [
-      "sequenceDiagram",
-      "Note",
-      "note",
-      "rect",
-      "alt",
-      "opt",
-      "loop",
-      "par",
-      "critical",
-      "option",
-      "else",
-      "end",
-      "participant",
-      "actor",
-      "autonumber",
-      "activate",
-      "deactivate",
-      "box",
-      "links",
-      "link",
-      "properties",
-      "details",
-    ];
-    if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
-    return trimmed.includes(":");
-  }, []);
-
-  const getSequenceMessageEntries = useCallback(
-    (sourceCode: string) => {
-      const lines = sourceCode.split("\n");
-      const entries: Array<{ index: number; line: string }> = [];
-      let inFrontmatter = false;
-
-      for (let i = 0; i < lines.length; i += 1) {
-        const trimmed = lines[i].trim();
-        if (trimmed === "---") {
-          inFrontmatter = !inFrontmatter;
-          continue;
-        }
-        if (inFrontmatter) continue;
-        if (isSequenceMessageLine(lines[i])) {
-          entries.push({ index: i, line: lines[i] });
-        }
-      }
-
-      return entries;
-    },
-    [isSequenceMessageLine],
-  );
-
-  const sequenceMessageEntries = useMemo(
-    () => getSequenceMessageEntries(code),
-    [code, getSequenceMessageEntries],
-  );
+  const sequenceMessageEntries = useMemo(() => getSequenceMessageEntries(code), [code]);
 
   const getSelectedSequenceParticipantForNote = useCallback(() => {
     if (!selectedNodeId) return null;
@@ -2359,6 +2322,14 @@ export function LiveMaidEditor({
 
     if (selectedNodeId.startsWith("MINDMAP_")) {
       return toRange(mindmapLineFromNodeId(selectedNodeId) ?? -1);
+    }
+
+    // Timeline: node ids embed their source lineIndex
+    // (`TIMELINE_SECTION_<line>` / `TIMELINE_PERIOD_<line>` / `TIMELINE_EVENT_<line>_<n>`);
+    // multiple events can share one line, so highlight the min/max range.
+    if (selectedNodeId.startsWith("TIMELINE_")) {
+      const lines = timelineLinesFromNodeId(selectedNodeId);
+      return lines.length ? { startLine: Math.min(...lines), endLine: Math.max(...lines) } : null;
     }
 
     if (isEdgeId(selectedNodeId)) {
@@ -3171,6 +3142,23 @@ export function LiveMaidEditor({
     // Normalize the editing text to clean up browser-added line breaks
     const normalizedText = normalizeHtmlForMermaid(latestEditingText);
 
+    // An EMPTY save is a cancel, not a deletion: writing an empty label into the
+    // source would produce degenerate Mermaid (`A[]`, `A -->|| B`) and wipe the
+    // rendered label. Elements are removed via their toolbar instead. Close
+    // silently and keep the existing label.
+    // Exceptions: sequence block labels may be cleared to valid bare keywords
+    // (`loop`, `alt`, …) and flowchart edges keep their connector when only the
+    // label is removed — those branches handle an empty value themselves.
+    const allowsEmptyLabel = selectedNodeId.startsWith("SEQ_BLK_") || isEdgeId(selectedNodeId);
+    if (!allowsEmptyLabel && !normalizedText.trim()) {
+      setIsInlineEditing(false);
+      setSelectedNodeId(null);
+      setSelectedSvgId(null);
+      setSelectionBox(null);
+      setTextBox(null);
+      return;
+    }
+
     // Compare with original content - if no real changes, just close
     const originalNormalized = normalizeHtmlForMermaid(originalEditContentRef.current);
     if (normalizedText === originalNormalized) {
@@ -3340,7 +3328,10 @@ export function LiveMaidEditor({
       // label portion after the keyword is rewritten; the keyword + indentation are preserved.
       // An empty new label collapses to just the keyword (valid Mermaid, e.g. bare `loop`).
       const lineIdx = parseInt(selectedNodeId.replace("SEQ_BLK_", ""), 10);
-      const newText = latestEditingText.replace(/\n/g, " ").trim();
+      const newText = latestEditingText
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/\n/g, " ")
+        .trim();
       const lines = code.split("\n");
       const line = lines[lineIdx];
       if (line != null) {
@@ -3367,6 +3358,24 @@ export function LiveMaidEditor({
     } else if (selectedNodeId.startsWith("TIMELINE_")) {
       const newText = latestEditingText.replace(/\n/g, " ").trim();
       const renamed = renameTimelineNode(code, selectedNodeId, newText);
+      if (renamed !== code) newCode = renamed;
+    } else if (selectedNodeId.startsWith("MINDMAP_")) {
+      // Mindmap labels are single-line plain text in the source — flatten any
+      // line breaks / block markup the contentEditable editor produced and
+      // decode entities (&nbsp; etc.) so the source stays clean.
+      const newText = htmlToPlainText(latestEditingText).replace(/\s+/g, " ").trim();
+      // An allowlisted empty wrapper (e.g. <u></u>) survives the normalized-text
+      // check above but flattens to "" here — treat it like an empty save and
+      // cancel instead of renaming to renameMindmapNode's default label.
+      if (!newText) {
+        setIsInlineEditing(false);
+        setSelectedNodeId(null);
+        setSelectedSvgId(null);
+        setSelectionBox(null);
+        setTextBox(null);
+        return;
+      }
+      const renamed = renameMindmapNode(code, selectedNodeId, newText);
       if (renamed !== code) newCode = renamed;
     } else if (isEdgeId(selectedNodeId)) {
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
@@ -3779,6 +3788,7 @@ export function LiveMaidEditor({
   // lines (blocks, participants) stay put. Routes through handleCodeChange (undo/autonumber).
   const handleReorderSequenceItem = useCallback(
     (item: { kind: "msg" | "note"; index: number }, toSlot: number) => {
+      if (isLocked) return;
       const msgs = getSequenceMessageEntries(code).map((e, i) => ({
         srcIndex: e.index,
         kind: "msg" as const,
@@ -3814,6 +3824,7 @@ export function LiveMaidEditor({
       getSequenceMessageEntries,
       getSequenceNoteEntries,
       handleCodeChange,
+      isLocked,
       setSelectionBox,
       setSelectedNodeId,
     ],
@@ -5332,7 +5343,8 @@ export function LiveMaidEditor({
         )}
       </div>
 
-      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit). */}
+      {/* Class-diagram title/note inline editor (double-click to edit, click outside to exit).
+          Titles are single-line so Enter commits; notes/labels keep multiline Enter. */}
       {classTextEdit && (
         <ClassTextEditor
           key={`${classTextEdit.kind}-${classTextEdit.noteIndex}`}
@@ -5341,11 +5353,12 @@ export function LiveMaidEditor({
           rect={classTextEdit.rect}
           onCommit={commitClassTextEdit}
           onCancel={() => setClassTextEdit(null)}
+          commitOnEnter={classTextEdit.kind === "title"}
         />
       )}
 
       {/* ER-diagram title inline editor (double-click the title to edit, click outside to exit).
-          Reuses the shared ClassTextEditor overlay (kind="title"). */}
+          Reuses the shared ClassTextEditor overlay (kind="title"). Enter commits; Escape cancels. */}
       {erTitleEdit && (
         <ClassTextEditor
           kind="title"
@@ -5353,6 +5366,7 @@ export function LiveMaidEditor({
           rect={erTitleEdit.rect}
           onCommit={commitErTitleEdit}
           onCancel={() => setErTitleEdit(null)}
+          commitOnEnter
         />
       )}
 
@@ -5401,6 +5415,7 @@ export function LiveMaidEditor({
           rect={stateTextEdit.rect}
           onCommit={commitStateTextEdit}
           onCancel={() => setStateTextEdit(null)}
+          commitOnEnter={stateTextEdit.kind === "title"}
         />
       )}
 

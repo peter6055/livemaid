@@ -112,11 +112,7 @@ export function EditorCodePanel({
         }
       }
       handleCodeChange(result.formatted);
-      if (result.skippedIndentSensitive) {
-        toast.info(`Structural formatting skipped for ${result.diagramType} (indent is semantic)`);
-      } else {
-        toast.success("Code formatted");
-      }
+      toast.success("Code formatted");
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       toast.error(`Formatting failed: ${message}`);
