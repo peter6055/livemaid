@@ -2076,11 +2076,17 @@ export function LiveMaidEditor({
   // (falling back to A/B) so the inserted code parses without error. Routes through handleCodeChange
   // (single undo).
   const handleSequencePlusBlock = useCallback(
-    (anchorY: number, type: "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect") => {
+    (
+      actorId: string,
+      anchorY: number,
+      type: "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect",
+    ) => {
       if (!Number.isFinite(anchorY)) return;
       const lifelines = getSequenceLifelines();
-      const a = lifelines[0]?.actorId ?? "A";
-      const b = lifelines[1]?.actorId ?? lifelines[0]?.actorId ?? "B";
+      const clickedIdx = lifelines.findIndex((l) => l.actorId === actorId);
+      const a = clickedIdx >= 0 ? lifelines[clickedIdx].actorId : (lifelines[0]?.actorId ?? "A");
+      const nextIdx = clickedIdx >= 0 ? clickedIdx + 1 : 1;
+      const b = lifelines[nextIdx]?.actorId ?? lifelines[0]?.actorId ?? "B";
 
       let body = "";
       if (type === "alt") {
