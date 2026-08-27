@@ -26,6 +26,7 @@ import {
 import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
+import { removeEmptySequenceBlocks } from "@/lib/diagrams/sequence/mutations";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequence/reorder";
 import { escapeRegExp, htmlToPlainText, normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 import {
@@ -4084,7 +4085,7 @@ export function LiveMaidEditor({
         if (Number.isFinite(targetLineIndex)) {
           const lines = code.split("\n");
           const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
-          newCode = filtered.join("\n");
+          newCode = removeEmptySequenceBlocks(filtered.join("\n"));
         }
       }
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
@@ -4105,7 +4106,7 @@ export function LiveMaidEditor({
         }
         return true;
       });
-      newCode = filtered.join("\n");
+      newCode = removeEmptySequenceBlocks(filtered.join("\n"));
     } else {
       // Flowchart deletion logic
       const escapedDeleteId = escapeRegExp(selectedNodeId);
