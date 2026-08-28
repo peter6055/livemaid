@@ -327,4 +327,129 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     expect(result.current.hasUnsavedChangesRef.current).toBe(true);
     expect(vi.mocked(toast.error)).toHaveBeenCalledWith("Failed to auto-save");
   });
+
+  it("syncs an offline edit via the in-memory fallback when localStorage persistence fails", async () => {
+    installFetch("BASE");
+    const { result } = await loadDoc();
+
+    // Break localStorage writes so the persistent cache can never be written; the hook must
+    // retain the edit in memory and still replay it on reconnect.
+    const original = window.localStorage;
+    const throwing = new Proxy(original, {
+      get: (t, p, r) =>
+        p === "setItem"
+          ? () => {
+              throw new DOMException("QuotaExceededError", "QuotaExceededError");
+            }
+          : Reflect.get(t, p, r),
+    });
+    Object.defineProperty(window, "localStorage", { value: throwing, configurable: true });
+    try {
+      act(() => {
+        setBrowserOnline(false); // browser offline — local cache path
+      });
+      act(() => {
+        result.current.handleCodeChange("PENDING");
+      });
+      await flush(1600);
+
+      expect(getOfflineEdit(DIAGRAM_ID)).toBeNull(); // persistence failed
+      expect(result.current.offlinePending).toBe(true);
+
+      act(() => {
+        setBrowserOnline(true); // reconnect — triggers sync
+      });
+      await flush(200);
+
+      expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+      expect(result.current.hasUnsavedChangesRef.current).toBe(false);
+    } finally {
+      Object.defineProperty(window, "localStorage", { value: original, configurable: true });
+    }
+  });
+
+  it("preserves a newer edit made during conflict resolution (dirty flag + cache kept)", async () => {
+    installFetch("CHANGED_ON_SERVER");
+    seedCache("BASE", "PENDING");
+    setBrowserOnline(false);
+    net.offline = true;
+
+    const { result } = await loadDoc();
+
+    net.offline = false;
+    act(() => {
+      setBrowserOnline(true);
+    });
+    await flush(200);
+    expect(result.current.conflict).not.toBeNull();
+
+    // User types a newer edit while the conflict is being resolved.
+    act(() => {
+      result.current.handleCodeChange("NEWER_EDIT");
+    });
+    act(() => {
+      void result.current.resolveConflict("mine");
+    });
+    await flush(200);
+
+    // PENDING was pushed to the server and the conflict dismissed...
+    expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+    expect(result.current.conflict).toBeNull();
+    expect(result.current.doc?.code).toBe("PENDING");
+    // ...but the newer local edit is preserved and still protected by the unload guard.
+    expect(result.current.code).toBe("NEWER_EDIT");
+    expect(result.current.offlinePending).toBe(true);
+    expect(result.current.hasUnsavedChangesRef.current).toBe(true);
+  });
+
+  it("treats serverCode equal to pendingCode as an already-landed sync (no false conflict)", async () => {
+    // The server already holds the pending edit — a prior PUT whose response was lost.
+    installFetch("PENDING");
+    seedCache("BASE", "PENDING");
+    setBrowserOnline(false);
+    net.offline = true;
+
+    const { result } = await loadDoc();
+    expect(result.current.code).toBe("PENDING");
+
+    net.offline = false;
+    act(() => {
+      setBrowserOnline(true);
+    });
+    await flush(200);
+
+    expect(result.current.conflict).toBeNull();
+    expect(net.putBodies).toHaveLength(0); // no redundant PUT
+    expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
+    expect(result.current.offlinePending).toBe(false);
+    expect(result.current.hasUnsavedChangesRef.current).toBe(false);
+  });
+
+  it("auto-retries a cached edit after a network throw while still online (no reconnect event)", async () => {
+    installFetch("SERVER_V1");
+    const { result } = await loadDoc();
+
+    act(() => {
+      net.offline = true; // fetch throws; navigator.onLine stays true
+    });
+    act(() => {
+      result.current.handleCodeChange("V_THROW");
+    });
+    await flush(1600);
+
+    expect(getOfflineEdit(DIAGRAM_ID)?.pendingCode).toBe("V_THROW");
+    expect(net.putBodies).toHaveLength(0);
+    expect(result.current.offlinePending).toBe(true);
+
+    // Server recovers WITHOUT any online/offline browser event — the bounded backoff
+    // retry must replay the cached edit on its own.
+    net.offline = false;
+    await flush(2500); // first retry fires at 2s
+
+    expect(net.putBodies).toEqual([{ code: "V_THROW" }]);
+    expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
+    expect(result.current.offlinePending).toBe(false);
+    expect(result.current.hasUnsavedChangesRef.current).toBe(false);
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Back online — your changes are synced");
+  });
 });

@@ -5510,7 +5510,14 @@ export function LiveMaidEditor({
       </Dialog>
 
       {/* Offline conflict dialog — the server changed while the user was offline. */}
-      <Dialog open={conflict !== null}>
+      <Dialog
+        open={conflict !== null}
+        onOpenChange={(open) => {
+          // Close button / Escape / backdrop all dismiss the dialog, keeping the cache and dirty
+          // flag so the next reconnect retries the sync.
+          if (!open) void resolveConflict("cancel");
+        }}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>This diagram changed while you were offline</DialogTitle>

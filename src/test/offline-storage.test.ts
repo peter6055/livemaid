@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   saveOfflineEdit,
   getOfflineEdit,
@@ -52,6 +52,29 @@ describe("offlineStorage", () => {
   it("returns null for JSON with an unexpected shape", () => {
     localStorage.setItem("livemaid:offline-edit:doc-1", JSON.stringify({ nope: 1 }));
     expect(getOfflineEdit("doc-1")).toBeNull();
+  });
+
+  it("returns false when localStorage is unavailable and stores nothing", () => {
+    const original = window.localStorage;
+    const throwingSet = vi.fn(() => {
+      throw new DOMException("QuotaExceededError", "QuotaExceededError");
+    });
+    const throwingStorage = new Proxy(original, {
+      get: (target, prop, receiver) =>
+        prop === "setItem" ? throwingSet : Reflect.get(target, prop, receiver),
+    });
+    Object.defineProperty(window, "localStorage", { value: throwingStorage, configurable: true });
+    try {
+      expect(saveOfflineEdit(makeEdit())).toBe(false);
+      expect(getOfflineEdit("doc-1")).toBeNull();
+    } finally {
+      Object.defineProperty(window, "localStorage", { value: original, configurable: true });
+    }
+  });
+
+  it("returns true when storage is writeable and persists the edit", () => {
+    expect(saveOfflineEdit(makeEdit())).toBe(true);
+    expect(getOfflineEdit("doc-1")).not.toBeNull();
   });
 
   it("clears an edit", () => {

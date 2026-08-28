@@ -10,12 +10,16 @@ export interface OfflineEdit {
 
 const OFFLINE_EDIT_KEY = (id: string) => `livemaid:offline-edit:${id}`;
 
-export function saveOfflineEdit(edit: OfflineEdit): void {
-  if (typeof window === "undefined") return;
+// Returns true when the edit was persisted to localStorage. When storage is unavailable,
+// disabled, or full, it returns false so the caller can retain an in-memory copy that still
+// gets replayed on reconnect (it just won't survive a reload).
+export function saveOfflineEdit(edit: OfflineEdit): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(OFFLINE_EDIT_KEY(edit.diagramId), JSON.stringify(edit));
+    return true;
   } catch {
-    // localStorage full/unavailable — nothing we can do; the in-memory copy stays in the editor.
+    return false;
   }
 }
 
