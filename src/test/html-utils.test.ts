@@ -183,6 +183,13 @@ describe("normalizeHtmlForMermaid", () => {
     expect(normalizeHtmlForMermaid(input)).toBe('<div style="text-align:right;">Right aligned');
   });
 
+  it("keeps the line break before a styled block element elsewhere in the string", () => {
+    // A text-align block in the middle must still start a new line (prefixed with <br/>) rather
+    // than merging with the preceding contentEditable line.
+    const input = "Hello<div style='text-align:center;'>World</div>";
+    expect(normalizeHtmlForMermaid(input)).toBe('Hello<br/><div style="text-align:center;">World');
+  });
+
   it("removes browser-added br at word boundary characters", () => {
     // Browser wraps at "/" character
     const input1 = "<b>Azure DNS /<br>cloudapp.azure.com</b><br/>CNAME target";

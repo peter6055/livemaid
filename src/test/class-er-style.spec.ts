@@ -20,14 +20,6 @@ async function openEditor(
   const res = await request.post("/api/diagrams", {
     data: { name: opts.name, type: opts.type, code: opts.code },
   });
-  if (!res.ok()) {
-    const body = await res.text();
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("node:fs").writeFileSync("/tmp/opencode/post-body.txt", body);
-    console.log("DEBUG_POST_STATUS", res.status());
-  }
-  const probe = await request.get("/api/diagrams/does-not-exist");
-  console.log("DEBUG_GET_PROBE", probe.status());
   expect(res.ok()).toBeTruthy();
   const id = (await res.json()).id as string;
   expect(id).toBeTruthy();
@@ -154,10 +146,11 @@ test.describe("class + er unified style popover (issue #31)", () => {
     const textSwatches = await readRowSwatches(page, "[data-class-node-toolbar]", "Text color");
     expect(textSwatches.find((s) => s.title === "Salmon")?.bg).toBe(STRONG_SALMON);
 
-    // Fill row: LIGHT tints.
+    // Fill row: LIGHT tints + a 10th Transparent swatch.
     const fillSwatches = await readRowSwatches(page, "[data-class-node-toolbar]", "Fill");
     expect(fillSwatches.find((s) => s.title === "Salmon")?.bg).toBe(LIGHT_SALMON);
-    expect(fillSwatches).toHaveLength(9);
+    expect(fillSwatches).toHaveLength(10);
+    expect(fillSwatches.at(-1)?.title).toBe("Transparent");
 
     // Wiring: clicking Border-color Red writes the strong hex.
     expect(await clickRowSwatch(page, "[data-class-node-toolbar]", "Border color", "Salmon")).toBe(
@@ -202,7 +195,9 @@ test.describe("class + er unified style popover (issue #31)", () => {
       ].join("\n"),
     });
 
-    const entity = svg.locator("g.node[id*='-entity-']").filter({ hasText: "CUSTOMER" }).first();
+    // ORDER sits low enough that its floating toolbar clears the top-left editor chrome, so a
+    // real Playwright click is hit-testable (clicking CUSTOMER puts the toolbar under that chrome).
+    const entity = svg.locator("g.node[id*='-entity-']").filter({ hasText: "ORDER" }).first();
     await expect(entity).toBeVisible({ timeout: 15000 });
     const box = await entity.boundingBox();
     expect(box).not.toBeNull();
@@ -211,18 +206,8 @@ test.describe("class + er unified style popover (issue #31)", () => {
 
     const toolbar = page.locator("[data-er-node-toolbar]");
     await expect(toolbar).toBeVisible({ timeout: 10000 });
-    // The top-left toolbox can overlap this toolbar, so open the popover with a native
-    // mousedown+click dispatch (onMouseDownCapture) instead of a Playwright click, which the
-    // overlapping toolbox intercepts.
-    await page.evaluate(() => {
-      const btn = document.querySelector(
-        '[data-er-node-toolbar] button[title="Custom style"]',
-      ) as HTMLButtonElement | null;
-      if (!btn) return false;
-      btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-      btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      return true;
-    });
+    // A real click (not a synthetic DOM dispatch) — verifies the trigger is actually reachable.
+    await toolbar.locator('button[title="Custom style"]').click();
     await expect(toolbar.getByText("Border color", { exact: true })).toBeVisible();
 
     await toolbar.scrollIntoViewIfNeeded();
@@ -241,18 +226,31 @@ test.describe("class + er unified style popover (issue #31)", () => {
 
     const fillSwatches = await readRowSwatches(page, "[data-er-node-toolbar]", "Fill");
     expect(fillSwatches.find((s) => s.title === "Salmon")?.bg).toBe(LIGHT_SALMON);
+    expect(fillSwatches).toHaveLength(10);
+    expect(fillSwatches.at(-1)?.title).toBe("Transparent");
+
+    // Wiring: clicking Transparent fill writes an explicit `fill:transparent`.
+    expect(await clickRowSwatch(page, "[data-er-node-toolbar]", "Fill", "Transparent")).toBe(true);
+    await expect
+      .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
+      .toContain("style ORDER fill:transparent");
+    // Toggle Transparent off removes the fill property (line emptied -> removed).
+    expect(await clickRowSwatch(page, "[data-er-node-toolbar]", "Fill", "Transparent")).toBe(true);
+    await expect
+      .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
+      .not.toContain("style ORDER");
 
     // Wiring: clicking Text-color Red writes the strong hex to the entity's style line.
     expect(await clickRowSwatch(page, "[data-er-node-toolbar]", "Text color", "Salmon")).toBe(true);
     await expect
       .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
-      .toContain("style CUSTOMER color:#ef6351");
+      .toContain("style ORDER color:#ef6351");
 
     // Reset removes the whole style line.
     expect(await clickResetStyle(page, "[data-er-node-toolbar]")).toBe(true);
     await expect
       .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
-      .not.toContain("style CUSTOMER");
+      .not.toContain("style ORDER");
 
     await request.delete(`/api/diagrams/${id}`);
   });

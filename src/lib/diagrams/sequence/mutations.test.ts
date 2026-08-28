@@ -3,7 +3,6 @@ import { removeEmptySequenceBlocks } from "./mutations";
 
 describe("removeEmptySequenceBlocks", () => {
   it("removes an opt block left with no children", () => {
-    const code = ["sequenceDiagram", "opt Optional", "  A->>B: msg", "end"].join("\n");
     const result = removeEmptySequenceBlocks(["sequenceDiagram", "opt Optional", "end"].join("\n"));
     expect(result).toBe("sequenceDiagram");
     expect(result).not.toContain("opt");
@@ -54,5 +53,52 @@ describe("removeEmptySequenceBlocks", () => {
       .join("\n");
     expect(removeEmptySequenceBlocks(lines)).toBe("sequenceDiagram");
     expect(removeEmptySequenceBlocks(lines)).not.toContain("else");
+  });
+
+  it("keeps a block whose only content is a keyword-only activate/deactivate declaration", () => {
+    const code = [
+      "sequenceDiagram",
+      "participant A",
+      "participant B",
+      "opt Optional",
+      "  activate B",
+      "  B-->>A: done",
+      "  deactivate B",
+      "end",
+    ].join("\n");
+    // Deleting the message leaves activate/deactivate declarations inside the block.
+    const lines = code
+      .split("\n")
+      .filter((l) => !l.includes("done"))
+      .join("\n");
+    expect(removeEmptySequenceBlocks(lines)).toBe(
+      [
+        "sequenceDiagram",
+        "participant A",
+        "participant B",
+        "opt Optional",
+        "  activate B",
+        "  deactivate B",
+        "end",
+      ].join("\n"),
+    );
+    expect(removeEmptySequenceBlocks(lines)).toContain("opt Optional");
+  });
+
+  it("keeps a block whose only content is a create/destroy declaration", () => {
+    const code = [
+      "sequenceDiagram",
+      "opt Setup",
+      "  create participant B",
+      "  A->>B: hi",
+      "  destroy B",
+      "end",
+    ].join("\n");
+    const lines = code
+      .split("\n")
+      .filter((l) => !l.includes("hi"))
+      .join("\n");
+    expect(removeEmptySequenceBlocks(lines)).toContain("opt Setup");
+    expect(removeEmptySequenceBlocks(lines)).toContain("destroy B");
   });
 });

@@ -274,10 +274,12 @@ export function normalizeHtmlForMermaid(html: string): string {
     // Convert them to <br/> so Mermaid gets a real line break; keep text-align
     // wrappers when present. Closing tags are structural only and become "".
     .replace(/<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi, (_match, _tag, attrs) => {
-      // Extract text-align style if present
+      // Extract text-align style if present. A styled block still begins a new line, so prefix
+      // the preserved wrapper with a <br/> just like the unstyled case; the leading-break cleanup
+      // below removes it when the styled block is the very first element.
       const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
       if (styleMatch) {
-        return `<div style="${styleMatch[1]}">`;
+        return `<br/><div style="${styleMatch[1]}">`;
       }
       return "<br/>";
     })

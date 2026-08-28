@@ -222,7 +222,7 @@ export function ClassNodeToolbar({
           </div>
         )}
 
-        {kind === "class" && onSetStyle && (
+        {kind === "class" && onSetStyle && onResetStyle && (
           <div className="relative">
             <button
               type="button"
@@ -245,8 +245,8 @@ export function ClassNodeToolbar({
             {styleOpen && (
               <NodeStylePopover
                 currentStyle={currentStyle}
-                onSetStyle={onSetStyle!}
-                onResetStyle={onResetStyle!}
+                onSetStyle={onSetStyle}
+                onResetStyle={onResetStyle}
                 showBorderStyle={false}
               />
             )}

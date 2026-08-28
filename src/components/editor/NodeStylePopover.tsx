@@ -24,8 +24,9 @@ const BORDER_STYLES: Array<{ id: string; label: string; dash: string }> = [
  * Renders only the popover body — each consuming toolbar supplies its own trigger + open state.
  *
  * Border color / Text color use the STRONG shade of each `COLOR_FAMILIES` entry; Fill uses the
- * LIGHT shade. The border-style grid renders only when `showBorderStyle` is true
- * (flowchart/state diagrams support `stroke-dasharray`; class/ER do not).
+ * LIGHT shade plus an explicit `Transparent` swatch (Mermaid `fill:transparent`, distinct from
+ * toggling a tint off, which removes the property). The border-style grid renders only when
+ * `showBorderStyle` is true (currently only state diagrams expose it; flowchart/class/ER do not).
  */
 export function NodeStylePopover({
   currentStyle,
@@ -48,7 +49,10 @@ export function NodeStylePopover({
     const rect = el.getBoundingClientRect();
     const chromeBottom =
       document.querySelector(".top-4.left-4")?.getBoundingClientRect().bottom ?? 0;
-    if (rect.top < chromeBottom + 8 && window.innerHeight - rect.bottom > rect.height) {
+    // Measure available space below the TRIGGER container (the panel, when rendered upward, sits
+    // *above* the trigger, so its own rect.bottom is not the right probe for downward space).
+    const triggerBottom = el.parentElement?.getBoundingClientRect().bottom ?? 0;
+    if (rect.top < chromeBottom + 8 && window.innerHeight - triggerBottom > rect.height) {
       setFlipDown(true);
     }
   }, []);
@@ -66,6 +70,9 @@ export function NodeStylePopover({
       name: f.name,
       value: prop === "fill" ? f.light : f.strong,
     }));
+    // Fill also exposes an explicit `Transparent` (fill:transparent) entry — a deliberate choice
+    // that is NOT the same as toggling a tint off (which removes the property entirely).
+    if (prop === "fill") swatches.push({ name: "Transparent", value: "transparent" });
     const activeValue = (currentStyle[prop] ?? "").toLowerCase();
     const active = swatches.find((c) => c.value.toLowerCase() === activeValue);
     // White checks vanish on the light fill tints — darken them there.
@@ -83,21 +90,32 @@ export function NodeStylePopover({
             </code>
           )}
         </div>
-        <div className="grid grid-cols-9 gap-1.5">
+        <div className={`grid gap-1.5 ${prop === "fill" ? "grid-cols-10" : "grid-cols-9"}`}>
           {swatches.map((c) => {
             const isActive = activeValue === c.value.toLowerCase();
+            const isTransparent = c.value === "transparent";
             return (
               <button
                 key={c.name}
                 type="button"
                 title={c.name}
                 onClick={() => onSetStyle({ [prop]: isActive ? "" : c.value })}
+                data-transparent-swatch={isTransparent || undefined}
                 className={`relative h-7 w-7 rounded-md border transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   isActive
                     ? "border-indigo-500 ring-2 ring-indigo-500/40"
                     : "border-black/10 dark:border-white/15"
                 }`}
-                style={{ backgroundColor: c.value }}
+                style={{
+                  backgroundColor: isTransparent ? undefined : c.value,
+                  ...(isTransparent
+                    ? {
+                        // Convey transparency with a diagonal slash pattern instead of a solid.
+                        backgroundImage:
+                          "repeating-linear-gradient(45deg, transparent 0 3px, rgba(0,0,0,0.08) 3px 6px)",
+                      }
+                    : {}),
+                }}
               >
                 {isActive && <Check className={`absolute inset-0 m-auto h-4 w-4 ${checkClass}`} />}
               </button>

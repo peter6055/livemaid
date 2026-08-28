@@ -120,14 +120,32 @@ test.describe("state + flowchart unified style popover (issue #31)", () => {
     await toolbar.scrollIntoViewIfNeeded();
     await page.screenshot({ path: "/tmp/opencode/state-style-popover.png" });
 
-    // Border + Text rows use STRONG shades; Fill uses LIGHT tints + Transparent.
+    // Border + Text rows use STRONG shades; Fill uses LIGHT tints + a 10th Transparent swatch.
     const borderSwatches = await readRowSwatches(page, "[data-state-node-toolbar]", "Border color");
+    expect(borderSwatches).toHaveLength(9);
     expect(borderSwatches.find((s) => s.title === "Salmon")?.bg).toBe(STRONG_SALMON);
     const textSwatches = await readRowSwatches(page, "[data-state-node-toolbar]", "Text color");
+    expect(textSwatches).toHaveLength(9);
     expect(textSwatches.find((s) => s.title === "Salmon")?.bg).toBe(STRONG_SALMON);
     const fillSwatches = await readRowSwatches(page, "[data-state-node-toolbar]", "Fill");
     expect(fillSwatches.find((s) => s.title === "Salmon")?.bg).toBe(LIGHT_SALMON);
-    expect(fillSwatches).toHaveLength(9);
+    expect(fillSwatches).toHaveLength(10);
+    expect(fillSwatches.at(-1)?.title).toBe("Transparent");
+
+    // Click Transparent fill -> writes an explicit `fill:transparent` (distinct from toggle-off).
+    expect(await clickRowSwatch(page, "[data-state-node-toolbar]", "Fill", "Transparent")).toBe(
+      true,
+    );
+    await expect
+      .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
+      .toContain("style Still fill:transparent");
+    // Click Transparent again -> toggle-off removes the fill property entirely.
+    expect(await clickRowSwatch(page, "[data-state-node-toolbar]", "Fill", "Transparent")).toBe(
+      true,
+    );
+    await expect
+      .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
+      .not.toContain("style Still");
 
     // Click Red fill (light) -> writes `style Still fill:#ffe3dc`.
     expect(await clickRowSwatch(page, "[data-state-node-toolbar]", "Fill", "Salmon")).toBe(true);
@@ -181,16 +199,9 @@ test.describe("state + flowchart unified style popover (issue #31)", () => {
     // The flowchart NodeManipulationToolbar is the only `[data-inline-toolbar]` div present here
     // (an "Add comment to selection" button also carries `data-inline-toolbar`, so exclude buttons).
     const toolbar = page.locator("[data-inline-toolbar]:not(button)");
-    // Open the popover via native mousedown+click (the top-left toolbox can overlap the trigger).
-    await page.evaluate(() => {
-      const btn = document.querySelector(
-        '[data-inline-toolbar]:not(button) button[title="Custom style"]',
-      ) as HTMLButtonElement | null;
-      if (!btn) return false;
-      btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
-      btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      return true;
-    });
+    // Real click on the trigger — verifies the Style button is actually reachable, not just that a
+    // synthetic DOM dispatch fires it.
+    await toolbar.locator('button[title="Custom style"]').click();
     await expect(toolbar.getByText("Border color", { exact: true })).toBeVisible();
 
     // Flowchart does NOT offer a Border (stroke-dasharray) section.

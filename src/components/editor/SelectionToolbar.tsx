@@ -252,8 +252,8 @@ export function SelectionToolbar({
     <>
       {selectionBox && !isLocked && (
         <div
-          data-scale-lock-border
-          data-scale-lock-shadow
+          data-scale-lock-border={selectedNodeId?.startsWith("SEQ_BLK_") ? undefined : "true"}
+          data-scale-lock-shadow={selectedNodeId?.startsWith("SEQ_BLK_") ? undefined : "true"}
           /* z-[22] (above the z-[21] sequence hover grab overlays) so the inline
                        toolbar nested inside this box always paints and hit-tests ABOVE the
                        grab overlay of a neighbouring message that the toolbar floats over.

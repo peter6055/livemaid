@@ -278,7 +278,7 @@ export function StateNodeToolbar({
         )}
 
         {/* Style popover (state / composite / special) */}
-        {showStateActions && onSetStyle && (
+        {showStateActions && onSetStyle && onResetStyle && (
           <div className="relative">
             <button
               type="button"
@@ -304,8 +304,8 @@ export function StateNodeToolbar({
             {styleOpen && (
               <NodeStylePopover
                 currentStyle={currentStyle}
-                onSetStyle={onSetStyle!}
-                onResetStyle={onResetStyle!}
+                onSetStyle={onSetStyle}
+                onResetStyle={onResetStyle}
                 showBorderStyle={true}
               />
             )}

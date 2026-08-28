@@ -6,6 +6,9 @@ import {
 
 const BLOCK_OPENER_RE = /^(loop|alt|opt|par|critical|break|rect)\b/i;
 const NOTE_LINE_RE = /^note\s+/i;
+// Keyword-only activation/lifecycle declarations carry meaning inside a block (the participant is
+// engaged even with no message), so a block containing only these must NOT be treated as empty.
+const ACTIVATION_LINE_RE = /^\s*(?:activate|deactivate|create|destroy)\b/i;
 
 export type ParticipantEntry = {
   id: string;
@@ -147,6 +150,7 @@ function isSequenceContentLine(line: string): boolean {
   if (!trimmed || trimmed.startsWith("%%")) return false;
   if (NOTE_LINE_RE.test(trimmed)) return true;
   if (BLOCK_OPENER_RE.test(trimmed)) return true;
+  if (ACTIVATION_LINE_RE.test(trimmed)) return true;
   return isSequenceMessageLine(line);
 }
 
@@ -170,7 +174,14 @@ export function removeEmptySequenceBlocks(sourceCode: string): string {
       const inner = lines.slice(blk.startLine + 1, blk.endLine);
       if (inner.some(isSequenceContentLine)) continue;
 
-      const toRemove = new Set<number>([blk.endLine, ...blk.sections.map((s) => s.line)]);
+      // Remove the block opener, its `end`, and any section dividers (else/and/option). `sections`
+      // already includes the opener line, but list startLine explicitly so the intent is clear and
+      // robust to future changes in how sections is assembled.
+      const toRemove = new Set<number>([
+        blk.startLine,
+        blk.endLine,
+        ...blk.sections.map((s) => s.line),
+      ]);
       code = lines.filter((_, i) => !toRemove.has(i)).join("\n");
       removedAny = true;
       break;
