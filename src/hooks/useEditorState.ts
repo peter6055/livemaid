@@ -4,9 +4,26 @@ import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import mermaid from "mermaid";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
+import {
+  saveOfflineEdit,
+  getOfflineEdit,
+  clearOfflineEdit,
+  type OfflineEdit,
+} from "@/lib/offlineStorage";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 const DEBOUNCE_MS = 1500;
 const VALID_MERMAID_THEMES = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
+// Bounded backoff for auto-retrying a cached edit: 2s, 4s, 8s, 16s, 32s — then stop.
+const RETRY_MAX = 5;
+const RETRY_BASE_MS = 2000;
+
+// Server vs local divergence detected when replaying a cached offline edit on reconnect.
+export interface OfflineConflict {
+  baseCode: string;
+  pendingCode: string;
+  serverCode: string;
+}
 
 // `isDemo` is passed in from the (runtime-rendered) editor page rather than read
 // from `process.env.NEXT_PUBLIC_DEMO_MODE`, which would be baked into the client
@@ -22,6 +39,57 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   // server. The editor's `beforeunload` guard reads this ref to warn ONLY when there is unsaved
   // work still in the pipeline, so leaving the page after everything is saved is friction-free.
   const hasUnsavedChangesRef = useRef(false);
+  // Last code confirmed by the server (initial load + every successful save). The offline
+  // cache records it as `baseCode` so the reconnect sync can detect server-side divergence.
+  const baseCodeRef = useRef("");
+
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline;
+  // Mirrored into a ref so `saveCode` reads connectivity at FIRE time — the user can go
+  // offline during the debounce window after an edit was scheduled. Kept in a committed
+  // effect (not render) so async save/sync callbacks only ever observe committed renders.
+  const isOfflineRef = useRef(false);
+  useEffect(() => {
+    isOfflineRef.current = isOffline;
+  }, [isOffline]);
+
+  // Latest committed code, read by async sync callbacks to detect whether the snapshot being
+  // replayed is still what's on screen (a newer edit mid-sync must not be clobbered).
+  const codeRef = useRef("");
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
+
+  const [offlinePending, setOfflinePending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [conflict, setConflict] = useState<OfflineConflict | null>(null);
+  const syncingRef = useRef(false);
+  // In-memory copy of the pending edit, retained even when localStorage persistence fails so the
+  // edit is still replayed on reconnect within the current session. Wiped on a successful sync.
+  const inMemoryPendingRef = useRef<OfflineEdit | null>(null);
+  // Bounded backoff counter for auto-retrying a cached edit when a network throw happened while
+  // `navigator.onLine` still reports online (so the isOnline-driven sync effect never re-fires).
+  const retryAttemptRef = useRef(0);
+  // Auto-retries pause while a conflict dialog is up (or was cancelled) so the backoff timer
+  // doesn't silently re-open the dialog or burn the retry budget without a network failure.
+  // Resumed on the next online transition (or an explicit conflict resolution, which clears
+  // the cache entirely).
+  const retryPausedRef = useRef(false);
+
+  // Settle a pending edit once the server is known to hold `pendingCode`. Clears the cache
+  // (persistent + in-memory), updates the base, clears the pending/dirty flags, and resets the
+  // retry budget so a fresh edit gets fresh attempts.
+  const settlePending = useCallback(
+    (pendingCode: string) => {
+      clearOfflineEdit(documentId);
+      inMemoryPendingRef.current = null;
+      baseCodeRef.current = pendingCode;
+      setOfflinePending(false);
+      hasUnsavedChangesRef.current = false;
+      retryAttemptRef.current = 0;
+    },
+    [documentId],
+  );
 
   const [svgContent, setSvgContent] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState("default");
@@ -112,6 +180,18 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
 
   // Fetch Initial Data
   useEffect(() => {
+    // Replay a cached offline edit over whatever state we have. Used on successful loads
+    // (the pending edit wins over the stale server copy; the sync-on-reconnect effect then
+    // auto-resolves or surfaces a conflict) and on failed loads (a fully offline reload
+    // must not blank the editor).
+    const restoreCachedEdit = (edit: OfflineEdit) => {
+      setCode(edit.pendingCode);
+      renderMermaid(edit.pendingCode);
+      baseCodeRef.current = edit.baseCode;
+      hasUnsavedChangesRef.current = true;
+      setOfflinePending(true);
+    };
+
     const fetchDoc = async () => {
       try {
         const startTime = Date.now();
@@ -121,25 +201,38 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
           setDoc(data);
           setCode(data.code);
           renderMermaid(data.code);
+          baseCodeRef.current = data.code;
           getTelemetry()?.addBreadcrumb({
             category: "editor",
             message: "Diagram loaded",
             data: { documentId },
           });
+          const cachedEdit = getOfflineEdit(documentId);
+          if (cachedEdit) restoreCachedEdit(cachedEdit);
         } else if (res.status === 404) {
           // The requested diagram does not exist — surface a dedicated not-found screen
-          // instead of silently rendering an empty editor.
+          // instead of silently rendering an empty editor. 404 wins over any cached edit.
           setNotFound(true);
         } else {
-          toast.error("Failed to load diagram");
+          const cachedEdit = getOfflineEdit(documentId);
+          if (cachedEdit) {
+            restoreCachedEdit(cachedEdit);
+          } else {
+            toast.error("Failed to load diagram");
+          }
         }
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime < 600) {
           await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
         }
       } catch {
-        toast.error("Failed to load diagram");
-        getTelemetry()?.captureMessage("Failed to load diagram", "error", { documentId });
+        const cachedEdit = getOfflineEdit(documentId);
+        if (cachedEdit) {
+          restoreCachedEdit(cachedEdit);
+        } else {
+          toast.error("Failed to load diagram");
+          getTelemetry()?.captureMessage("Failed to load diagram", "error", { documentId });
+        }
       } finally {
         setLoading(false);
       }
@@ -148,34 +241,101 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   }, [documentId, renderMermaid]);
 
   // Auto-Save Logic
+  const cacheOfflineEdit = useCallback(
+    (newCode: string) => {
+      const edit: OfflineEdit = {
+        diagramId: documentId,
+        baseCode: baseCodeRef.current,
+        pendingCode: newCode,
+        updatedAt: Date.now(),
+      };
+      // Always keep an in-memory copy so the edit survives even if localStorage is full/disabled;
+      // the persistent write is best-effort on top of it.
+      inMemoryPendingRef.current = edit;
+      saveOfflineEdit(edit);
+      retryAttemptRef.current = 0; // fresh edit → fresh retry budget
+      setOfflinePending(true);
+      hasUnsavedChangesRef.current = true;
+    },
+    [documentId],
+  );
+
   const saveCode = useCallback(
     async (newCode: string) => {
+      // Offline at fire time: cache locally instead of hitting the network; the
+      // sync-on-reconnect effect replays the cached edit once connectivity returns.
+      // `saving` is deliberately untouched — no request is in flight.
+      if (isOfflineRef.current) {
+        cacheOfflineEdit(newCode);
+        return;
+      }
       setSaving(true);
       try {
+        // Conditional update: `expectedCode` is the server state we last saw. A 409 means the
+        // server moved on — e.g. the user edited offline and reconnected within the debounce
+        // window, or another tab saved — so surface a conflict instead of silently clobbering
+        // the concurrent change.
         const res = await fetch(`/api/diagrams/${documentId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: newCode }),
+          body: JSON.stringify({ code: newCode, expectedCode: baseCodeRef.current }),
         });
-        if (!res.ok) throw new Error("Failed to save");
+        if (res.status === 409) {
+          const serverDoc = await res.json();
+          cacheOfflineEdit(newCode);
+          retryPausedRef.current = true;
+          setConflict({
+            baseCode: baseCodeRef.current,
+            pendingCode: newCode,
+            serverCode: serverDoc.code,
+          });
+          return;
+        }
+        if (!res.ok) {
+          // Server responded with an error — surface it, keep the dirty flag, do NOT
+          // cache as an offline edit (the server is reachable; this is not an outage).
+          toast.error("Failed to auto-save");
+          getTelemetry()?.captureMessage("Auto-save failed", "error", { documentId });
+          return;
+        }
 
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
-        hasUnsavedChangesRef.current = false;
+        baseCodeRef.current = newCode;
+        retryAttemptRef.current = 0;
+        if (codeRef.current === newCode) {
+          // This PUT carried the latest editor snapshot — safe to settle.
+          clearOfflineEdit(documentId);
+          inMemoryPendingRef.current = null;
+          setOfflinePending(false);
+          hasUnsavedChangesRef.current = false;
+        } else {
+          // A newer edit exists (an older PUT completed late) — keep the pending state and
+          // rebase the cached edit onto this newly confirmed server code so the pending sync
+          // applies cleanly instead of surfacing a stale-base conflict.
+          const cached = getOfflineEdit(documentId) ?? inMemoryPendingRef.current;
+          if (cached) {
+            const rebased: OfflineEdit = { ...cached, baseCode: newCode };
+            inMemoryPendingRef.current = rebased;
+            saveOfflineEdit(rebased);
+          }
+        }
         getTelemetry()?.addBreadcrumb({
           category: "editor",
           message: "Auto-save succeeded",
           data: { documentId },
         });
       } catch {
-        toast.error("Failed to auto-save");
-        getTelemetry()?.captureMessage("Auto-save failed", "error", { documentId });
+        // The request itself threw (network dropped mid-flight while the browser still
+        // reports online) — cache locally so the edit is never lost.
+        cacheOfflineEdit(newCode);
+        toast.error("Offline: changes saved locally and will sync when reconnected");
         // Keep the dirty flag set so the unload guard still protects the unsaved edit.
       } finally {
         setSaving(false);
       }
     },
-    [documentId],
+    [documentId, cacheOfflineEdit],
   );
 
   const handleCodeChange = useCallback(
@@ -201,6 +361,147 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     [renderMermaid, saveCode, isDemo],
   );
 
+  // Replay a cached offline edit against the server. Idempotent via `syncingRef`.
+  const syncPendingEdit = useCallback(async () => {
+    if (syncingRef.current) return;
+    // Prefer the persistent cache; fall back to the in-memory copy retained when
+    // localStorage persistence failed, so the edit is still replayed this session.
+    const edit = getOfflineEdit(documentId) ?? inMemoryPendingRef.current;
+    if (!edit) {
+      setOfflinePending(false);
+      return;
+    }
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      // Conditional PUT: the server rejects with 409 + its current doc when the base this
+      // edit was built on no longer matches — a single atomic check, no GET→PUT race window.
+      const putRes = await fetch(`/api/diagrams/${documentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: edit.pendingCode, expectedCode: edit.baseCode }),
+      });
+      if (putRes.ok) {
+        const updatedDoc = await putRes.json();
+        setDoc(updatedDoc);
+        // Only settle when the replayed snapshot is still the current edit. If the user made a
+        // newer edit during the sync, leave the cache, pending flag, and dirty flag intact so
+        // the newer edit is preserved and still protected by the unload guard.
+        if (codeRef.current === edit.pendingCode) {
+          settlePending(edit.pendingCode);
+          toast.success("Back online — your changes are synced");
+        }
+      } else if (putRes.status === 409) {
+        const serverDoc = await putRes.json();
+        const serverCode: string = serverDoc.code;
+        if (serverCode === edit.pendingCode) {
+          // A prior PUT already landed but its response was lost — the server holds our edit.
+          // Settle without re-PUTting, still guarded by the current-snapshot check.
+          setDoc(serverDoc);
+          if (codeRef.current === edit.pendingCode) {
+            settlePending(edit.pendingCode);
+            toast.success("Back online — your changes are synced");
+          }
+        } else {
+          // The server moved on since the cached base — surface a conflict instead of
+          // silently clobbering either side, and pause auto-retries so the dialog doesn't
+          // reopen behind the user's back while they read it.
+          retryPausedRef.current = true;
+          setConflict({ baseCode: edit.baseCode, pendingCode: edit.pendingCode, serverCode });
+        }
+      }
+      // Other non-ok statuses: server-side failure — keep the cache; retried on the next
+      // attempt. Silent by design.
+    } catch {
+      // Network error — keep the cache and pending flag; retried via backoff / next online
+      // transition. Silent by design.
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [documentId, settlePending]);
+
+  useEffect(() => {
+    // `loading` gate ensures the initial fetch has settled (and any cached edit was
+    // restored) before the first sync attempt runs.
+    if (isDemo || !isOnline || loading) return;
+    // A fresh online transition resumes auto-retries (they pause after a conflict is
+    // detected or cancelled — see the retry effect below).
+    retryPausedRef.current = false;
+    void syncPendingEdit();
+  }, [isDemo, isOnline, loading, syncPendingEdit]);
+
+  // Bounded backoff auto-retry. A save can throw while the browser still reports online (server
+  // recovering / transient blip) — the isOnline-driven effect above never re-fires in that case,
+  // so without this a cached edit could sit in "Pending sync" indefinitely. Retry with backoff
+  // while a pending edit exists, capped so a permanently-down server doesn't hammer forever.
+  // Depends on `syncing` so each completed failed attempt schedules the next backoff attempt.
+  // Paused while a conflict is pending (or was cancelled) — retried only on a new online
+  // transition or an explicit resolution.
+  useEffect(() => {
+    if (isDemo || !isOnline || loading || syncing) return;
+    if (conflict !== null || retryPausedRef.current) return;
+    const edit = getOfflineEdit(documentId) ?? inMemoryPendingRef.current;
+    if (!edit) return;
+    if (retryAttemptRef.current >= RETRY_MAX) return;
+    const delay = RETRY_BASE_MS * 2 ** retryAttemptRef.current;
+    retryAttemptRef.current += 1;
+    const t = setTimeout(() => void syncPendingEdit(), delay);
+    return () => clearTimeout(t);
+  }, [isDemo, isOnline, loading, syncing, conflict, documentId, offlinePending, syncPendingEdit]);
+
+  const resolveConflict = useCallback(
+    async (mode: "mine" | "server" | "cancel") => {
+      if (!conflict) return;
+      if (mode === "cancel") {
+        // Keep the cache and dirty flag so the next reconnect retries the sync.
+        setConflict(null);
+        return;
+      }
+      if (mode === "server") {
+        // The server already holds this code — adopt it locally, no PUT needed.
+        setCode(conflict.serverCode);
+        renderMermaid(conflict.serverCode);
+        clearOfflineEdit(documentId);
+        inMemoryPendingRef.current = null;
+        retryAttemptRef.current = 0;
+        baseCodeRef.current = conflict.serverCode;
+        setOfflinePending(false);
+        hasUnsavedChangesRef.current = false;
+        setDoc((prev) => (prev ? { ...prev, code: conflict.serverCode } : prev));
+        setConflict(null);
+        return;
+      }
+      try {
+        // Conditional on the server version the user just reviewed and chose to override: if
+        // yet another save landed in the meantime, re-surface the conflict with the fresher
+        // server copy instead of silently overwriting it.
+        const res = await fetch(`/api/diagrams/${documentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: conflict.pendingCode, expectedCode: conflict.serverCode }),
+        });
+        if (res.status === 409) {
+          const serverDoc = await res.json();
+          setConflict({ ...conflict, serverCode: serverDoc.code });
+          return;
+        }
+        if (!res.ok) throw new Error("Failed to resolve conflict");
+        const updatedDoc = await res.json();
+        setDoc(updatedDoc);
+        // Same current-snapshot guard as the auto-sync path: only settle when the resolved code
+        // is still what's on screen, so a newer edit made mid-request isn't clobbered.
+        if (codeRef.current === conflict.pendingCode) {
+          settlePending(conflict.pendingCode);
+        }
+        setConflict(null);
+      } catch {
+        toast.error("Failed to sync — still offline");
+      }
+    },
+    [conflict, documentId, renderMermaid, settlePending],
+  );
+
   return {
     doc,
     setDoc,
@@ -223,6 +524,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,
+    isOffline,
+    offlinePending,
+    syncing,
+    conflict,
+    resolveConflict,
   };
 }
 

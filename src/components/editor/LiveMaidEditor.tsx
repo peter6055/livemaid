@@ -62,6 +62,7 @@ import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -244,6 +245,8 @@ function pruneEmptySequenceBlocks(lines: string[]): string[] {
   return lines.filter((_, i) => !toRemove.has(i));
 }
 
+const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
+
 export function LiveMaidEditor({
   documentId,
   isDemo = false,
@@ -270,6 +273,11 @@ export function LiveMaidEditor({
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,
+    isOffline,
+    offlinePending,
+    syncing,
+    conflict,
+    resolveConflict,
   } = useEditorState(documentId, isDemo);
 
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -4242,6 +4250,10 @@ export function LiveMaidEditor({
   }, []);
 
   const handleDuplicate = () => {
+    if (isOffline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return null;
+    }
     if (!doc) return null;
 
     const token =
@@ -4263,6 +4275,10 @@ export function LiveMaidEditor({
   };
 
   const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
+    if (isOffline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (!payload.name.trim()) return;
     try {
       const res = await fetch("/api/diagrams", {
@@ -4297,6 +4313,10 @@ export function LiveMaidEditor({
   };
 
   const renameDiagram = async (name: string): Promise<boolean> => {
+    if (isOffline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return false;
+    }
     const trimmed = name.trim();
     if (!trimmed) return false;
     if (trimmed === doc?.name) return true;
@@ -4646,6 +4666,9 @@ export function LiveMaidEditor({
         folders={folders}
         currentType={currentType}
         saving={saving}
+        isOffline={isOffline}
+        offlinePending={offlinePending}
+        syncing={syncing}
         isDemo={IS_DEMO_MODE}
         onNavigate={handleNavigate}
         onDuplicate={handleDuplicate}
@@ -5481,6 +5504,73 @@ export function LiveMaidEditor({
             </Button>
             <Button onClick={handleRenameSubmit} className="bg-black text-white hover:bg-zinc-800">
               Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offline conflict dialog — the server changed while the user was offline. */}
+      <Dialog
+        open={conflict !== null}
+        onOpenChange={(open) => {
+          // Close button / Escape / backdrop all dismiss the dialog, keeping the cache and dirty
+          // flag so the next reconnect retries the sync.
+          if (!open) void resolveConflict("cancel");
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>This diagram changed while you were offline</DialogTitle>
+            <DialogDescription>
+              Someone saved a newer version. Choose which version to keep.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="min-w-0">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                Your offline version
+              </p>
+              <pre
+                data-testid="conflict-mine"
+                className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-3 font-mono text-xs"
+              >
+                {conflict?.pendingCode}
+              </pre>
+            </div>
+            <div className="min-w-0">
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                Current server version
+              </p>
+              <pre
+                data-testid="conflict-server"
+                className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-muted/40 p-3 font-mono text-xs"
+              >
+                {conflict?.serverCode}
+              </pre>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              disabled={syncing}
+              onClick={() => void resolveConflict("cancel")}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="outline"
+              disabled={syncing}
+              data-testid="conflict-keep-server"
+              onClick={() => void resolveConflict("server")}
+            >
+              Keep server
+            </Button>
+            <Button
+              disabled={syncing}
+              data-testid="conflict-keep-mine"
+              onClick={() => void resolveConflict("mine")}
+            >
+              Keep mine
             </Button>
           </DialogFooter>
         </DialogContent>

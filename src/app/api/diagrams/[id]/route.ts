@@ -46,16 +46,30 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const body = await request.json();
-    const nextStarred = typeof body.starred === "boolean" ? body.starred : existing.starred;
+
+    // Conditional update: code writes carry `expectedCode` — the server state the client last
+    // saw. If the server moved on since then, refuse with 409 + the current doc so the client
+    // can surface a conflict instead of silently clobbering a concurrent save. Metadata-only
+    // writes (rename/move/star) omit `expectedCode` and stay unconditional.
+    // ponytail: compare-then-write is atomic only within one server instance; a multi-instance
+    // deployment needs a real compare-and-swap inside the storage adapter.
+    if (typeof body.expectedCode === "string" && body.expectedCode !== existing.code) {
+      return NextResponse.json(existing, { status: 409 });
+    }
+
+    // `expectedCode` is a write precondition, not document data — never persist it.
+    const { expectedCode: _expectedCode, ...updates } = body;
+
+    const nextStarred = typeof updates.starred === "boolean" ? updates.starred : existing.starred;
     const nextStarredAt =
-      typeof body.starredAt === "string" || body.starredAt === null
-        ? body.starredAt
+      typeof updates.starredAt === "string" || updates.starredAt === null
+        ? updates.starredAt
         : existing.starredAt;
-    const requestedHistory = Array.isArray(body.versionHistory) ? body.versionHistory : null;
+    const requestedHistory = Array.isArray(updates.versionHistory) ? updates.versionHistory : null;
     const baseHistory = requestedHistory ?? existing.versionHistory ?? [];
 
     const nextVersionHistory =
-      typeof body.code === "string" && body.code !== existing.code
+      typeof updates.code === "string" && updates.code !== existing.code
         ? [
             {
               id: nanoid(),
@@ -78,7 +92,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     // Merge updates
     const updated = {
       ...existing,
-      ...body,
+      ...updates,
       id, // Protect ID
       updatedAt: new Date().toISOString(),
       starred: Boolean(nextStarred),
