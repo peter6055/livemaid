@@ -114,7 +114,8 @@ export function useSequenceSelection({
         const msgLine = getSequenceMessageLineByIndex(messageIndex);
         const colonIdx = msgLine?.indexOf(":") ?? -1;
         const label = colonIdx !== -1 && msgLine ? msgLine.substring(colonIdx + 1).trim() : "";
-        setEditingText(label.replace(/<br\s*\/?>/gi, "\n"));
+        // Keep <br/> as HTML for contentEditable (same as flowchart labels).
+        setEditingText(label.replace(/<br\s*\/?>/gi, "<br/>"));
         setIsInlineEditing(true);
         setTimeout(() => {
           if (inlineInputRef.current) {
@@ -173,7 +174,7 @@ export function useSequenceSelection({
 
       if (startInlineEdit) {
         const noteEntry = getSequenceNoteEntries(code)[index];
-        setEditingText((noteEntry?.text || "").replace(/<br\s*\/?>/gi, "\n"));
+        setEditingText((noteEntry?.text || "").replace(/<br\s*\/?>/gi, "<br/>"));
         setIsInlineEditing(true);
         setTimeout(() => {
           if (inlineInputRef.current) {

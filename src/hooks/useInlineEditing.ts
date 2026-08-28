@@ -204,7 +204,7 @@ export function useInlineEditing({
         const containerRect = container.getBoundingClientRect();
         const scale = containerRect.width / container.offsetWidth;
         const padX = 8;
-        const padY = 4;
+        const padY = 12;
         setSelectionBox({
           x: (r.left - containerRect.left + container.scrollLeft) / scale - padX,
           y: (r.top - containerRect.top + container.scrollTop) / scale - padY,
@@ -213,9 +213,9 @@ export function useInlineEditing({
         });
         setTextBox({
           x: (r.left - containerRect.left + container.scrollLeft) / scale,
-          y: (r.top - containerRect.top + container.scrollTop) / scale,
+          y: (r.top - containerRect.top + container.scrollTop) / scale - padY / 3,
           width: r.width / scale,
-          height: r.height / scale,
+          height: r.height / scale + padY,
         });
         setSelectedNodeIdWithRef(blockNodeId);
         setSelectedSvgIdWithRef(null);
@@ -368,12 +368,14 @@ export function useInlineEditing({
         const msgLines = getSequenceMessageEntries(code).map((entry) => entry.line);
         if (msgLines[idx]) {
           const colonIdx = msgLines[idx].indexOf(":");
+          // Keep <br/> as HTML so contentEditable round-trips without injecting
+          // literal newlines into Mermaid source on save.
           currentText =
             colonIdx !== -1
               ? msgLines[idx]
                   .substring(colonIdx + 1)
                   .trim()
-                  .replace(/<br\s*\/?>/gi, "\n")
+                  .replace(/<br\s*\/?>/gi, "<br/>")
               : "";
         }
       } else if (targetNodeId.startsWith("SEQ_NOTE_")) {
@@ -389,12 +391,12 @@ export function useInlineEditing({
               ? noteLines[idx]
                   .substring(colonIdx + 1)
                   .trim()
-                  .replace(/<br\s*\/?>/gi, "\n")
+                  .replace(/<br\s*\/?>/gi, "<br/>")
               : "";
         }
       } else if (targetNodeId.startsWith("SEQ_")) {
         currentText = targetNodeId.replace("SEQ_", "");
-        currentText = currentText.replace(/<br\/>/g, "\n");
+        currentText = currentText.replace(/<br\s*\/?>/gi, "<br/>");
       } else if (targetNodeId.startsWith("TIMELINE_")) {
         // Timeline event/period/section label — resolve directly from the parsed model
         // (the SVG group carries no stable id, so source-based label lookup is the

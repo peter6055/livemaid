@@ -270,17 +270,22 @@ export function normalizeHtmlForMermaid(html: string): string {
   // is repeated until stable so incomplete multi-character sanitization cannot
   // reintroduce previously stripped markup.
   let value = sanitizeHtml(html)
-    // Replace opening block elements with their style attribute (if any)
+    // Opening block elements mark a new line in contentEditable (Enter).
+    // Convert them to <br/> so Mermaid gets a real line break; keep text-align
+    // wrappers when present. Closing tags are structural only and become "".
     .replace(/<(div|p|h[1-6]|li|blockquote)([^>]*)>/gi, (_match, _tag, attrs) => {
       // Extract text-align style if present
       const styleMatch = attrs.match(/style\s*=\s*["']([^"']*text-align[^"']*)["']/i);
       if (styleMatch) {
         return `<div style="${styleMatch[1]}">`;
       }
-      return "";
+      return "<br/>";
     })
-    // Convert closing block elements to <br/>
-    .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "<br/>")
+    // Drop closing block elements (line break already emitted on open)
+    .replace(/<\/(div|p|h[1-6]|li|blockquote)[^>]*>/gi, "")
+    // Literal newlines (from seeding <br>→\n into contentEditable, or paste)
+    // must become Mermaid <br/> — a raw \n would split the diagram source line.
+    .replace(/\r\n|\r|\n/g, "<br/>")
     // Remove <br> that the browser added at word-boundary characters (/, -, .)
     // These are visual line wraps, not intentional line breaks
     .replace(/([/\-.])<br\s*\/?>/gi, "$1")

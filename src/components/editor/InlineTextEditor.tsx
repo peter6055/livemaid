@@ -259,7 +259,7 @@ export function InlineTextEditor({
     const el = inlineInputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const minHeight = Math.max(textBox.height * scale, 24);
+    const minHeight = Math.max(textBox.height * scale, 64);
     el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
     // getBoundingClientRect includes the CSS scale() transform, so divide
     // by the current zoom to get the unscaled height used for positioning.
@@ -312,8 +312,8 @@ export function InlineTextEditor({
   // covers the same CSS pixels as the underlying SVG node.
   // We no longer expand the width to fit the longest line; that prevents the editor from
   // showing the same line breaks Mermaid will render.
-  const targetVisualWidth = Math.max(textBox.width * scale, 24);
-  const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 24);
+  const targetVisualWidth = Math.max(textBox.width * scale, 120);
+  const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 64);
 
   const isDark = theme === "dark";
 
@@ -454,7 +454,7 @@ export function InlineTextEditor({
         ref={inlineInputRef}
         contentEditable
         suppressContentEditableWarning
-        className={`absolute pointer-events-auto resize-none outline-none border border-indigo-500/50 rounded-lg text-center font-sans font-medium z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white cursor-text ${isDark ? "bg-[#1c1c21]" : "bg-white"}`}
+        className={`absolute pointer-events-auto resize-none outline-none ${selectedSvgId ? "border border-indigo-500/50" : ""} rounded-lg text-center font-sans font-medium z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white cursor-text ${isDark ? "bg-[#1c1c21]" : "bg-white"}`}
         onInput={handleInput}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {

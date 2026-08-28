@@ -112,6 +112,17 @@ describe("normalizeHtmlForMermaid", () => {
     expect(normalizeHtmlForMermaid("<div>Line 1</div><div>Line 2</div>")).toBe("Line 1<br/>Line 2");
   });
 
+  it("converts inline Enter (text then div) to br between lines", () => {
+    // contentEditable produces "Hello<div>World</div>" when the user presses Enter
+    // after typing on the first line — opening <div> must become <br/>, not "".
+    expect(normalizeHtmlForMermaid("Hello<div>World</div>")).toBe("Hello<br/>World");
+  });
+
+  it("converts literal newlines to br", () => {
+    expect(normalizeHtmlForMermaid("Hello\nWorld")).toBe("Hello<br/>World");
+    expect(normalizeHtmlForMermaid("Hello\r\nWorld")).toBe("Hello<br/>World");
+  });
+
   it("converts p tags to br", () => {
     expect(normalizeHtmlForMermaid("<p>Paragraph 1</p><p>Paragraph 2</p>")).toBe(
       "Paragraph 1<br/>Paragraph 2",
