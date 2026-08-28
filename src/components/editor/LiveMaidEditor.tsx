@@ -2814,6 +2814,33 @@ export function LiveMaidEditor({
       let newCode = code;
       const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m");
       const match = newCode.match(styleRegex);
+
+      // Toggle-off: an empty value removes that single property; if that empties the whole
+      // style line, the entire `style <id>` line is removed (no style line → do nothing).
+      if (value === "") {
+        if (!match) return;
+        const propRegex = new RegExp(`${property}:[^,]+`);
+        let styleProps = match[1];
+        if (propRegex.test(styleProps)) {
+          styleProps = styleProps
+            .replace(propRegex, "")
+            .replace(/^,\s*/, "")
+            .replace(/,\s*$/, "")
+            .replace(/,\s*,/, ",")
+            .trim();
+        }
+        if (!styleProps) {
+          newCode = newCode
+            .split("\n")
+            .filter((line) => !styleRegex.test(line))
+            .join("\n");
+        } else {
+          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+        }
+        handleCodeChange(newCode);
+        return;
+      }
+
       if (match) {
         let styleProps = match[1];
         const propRegex = new RegExp(`${property}:[^,]+`);
@@ -2953,8 +2980,8 @@ export function LiveMaidEditor({
         if (getStyleVal("font-style")) {
           handleUpdateStyle("font-style", "normal");
         }
-      } else if (format === "color" && colorValue) {
-        handleUpdateStyle("color", colorValue);
+      } else if (format === "color") {
+        handleUpdateStyle("color", colorValue ?? "");
       }
     },
     [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic],

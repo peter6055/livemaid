@@ -7,15 +7,14 @@ export const FONT_OPTIONS = [
   { label: "Source Code Pro", value: '"Source Code Pro Variable", monospace' },
 ];
 
-export const PRESET_COLORS = [
-  { name: "Red", value: "#ef4444" },
-  { name: "Orange", value: "#f97316" },
-  { name: "Yellow", value: "#eab308" },
-  { name: "Green", value: "#22c55e" },
-  { name: "Blue", value: "#3b82f6" },
-  { name: "Indigo", value: "#6366f1" },
-  { name: "Purple", value: "#a855f7" },
-  { name: "Pink", value: "#ec4899" },
-  { name: "Slate", value: "#64748b" },
-  { name: "Transparent", value: "transparent" },
+export const COLOR_FAMILIES = [
+  { name: "Salmon", strong: "#ef6351", light: "#ffe3dc" },
+  { name: "Sand", strong: "#b98a2f", light: "#f6ecd4" },
+  { name: "Kelp", strong: "#4d7c43", light: "#e2f0e0" },
+  { name: "Lagoon", strong: "#0e9aa7", light: "#d5f1f4" },
+  { name: "Harbor", strong: "#2274a5", light: "#d8ecf7" },
+  { name: "Deep", strong: "#3d5a80", light: "#dce6f5" },
+  { name: "Urchin", strong: "#7c5cbf", light: "#e9e2f8" },
+  { name: "Shell", strong: "#c2557e", light: "#fbe0ec" },
+  { name: "Drift", strong: "#64748b", light: "#eef2f6" },
 ];

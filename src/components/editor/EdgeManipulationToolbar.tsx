@@ -6,7 +6,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Palette, Sliders, MoveRight, Edit3, Trash2, Play } from "lucide-react";
-import { PRESET_COLORS } from "@/lib/diagrams/constants";
+import { COLOR_FAMILIES } from "@/lib/diagrams/constants";
 import {
   parseConnectorStyle,
   getLinkIndex,
@@ -234,14 +234,14 @@ export function EdgeManipulationToolbar({
             side="top"
             sideOffset={10}
           >
-            {PRESET_COLORS.map((c) => {
-              const isSelected = activeColor.toLowerCase() === c.value.toLowerCase();
+            {COLOR_FAMILIES.map((c) => {
+              const isSelected = activeColor.toLowerCase() === c.strong.toLowerCase();
               return (
                 <button
                   key={c.name}
-                  onClick={() => onUpdateColor(c.value)}
+                  onClick={() => onUpdateColor(c.strong)}
                   className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? "ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background" : ""}`}
-                  style={{ backgroundColor: c.value }}
+                  style={{ backgroundColor: c.strong }}
                   title={c.name}
                 />
               );
