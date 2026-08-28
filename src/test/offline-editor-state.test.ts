@@ -62,7 +62,11 @@ const net = {
   // server-responded failure mode for PUT (non-ok status), distinct from a network throw
   failPutStatus: null as number | null,
   serverDoc: null as Record<string, unknown> | null,
-  putBodies: [] as Array<{ code: string }>,
+  putBodies: [] as Array<{ code: string; expectedCode?: string }>,
+  // When true, PUT responses are held until `releasePuts()` — models an older PUT completing
+  // after a newer save has already failed and cached its code.
+  holdPut: false,
+  gatedPuts: [] as Array<() => void>,
 };
 
 function makeDoc(code: string): Record<string, unknown> {
@@ -85,10 +89,18 @@ function makeResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response;
 }
 
+/** Releases every PUT the server is holding (see `net.holdPut`). */
+function releasePuts(): void {
+  const resolvers = net.gatedPuts.splice(0);
+  resolvers.forEach((r) => r());
+}
+
 function installFetch(initialCode: string): void {
   net.serverDoc = makeDoc(initialCode);
   net.putBodies = [];
   net.failPutStatus = null;
+  net.holdPut = false;
+  net.gatedPuts = [];
   const fetchMock = vi.fn(async (url: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     if (net.offline) throw new TypeError("Failed to fetch");
     if (String(url) !== STORAGE_URL) throw new Error(`unexpected url: ${String(url)}`);
@@ -98,10 +110,22 @@ function installFetch(initialCode: string): void {
       if (net.failPutStatus !== null) {
         return makeResponse({ error: "boom" }, false, net.failPutStatus);
       }
-      const body = JSON.parse(String(init?.body)) as { code: string };
-      net.putBodies.push(body);
-      net.serverDoc = { ...net.serverDoc, code: body.code };
-      return makeResponse(net.serverDoc);
+      const body = JSON.parse(String(init?.body)) as { code: string; expectedCode?: string };
+      // Mirrors the real route's conditional update: a code write whose expectedCode no longer
+      // matches the stored code is rejected with 409 + the current doc.
+      const apply = (): Response => {
+        const server = net.serverDoc as Record<string, unknown>;
+        if (typeof body.expectedCode === "string" && body.expectedCode !== server.code) {
+          return makeResponse(server, false, 409);
+        }
+        net.putBodies.push(body);
+        net.serverDoc = { ...server, code: body.code };
+        return makeResponse(net.serverDoc);
+      };
+      if (net.holdPut) {
+        return new Promise<Response>((resolve) => net.gatedPuts.push(() => resolve(apply())));
+      }
+      return apply();
     }
     throw new Error(`unexpected method: ${method}`);
   });
@@ -185,7 +209,7 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     });
     await flush(1600);
 
-    expect(net.putBodies).toEqual([{ code: "V2" }]);
+    expect(net.putBodies).toEqual([{ code: "V2", expectedCode: "SERVER_V1" }]);
     expect(result.current.doc?.code).toBe("V2");
     expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
     expect(result.current.offlinePending).toBe(false);
@@ -235,7 +259,7 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     });
     await flush(200);
 
-    expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+    expect(net.putBodies).toEqual([{ code: "PENDING", expectedCode: "BASE" }]);
     expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
     expect(result.current.offlinePending).toBe(false);
     expect(result.current.hasUnsavedChangesRef.current).toBe(false);
@@ -290,7 +314,7 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     });
     await flush(200);
 
-    expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+    expect(net.putBodies).toEqual([{ code: "PENDING", expectedCode: "CHANGED_ON_SERVER" }]);
     expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
     expect(result.current.conflict).toBeNull();
     expect(result.current.offlinePending).toBe(false);
@@ -361,7 +385,7 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
       });
       await flush(200);
 
-      expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+      expect(net.putBodies).toEqual([{ code: "PENDING", expectedCode: "BASE" }]);
       expect(result.current.hasUnsavedChangesRef.current).toBe(false);
     } finally {
       Object.defineProperty(window, "localStorage", { value: original, configurable: true });
@@ -393,7 +417,7 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     await flush(200);
 
     // PENDING was pushed to the server and the conflict dismissed...
-    expect(net.putBodies).toEqual([{ code: "PENDING" }]);
+    expect(net.putBodies).toEqual([{ code: "PENDING", expectedCode: "CHANGED_ON_SERVER" }]);
     expect(result.current.conflict).toBeNull();
     expect(result.current.doc?.code).toBe("PENDING");
     // ...but the newer local edit is preserved and still protected by the unload guard.
@@ -446,10 +470,97 @@ describe("useEditorState offline editing + sync-on-reconnect", () => {
     net.offline = false;
     await flush(2500); // first retry fires at 2s
 
-    expect(net.putBodies).toEqual([{ code: "V_THROW" }]);
+    expect(net.putBodies).toEqual([{ code: "V_THROW", expectedCode: "SERVER_V1" }]);
     expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
     expect(result.current.offlinePending).toBe(false);
     expect(result.current.hasUnsavedChangesRef.current).toBe(false);
     expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Back online — your changes are synced");
+  });
+
+  it("surfaces a conflict when an offline edit reconnects within the debounce window (server changed during the outage)", async () => {
+    installFetch("SERVER_V1");
+    const { result } = await loadDoc();
+
+    act(() => {
+      setBrowserOnline(false);
+    });
+    act(() => {
+      result.current.handleCodeChange("OFFLINE_V1");
+    });
+    // Reconnect BEFORE the debounce fires — no cache entry exists yet, so the save goes out
+    // as a normal (conditional) PUT, which the server must reject because it moved on.
+    net.serverDoc = makeDoc("CHANGED_ON_SERVER");
+    act(() => {
+      setBrowserOnline(true);
+    });
+    await flush(1600);
+
+    expect(result.current.conflict).toEqual({
+      baseCode: "SERVER_V1",
+      pendingCode: "OFFLINE_V1",
+      serverCode: "CHANGED_ON_SERVER",
+    });
+    expect(net.putBodies).toHaveLength(0); // rejected 409 — never recorded as a save
+    expect(net.serverDoc.code).toBe("CHANGED_ON_SERVER"); // server not clobbered
+    expect(result.current.hasUnsavedChangesRef.current).toBe(true);
+    expect(result.current.code).toBe("OFFLINE_V1");
+  });
+
+  it("preserves and rebases a newer cached edit when an older PUT completes late", async () => {
+    installFetch("SERVER_V1");
+    const { result } = await loadDoc();
+
+    // Save #1 ("V2") goes out but the server holds its response.
+    net.holdPut = true;
+    act(() => {
+      result.current.handleCodeChange("V2");
+    });
+    await flush(1500);
+    expect(net.gatedPuts).toHaveLength(1);
+
+    // Save #2 ("V3") fires while #1 is in flight; the network throws so V3 is cached.
+    act(() => {
+      net.offline = true;
+    });
+    act(() => {
+      result.current.handleCodeChange("V3");
+    });
+    await flush(1600);
+    expect(getOfflineEdit(DIAGRAM_ID)).toEqual({
+      diagramId: DIAGRAM_ID,
+      baseCode: "SERVER_V1",
+      pendingCode: "V3",
+      updatedAt: expect.any(Number),
+    });
+
+    // The older PUT now completes — it must NOT wipe the newer cached edit.
+    act(() => {
+      net.offline = false;
+      net.holdPut = false; // only save #1 was gated — later PUTs must go through
+      releasePuts();
+    });
+    await flush(200);
+
+    expect((net.serverDoc as Record<string, unknown>).code).toBe("V2"); // save #1 landed
+    expect(result.current.code).toBe("V3"); // editor untouched
+    expect(result.current.hasUnsavedChangesRef.current).toBe(true);
+    expect(result.current.offlinePending).toBe(true);
+    expect(getOfflineEdit(DIAGRAM_ID)).toEqual({
+      diagramId: DIAGRAM_ID,
+      baseCode: "V2", // rebased onto the newly confirmed server code
+      pendingCode: "V3",
+      updatedAt: expect.any(Number),
+    });
+
+    // The backoff retry then replays the rebased edit cleanly — no conflict.
+    await flush(2500);
+    expect(net.putBodies).toEqual([
+      { code: "V2", expectedCode: "SERVER_V1" },
+      { code: "V3", expectedCode: "V2" },
+    ]);
+    expect(getOfflineEdit(DIAGRAM_ID)).toBeNull();
+    expect(result.current.offlinePending).toBe(false);
+    expect(result.current.hasUnsavedChangesRef.current).toBe(false);
+    expect(result.current.conflict).toBeNull();
   });
 });

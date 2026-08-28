@@ -70,6 +70,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   // Bounded backoff counter for auto-retrying a cached edit when a network throw happened while
   // `navigator.onLine` still reports online (so the isOnline-driven sync effect never re-fires).
   const retryAttemptRef = useRef(0);
+  // Auto-retries pause while a conflict dialog is up (or was cancelled) so the backoff timer
+  // doesn't silently re-open the dialog or burn the retry budget without a network failure.
+  // Resumed on the next online transition (or an explicit conflict resolution, which clears
+  // the cache entirely).
+  const retryPausedRef = useRef(false);
 
   // Settle a pending edit once the server is known to hold `pendingCode`. Clears the cache
   // (persistent + in-memory), updates the base, clears the pending/dirty flags, and resets the
@@ -266,11 +271,26 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
       }
       setSaving(true);
       try {
+        // Conditional update: `expectedCode` is the server state we last saw. A 409 means the
+        // server moved on — e.g. the user edited offline and reconnected within the debounce
+        // window, or another tab saved — so surface a conflict instead of silently clobbering
+        // the concurrent change.
         const res = await fetch(`/api/diagrams/${documentId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: newCode }),
+          body: JSON.stringify({ code: newCode, expectedCode: baseCodeRef.current }),
         });
+        if (res.status === 409) {
+          const serverDoc = await res.json();
+          cacheOfflineEdit(newCode);
+          retryPausedRef.current = true;
+          setConflict({
+            baseCode: baseCodeRef.current,
+            pendingCode: newCode,
+            serverCode: serverDoc.code,
+          });
+          return;
+        }
         if (!res.ok) {
           // Server responded with an error — surface it, keep the dirty flag, do NOT
           // cache as an offline edit (the server is reachable; this is not an outage).
@@ -281,12 +301,25 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
 
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
-        clearOfflineEdit(documentId);
-        inMemoryPendingRef.current = null;
-        retryAttemptRef.current = 0;
-        setOfflinePending(false);
         baseCodeRef.current = newCode;
-        hasUnsavedChangesRef.current = false;
+        retryAttemptRef.current = 0;
+        if (codeRef.current === newCode) {
+          // This PUT carried the latest editor snapshot — safe to settle.
+          clearOfflineEdit(documentId);
+          inMemoryPendingRef.current = null;
+          setOfflinePending(false);
+          hasUnsavedChangesRef.current = false;
+        } else {
+          // A newer edit exists (an older PUT completed late) — keep the pending state and
+          // rebase the cached edit onto this newly confirmed server code so the pending sync
+          // applies cleanly instead of surfacing a stale-base conflict.
+          const cached = getOfflineEdit(documentId) ?? inMemoryPendingRef.current;
+          if (cached) {
+            const rebased: OfflineEdit = { ...cached, baseCode: newCode };
+            inMemoryPendingRef.current = rebased;
+            saveOfflineEdit(rebased);
+          }
+        }
         getTelemetry()?.addBreadcrumb({
           category: "editor",
           message: "Auto-save succeeded",
@@ -341,43 +374,47 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     syncingRef.current = true;
     setSyncing(true);
     try {
-      const res = await fetch(`/api/diagrams/${documentId}`);
-      if (!res.ok) return;
-      const serverDoc = await res.json();
-      const serverCode: string = serverDoc.code;
-      if (serverCode === edit.pendingCode) {
-        // A prior PUT already landed but its response was lost — the server holds our edit.
-        // Settle without re-PUTting, still guarded by the current-snapshot check below.
+      // Conditional PUT: the server rejects with 409 + its current doc when the base this
+      // edit was built on no longer matches — a single atomic check, no GET→PUT race window.
+      const putRes = await fetch(`/api/diagrams/${documentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: edit.pendingCode, expectedCode: edit.baseCode }),
+      });
+      if (putRes.ok) {
+        const updatedDoc = await putRes.json();
+        setDoc(updatedDoc);
+        // Only settle when the replayed snapshot is still the current edit. If the user made a
+        // newer edit during the sync, leave the cache, pending flag, and dirty flag intact so
+        // the newer edit is preserved and still protected by the unload guard.
         if (codeRef.current === edit.pendingCode) {
           settlePending(edit.pendingCode);
           toast.success("Back online — your changes are synced");
         }
-        return;
+      } else if (putRes.status === 409) {
+        const serverDoc = await putRes.json();
+        const serverCode: string = serverDoc.code;
+        if (serverCode === edit.pendingCode) {
+          // A prior PUT already landed but its response was lost — the server holds our edit.
+          // Settle without re-PUTting, still guarded by the current-snapshot check.
+          setDoc(serverDoc);
+          if (codeRef.current === edit.pendingCode) {
+            settlePending(edit.pendingCode);
+            toast.success("Back online — your changes are synced");
+          }
+        } else {
+          // The server moved on since the cached base — surface a conflict instead of
+          // silently clobbering either side, and pause auto-retries so the dialog doesn't
+          // reopen behind the user's back while they read it.
+          retryPausedRef.current = true;
+          setConflict({ baseCode: edit.baseCode, pendingCode: edit.pendingCode, serverCode });
+        }
       }
-      if (serverCode !== edit.baseCode) {
-        // The server moved on since the cached base — surface a conflict instead of
-        // silently clobbering either side.
-        setConflict({ baseCode: edit.baseCode, pendingCode: edit.pendingCode, serverCode });
-        return;
-      }
-      const putRes = await fetch(`/api/diagrams/${documentId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: edit.pendingCode }),
-      });
-      if (!putRes.ok) return;
-      const updatedDoc = await putRes.json();
-      setDoc(updatedDoc);
-      // Only settle when the replayed snapshot is still the current edit. If the user made a
-      // newer edit during the sync, leave the cache, pending flag, and dirty flag intact so the
-      // newer edit is preserved and still protected by the unload guard.
-      if (codeRef.current === edit.pendingCode) {
-        settlePending(edit.pendingCode);
-        toast.success("Back online — your changes are synced");
-      }
+      // Other non-ok statuses: server-side failure — keep the cache; retried on the next
+      // attempt. Silent by design.
     } catch {
-      // Offline again / network error — keep the cache and pending flag; retried on the
-      // next online transition. Silent by design.
+      // Network error — keep the cache and pending flag; retried via backoff / next online
+      // transition. Silent by design.
     } finally {
       syncingRef.current = false;
       setSyncing(false);
@@ -388,6 +425,9 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     // `loading` gate ensures the initial fetch has settled (and any cached edit was
     // restored) before the first sync attempt runs.
     if (isDemo || !isOnline || loading) return;
+    // A fresh online transition resumes auto-retries (they pause after a conflict is
+    // detected or cancelled — see the retry effect below).
+    retryPausedRef.current = false;
     void syncPendingEdit();
   }, [isDemo, isOnline, loading, syncPendingEdit]);
 
@@ -396,8 +436,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   // so without this a cached edit could sit in "Pending sync" indefinitely. Retry with backoff
   // while a pending edit exists, capped so a permanently-down server doesn't hammer forever.
   // Depends on `syncing` so each completed failed attempt schedules the next backoff attempt.
+  // Paused while a conflict is pending (or was cancelled) — retried only on a new online
+  // transition or an explicit resolution.
   useEffect(() => {
     if (isDemo || !isOnline || loading || syncing) return;
+    if (conflict !== null || retryPausedRef.current) return;
     const edit = getOfflineEdit(documentId) ?? inMemoryPendingRef.current;
     if (!edit) return;
     if (retryAttemptRef.current >= RETRY_MAX) return;
@@ -405,7 +448,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     retryAttemptRef.current += 1;
     const t = setTimeout(() => void syncPendingEdit(), delay);
     return () => clearTimeout(t);
-  }, [isDemo, isOnline, loading, syncing, documentId, offlinePending, syncPendingEdit]);
+  }, [isDemo, isOnline, loading, syncing, conflict, documentId, offlinePending, syncPendingEdit]);
 
   const resolveConflict = useCallback(
     async (mode: "mine" | "server" | "cancel") => {
@@ -430,11 +473,19 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
         return;
       }
       try {
+        // Conditional on the server version the user just reviewed and chose to override: if
+        // yet another save landed in the meantime, re-surface the conflict with the fresher
+        // server copy instead of silently overwriting it.
         const res = await fetch(`/api/diagrams/${documentId}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code: conflict.pendingCode }),
+          body: JSON.stringify({ code: conflict.pendingCode, expectedCode: conflict.serverCode }),
         });
+        if (res.status === 409) {
+          const serverDoc = await res.json();
+          setConflict({ ...conflict, serverCode: serverDoc.code });
+          return;
+        }
         if (!res.ok) throw new Error("Failed to resolve conflict");
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
