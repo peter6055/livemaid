@@ -30,6 +30,7 @@ import {
   LayoutDashboard,
   Repeat2,
   Code2,
+  WifiOff,
 } from "lucide-react";
 import { getDiagramCapability } from "@/lib/diagrams/catalog";
 import { diagramTypeLabel } from "@/lib/diagrams/utils";
@@ -38,6 +39,9 @@ interface EditorHeaderProps {
   doc: DiagramDocument | null;
   folders?: Folder[];
   saving: boolean;
+  isOffline?: boolean;
+  offlinePending?: boolean;
+  syncing?: boolean;
   isDemo?: boolean;
   onNavigate: (url: string, message: string) => void;
   onDuplicate: () => string | null;
@@ -54,6 +58,9 @@ export function EditorHeader({
   doc,
   folders = [],
   saving,
+  isOffline = false,
+  offlinePending = false,
+  syncing = false,
   isDemo = false,
   onNavigate,
   onDuplicate,
@@ -403,10 +410,28 @@ export function EditorHeader({
             </svg>
             Read Only
           </span>
+        ) : isOffline ? (
+          <span
+            className="flex items-center text-amber-600 dark:text-amber-400"
+            title="Edits are kept on this device and will sync when you reconnect"
+            data-testid="offline-indicator"
+          >
+            <WifiOff className="w-4 h-4 mr-1.5" />
+            Disconnected — saved locally
+          </span>
+        ) : syncing ? (
+          <span className="flex items-center text-muted-foreground" data-testid="syncing-indicator">
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            Syncing...
+          </span>
         ) : saving ? (
           <span className="flex items-center text-muted-foreground">
             <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Saving...
+          </span>
+        ) : offlinePending ? (
+          <span className="flex items-center text-muted-foreground" data-testid="pending-indicator">
+            Pending sync
           </span>
         ) : (
           <span className="flex items-center text-emerald-600">

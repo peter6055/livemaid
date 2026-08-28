@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -73,6 +74,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 // new folders inherit the current folder as parent and the folder "Move to" menu reappears.
 const ALLOW_NESTED_FOLDERS = false;
 
+const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
+
 export default function Dashboard({
   isDemo = false,
   appVersion,
@@ -96,6 +99,7 @@ export default function Dashboard({
   const closeSettings = () => setSettingsOpen(false);
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const isOnline = useOnlineStatus();
   const { prefs: userPrefs, hydrated, update: setUserPref } = useUserPreferences();
   const { viewMode, sortBy, currentFolderId: savedFolderId } = userPrefs;
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
@@ -250,6 +254,10 @@ export default function Dashboard({
   };
 
   const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (!payload.name.trim()) return;
     setIsCreateOpen(false);
 
@@ -282,6 +290,10 @@ export default function Dashboard({
   };
 
   const handleDeleteConfirm = async () => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     setIsDeleteOpen(false);
     try {
       const res = await fetch(`/api/diagrams/${deleteId}`, { method: "DELETE" });
@@ -300,6 +312,10 @@ export default function Dashboard({
   };
 
   const handleRenameSubmit = async () => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (!renameName.trim()) return;
     setIsRenameOpen(false);
 
@@ -330,6 +346,10 @@ export default function Dashboard({
   };
 
   const handleCreateFolderSubmit = async () => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (!createFolderName.trim()) return;
     setIsCreateFolderOpen(false);
     try {
@@ -359,6 +379,10 @@ export default function Dashboard({
   };
 
   const handleRenameFolderSubmit = async () => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (!renameFolderName.trim()) return;
     setIsRenameFolderOpen(false);
     try {
@@ -383,6 +407,10 @@ export default function Dashboard({
   };
 
   const handleDeleteFolderConfirm = async () => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     setIsDeleteFolderOpen(false);
     try {
       const res = await fetch(`/api/folders/${deleteFolderId}`, { method: "DELETE" });
@@ -396,6 +424,10 @@ export default function Dashboard({
   };
 
   const handleMoveFolder = async (id: string, parentId: string | null) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     try {
       const res = await fetch(`/api/folders/${id}`, {
         method: "PUT",
@@ -414,6 +446,10 @@ export default function Dashboard({
   };
 
   const handleMoveDiagram = async (id: string, folderId: string | null) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     try {
       const res = await fetch(`/api/diagrams/${id}`, {
         method: "PUT",
@@ -432,6 +468,10 @@ export default function Dashboard({
   };
 
   const handleDuplicateDiagram = async (id: string) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (isDemo) {
       toast.info("Demo mode — this is read only, changes won't be saved");
       return;
@@ -463,6 +503,10 @@ export default function Dashboard({
   };
 
   const handleToggleDiagramStar = async (id: string, starred: boolean) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (isDemo) {
       toast.info("Demo mode — this is read only, changes won't be saved");
       return;
@@ -486,6 +530,10 @@ export default function Dashboard({
   };
 
   const handleToggleFolderStar = async (id: string, starred: boolean) => {
+    if (!isOnline) {
+      toast.error(OFFLINE_ACTION_MESSAGE);
+      return;
+    }
     if (isDemo) {
       toast.info("Demo mode — this is read only, changes won't be saved");
       return;

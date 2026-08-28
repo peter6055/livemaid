@@ -4,9 +4,23 @@ import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import mermaid from "mermaid";
 import { FONT_OPTIONS } from "@/lib/diagrams/constants";
+import {
+  saveOfflineEdit,
+  getOfflineEdit,
+  clearOfflineEdit,
+  type OfflineEdit,
+} from "@/lib/offlineStorage";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 
 const DEBOUNCE_MS = 1500;
 const VALID_MERMAID_THEMES = new Set(["default", "forest", "dark", "neutral", "base", "redux"]);
+
+// Server vs local divergence detected when replaying a cached offline edit on reconnect.
+export interface OfflineConflict {
+  baseCode: string;
+  pendingCode: string;
+  serverCode: string;
+}
 
 // `isDemo` is passed in from the (runtime-rendered) editor page rather than read
 // from `process.env.NEXT_PUBLIC_DEMO_MODE`, which would be baked into the client
@@ -22,6 +36,24 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   // server. The editor's `beforeunload` guard reads this ref to warn ONLY when there is unsaved
   // work still in the pipeline, so leaving the page after everything is saved is friction-free.
   const hasUnsavedChangesRef = useRef(false);
+  // Last code confirmed by the server (initial load + every successful save). The offline
+  // cache records it as `baseCode` so the reconnect sync can detect server-side divergence.
+  const baseCodeRef = useRef("");
+
+  const isOnline = useOnlineStatus();
+  const isOffline = !isOnline;
+  // Mirrored into a ref so `saveCode` reads connectivity at FIRE time — the user can go
+  // offline during the debounce window after an edit was scheduled.
+  const isOfflineRef = useRef(false);
+  isOfflineRef.current = isOffline;
+
+  const codeRef = useRef("");
+  codeRef.current = code;
+
+  const [offlinePending, setOfflinePending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [conflict, setConflict] = useState<OfflineConflict | null>(null);
+  const syncingRef = useRef(false);
 
   const [svgContent, setSvgContent] = useState<string>("");
   const [currentTheme, setCurrentTheme] = useState("default");
@@ -112,6 +144,18 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
 
   // Fetch Initial Data
   useEffect(() => {
+    // Replay a cached offline edit over whatever state we have. Used on successful loads
+    // (the pending edit wins over the stale server copy; the sync-on-reconnect effect then
+    // auto-resolves or surfaces a conflict) and on failed loads (a fully offline reload
+    // must not blank the editor).
+    const restoreCachedEdit = (edit: OfflineEdit) => {
+      setCode(edit.pendingCode);
+      renderMermaid(edit.pendingCode);
+      baseCodeRef.current = edit.baseCode;
+      hasUnsavedChangesRef.current = true;
+      setOfflinePending(true);
+    };
+
     const fetchDoc = async () => {
       try {
         const startTime = Date.now();
@@ -121,25 +165,38 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
           setDoc(data);
           setCode(data.code);
           renderMermaid(data.code);
+          baseCodeRef.current = data.code;
           getTelemetry()?.addBreadcrumb({
             category: "editor",
             message: "Diagram loaded",
             data: { documentId },
           });
+          const cachedEdit = getOfflineEdit(documentId);
+          if (cachedEdit) restoreCachedEdit(cachedEdit);
         } else if (res.status === 404) {
           // The requested diagram does not exist — surface a dedicated not-found screen
-          // instead of silently rendering an empty editor.
+          // instead of silently rendering an empty editor. 404 wins over any cached edit.
           setNotFound(true);
         } else {
-          toast.error("Failed to load diagram");
+          const cachedEdit = getOfflineEdit(documentId);
+          if (cachedEdit) {
+            restoreCachedEdit(cachedEdit);
+          } else {
+            toast.error("Failed to load diagram");
+          }
         }
         const elapsedTime = Date.now() - startTime;
         if (elapsedTime < 600) {
           await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
         }
       } catch {
-        toast.error("Failed to load diagram");
-        getTelemetry()?.captureMessage("Failed to load diagram", "error", { documentId });
+        const cachedEdit = getOfflineEdit(documentId);
+        if (cachedEdit) {
+          restoreCachedEdit(cachedEdit);
+        } else {
+          toast.error("Failed to load diagram");
+          getTelemetry()?.captureMessage("Failed to load diagram", "error", { documentId });
+        }
       } finally {
         setLoading(false);
       }
@@ -148,8 +205,29 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   }, [documentId, renderMermaid]);
 
   // Auto-Save Logic
+  const cacheOfflineEdit = useCallback(
+    (newCode: string) => {
+      saveOfflineEdit({
+        diagramId: documentId,
+        baseCode: baseCodeRef.current,
+        pendingCode: newCode,
+        updatedAt: Date.now(),
+      });
+      setOfflinePending(true);
+      hasUnsavedChangesRef.current = true;
+    },
+    [documentId],
+  );
+
   const saveCode = useCallback(
     async (newCode: string) => {
+      // Offline at fire time: cache locally instead of hitting the network; the
+      // sync-on-reconnect effect replays the cached edit once connectivity returns.
+      // `saving` is deliberately untouched — no request is in flight.
+      if (isOfflineRef.current) {
+        cacheOfflineEdit(newCode);
+        return;
+      }
       setSaving(true);
       try {
         const res = await fetch(`/api/diagrams/${documentId}`, {
@@ -157,10 +235,19 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: newCode }),
         });
-        if (!res.ok) throw new Error("Failed to save");
+        if (!res.ok) {
+          // Server responded with an error — surface it, keep the dirty flag, do NOT
+          // cache as an offline edit (the server is reachable; this is not an outage).
+          toast.error("Failed to auto-save");
+          getTelemetry()?.captureMessage("Auto-save failed", "error", { documentId });
+          return;
+        }
 
         const updatedDoc = await res.json();
         setDoc(updatedDoc);
+        clearOfflineEdit(documentId);
+        setOfflinePending(false);
+        baseCodeRef.current = newCode;
         hasUnsavedChangesRef.current = false;
         getTelemetry()?.addBreadcrumb({
           category: "editor",
@@ -168,14 +255,16 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
           data: { documentId },
         });
       } catch {
-        toast.error("Failed to auto-save");
-        getTelemetry()?.captureMessage("Auto-save failed", "error", { documentId });
+        // The request itself threw (network dropped mid-flight while the browser still
+        // reports online) — cache locally so the edit is never lost.
+        cacheOfflineEdit(newCode);
+        toast.error("Offline: changes saved locally and will sync when reconnected");
         // Keep the dirty flag set so the unload guard still protects the unsaved edit.
       } finally {
         setSaving(false);
       }
     },
-    [documentId],
+    [documentId, cacheOfflineEdit],
   );
 
   const handleCodeChange = useCallback(
@@ -201,6 +290,98 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     [renderMermaid, saveCode, isDemo],
   );
 
+  // Replay a cached offline edit against the server. Idempotent via `syncingRef`.
+  const syncPendingEdit = useCallback(async () => {
+    if (syncingRef.current) return;
+    const edit = getOfflineEdit(documentId);
+    if (!edit) {
+      setOfflinePending(false);
+      return;
+    }
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      const res = await fetch(`/api/diagrams/${documentId}`);
+      if (!res.ok) return;
+      const serverDoc = await res.json();
+      const serverCode: string = serverDoc.code;
+      if (serverCode !== edit.baseCode) {
+        // The server moved on since the cached base — surface a conflict instead of
+        // silently clobbering either side.
+        setConflict({ baseCode: edit.baseCode, pendingCode: edit.pendingCode, serverCode });
+        return;
+      }
+      const putRes = await fetch(`/api/diagrams/${documentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: edit.pendingCode }),
+      });
+      if (!putRes.ok) return;
+      const updatedDoc = await putRes.json();
+      clearOfflineEdit(documentId);
+      setDoc(updatedDoc);
+      if (codeRef.current !== edit.pendingCode) setCode(edit.pendingCode);
+      baseCodeRef.current = edit.pendingCode;
+      setOfflinePending(false);
+      hasUnsavedChangesRef.current = false;
+      toast.success("Back online — your changes are synced");
+    } catch {
+      // Offline again / network error — keep the cache and pending flag; retried on the
+      // next online transition. Silent by design.
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, [documentId]);
+
+  useEffect(() => {
+    // `loading` gate ensures the initial fetch has settled (and any cached edit was
+    // restored) before the first sync attempt runs.
+    if (isDemo || !isOnline || loading) return;
+    void syncPendingEdit();
+  }, [isDemo, isOnline, loading, syncPendingEdit]);
+
+  const resolveConflict = useCallback(
+    async (mode: "mine" | "server" | "cancel") => {
+      if (!conflict) return;
+      if (mode === "cancel") {
+        // Keep the cache and dirty flag so the next reconnect retries the sync.
+        setConflict(null);
+        return;
+      }
+      if (mode === "server") {
+        // The server already holds this code — adopt it locally, no PUT needed.
+        setCode(conflict.serverCode);
+        renderMermaid(conflict.serverCode);
+        clearOfflineEdit(documentId);
+        baseCodeRef.current = conflict.serverCode;
+        setOfflinePending(false);
+        hasUnsavedChangesRef.current = false;
+        setDoc((prev) => (prev ? { ...prev, code: conflict.serverCode } : prev));
+        setConflict(null);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/diagrams/${documentId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: conflict.pendingCode }),
+        });
+        if (!res.ok) throw new Error("Failed to resolve conflict");
+        const updatedDoc = await res.json();
+        clearOfflineEdit(documentId);
+        setDoc(updatedDoc);
+        baseCodeRef.current = conflict.pendingCode;
+        setOfflinePending(false);
+        hasUnsavedChangesRef.current = false;
+        setConflict(null);
+      } catch {
+        toast.error("Failed to sync — still offline");
+      }
+    },
+    [conflict, documentId, renderMermaid],
+  );
+
   return {
     doc,
     setDoc,
@@ -223,6 +404,11 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     renderIdRef,
     handleCodeChange,
     hasUnsavedChangesRef,
+    isOffline,
+    offlinePending,
+    syncing,
+    conflict,
+    resolveConflict,
   };
 }
 
