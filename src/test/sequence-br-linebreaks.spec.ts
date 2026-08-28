@@ -62,7 +62,12 @@ test.describe("Sequence message line breaks (issue #20)", () => {
     await page.waitForTimeout(1500);
 
     const code = await page.evaluate(() => {
-      const eds = (window as unknown as { monaco?: { editor?: { getEditors?: () => { getValue: () => string }[] } } }).monaco?.editor?.getEditors?.() || [];
+      const eds =
+        (
+          window as unknown as {
+            monaco?: { editor?: { getEditors?: () => { getValue: () => string }[] } };
+          }
+        ).monaco?.editor?.getEditors?.() || [];
       return eds[0]?.getValue?.() || "";
     });
 
