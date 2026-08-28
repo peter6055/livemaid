@@ -36,7 +36,7 @@ async function clickFillRedSwatch(page: import("@playwright/test").Page) {
       (s) => s.textContent?.trim() === "Fill",
     );
     const fillRow = fillLabel?.closest("div.flex.flex-col");
-    const red = fillRow?.querySelector('button[title="Red"]') as HTMLButtonElement | null;
+    const red = fillRow?.querySelector('button[title="Salmon"]') as HTMLButtonElement | null;
     red?.click();
     return !!red;
   });
@@ -71,11 +71,11 @@ test.describe("node style toolbar", () => {
 
     expect(await clickFillRedSwatch(page)).toBe(true);
 
-    const redFillSwatch = toolbar.locator('button[title="Red"]').nth(2);
+    const redFillSwatch = toolbar.locator('button[title="Salmon"]').nth(2);
     await expect(redFillSwatch).toHaveClass(/ring-2/);
     await expect
       .poll(async () => readDiagramCode(request, id), { timeout: 10000 })
-      .toContain("style Animal fill:#ef4444");
+      .toContain("style Animal fill:#ffe3dc");
 
     const resetClicked = await page.evaluate(() => {
       const root = document.querySelector("[data-class-node-toolbar]");
@@ -108,7 +108,7 @@ test.describe("node style toolbar", () => {
         "    Moving --> Still",
         "    Moving --> Crash",
         "    Crash --> [*]",
-        "    classDef red fill:#ef4444",
+        "    classDef red fill:#ffe3dc",
         "    class Still red",
       ].join("\n"),
     });
@@ -132,7 +132,7 @@ test.describe("node style toolbar", () => {
         (s) => s.textContent?.trim() === "Fill",
       );
       const fillRow = fillLabel?.closest("div.flex.flex-col");
-      const red = fillRow?.querySelector('button[title="Red"]') as HTMLButtonElement | null;
+      const red = fillRow?.querySelector('button[title="Salmon"]') as HTMLButtonElement | null;
       return red?.className ?? "";
     });
     expect(fillRedClass).toMatch(/ring-2/);

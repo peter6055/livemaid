@@ -26,6 +26,7 @@ import {
 import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
+import { removeEmptySequenceBlocks } from "@/lib/diagrams/sequence/mutations";
 import { computeInsertionIndex, type UnifiedRow } from "@/lib/diagrams/sequence/reorder";
 import { escapeRegExp, htmlToPlainText, normalizeHtmlForMermaid, sanitizeHtml } from "@/lib/utils";
 import {
@@ -2076,11 +2077,17 @@ export function LiveMaidEditor({
   // (falling back to A/B) so the inserted code parses without error. Routes through handleCodeChange
   // (single undo).
   const handleSequencePlusBlock = useCallback(
-    (anchorY: number, type: "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect") => {
+    (
+      actorId: string,
+      anchorY: number,
+      type: "loop" | "alt" | "opt" | "par" | "critical" | "break" | "rect",
+    ) => {
       if (!Number.isFinite(anchorY)) return;
       const lifelines = getSequenceLifelines();
-      const a = lifelines[0]?.actorId ?? "A";
-      const b = lifelines[1]?.actorId ?? lifelines[0]?.actorId ?? "B";
+      const clickedIdx = lifelines.findIndex((l) => l.actorId === actorId);
+      const a = clickedIdx >= 0 ? lifelines[clickedIdx].actorId : (lifelines[0]?.actorId ?? "A");
+      const nextIdx = clickedIdx >= 0 ? clickedIdx + 1 : 1;
+      const b = lifelines[nextIdx]?.actorId ?? lifelines[0]?.actorId ?? "B";
 
       let body = "";
       if (type === "alt") {
@@ -2807,6 +2814,33 @@ export function LiveMaidEditor({
       let newCode = code;
       const styleRegex = new RegExp(`^\\s*style\\s+${escapeRegExp(selectedNodeId)}\\s+(.*?)$`, "m");
       const match = newCode.match(styleRegex);
+
+      // Toggle-off: an empty value removes that single property; if that empties the whole
+      // style line, the entire `style <id>` line is removed (no style line → do nothing).
+      if (value === "") {
+        if (!match) return;
+        const propRegex = new RegExp(`${property}:[^,]+`);
+        let styleProps = match[1];
+        if (propRegex.test(styleProps)) {
+          styleProps = styleProps
+            .replace(propRegex, "")
+            .replace(/^,\s*/, "")
+            .replace(/,\s*$/, "")
+            .replace(/,\s*,/, ",")
+            .trim();
+        }
+        if (!styleProps) {
+          newCode = newCode
+            .split("\n")
+            .filter((line) => !styleRegex.test(line))
+            .join("\n");
+        } else {
+          newCode = newCode.replace(styleRegex, `style ${selectedNodeId} ${styleProps}`);
+        }
+        handleCodeChange(newCode);
+        return;
+      }
+
       if (match) {
         let styleProps = match[1];
         const propRegex = new RegExp(`${property}:[^,]+`);
@@ -2946,8 +2980,8 @@ export function LiveMaidEditor({
         if (getStyleVal("font-style")) {
           handleUpdateStyle("font-style", "normal");
         }
-      } else if (format === "color" && colorValue) {
-        handleUpdateStyle("color", colorValue);
+      } else if (format === "color") {
+        handleUpdateStyle("color", colorValue ?? "");
       }
     },
     [code, selectedNodeId, selectedSvgId, handleUpdateStyle, handleGlobalBoldItalic],
@@ -4078,7 +4112,7 @@ export function LiveMaidEditor({
         if (Number.isFinite(targetLineIndex)) {
           const lines = code.split("\n");
           const filtered = lines.filter((_, lineIndex) => lineIndex !== targetLineIndex);
-          newCode = filtered.join("\n");
+          newCode = removeEmptySequenceBlocks(filtered.join("\n"));
         }
       }
     } else if (selectedNodeId.startsWith("SEQ_NOTE_")) {
@@ -4099,7 +4133,7 @@ export function LiveMaidEditor({
         }
         return true;
       });
-      newCode = filtered.join("\n");
+      newCode = removeEmptySequenceBlocks(filtered.join("\n"));
     } else {
       // Flowchart deletion logic
       const escapedDeleteId = escapeRegExp(selectedNodeId);

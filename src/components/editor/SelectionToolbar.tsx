@@ -252,22 +252,28 @@ export function SelectionToolbar({
     <>
       {selectionBox && !isLocked && (
         <div
-          data-scale-lock-border
-          data-scale-lock-shadow
+          data-scale-lock-border={selectedNodeId?.startsWith("SEQ_BLK_") ? undefined : "true"}
+          data-scale-lock-shadow={selectedNodeId?.startsWith("SEQ_BLK_") ? undefined : "true"}
           /* z-[22] (above the z-[21] sequence hover grab overlays) so the inline
                        toolbar nested inside this box always paints and hit-tests ABOVE the
                        grab overlay of a neighbouring message that the toolbar floats over.
                        Without this, near the toolbar's top edge the overlay can intercept
                        the press and the dropdown intermittently fails to open. */
-          className="absolute border-indigo-500 pointer-events-none z-[22]"
+          className={`absolute pointer-events-none z-[22] ${selectedNodeId?.startsWith("SEQ_BLK_") ? "" : "border-indigo-500"}`}
           style={{
             left: selectionBox.x - (selectedNodeId?.startsWith("SEQ_MSG_") ? 0 : 4) / scale,
             top: selectionBox.y - (selectedNodeId?.startsWith("SEQ_MSG_") ? 1 : 4) / scale,
             width: selectionBox.width + (selectedNodeId?.startsWith("SEQ_MSG_") ? 0 : 8) / scale,
             height: selectionBox.height + (selectedNodeId?.startsWith("SEQ_MSG_") ? 2 : 8) / scale,
             borderRadius: `${6 / scale}px`,
-            borderWidth: `calc(1.25px * var(--zoom-inverse-scale, ${1 / scale}))`,
-            boxShadow: `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / scale})) rgba(99, 102, 241, 0.2)`,
+            borderWidth: selectedNodeId?.startsWith("SEQ_BLK_")
+              ? 0
+              : `calc(1.25px * var(--zoom-inverse-scale, ${1 / scale}))`,
+            borderStyle: "solid",
+            borderColor: selectedNodeId?.startsWith("SEQ_BLK_") ? "transparent" : undefined,
+            boxShadow: selectedNodeId?.startsWith("SEQ_BLK_")
+              ? "none"
+              : `0 0 0 calc(2px * var(--zoom-inverse-scale, ${1 / scale})) rgba(99, 102, 241, 0.2)`,
           }}
         >
           {/*

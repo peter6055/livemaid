@@ -1,13 +1,13 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Palette, Pencil, Square, Type, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
-import { PRESET_COLORS } from "@/lib/diagrams/constants";
+import { Palette, Pencil, ChevronsDown, Copy, Trash2, RotateCcw } from "lucide-react";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
+import { NodeStylePopover } from "./NodeStylePopover";
 
 interface NodeManipulationToolbarProps {
   code: string;
@@ -39,6 +39,7 @@ export function NodeManipulationToolbar({
   onResetStyle,
 }: NodeManipulationToolbarProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [styleOpen, setStyleOpen] = useState(false);
   const labeledActionBtnCls =
     "h-8 px-2.5 flex items-center justify-center gap-1 rounded-md hover:bg-accent hover:text-accent-foreground transition-colors text-sm font-semibold leading-none";
   const isSubgraphSelected = (() => {
@@ -71,6 +72,18 @@ export function NodeManipulationToolbar({
       el.removeEventListener("touchstart", stopNativePropagation);
     };
   }, []);
+
+  useEffect(() => {
+    if (!styleOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (!containerRef.current?.contains(e.target as Node)) {
+        setStyleOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [styleOpen]);
+
   const getStyleFromCode = (property: string): string | null => {
     if (!selectedNodeId) return null;
     const match = code.match(new RegExp(`^\\s*style\\s+${selectedNodeId}\\s+(.*?)$`, "m"));
@@ -99,55 +112,20 @@ export function NodeManipulationToolbar({
     return false;
   };
 
-  const getActiveBgColor = () => {
-    const fromCode = getStyleFromCode("fill");
-    if (fromCode) return fromCode;
-    if (!selectedSvgId) return "transparent";
-    try {
-      const parent = document.getElementById(selectedSvgId);
-      if (!parent) return "transparent";
-      const el = parent.querySelector("rect, circle, polygon, path.node, path, ellipse");
-      if (el) {
-        return window.getComputedStyle(el).fill || "transparent";
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return "transparent";
-  };
+  const currentStyle: Record<string, string> = {};
+  for (const prop of ["fill", "stroke", "color", "stroke-dasharray"]) {
+    const val = getStyleFromCode(prop);
+    if (val !== null) currentStyle[prop] = val;
+  }
 
-  const getActiveStrokeColor = () => {
-    const fromCode = getStyleFromCode("stroke");
-    if (fromCode) return fromCode;
-    if (!selectedSvgId) return "transparent";
-    try {
-      const parent = document.getElementById(selectedSvgId);
-      if (!parent) return "transparent";
-      const el = parent.querySelector("rect, circle, polygon, path.node, path, ellipse");
-      if (el) {
-        return window.getComputedStyle(el).stroke || "transparent";
+  const handleSetStyle = (patch: Record<string, string>) => {
+    for (const [prop, value] of Object.entries(patch)) {
+      if (prop === "color") {
+        onFormatNodeLabel("color", value);
+      } else {
+        onUpdateStyle(prop, value);
       }
-    } catch (e) {
-      console.error(e);
     }
-    return "transparent";
-  };
-
-  const getActiveTextColor = () => {
-    const fromCode = getStyleFromCode("color");
-    if (fromCode) return fromCode;
-    if (!selectedSvgId) return "#000000";
-    try {
-      const parent = document.getElementById(selectedSvgId);
-      if (!parent) return "#000000";
-      const el = parent.querySelector(".label, text, .nodeLabel");
-      if (el) {
-        return window.getComputedStyle(el).fill || "#000000";
-      }
-    } catch (e) {
-      console.error(e);
-    }
-    return "#000000";
   };
 
   if (!(currentType === "graph" || currentType === "flowchart" || currentType === "sequence")) {
@@ -192,121 +170,36 @@ export function NodeManipulationToolbar({
 
         {onEditLabel && <div className="w-px h-4 bg-border mx-1" />}
 
-        {/* Background Color */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative"
-                title="Background Color"
-              />
-            }
+        {/* Style (single color/format popover for flowchart — replaces the former Background/Border/Text dropdowns) */}
+        <div className="relative">
+          <button
+            type="button"
+            className={`h-8 flex items-center justify-center gap-1.5 rounded-md px-2.5 text-sm font-semibold transition-colors ${
+              styleOpen
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "text-foreground hover:bg-accent hover:text-accent-foreground"
+            }`}
+            title="Custom style"
+            onMouseDownCapture={(e) => {
+              e.stopPropagation();
+              setStyleOpen((o) => !o);
+            }}
+            onClick={(e) => e.stopPropagation()}
           >
             <Palette className="w-4 h-4" />
-            <div
-              className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors"
-              style={{ backgroundColor: getActiveBgColor() }}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2"
-            align="center"
-            side="top"
-            sideOffset={10}
-          >
-            {PRESET_COLORS.map((c) => {
-              const activeFill = getStyleFromCode("fill");
-              const isSelected = activeFill === c.value;
-              return (
-                <button
-                  key={c.name}
-                  onClick={() => onUpdateStyle("fill", c.value)}
-                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? "ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background" : ""}`}
-                  style={{ backgroundColor: c.value }}
-                  title={c.name}
-                />
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            Style
+          </button>
 
-        {/* Border Color */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative"
-                title="Border Color"
-              />
-            }
-          >
-            <Square className="w-4 h-4" />
-            <div
-              className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors"
-              style={{ backgroundColor: getActiveStrokeColor() }}
+          {styleOpen && (
+            <NodeStylePopover
+              currentStyle={currentStyle}
+              onSetStyle={handleSetStyle}
+              onResetStyle={() => onResetStyle?.()}
+              showBorderStyle={false}
             />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2"
-            align="center"
-            side="top"
-            sideOffset={10}
-          >
-            {PRESET_COLORS.map((c) => {
-              const activeStroke = getStyleFromCode("stroke");
-              const isSelected = activeStroke === c.value;
-              return (
-                <button
-                  key={c.name}
-                  onClick={() => onUpdateStyle("stroke", c.value)}
-                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? "ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background" : ""}`}
-                  style={{ backgroundColor: c.value }}
-                  title={c.name}
-                />
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        </div>
 
-        <div className="w-px h-4 bg-border mx-1" />
-
-        {/* Text Color */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground transition-colors relative"
-                title="Text Color"
-              />
-            }
-          >
-            <Type className="w-4 h-4" />
-            <div
-              className="absolute bottom-0.5 right-0.5 w-2.5 h-2.5 rounded-full border border-background shadow-sm transition-colors"
-              style={{ backgroundColor: getActiveTextColor() }}
-            />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            className="w-48 p-2 bg-background border-border rounded-xl grid grid-cols-4 gap-2"
-            align="center"
-            side="top"
-            sideOffset={10}
-          >
-            {PRESET_COLORS.map((c) => {
-              const activeColor = getStyleFromCode("color");
-              const isSelected = activeColor === c.value;
-              return (
-                <button
-                  key={c.name}
-                  onClick={() => onFormatNodeLabel("color", c.value)}
-                  className={`w-8 h-8 rounded-full border border-slate-200 hover:scale-110 transition-transform focus:outline-none relative ${isSelected ? "ring-2 ring-indigo-500 ring-offset-2 scale-110 dark:ring-offset-background" : ""}`}
-                  style={{ backgroundColor: c.value }}
-                  title={c.name}
-                />
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
         {/* Bold */}
         <button
           onClick={(e) => {

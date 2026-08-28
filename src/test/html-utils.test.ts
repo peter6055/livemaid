@@ -112,6 +112,17 @@ describe("normalizeHtmlForMermaid", () => {
     expect(normalizeHtmlForMermaid("<div>Line 1</div><div>Line 2</div>")).toBe("Line 1<br/>Line 2");
   });
 
+  it("converts inline Enter (text then div) to br between lines", () => {
+    // contentEditable produces "Hello<div>World</div>" when the user presses Enter
+    // after typing on the first line — opening <div> must become <br/>, not "".
+    expect(normalizeHtmlForMermaid("Hello<div>World</div>")).toBe("Hello<br/>World");
+  });
+
+  it("converts literal newlines to br", () => {
+    expect(normalizeHtmlForMermaid("Hello\nWorld")).toBe("Hello<br/>World");
+    expect(normalizeHtmlForMermaid("Hello\r\nWorld")).toBe("Hello<br/>World");
+  });
+
   it("converts p tags to br", () => {
     expect(normalizeHtmlForMermaid("<p>Paragraph 1</p><p>Paragraph 2</p>")).toBe(
       "Paragraph 1<br/>Paragraph 2",
@@ -170,6 +181,13 @@ describe("normalizeHtmlForMermaid", () => {
   it("preserves text-align right", () => {
     const input = '<div style="text-align:right;">Right aligned</div>';
     expect(normalizeHtmlForMermaid(input)).toBe('<div style="text-align:right;">Right aligned');
+  });
+
+  it("keeps the line break before a styled block element elsewhere in the string", () => {
+    // A text-align block in the middle must still start a new line (prefixed with <br/>) rather
+    // than merging with the preceding contentEditable line.
+    const input = "Hello<div style='text-align:center;'>World</div>";
+    expect(normalizeHtmlForMermaid(input)).toBe('Hello<br/><div style="text-align:center;">World');
   });
 
   it("removes browser-added br at word boundary characters", () => {

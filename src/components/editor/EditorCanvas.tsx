@@ -128,7 +128,7 @@ interface EditorCanvasProps {
     anchorY: number,
     position: "left" | "right" | "over",
   ) => void;
-  onSequencePlusBlock?: (anchorY: number, type: SequenceBlockType) => void;
+  onSequencePlusBlock?: (actorId: string, anchorY: number, type: SequenceBlockType) => void;
   onHoveredSequenceMessageHover: (index: number) => void;
   onHoveredSequenceMessageClick: (index: number) => void;
   onHoveredSequenceMessageDoubleClick: (index: number) => void;
@@ -2052,7 +2052,11 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      onSequencePlusBlock(sequencePlusMenu.anchorY, opt.type);
+                      onSequencePlusBlock(
+                        sequencePlusMenu.actorId,
+                        sequencePlusMenu.anchorY,
+                        opt.type,
+                      );
                       setSequencePlusMenu(null);
                     }}
                   >
@@ -2069,7 +2073,7 @@ export function EditorCanvas({
                   onMouseDown={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    onSequencePlusBlock(sequencePlusMenu.anchorY, "rect");
+                    onSequencePlusBlock(sequencePlusMenu.actorId, sequencePlusMenu.anchorY, "rect");
                     setSequencePlusMenu(null);
                   }}
                 >
