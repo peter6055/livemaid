@@ -2245,6 +2245,11 @@ export function LiveMaidEditor({
 
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+    // When the user intentionally returns to the code editor, clear any active
+    // canvas selection so Delete resumes normal text editing.
+    editor.onDidFocusEditorWidget(() => {
+      handleDeselect();
+    });
   };
 
   // Epic 4.1 — Canvas-to-code highlighting. Resolve the 0-indexed source line
@@ -4514,14 +4519,34 @@ export function LiveMaidEditor({
 
   useEffect(() => {
     const onKeyDownCapture = (e: KeyboardEvent) => {
+      const isAnyInlineEditing =
+        isInlineEditing ||
+        classTextEdit ||
+        stateTextEdit ||
+        erTitleEdit ||
+        erEdgeLabelEdit ||
+        timelineTitleEdit;
+
+      // Delete/Backspace: when a canvas object is selected, route the deletion
+      // to that object BEFORE Monaco (which may still have focus) can edit the
+      // source text at its cursor position.
+      if (
+        !isLocked &&
+        !isAnyInlineEditing &&
+        selectedNodeId &&
+        (e.key === "Backspace" || e.key === "Delete")
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isEdgeId(selectedNodeId)) {
+          handleDeleteEdge();
+        } else {
+          handleDeleteNode();
+        }
+        return;
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-        const isAnyInlineEditing =
-          isInlineEditing ||
-          classTextEdit ||
-          stateTextEdit ||
-          erTitleEdit ||
-          erEdgeLabelEdit ||
-          timelineTitleEdit;
         if (!isAnyInlineEditing) return;
         e.preventDefault();
         const textarea =
@@ -4545,6 +4570,10 @@ export function LiveMaidEditor({
     erTitleEdit,
     erEdgeLabelEdit,
     timelineTitleEdit,
+    isLocked,
+    selectedNodeId,
+    handleDeleteEdge,
+    handleDeleteNode,
   ]);
 
   useEffect(() => {
