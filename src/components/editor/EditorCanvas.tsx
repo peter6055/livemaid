@@ -50,7 +50,15 @@ import type { StateConnectMenuState } from "./StateConnectMenu";
 import { makeStateConnectDrag } from "./StateConnectDrag";
 import { TimelineAddButtons } from "./TimelineNodeToolbar";
 import type { SequenceBlockArea, SequenceBlockType } from "@/lib/diagrams/sequence/geometry";
-import { RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  RefObject,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/flowchart";
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
@@ -573,6 +581,19 @@ export function EditorCanvas({
   const viewport = containerRef.current?.closest(".relative.overflow-hidden");
   const viewportWidth = viewport?.clientWidth || 800;
   const viewportHeight = viewport?.clientHeight || 600;
+
+  const handleOpenShapePicker = useCallback(
+    (position: { x: number; y: number }, startNodeId: string) => {
+      const rect = viewport?.getBoundingClientRect();
+      if (!rect) return;
+      setShapePicker({
+        x: position.x - rect.left,
+        y: position.y - rect.top,
+        startNodeId,
+      });
+    },
+    [viewport, setShapePicker],
+  );
 
   const flowchartConnectionEnd = connectionState.mousePos;
   const flowchartConnectionStart =
@@ -1742,6 +1763,7 @@ export function EditorCanvas({
                   onOpenSelectionCommentComposer={onOpenSelectionCommentComposer}
                   handleEditClick={handleEditClick}
                   handleAddNodeFromSelected={handleAddNodeFromSelected}
+                  onOpenShapePicker={handleOpenShapePicker}
                   handleUpdateStyle={handleUpdateStyle}
                   handleFormatNodeLabel={handleFormatNodeLabel}
                   handleChangeShape={handleChangeShape}
