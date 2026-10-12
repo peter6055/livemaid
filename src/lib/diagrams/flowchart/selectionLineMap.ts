@@ -18,10 +18,15 @@ import { CONNECTOR_REGEX } from "../utils";
 // it can be embedded inside both `[...]` and `[^...]`).
 const MERMAID_ID = "A-Za-z0-9_-";
 
+/** Escape characters with special meaning inside a JavaScript RegExp. */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Parse the identifier from a `subgraph <id>` or `subgraph <id>[...]` line.
+ * Returns null if the line is not a subgraph declaration.
+ */
 function parseSubgraphId(line: string): string | null {
   const trimmed = line.trim();
   if (!trimmed.startsWith("subgraph")) return null;
@@ -29,6 +34,11 @@ function parseSubgraphId(line: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Return true for lines that define document structure rather than nodes or
+ * edges: blank lines, comments, subgraph/end declarations, and the diagram
+ * direction header.
+ */
 function isStructuralLine(trimmed: string): boolean {
   return (
     !trimmed ||

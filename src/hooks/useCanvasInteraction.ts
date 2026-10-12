@@ -53,6 +53,12 @@ export interface ShapePicker {
   startNodeId: string;
 }
 
+/**
+ * Central hook for canvas pointer interaction: selection, drag-to-connect,
+ * inline-edit entry, shape-picker placement, and diagram-specific gestures.
+ * It owns the live connection state and delegates diagram mutations through
+ * `handleCodeChange` so Monaco remains the source of truth.
+ */
 export function useCanvasInteraction({
   code,
   svgContent,

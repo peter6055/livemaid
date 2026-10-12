@@ -733,6 +733,11 @@ export function parseLinkAnimation(
   return false;
 }
 
+/**
+ * Return the index of the first unescaped `close` delimiter in `rest`,
+ * respecting single and double quoted strings. The `open` length is used as
+ * the starting scan offset so we do not match the opening delimiter itself.
+ */
 function findClosingDelimiter(rest: string, open: string, close: string): number {
   let inString = false;
   let stringChar = "";
@@ -760,54 +765,66 @@ function findClosingDelimiter(rest: string, open: string, close: string): number
   return -1;
 }
 
+/**
+ * Extract the full node definition for `nodeId` from a single line, or null if
+ * the line does not contain a definition. This searches every occurrence of the
+ * ID so that an earlier match inside an edge label (for example `A -->|B| B`)
+ * does not prevent finding the real `B["Label"]` definition later in the line.
+ */
 function extractNodeDefinition(line: string, nodeId: string): string | null {
-  const idRegex = new RegExp(`\\b${nodeId}`, "i");
-  const idMatch = line.match(idRegex);
-  if (!idMatch) return null;
+  const idRegex = new RegExp(`\\b${nodeId}`, "gi");
+  let idMatch: RegExpExecArray | null;
 
-  const start = idMatch.index!;
-  const afterId = start + idMatch[0].length;
-  const rest = line.slice(afterId);
+  while ((idMatch = idRegex.exec(line)) !== null) {
+    const start = idMatch.index!;
+    const afterId = start + idMatch[0].length;
+    const rest = line.slice(afterId);
 
-  // New @{...} syntax
-  const atMatch = rest.match(/^\s*@\{/);
-  if (atMatch) {
-    const closeIndex = findClosingDelimiter(rest, "@{", "}");
-    if (closeIndex !== -1) {
-      return line.slice(start, afterId + closeIndex + 1);
-    }
-    return null;
-  }
-
-  // Bracket-based shapes: longest opening delimiter first
-  const delimiters: [string, string][] = [
-    ["(((", ")))"],
-    ["((", "))"],
-    ["[[", "]]"],
-    ["[(", ")]"],
-    ["{{", "}}"],
-    ["([", "])"],
-    ["[/", "/]"],
-    ["[\\", "\\]"],
-    ["[", "]"],
-    ["(", ")"],
-    ["{", "}"],
-    [">", "]"],
-  ];
-
-  for (const [open, close] of delimiters) {
-    if (rest.startsWith(open)) {
-      const closeIndex = findClosingDelimiter(rest, open, close);
+    // New @{...} syntax
+    const atMatch = rest.match(/^\s*@\{/);
+    if (atMatch) {
+      const closeIndex = findClosingDelimiter(rest, "@{", "}");
       if (closeIndex !== -1) {
-        return line.slice(start, afterId + closeIndex + close.length);
+        return line.slice(start, afterId + closeIndex + 1);
       }
-      return null;
+      continue;
+    }
+
+    // Bracket-based shapes: longest opening delimiter first
+    const delimiters: [string, string][] = [
+      ["(((", ")))"],
+      ["((", "))"],
+      ["[[", "]]"],
+      ["[(", ")]"],
+      ["{{", "}}"],
+      ["([", "])"],
+      ["[/", "/]"],
+      ["[\\", "\\]"],
+      ["[", "]"],
+      ["(", ")"],
+      ["{", "}"],
+      [">", "]"],
+    ];
+
+    for (const [open, close] of delimiters) {
+      if (rest.startsWith(open)) {
+        const closeIndex = findClosingDelimiter(rest, open, close);
+        if (closeIndex !== -1) {
+          return line.slice(start, afterId + closeIndex + close.length);
+        }
+        break;
+      }
     }
   }
 
   return null;
 }
 
+/**
+ * Return true if any non-special line in `lines` contains a standalone node
+ * definition for `nodeId` (a shape opener or `@{...}` syntax). Style, class,
+ * subgraph, and comment lines are ignored.
+ */
 function hasNodeLabelDefinition(lines: string[], nodeId: string): boolean {
   const defRegex = new RegExp(
     `\\b${nodeId}(?:\\s*@\\{|\\(\\(\\(|\\(\\(|\\[\\[|\\[\\(|\\{\\{|\\(\\[|\\[/|\\[\\\\\\\\|\\[|\\(|\\{|>)`,

@@ -87,4 +87,11 @@ describe("deleteLink preserves inline node definitions", () => {
     expect(result).toContain('A["Source"]');
     expect(result).not.toContain("-->");
   });
+
+  it("finds the node definition even when the id appears earlier in an edge label", () => {
+    const code = 'A -->|B| B["Important"]';
+    const result = deleteLink(code, "A", "B");
+    expect(result).toContain('B["Important"]');
+    expect(result).not.toContain("-->");
+  });
 });

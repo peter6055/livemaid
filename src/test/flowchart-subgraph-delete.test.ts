@@ -12,7 +12,7 @@ describe("deleteFlowchartSubgraph", () => {
     const result = deleteFlowchartSubgraph(code, "chunk1");
 
     expect(result).not.toContain("subgraph chunk1");
-    expect(result).not.toContain(/^\s*end$/m);
+    expect(result).not.toMatch(/^\s*end$/m);
     expect(result).toContain('E["Chunk N<br>Ingester process"]');
     expect(result).toContain('E -->|link| E1@{ shape: cyl, label: "Chunk 1 Valid File" }');
     // Children should be promoted to the parent (root) indentation level.
@@ -113,7 +113,47 @@ describe("deleteFlowchartSubgraph", () => {
     const result = deleteFlowchartSubgraph(code, "sg");
 
     expect(result).not.toContain("subgraph sg");
-    expect(result).not.toContain(/^\s*end$/m);
+    expect(result).not.toMatch(/^\s*end$/m);
+    expect(result).toContain("A[Node]");
+  });
+
+  it("preserves child nodes whose quoted label equals the subgraph id", () => {
+    const code = `flowchart TD
+    subgraph sg
+        A["sg"]
+    end`;
+
+    const result = deleteFlowchartSubgraph(code, "sg");
+
+    expect(result).not.toContain("subgraph sg");
+    expect(result).not.toMatch(/^\s*end$/m);
+    expect(result).toContain('A["sg"]');
+  });
+
+  it("preserves comments that mention the subgraph id", () => {
+    const code = `flowchart TD
+    subgraph sg
+        A[Node]
+    end
+    %% sg is now gone`;
+
+    const result = deleteFlowchartSubgraph(code, "sg");
+
+    expect(result).not.toContain("subgraph sg");
+    expect(result).toContain("%% sg is now gone");
+  });
+
+  it("removes only the deleted id from multi-id class assignments", () => {
+    const code = `flowchart TD
+    subgraph sg
+        A[Node]
+    end
+    class sg,A highlighted`;
+
+    const result = deleteFlowchartSubgraph(code, "sg");
+
+    expect(result).not.toContain("class sg,A highlighted");
+    expect(result).toContain("class A highlighted");
     expect(result).toContain("A[Node]");
   });
 

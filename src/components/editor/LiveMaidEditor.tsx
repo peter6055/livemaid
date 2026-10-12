@@ -248,6 +248,11 @@ function pruneEmptySequenceBlocks(lines: string[]): string[] {
 
 const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
 
+/**
+ * Main two-way editor component. Renders the Mermaid canvas alongside the
+ * Monaco code panel, synchronizes selection between them, and handles canvas
+ * mutations (add, edit, delete) by rewriting the Mermaid source.
+ */
 export function LiveMaidEditor({
   documentId,
   isDemo = false,
@@ -2249,6 +2254,12 @@ export function LiveMaidEditor({
     // When the user intentionally returns to the code editor, clear any active
     // canvas selection so Delete resumes normal text editing.
     editor.onDidFocusEditorWidget(() => {
+      handleDeselect();
+    });
+    // Clicks on non-focusable SVG objects can leave Monaco focused; clicking
+    // back into Monaco then does not fire a focus transition. Clear the canvas
+    // selection on mouse-down as well so Delete is not mis-routed.
+    editor.onMouseDown(() => {
       handleDeselect();
     });
   };
@@ -4534,9 +4545,17 @@ export function LiveMaidEditor({
       // Delete/Backspace: when a canvas object is selected, route the deletion
       // to that object BEFORE Monaco (which may still have focus) can edit the
       // source text at its cursor position.
+      const activeEl = document.activeElement as HTMLElement | null;
+      const inNonMonacoInput =
+        !!activeEl &&
+        !activeEl.closest(".monaco-editor") &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.isContentEditable);
       if (
         !isLocked &&
         !isAnyInlineEditing &&
+        !inNonMonacoInput &&
         selectedNodeId &&
         (e.key === "Backspace" || e.key === "Delete")
       ) {

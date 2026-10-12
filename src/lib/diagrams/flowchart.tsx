@@ -23,6 +23,11 @@ import { findFlowchartNodeLine } from "./flowchart/selectionLineMap";
 /** A flowchart shape option that can be inserted or applied to a node. */
 export type ShapeOption = { b?: string[] | null; isText?: boolean; expanded?: string };
 
+/**
+ * Generate the next unused node ID starting with `prefix` followed by an
+ * incrementing integer (e.g. `n1`, `n2`). The scan checks word boundaries so
+ * existing IDs like `note1` are not confused with `n1`.
+ */
 function getNextNodeId(codeStr: string, prefix: string): string {
   let i = 1;
   while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr)) {
@@ -31,6 +36,11 @@ function getNextNodeId(codeStr: string, prefix: string): string {
   return `${prefix}${i}`;
 }
 
+/**
+ * Build the Mermaid declaration line(s) for a new node with the chosen shape.
+ * Text shapes return a label line plus a `@{ shape: text }` directive; expanded
+ * shapes use the new `@{...}` syntax; bracket shapes use the legacy delimiters.
+ */
 function buildNodeDefLines(shape: ShapeOption | undefined, newNodeId: string): string[] {
   const label = "New Node";
   if (shape?.isText) {
@@ -46,6 +56,9 @@ function buildNodeDefLines(shape: ShapeOption | undefined, newNodeId: string): s
   return [`${newNodeId}[${label}]`];
 }
 
+/**
+ * Prefix every line in `lines` with `indent` and join them with newlines.
+ */
 function indentLines(lines: string[], indent: string): string {
   return lines.map((line) => indent + line).join("\n");
 }
