@@ -23,6 +23,7 @@ import {
   findFlowchartEdgeLine,
   findFlowchartSubgraphLine,
 } from "@/lib/diagrams/flowchart/selectionLineMap";
+import { deleteFlowchartSubgraph } from "@/lib/diagrams/flowchart/deletion";
 import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
@@ -4147,6 +4148,9 @@ export function LiveMaidEditor({
         return true;
       });
       newCode = removeEmptySequenceBlocks(filtered.join("\n"));
+    } else if (findFlowchartSubgraphLine(code, selectedNodeId) >= 0) {
+      // Flowchart subgraph container deletion: unwrap children to the parent scope.
+      newCode = deleteFlowchartSubgraph(code, selectedNodeId);
     } else {
       // Flowchart deletion logic
       const escapedDeleteId = escapeRegExp(selectedNodeId);
