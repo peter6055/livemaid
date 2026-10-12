@@ -18,10 +18,27 @@ import { CONNECTOR_REGEX } from "../utils";
 // it can be embedded inside both `[...]` and `[^...]`).
 const MERMAID_ID = "A-Za-z0-9_-";
 
+/** Escape characters with special meaning inside a JavaScript RegExp. */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Parse the identifier from a `subgraph <id>` or `subgraph <id>[...]` line.
+ * Returns null if the line is not a subgraph declaration.
+ */
+function parseSubgraphId(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("subgraph")) return null;
+  const m = trimmed.match(/^subgraph\s+([A-Za-z0-9_-]+)(?:\s*\[|\s*$)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Return true for lines that define document structure rather than nodes or
+ * edges: blank lines, comments, subgraph/end declarations, and the diagram
+ * direction header.
+ */
 function isStructuralLine(trimmed: string): boolean {
   return (
     !trimmed ||
@@ -152,6 +169,59 @@ export function findFlowchartEdgeLine(
         if (matchingOccurrenceCount === occurrenceIndex) return i;
         matchingOccurrenceCount += 1;
       }
+    }
+  }
+
+  return -1;
+}
+
+/**
+ * Return the ID of the innermost `subgraph` that contains the declaration of
+ * `nodeId`, or `null` if the node is at top level or not found.
+ */
+export function findFlowchartNodeSubgraphId(code: string, nodeId: string): string | null {
+  const nodeLine = findFlowchartNodeLine(code, nodeId);
+  if (nodeLine === -1) return null;
+
+  const lines = code.split("\n");
+  const stack: string[] = [];
+  for (let i = 0; i <= nodeLine; i += 1) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("%%")) continue;
+
+    const id = parseSubgraphId(lines[i]);
+    if (id) {
+      stack.push(id);
+      continue;
+    }
+    if (trimmed === "end") {
+      stack.pop();
+    }
+  }
+
+  return stack.length > 0 ? stack[stack.length - 1] : null;
+}
+
+/**
+ * Find the 0-indexed line of the `end` keyword that closes the subgraph with
+ * `subgraphId`. Returns -1 if the subgraph is not found or has no matching end.
+ */
+export function findFlowchartSubgraphEndLine(code: string, subgraphId: string): number {
+  const startLine = findFlowchartSubgraphLine(code, subgraphId);
+  if (startLine === -1) return -1;
+
+  const lines = code.split("\n");
+  let depth = 1;
+  for (let i = startLine + 1; i < lines.length; i += 1) {
+    const trimmed = lines[i].trim();
+    if (trimmed.startsWith("%%")) continue;
+
+    const id = parseSubgraphId(lines[i]);
+    if (id) {
+      depth += 1;
+    } else if (trimmed === "end") {
+      depth -= 1;
+      if (depth === 0) return i;
     }
   }
 

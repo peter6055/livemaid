@@ -18,9 +18,93 @@ import {
   Workflow,
 } from "lucide-react";
 import { parseMermaidCurve, updateMermaidCurve } from "./utils";
+import { findFlowchartNodeLine } from "./flowchart/selectionLineMap";
 
 /** A flowchart shape option that can be inserted or applied to a node. */
 export type ShapeOption = { b?: string[] | null; isText?: boolean; expanded?: string };
+
+/**
+ * Generate the next unused node ID starting with `prefix` followed by an
+ * incrementing integer (e.g. `n1`, `n2`). The scan checks word boundaries so
+ * existing IDs like `note1` are not confused with `n1`.
+ */
+function getNextNodeId(codeStr: string, prefix: string): string {
+  let i = 1;
+  while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr)) {
+    i++;
+  }
+  return `${prefix}${i}`;
+}
+
+/**
+ * Build the Mermaid declaration line(s) for a new node with the chosen shape.
+ * Text shapes return a label line plus a `@{ shape: text }` directive; expanded
+ * shapes use the new `@{...}` syntax; bracket shapes use the legacy delimiters.
+ */
+function buildNodeDefLines(shape: ShapeOption | undefined, newNodeId: string): string[] {
+  const label = "New Node";
+  if (shape?.isText) {
+    return [`${newNodeId}["Text Block"]`, `${newNodeId}@{ shape: text }`];
+  }
+  if (shape?.expanded) {
+    return [`${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`];
+  }
+  if (shape?.b) {
+    const brackets = shape.b as [string, string];
+    return [`${newNodeId}${brackets[0]}${label}${brackets[1]}`];
+  }
+  return [`${newNodeId}[${label}]`];
+}
+
+/**
+ * Prefix every line in `lines` with `indent` and join them with newlines.
+ */
+function indentLines(lines: string[], indent: string): string {
+  return lines.map((line) => indent + line).join("\n");
+}
+
+/**
+ * Add a new flowchart node connected to `startId`, inserting it right after the
+ * source node's declaration line. This naturally keeps the new node inside the
+ * same subgraph (if any) and matches the visual placement users expect. Falls
+ * back to appending at top level when there is no source node or the source
+ * declaration cannot be found.
+ */
+export function addFlowchartConnectedNode(
+  code: string,
+  startId: string | null,
+  shape?: ShapeOption,
+  idPrefix?: string,
+): string {
+  const lines = code.split("\n");
+  const prefix = idPrefix ?? (startId ? startId.match(/^([a-zA-Z]+)/)?.[1] : undefined) ?? "n";
+  const newNodeId = getNextNodeId(code, prefix);
+  const nodeDefLines = buildNodeDefLines(shape, newNodeId);
+
+  if (!startId) {
+    return code.replace(/\s*$/, "") + "\n    " + nodeDefLines.join("\n    ");
+  }
+
+  const nodeLine = findFlowchartNodeLine(code, startId);
+  if (nodeLine === -1) {
+    const insertion =
+      shape && (shape.expanded || shape.isText)
+        ? [...nodeDefLines, `${startId} --> ${newNodeId}`]
+        : [`${startId} --> ${nodeDefLines[0]}`];
+    return code.replace(/\s*$/, "") + "\n    " + insertion.join("\n    ");
+  }
+
+  const baseIndent = lines[nodeLine].match(/^(\s*)/)?.[1].length ?? 4;
+  const indent = " ".repeat(baseIndent);
+
+  const insertionLines =
+    shape && (shape.expanded || shape.isText)
+      ? [...nodeDefLines, `${startId} --> ${newNodeId}`]
+      : [`${startId} --> ${nodeDefLines[0]}`];
+
+  lines.splice(nodeLine + 1, 0, indentLines(insertionLines, indent));
+  return lines.join("\n");
+}
 
 export const BASIC_SHAPES = [
   {
@@ -822,39 +906,11 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
     setCode(newCode);
   };
 
-  const getNextNodeId = (codeStr: string, prefix: string = "n"): string => {
-    let i = 1;
-    while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr)) {
-      i++;
-    }
-    return `${prefix}${i}`;
-  };
-
   const handleAddShape = (shape: ShapeOption) => {
-    let newCode = code;
-    const newNodeId = getNextNodeId(newCode);
-    const label = "New Node";
-
-    let nodeDef = "";
-    if (shape.isText) {
-      nodeDef = `${newNodeId}["Text Block"]\n    ${newNodeId}@{ shape: text }`;
-    } else if (shape.expanded) {
-      nodeDef = `${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
-    } else if (shape.b) {
-      const brackets = shape.b as [string, string];
-      nodeDef = `${newNodeId}${brackets[0]}${label}${brackets[1]}`;
+    const newCode = addFlowchartConnectedNode(code, selectedNodeId || null, shape, "n");
+    if (newCode !== code) {
+      setCode(newCode);
     }
-
-    if (selectedNodeId) {
-      if (shape.expanded || shape.isText) {
-        newCode += `\n    ${nodeDef}\n    ${selectedNodeId} --> ${newNodeId}`;
-      } else {
-        newCode += `\n    ${selectedNodeId} --> ${nodeDef}`;
-      }
-    } else {
-      newCode += `\n    ${nodeDef}`;
-    }
-    setCode(newCode);
   };
 
   const handleAddTextBlock = () => {
