@@ -733,20 +733,86 @@ export function parseLinkAnimation(
   return false;
 }
 
+function findClosingDelimiter(rest: string, open: string, close: string): number {
+  let inString = false;
+  let stringChar = "";
+  for (let i = open.length; i <= rest.length - close.length; i++) {
+    const ch = rest[i];
+    if (inString) {
+      if (ch === "\\") {
+        i++;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = true;
+      stringChar = ch;
+      continue;
+    }
+    if (rest.slice(i, i + close.length) === close) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function extractNodeDefinition(line: string, nodeId: string): string | null {
-  const openingBrackets = `\\[\\/|\\[\\\\\\[\\(|\\(|\\{\\{|\\{|\\[\\[|\\[\\(|\\>|\\(\\(\\(|\\(\\(|\\[`;
-  const closingBrackets = `\\]|\\)|\\)\\]|\\)\\)\\)|\\)\\)|\\}|\\}\\}|\\/\\]|\\\\\\]|\\]\\]`;
-  const defRegex = new RegExp(
-    `\\b${nodeId}(?:${openingBrackets})[\\s\\S]*?(?:${closingBrackets})`,
-    "i",
-  );
-  const match = line.match(defRegex);
-  return match ? match[0] : null;
+  const idRegex = new RegExp(`\\b${nodeId}`, "i");
+  const idMatch = line.match(idRegex);
+  if (!idMatch) return null;
+
+  const start = idMatch.index!;
+  const afterId = start + idMatch[0].length;
+  const rest = line.slice(afterId);
+
+  // New @{...} syntax
+  const atMatch = rest.match(/^\s*@\{/);
+  if (atMatch) {
+    const closeIndex = findClosingDelimiter(rest, "@{", "}");
+    if (closeIndex !== -1) {
+      return line.slice(start, afterId + closeIndex + 1);
+    }
+    return null;
+  }
+
+  // Bracket-based shapes: longest opening delimiter first
+  const delimiters: [string, string][] = [
+    ["(((", ")))"],
+    ["((", "))"],
+    ["[[", "]]"],
+    ["[(", ")]"],
+    ["{{", "}}"],
+    ["([", "])"],
+    ["[/", "/]"],
+    ["[\\", "\\]"],
+    ["[", "]"],
+    ["(", ")"],
+    ["{", "}"],
+    [">", "]"],
+  ];
+
+  for (const [open, close] of delimiters) {
+    if (rest.startsWith(open)) {
+      const closeIndex = findClosingDelimiter(rest, open, close);
+      if (closeIndex !== -1) {
+        return line.slice(start, afterId + closeIndex + close.length);
+      }
+      return null;
+    }
+  }
+
+  return null;
 }
 
 function hasNodeLabelDefinition(lines: string[], nodeId: string): boolean {
-  const openingBrackets = `\\[\\/|\\[\\\\\\[\\(|\\(|\\{\\{|\\{|\\[\\[|\\[\\(|\\>|\\(\\(\\(|\\(\\(|\\[`;
-  const defRegex = new RegExp(`\\b${nodeId}(?:${openingBrackets})`, "i");
+  const defRegex = new RegExp(
+    `\\b${nodeId}(?:\\s*@\\{|\\(\\(\\(|\\(\\(|\\[\\[|\\[\\(|\\{\\{|\\(\\[|\\[/|\\[\\\\\\\\|\\[|\\(|\\{|>)`,
+    "i",
+  );
   for (const line of lines) {
     const trimmed = line.trim();
     if (
