@@ -51,6 +51,7 @@ interface SelectionToolbarProps {
     targetNodeId?: string,
     shape?: ShapeOption,
   ) => void;
+  onOpenShapePicker?: (position: { x: number; y: number }, startNodeId: string) => void;
   handleUpdateStyle: (property: string, value: string) => void;
   handleFormatNodeLabel: (format: string, value?: string) => void;
   handleChangeShape: (shape: ShapeOption) => void;
@@ -166,6 +167,7 @@ export function SelectionToolbar({
   onOpenSelectionCommentComposer,
   handleEditClick,
   handleAddNodeFromSelected,
+  onOpenShapePicker,
   handleUpdateStyle,
   handleFormatNodeLabel,
   handleChangeShape,
@@ -639,8 +641,8 @@ export function SelectionToolbar({
                   }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!connectionState.isDragging) {
-                      handleAddNodeFromSelected(selectedNodeId);
+                    if (!connectionState.isDragging && selectedNodeId) {
+                      onOpenShapePicker?.({ x: e.clientX, y: e.clientY }, selectedNodeId);
                       setConnectionState({
                         active: false,
                         startNodeId: null,
