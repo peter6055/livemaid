@@ -3440,7 +3440,8 @@ export function LiveMaidEditor({
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
         // Skip the update if the label hasn't changed to avoid unnecessary
-        // re-renders.
+        // re-renders. Normalize the label so line breaks from the contentEditable
+        // become <br/> and match the source convention used by node labels.
         const lines = code.split("\n");
         let currentLabel: string | null = null;
         let currentOcc = 0;
@@ -3454,12 +3455,12 @@ export function LiveMaidEditor({
             currentOcc++;
           }
         }
-        if (currentLabel === null || currentLabel !== latestEditingText) {
+        if (currentLabel === null || currentLabel !== normalizedText) {
           newCode = updateLinkStyleAndLabel(
             newCode,
             src,
             dst,
-            { label: latestEditingText },
+            { label: normalizedText },
             occurrenceIndex,
           );
         }

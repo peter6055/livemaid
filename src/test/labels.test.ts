@@ -93,6 +93,24 @@ describe("updateLinkStyleAndLabel", () => {
     expect(lines[0]).toContain("-->");
     expect(lines[1]).toContain("-->|second|");
   });
+
+  it("preserves <br/> in multiline edge labels", () => {
+    const code = "A-->|line one<br/>line two|B";
+    const result = updateLinkStyleAndLabel(code, "A", "B", {
+      label: "updated one<br/>updated two",
+    });
+    expect(result).toContain("-->|updated one<br/>updated two|B");
+  });
+
+  it("updates multiline label without breaking the edge line structure", () => {
+    const code = "A-->B";
+    const result = updateLinkStyleAndLabel(code, "A", "B", {
+      label: "line one<br/>line two",
+    });
+    const lines = result.split("\n");
+    expect(lines).toHaveLength(1);
+    expect(result).toContain("-->|line one<br/>line two|B");
+  });
 });
 
 describe("isEdgeId", () => {

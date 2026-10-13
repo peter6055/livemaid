@@ -136,6 +136,117 @@ test.describe("Flowchart edge label editing (Issue #69)", () => {
   });
 });
 
+test.describe("Multiline flowchart edge labels (Issue #39)", () => {
+  test("double-clicking a multiline edge label preserves the <br/> line break", async ({
+    page,
+    request,
+  }) => {
+    const code = `flowchart TD
+    E["Chunk N<br>Ingester process"]
+    E -->|link by FILE_FINALISED<br/>attributes.source_file| E1["Chunk 1 Valid File"]`;
+
+    const res = await request.post("/api/diagrams", {
+      data: {
+        name: "Multiline edge label regression (#39)",
+        type: "flowchart",
+        code,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const doc = await res.json();
+
+    try {
+      await page.goto(`/editor/${doc.id}`);
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForSelector("svg[id^='mermaid-svg']", { timeout: 20000 });
+      await page.waitForTimeout(2000);
+
+      const svg = page.locator("svg[id^='mermaid-svg']");
+      const editor = page.locator('[data-inline-editor][contenteditable="true"]');
+
+      const hitRect = svg.locator("rect.edge-label-hit-target").first();
+      await expect(hitRect).toHaveCount(1);
+      const hb = await hitRect.boundingBox();
+      expect(hb).not.toBeNull();
+      await page.mouse.dblclick(hb!.x + hb!.width / 2, hb!.y + hb!.height / 2);
+      await expect(editor).toBeVisible({ timeout: 10000 });
+
+      // The inline editor must contain an explicit <br> element, not a collapsed single line.
+      const editorHtml = await editor.innerHTML();
+      expect(editorHtml).toMatch(/<br\s*\/?>/i);
+
+      // innerText should render the two lines on separate rows.
+      const text = await editor.innerText();
+      expect(text).toContain("link by FILE_FINALISED");
+      expect(text).toContain("attributes.source_file");
+      const lines = text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
+      expect(lines.length).toBeGreaterThanOrEqual(2);
+
+      // The editor must be tall enough to show both lines.
+      const edgeLabel = svg.locator("g.edgeLabels > g.edgeLabel").first();
+      await expect(edgeLabel).toHaveCount(1);
+      const editorBox = await editor.boundingBox();
+      const labelBox = await edgeLabel.boundingBox();
+      expect(editorBox).not.toBeNull();
+      expect(labelBox).not.toBeNull();
+      // Allow a small rounding tolerance when comparing rendered heights.
+      expect(editorBox!.height + 4).toBeGreaterThanOrEqual(labelBox!.height);
+
+      // Edit the second line and commit.
+      await editor.click();
+      await page.evaluate(() => {
+        const el = document.querySelector(
+          '[data-inline-editor][contenteditable="true"]',
+        ) as HTMLElement | null;
+        if (!el) return;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let target: Text | null = null;
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          if (node.textContent?.includes("attributes.source_file")) {
+            target = node;
+            break;
+          }
+        }
+        if (!target) return;
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      });
+      await page.keyboard.type("attributes.target_file");
+      await page.keyboard.press("Control+Enter");
+      await expect(editor).toHaveCount(0);
+
+      // Monaco should still contain the multiline label (the explicit line
+      // break must survive the edit, regardless of whether the browser renders
+      // it as <br> or <br/>).
+      const monacoValue = await page.evaluate(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const editorInstance = (window as any).monaco?.editor?.getEditors()?.[0];
+        return editorInstance ? (editorInstance.getValue() as string) : "";
+      });
+      expect(monacoValue).toMatch(/link by FILE_FINALISED<br\s*\/?>attributes\.target_file/);
+
+      // The edge declaration must remain a single source line; a physical
+      // newline inside the edge label would split the Mermaid declaration.
+      const edgeLine = monacoValue
+        .split("\n")
+        .find((line) => line.includes("E -->") && line.includes("attributes.target_file"));
+      expect(edgeLine).toBeDefined();
+      expect(edgeLine).toMatch(
+        /E\s*-->\|link by FILE_FINALISED<br\s*\/?>attributes\.target_file\|\s*E1/,
+      );
+    } finally {
+      await request.delete(`/api/diagrams/${doc.id}`);
+    }
+  });
+});
+
 test.describe("Sequence diagram message endpoints (Issue #60)", () => {
   test("sequence diagram renders with participants and messages", async ({ page }) => {
     await page.goto("/");

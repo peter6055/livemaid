@@ -422,79 +422,77 @@ export function useInlineEditing({
             rawEl.classList.contains("edgeLabel"));
 
         if (isRealEdge) {
-          // FIRST: Try to get the label from the SVG DOM (what the user
-          // actually sees on the canvas). Mermaid renders edge labels in a
-          // separate <g class="edgeLabels"> container, not as children of
-          // the edge path.  Find the label by matching the edge-path's
-          // position in <g class="edgePaths">.
-          const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
-          if (effectiveRawSvgId && containerRef.current) {
-            const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
-            if (edgePathsContainer) {
-              const allPaths = Array.from(
-                edgePathsContainer.querySelectorAll(
-                  "path.flowchart-link:not(.flowchart-link-hit-target)",
-                ),
-              );
-              const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
-              const clickedPath = containerRef.current.querySelector(
-                `#${CSS.escape(effectiveRawSvgId)}`,
-              );
-              let edgeIdx = -1;
-              if (clickedPath) {
-                if (clickedPath.classList.contains("flowchart-link-hit-target")) {
-                  const actualPath = clickedPath.nextElementSibling as Element;
-                  if (actualPath) edgeIdx = allPaths.indexOf(actualPath);
-                } else if (clickedPath.classList.contains("flowchart-link")) {
-                  edgeIdx = allPaths.indexOf(clickedPath);
-                } else if (labelsContainer) {
-                  // edgeLabel <g> — find by position in edgeLabels container
-                  const allLabels = Array.from(
-                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
-                  );
-                  const labelG = clickedPath.closest("g.edgeLabel") as Element | null;
-                  edgeIdx = labelG ? allLabels.indexOf(labelG) : allLabels.indexOf(clickedPath);
-                }
+          // FIRST: Use the source-code regex. This preserves explicit <br/>
+          // line breaks and any source-level formatting, and is authoritative
+          // for the label Mermaid will render.
+          const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
+          if (src && dst) {
+            const lines = code.split("\n");
+            let currentOccurrence = 0;
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (
+                !trimmed ||
+                trimmed.startsWith("%%") ||
+                trimmed.startsWith("subgraph") ||
+                trimmed.startsWith("end")
+              ) {
+                continue;
               }
-              if (edgeIdx >= 0 && labelsContainer) {
-                const allLabels = Array.from(
-                  labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
-                );
-                const labelEl = allLabels[edgeIdx];
-                if (labelEl) {
-                  const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
-                  const labelText = labelDiv?.textContent || labelEl.textContent;
-                  if (labelText?.trim()) {
-                    currentText = labelText.trim();
-                  }
+              const match = matchFlowchartLinkLine(line, src, dst);
+              if (match) {
+                if (currentOccurrence === occurrenceIndex) {
+                  currentText = getLinkLabelFromMiddle(match[2]);
+                  break;
                 }
+                currentOccurrence++;
               }
             }
           }
 
-          // SECOND: If SVG lookup failed, fall back to the source-code regex.
+          // SECOND: If source lookup failed, fall back to the SVG DOM text.
           if (currentText === targetNodeId) {
-            const { src, dst, occurrenceIndex } = parseEdgeId(targetNodeId);
-            if (src && dst) {
-              const lines = code.split("\n");
-              let currentOccurrence = 0;
-              for (const line of lines) {
-                const trimmed = line.trim();
-                if (
-                  !trimmed ||
-                  trimmed.startsWith("%%") ||
-                  trimmed.startsWith("subgraph") ||
-                  trimmed.startsWith("end")
-                ) {
-                  continue;
-                }
-                const match = matchFlowchartLinkLine(line, src, dst);
-                if (match) {
-                  if (currentOccurrence === occurrenceIndex) {
-                    currentText = getLinkLabelFromMiddle(match[2]);
-                    break;
+            const effectiveRawSvgId = result?.rawSvgId ?? selectedSvgIdRef.current;
+            if (effectiveRawSvgId && containerRef.current) {
+              const edgePathsContainer = containerRef.current.querySelector("g.edgePaths");
+              if (edgePathsContainer) {
+                const allPaths = Array.from(
+                  edgePathsContainer.querySelectorAll(
+                    "path.flowchart-link:not(.flowchart-link-hit-target)",
+                  ),
+                );
+                const labelsContainer = containerRef.current.querySelector("g.edgeLabels");
+                const clickedPath = containerRef.current.querySelector(
+                  `#${CSS.escape(effectiveRawSvgId)}`,
+                );
+                let edgeIdx = -1;
+                if (clickedPath) {
+                  if (clickedPath.classList.contains("flowchart-link-hit-target")) {
+                    const actualPath = clickedPath.nextElementSibling as Element;
+                    if (actualPath) edgeIdx = allPaths.indexOf(actualPath);
+                  } else if (clickedPath.classList.contains("flowchart-link")) {
+                    edgeIdx = allPaths.indexOf(clickedPath);
+                  } else if (labelsContainer) {
+                    // edgeLabel <g> — find by position in edgeLabels container
+                    const allLabels = Array.from(
+                      labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                    );
+                    const labelG = clickedPath.closest("g.edgeLabel") as Element | null;
+                    edgeIdx = labelG ? allLabels.indexOf(labelG) : allLabels.indexOf(clickedPath);
                   }
-                  currentOccurrence++;
+                }
+                if (edgeIdx >= 0 && labelsContainer) {
+                  const allLabels = Array.from(
+                    labelsContainer.querySelectorAll(":scope > g.edgeLabel"),
+                  );
+                  const labelEl = allLabels[edgeIdx];
+                  if (labelEl) {
+                    const labelDiv = labelEl.querySelector("foreignObject div, foreignObject span");
+                    const labelText = labelDiv?.textContent || labelEl.textContent;
+                    if (labelText?.trim()) {
+                      currentText = labelText.trim();
+                    }
+                  }
                 }
               }
             }
