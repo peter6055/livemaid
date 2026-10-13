@@ -258,12 +258,17 @@ export function InlineTextEditor({
     if (!isInlineEditing || !textBox || !selectionBox) return;
     const el = inlineInputRef.current;
     if (!el) return;
-    el.style.height = "auto";
+    // Let the editor expand with its content rather than computing a fixed
+    // height from scrollHeight, which can lag or be wrong when the DOM is
+    // updated outside React's render cycle. The intrinsic height plus a
+    // min-height based on the rendered node keeps short text centered and
+    // multiline text accessible.
     const minHeight = Math.max(textBox.height * scale, 64);
-    el.style.height = `${Math.max(el.scrollHeight, minHeight)}px`;
-    // getBoundingClientRect includes the CSS scale() transform, so divide
-    // by the current zoom to get the unscaled height used for positioning.
-    setMeasuredHeight(el.getBoundingClientRect().height / scale);
+    el.style.height = "auto";
+    el.style.minHeight = `${minHeight}px`;
+    // getBoundingClientRect includes the CSS scale() transform, so this is the
+    // visual height used to position the toolbar above the editor.
+    setMeasuredHeight(el.getBoundingClientRect().height);
   }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox, scale]);
 
   // Keep the floating editor and its toolbar below the sticky app header (h-14).
@@ -285,11 +290,29 @@ export function InlineTextEditor({
     }
   }, [isInlineEditing, scale, editingText, measuredHeight, handleFormatText, inlineInputRef]);
 
+  const scrollToCaret = useCallback(() => {
+    const el = inlineInputRef.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    const caretRect = range.getBoundingClientRect();
+    const editorRect = el.getBoundingClientRect();
+    const relativeTop = caretRect.top - editorRect.top;
+    const relativeBottom = caretRect.bottom - editorRect.bottom;
+    if (relativeTop < 0) {
+      el.scrollTop += relativeTop;
+    } else if (relativeBottom > 0) {
+      el.scrollTop += relativeBottom;
+    }
+  }, [inlineInputRef]);
+
   const handleInput = useCallback(() => {
     const el = inlineInputRef.current;
     if (!el) return;
     setEditingText(el.innerHTML);
-  }, [inlineInputRef, setEditingText]);
+    scrollToCaret();
+  }, [inlineInputRef, setEditingText, scrollToCaret]);
 
   if (!isInlineEditing || !textBox || !selectionBox) return null;
 
@@ -454,8 +477,13 @@ export function InlineTextEditor({
         ref={inlineInputRef}
         contentEditable
         suppressContentEditableWarning
-        className={`absolute pointer-events-auto resize-none outline-none ${selectedSvgId ? "border border-indigo-500/50" : ""} rounded-lg text-center font-sans font-medium z-40 overflow-hidden shadow-xl selection:bg-indigo-600 selection:text-white cursor-text ${isDark ? "bg-[#1c1c21]" : "bg-white"}`}
+        className={`absolute pointer-events-auto resize-none outline-none ${selectedSvgId ? "border border-indigo-500/50" : ""} rounded-lg text-center font-sans font-medium z-40 overflow-y-auto shadow-xl selection:bg-indigo-600 selection:text-white cursor-text ${isDark ? "bg-[#1c1c21]" : "bg-white"}`}
         onInput={handleInput}
+        onKeyUp={(e) => {
+          if (["Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+            scrollToCaret();
+          }
+        }}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
             e.preventDefault();
@@ -510,7 +538,8 @@ export function InlineTextEditor({
           top: centerY,
           transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
           width: targetVisualWidth,
-          height: targetVisualHeight,
+          height: "auto",
+          minHeight: Math.max(textBox.height * scale, 64),
           fontSize: `${fontSize}px`,
           lineHeight: 1.5,
           fontFamily: '"trebuchet ms", verdana, arial, sans-serif',
@@ -526,6 +555,7 @@ export function InlineTextEditor({
           justifyContent: "center",
           boxSizing: "border-box",
           textAlign: "center",
+          maxHeight: "clamp(240px, 50vh, 400px)",
         }}
       />
     </>
