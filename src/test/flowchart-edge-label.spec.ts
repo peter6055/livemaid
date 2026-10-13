@@ -186,7 +186,8 @@ test.describe("Multiline flowchart edge labels (Issue #39)", () => {
       expect(lines.length).toBeGreaterThanOrEqual(2);
 
       // The editor must be tall enough to show both lines.
-      const edgeLabel = svg.locator("g.edgeLabels > g.edgeLabel").first();
+      // Compare against the foreignObject label, not the padded hit-target rect.
+      const edgeLabel = svg.locator("g.edgeLabels g.edgeLabel foreignObject").first();
       await expect(edgeLabel).toHaveCount(1);
       const editorBox = await editor.boundingBox();
       const labelBox = await edgeLabel.boundingBox();
