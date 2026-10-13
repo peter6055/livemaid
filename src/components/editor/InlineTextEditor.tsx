@@ -145,6 +145,7 @@ export function InlineTextEditor({
     align: "" as "left" | "center" | "right" | "",
   });
   const [measuredHeight, setMeasuredHeight] = useState<number | null>(null);
+  const [headerOffset, setHeaderOffset] = useState(0);
   const savedSelectionRef = useRef<SavedSelection | null>(null);
 
   const updateActiveFormats = useCallback(() => {
@@ -190,8 +191,10 @@ export function InlineTextEditor({
   useEffect(() => {
     if (!isInlineEditing) {
       setMeasuredHeight(null);
-      return;
     }
+    setHeaderOffset(0);
+
+    if (!isInlineEditing) return;
 
     document.addEventListener("selectionchange", updateActiveFormats);
     return () => {
@@ -271,24 +274,56 @@ export function InlineTextEditor({
     setMeasuredHeight(el.getBoundingClientRect().height);
   }, [editingText, inlineInputRef, isInlineEditing, selectionBox, textBox, scale]);
 
+  // Observe the editor's rendered size so the toolbar tracks height changes
+  // that do not flow through React state (soft wraps, formatting, pasted HTML,
+  // line-height adjustments, etc.). The callback reads getBoundingClientRect so
+  // measuredHeight stays in the same visual/CSS-pixel space as the render path.
+  useEffect(() => {
+    if (!isInlineEditing) return;
+    const el = inlineInputRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => {
+      setMeasuredHeight(el.getBoundingClientRect().height);
+    });
+    observer.observe(el);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [isInlineEditing, inlineInputRef, scale]);
+
   // Keep the floating editor and its toolbar below the sticky app header (h-14).
   // They live inside the zoomed canvas stacking context, so the header always paints
   // above them — a node near the top of the viewport would otherwise render the
-  // toolbar under the header where clicks are swallowed.
+  // toolbar under the header where clicks are swallowed. The offset is owned by
+  // React state so the final top values are rendered, not post-mutated on the DOM.
   useLayoutEffect(() => {
     if (!isInlineEditing) return;
-    const elements = [inlineInputRef.current, toolbarRef.current].filter(Boolean) as HTMLElement[];
-    if (elements.length === 0) return;
+    const input = inlineInputRef.current;
+    if (!input) return;
+    const toolbar = toolbarRef.current;
+
+    // Skip in test environments (e.g. jsdom) where layout returns all-zero rects.
+    // Without real geometry the deficit never resolves and would loop forever.
+    const inputRect = input.getBoundingClientRect();
+    if (inputRect.width === 0 && inputRect.height === 0) return;
+
     const headerBottom = 64;
-    for (const el of elements) {
+    let maxDeficit = 0;
+    for (const el of [input, toolbar].filter(Boolean) as HTMLElement[]) {
       const rect = el.getBoundingClientRect();
       const deficit = headerBottom - rect.top;
-      if (deficit <= 1) continue;
-      const currentTop = parseFloat(el.style.top || "0");
-      if (Number.isNaN(currentTop)) continue;
-      el.style.top = `${currentTop + deficit / scale}px`;
+      if (deficit > maxDeficit) maxDeficit = deficit;
     }
-  }, [isInlineEditing, scale, editingText, measuredHeight, handleFormatText, inlineInputRef]);
+
+    if (maxDeficit > 1) {
+      setHeaderOffset((prev) => {
+        const next = prev + maxDeficit;
+        return Math.abs(next - prev) > 0.5 ? next : prev;
+      });
+    }
+  }, [isInlineEditing, scale, measuredHeight, headerOffset, inlineInputRef]);
 
   const scrollToCaret = useCallback(() => {
     const el = inlineInputRef.current;
@@ -338,6 +373,11 @@ export function InlineTextEditor({
   const targetVisualWidth = Math.max(textBox.width * scale, 120);
   const targetVisualHeight = measuredHeight ?? Math.max(textBox.height * scale, 64);
 
+  // Push the whole inline-editing stack down when the toolbar would overlap the
+  // sticky app header. The offset is in CSS pixels and converted to unscaled
+  // canvas units for the style values.
+  const baseTop = centerY + headerOffset / scale;
+
   const isDark = theme === "dark";
 
   const activeButtonClass =
@@ -358,7 +398,7 @@ export function InlineTextEditor({
           className="absolute pointer-events-auto z-50"
           style={{
             left: centerX,
-            top: `${centerY - targetVisualHeight / 2 / scale - 4 / scale}px`,
+            top: `${baseTop - targetVisualHeight / 2 / scale - 4 / scale}px`,
             transform: `translateX(-50%) translateY(-100%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
             transformOrigin: "bottom",
             padding: "0px",
@@ -535,7 +575,7 @@ export function InlineTextEditor({
         onDoubleClick={(e) => e.stopPropagation()}
         style={{
           left: centerX,
-          top: centerY,
+          top: baseTop,
           transform: `translate(-50%, -50%) scale(var(--zoom-inverse-scale, ${1 / scale}))`,
           width: targetVisualWidth,
           height: "auto",
