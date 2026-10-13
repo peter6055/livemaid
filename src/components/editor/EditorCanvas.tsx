@@ -747,10 +747,11 @@ export function EditorCanvas({
       const isGenericContainerTarget =
         tag === "svg" || tag === "div" || tag === "g" || target === container;
 
+      // Exclude cluster/subgraph containers from this fallback. Their backgrounds are made
+      // pointer-events: stroke (border only) in `addInteractionHelpersToSvg`, so clicks in the
+      // interior should pass through to nodes/edges rather than being re-selected by bounding box.
       const candidates = Array.from(
-        container.querySelectorAll(
-          ".node, .statediagram-state, .cluster, .statediagram-cluster, path.flowchart-link, .edgeLabel",
-        ),
+        container.querySelectorAll(".node, .statediagram-state, path.flowchart-link, .edgeLabel"),
       ) as SVGGraphicsElement[];
 
       const findBestAtPoint = () => {

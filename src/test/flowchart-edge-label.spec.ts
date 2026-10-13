@@ -212,3 +212,135 @@ test.describe("Inline editing across diagram types (Issue #59)", () => {
     }
   });
 });
+
+test.describe("Flowchart edge label inside subgraph (Issue #40)", () => {
+  test("double-clicking an edge label inside a subgraph edits the edge, not the cluster", async ({
+    page,
+    request,
+  }) => {
+    const code = `flowchart TD
+    subgraph chunk1["Chunk N Ingester process"]
+        E["Chunk N<br>Ingester process"]
+        E -->|link by FILE_FINALISED<br/>attributes.source_file| E1@{ shape: cyl, label: "Chunk 1 Valid File" }
+        E -->|link by FILE_FINALISED<br/>attributes.source_file| E2@{ shape: cyl, label: "Chunk 1 Invalid File" }
+    end`;
+
+    const res = await request.post("/api/diagrams", {
+      data: {
+        name: "Edge label inside subgraph regression (#40)",
+        type: "flowchart",
+        code,
+      },
+    });
+    expect(res.ok()).toBeTruthy();
+    const doc = await res.json();
+
+    try {
+      await page.goto(`/editor/${doc.id}`);
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForSelector("svg[id^='mermaid-svg']", { timeout: 20000 });
+      await page.waitForTimeout(2000);
+
+      const svg = page.locator("svg[id^='mermaid-svg']");
+      const editor = page.locator('[data-inline-editor][contenteditable="true"]');
+      const cluster = svg.locator("g.cluster[id*='chunk1']");
+      await expect(cluster).toHaveCount(1);
+
+      // Case 1: double-click the first edge-label hit target (visually inside the subgraph).
+      // Mermaid renders edge labels in a sibling group, not as descendants of g.cluster.
+      const hitRect = svg.locator("rect.edge-label-hit-target").first();
+      await expect(hitRect).toHaveCount(1);
+      const hb = await hitRect.boundingBox();
+      expect(hb).not.toBeNull();
+      await page.mouse.dblclick(hb!.x + hb!.width / 2, hb!.y + hb!.height / 2);
+      await expect(editor).toBeVisible({ timeout: 10000 });
+      await expect(editor).toHaveText(/link by FILE_FINALISED/);
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
+
+      // Case 2 (control): double-click the visible edge path (visually inside the subgraph).
+      const line = svg.locator("path.flowchart-link:not([class*='hit-target'])").first();
+      const lb = await line.boundingBox();
+      expect(lb).not.toBeNull();
+      await page.mouse.dblclick(lb!.x + lb!.width / 2, lb!.y + lb!.height / 2);
+      await expect(editor).toBeVisible({ timeout: 10000 });
+      await expect(editor).toHaveText(/link by FILE_FINALISED/);
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
+
+      // Case 3: single-click the cluster title/label text selects the cluster.
+      const clusterLabel = cluster.locator("g.cluster-label").first();
+      await expect(clusterLabel).toHaveCount(1);
+      const labelBox = await clusterLabel.boundingBox();
+      expect(labelBox).not.toBeNull();
+      await page.mouse.click(labelBox!.x + labelBox!.width / 2, labelBox!.y + labelBox!.height / 2);
+      const outline = page.locator("[data-scale-lock-border]");
+      await expect(outline).toBeVisible({ timeout: 10000 });
+
+      // Case 4: the cluster interior must not select the cluster.
+      // Cluster backgrounds use pointer-events: stroke, so only the border is
+      // clickable. First click empty canvas outside the cluster to deselect, then
+      // click well inside the cluster (away from children) and verify no outline.
+      const clusterRect = await cluster.locator("rect").first().boundingBox();
+      expect(clusterRect).not.toBeNull();
+
+      // Click on empty canvas to the left of the cluster to clear selection.
+      await page.mouse.click(clusterRect!.x - 80, clusterRect!.y + clusterRect!.height / 2);
+      await expect(outline).toHaveCount(0, { timeout: 5000 });
+
+      const padding = 24;
+      const obstacles = await page.evaluate((selector) => {
+        return Array.from(document.querySelectorAll(selector))
+          .map((el) => {
+            const r = el.getBoundingClientRect();
+            return { x: r.x, y: r.y, width: r.width, height: r.height };
+          })
+          .filter((r) => r.width > 0 && r.height > 0);
+      }, "g.cluster .node, g.cluster .cluster-label, g.cluster .edgeLabel");
+
+      const candidates = [
+        { x: clusterRect!.x + padding, y: clusterRect!.y + clusterRect!.height * 0.75 },
+        {
+          x: clusterRect!.x + clusterRect!.width - padding,
+          y: clusterRect!.y + clusterRect!.height * 0.75,
+        },
+        { x: clusterRect!.x + padding, y: clusterRect!.y + clusterRect!.height * 0.5 },
+        {
+          x: clusterRect!.x + clusterRect!.width - padding,
+          y: clusterRect!.y + clusterRect!.height * 0.5,
+        },
+      ];
+
+      let interiorPoint: { x: number; y: number } | null = null;
+      for (const p of candidates) {
+        if (
+          p.x < clusterRect!.x + padding ||
+          p.x > clusterRect!.x + clusterRect!.width - padding ||
+          p.y < clusterRect!.y + padding ||
+          p.y > clusterRect!.y + clusterRect!.height - padding
+        ) {
+          continue;
+        }
+        const overlaps = obstacles.some((r) => {
+          const margin = 12;
+          return (
+            p.x >= r.x - margin &&
+            p.x <= r.x + r.width + margin &&
+            p.y >= r.y - margin &&
+            p.y <= r.y + r.height + margin
+          );
+        });
+        if (!overlaps) {
+          interiorPoint = p;
+          break;
+        }
+      }
+
+      expect(interiorPoint).not.toBeNull();
+      await page.mouse.click(interiorPoint!.x, interiorPoint!.y);
+      await expect(outline).toHaveCount(0, { timeout: 5000 });
+    } finally {
+      await request.delete(`/api/diagrams/${doc.id}`);
+    }
+  });
+});
