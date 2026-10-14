@@ -12,6 +12,7 @@ import {
 } from "@/lib/diagrams/sequence/geometry";
 import { timelineNodeLabel } from "@/lib/diagrams/timeline";
 import { getMindmapNode } from "@/lib/diagrams/mindmap";
+import { getSubgraphTitle, subgraphTitleId } from "@/lib/diagrams/flowchart/subgraphTitle";
 
 /**
  * Inline-editing state + entry logic extracted verbatim from useCanvasInteraction
@@ -238,6 +239,81 @@ export function useInlineEditing({
           }
         }, 10);
         return;
+      }
+
+      // Flowchart/graph SUBGRAPH TITLE editing: clicking a cluster (its title or
+      // border, or the toolbar pencil) renames the subgraph title only — never the
+      // whole container. Child nodes resolve as `.node` and keep normal editing.
+      if (currentType === "flowchart" || currentType === "graph") {
+        const container = containerRef.current;
+        const clusterEl = (() => {
+          if (fromToolbar) {
+            const el = selectedSvgIdRef.current
+              ? container?.querySelector(`#${CSS.escape(selectedSvgIdRef.current)}`)
+              : null;
+            return el?.classList.contains("cluster") ? (el as SVGElement) : null;
+          }
+          // The caller (handleSvgClick) already resolved this double-click with the same
+          // heuristics it uses for selection, and stored it as `pendingResult`. Trust that
+          // resolution: a cluster means edit the title, anything else (node/edge) means do
+          // not. Re-resolving via `elementsFromPoint` can disagree — e.g. a node element
+          // under the pointer — and then the generic path opens the whole-container editor.
+          if (pendingResult) {
+            const el = pendingResult.rawSvgId
+              ? container?.querySelector<SVGElement>(`#${CSS.escape(pendingResult.rawSvgId)}`)
+              : null;
+            return el?.classList.contains("cluster") ? el : null;
+          }
+          if (targetElement.closest?.(".node")) return null;
+          return (targetElement.closest?.("g.cluster") as SVGElement | null) ?? null;
+        })();
+
+        if (clusterEl && container) {
+          const rawSvgId = clusterEl.id;
+          const subgraphId = normalizeId(rawSvgId);
+          const titleId = subgraphTitleId(subgraphId);
+
+          if (isInlineEditing) {
+            if (titleId === selectedNodeIdRef.current) return; // already editing this title
+            commitEditRef.current?.();
+            setIsInlineEditing(false);
+          }
+
+          const labelEl =
+            (clusterEl.querySelector("g.cluster-label, .cluster-label") as SVGElement | null) ??
+            clusterEl;
+          const r = labelEl.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+          const scale = containerRect.width / container.offsetWidth;
+          const box = {
+            x: (r.left - containerRect.left + container.scrollLeft) / scale,
+            y: (r.top - containerRect.top + container.scrollTop) / scale,
+            width: r.width / scale,
+            height: r.height / scale,
+          };
+          setSelectionBox(box);
+          setTextBox(box);
+          setSelectedNodeIdWithRef(titleId);
+          setSelectedSvgIdWithRef(rawSvgId);
+          setEditingText(
+            (getSubgraphTitle(code, subgraphId) ?? labelEl.textContent?.trim() ?? "").replace(
+              /<br\s*\/?>/gi,
+              "<br/>",
+            ),
+          );
+          setIsInlineEditing(true);
+          setTimeout(() => {
+            if (inlineInputRef.current) {
+              inlineInputRef.current.focus();
+              const range = document.createRange();
+              range.selectNodeContents(inlineInputRef.current);
+              const sel = window.getSelection();
+              sel?.removeAllRanges();
+              sel?.addRange(range);
+            }
+          }, 10);
+          return;
+        }
       }
 
       let result = pendingResult ?? (fromToolbar ? null : getClickedNodeRef.current(targetElement));
@@ -614,6 +690,13 @@ export function useInlineEditing({
       getSequenceMessageEntries,
       isInlineEditing,
       resolveSequenceBlockLabelTarget,
+      normalizeId,
+      containerRef,
+      selectedNodeIdRef,
+      selectedSvgIdRef,
+      setSelectionBox,
+      setTextBox,
+      setIsInlineEditing,
     ],
   );
 

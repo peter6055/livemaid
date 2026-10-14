@@ -24,6 +24,11 @@ import {
   findFlowchartSubgraphLine,
 } from "@/lib/diagrams/flowchart/selectionLineMap";
 import { deleteFlowchartSubgraph } from "@/lib/diagrams/flowchart/deletion";
+import {
+  isSubgraphTitleId,
+  subgraphIdFromTitleId,
+  setSubgraphTitle,
+} from "@/lib/diagrams/flowchart/subgraphTitle";
 import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
@@ -3465,6 +3470,11 @@ export function LiveMaidEditor({
           );
         }
       }
+    } else if (isSubgraphTitleId(selectedNodeId)) {
+      // Flowchart subgraph title: rewrite ONLY the visible title, preserving the
+      // identifier, child nodes, edges and nesting.
+      const renamed = setSubgraphTitle(code, subgraphIdFromTitleId(selectedNodeId), normalizedText);
+      if (renamed !== code) newCode = renamed;
     } else {
       // Flowchart cluster/subgraph title rename path.
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
