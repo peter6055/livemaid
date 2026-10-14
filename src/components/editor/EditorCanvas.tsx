@@ -24,6 +24,7 @@ import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import type { ClassConnectMenuState } from "./ClassConnectMenu";
 import CanvasSvgLayer, { CanvasBackdrop } from "./CanvasSvgLayer";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import { isSubgraphTitleId } from "@/lib/diagrams/flowchart/subgraphTitle";
 import { classNameFromSvgId, getNamespaceNames } from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
@@ -472,10 +473,13 @@ export function EditorCanvas({
 
     if (selectedSvgSelector) {
       try {
+        // Subgraph title editing masks ONLY the label: hiding the bare cluster id
+        // would hide the whole g.cluster container (border + children).
+        const selector = isSubgraphTitleId(selectedNodeId)
+          ? `${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject`
+          : `${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`;
         container
-          .querySelectorAll<
-            HTMLElement | SVGElement
-          >(`${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`)
+          .querySelectorAll<HTMLElement | SVGElement>(selector)
           .forEach((el) => elements.add(el));
       } catch {
         // Ignore invalid third-party SVG ids; overlap fallback still handles the visible label.
@@ -1589,7 +1593,20 @@ export function EditorCanvas({
                      `}</style>
                 )}
 
-                {isInlineEditing && selectedSvgSelector && (
+                {isInlineEditing && selectedSvgSelector && isSubgraphTitleId(selectedNodeId) && (
+                  <style>{`
+                        ${selectedSvgSelector} .cluster-label,
+                        ${selectedSvgSelector} .label,
+                        ${selectedSvgSelector} text,
+                        ${selectedSvgSelector} foreignObject {
+                            opacity: 0 !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                        }
+                     `}</style>
+                )}
+
+                {isInlineEditing && selectedSvgSelector && !isSubgraphTitleId(selectedNodeId) && (
                   <style>{`
                         ${selectedSvgSelector},
                         ${selectedSvgSelector} .label,

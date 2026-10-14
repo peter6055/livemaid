@@ -342,4 +342,74 @@ test.describe("Flowchart subgraph title editing (Issue #36)", () => {
       await removeSeed(request, doc.id);
     }
   });
+
+  test("9. cluster container stays visible while the title editor is open", async ({
+    page,
+    request,
+  }) => {
+    const doc = await openDiagram(page, request, CODE);
+    try {
+      const cluster = page.locator("svg[id^='mermaid-svg'] g.cluster[id*='chunk1']");
+      await expect(cluster).toHaveCount(1);
+
+      const editor = await openTitleEditor(page);
+
+      const clusterBox = await cluster.boundingBox();
+      expect(clusterBox).not.toBeNull();
+      expect(clusterBox!.width).toBeGreaterThan(0);
+      expect(clusterBox!.height).toBeGreaterThan(0);
+
+      // The container itself must not be masked: only the label is hidden.
+      const visibility = await page.evaluate(() => {
+        const svg = document.querySelector("svg[id^='mermaid-svg']");
+        const clusterEl = svg?.querySelector("g.cluster[id*='chunk1']") as SVGGElement | null;
+        if (!clusterEl) return null;
+        const style = getComputedStyle(clusterEl);
+        const rect = clusterEl.querySelector("rect");
+        const rectBox = rect?.getBoundingClientRect();
+        const rectStyle = rect ? getComputedStyle(rect) : null;
+        return {
+          opacity: style.opacity,
+          visibility: style.visibility,
+          rectOpacity: rectStyle?.opacity ?? null,
+          rectVisibility: rectStyle?.visibility ?? null,
+          rectWidth: rectBox?.width ?? 0,
+          rectHeight: rectBox?.height ?? 0,
+        };
+      });
+      expect(visibility).not.toBeNull();
+      expect(visibility!.opacity).not.toBe("0");
+      expect(visibility!.visibility).not.toBe("hidden");
+      expect(visibility!.rectWidth).toBeGreaterThan(0);
+      expect(visibility!.rectHeight).toBeGreaterThan(0);
+      expect(visibility!.rectOpacity).not.toBe("0");
+      expect(visibility!.rectVisibility).not.toBe("hidden");
+
+      const editorBox = await editor.boundingBox();
+      expect(editorBox).not.toBeNull();
+      expect(editorBox!.width).toBeLessThan(clusterBox!.width * 0.6);
+
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
+    } finally {
+      await removeSeed(request, doc.id);
+    }
+  });
+
+  test("10. title editor seeds with the old title only", async ({ page, request }) => {
+    const doc = await openDiagram(page, request, CODE);
+    try {
+      const editor = await openTitleEditor(page);
+      await expect(editor).toHaveText(/Old Title/);
+      await expect(editor).not.toHaveText(/Chunk N/);
+      await expect(editor).not.toHaveText(/Valid File/);
+      await expect(editor).not.toHaveText(/FILE_FINALISED/);
+      await expect(editor).not.toHaveText(/Ingester process/);
+
+      await page.keyboard.press("Escape");
+      await expect(editor).toHaveCount(0);
+    } finally {
+      await removeSeed(request, doc.id);
+    }
+  });
 });
