@@ -248,6 +248,8 @@ interface EditorCanvasProps {
     startId: string | null,
     targetNodeId?: string,
     shape?: ShapeOption,
+    sequenceInsertIndex?: number,
+    insideNewSubgraph?: boolean,
   ) => void;
   handleUpdateStyle: (property: string, value: string) => void;
   handleFormatNodeLabel: (format: string, value?: string) => void;
@@ -574,6 +576,9 @@ export function EditorCanvas({
   } | null>(null);
   // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
   const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
+  // Shape-picker option: wrap the newly created flowchart node in its own new subgraph.
+  const [insideNewSubgraph, setInsideNewSubgraph] = useState(false);
+  const shapePickerRef = useRef<HTMLDivElement | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const fallbackRenderIdRef = useRef<string | null>(null);
   const lastScaleRef = useRef(0);
@@ -598,6 +603,11 @@ export function EditorCanvas({
     },
     [viewport, setShapePicker],
   );
+
+  // Default the new-subgraph option to off each time the picker opens.
+  useEffect(() => {
+    if (shapePicker) setInsideNewSubgraph(false);
+  }, [shapePicker]);
 
   const flowchartConnectionEnd = connectionState.mousePos;
   const flowchartConnectionStart =
@@ -669,7 +679,9 @@ export function EditorCanvas({
 
   useEffect(() => {
     if (!shapePicker) return;
-    const handleOutsideClick = () => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && shapePickerRef.current?.contains(target)) return;
       setShapePicker(null);
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -729,6 +741,7 @@ export function EditorCanvas({
           el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
           el.closest?.(".timeline-reorder-handle") ||
+          el.closest?.("[data-flowchart-shape-picker]") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
         );
       });
@@ -2172,11 +2185,12 @@ export function EditorCanvas({
       {shapePicker && (
         <div
           data-flowchart-shape-picker
+          ref={shapePickerRef}
           className="absolute z-50 flex flex-col gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150"
           style={{
-            left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 250)),
+            left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 340)),
             top: Math.max(10, Math.min(shapePicker.y, viewportHeight - 350)),
-            width: "230px",
+            width: "320px",
           }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -2193,10 +2207,28 @@ export function EditorCanvas({
             </button>
           </div>
 
+          <div className="flex flex-col gap-3 mb-2">
+            <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
+              Options
+            </p>
+            <label
+              title="Put only the new shape inside a fresh subgraph; the selected node and its edge stay outside"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium text-foreground pl-[5px]"
+            >
+              <input
+                type="checkbox"
+                checked={insideNewSubgraph}
+                onChange={(e) => setInsideNewSubgraph(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-indigo-600"
+              />
+              Create inside a new subgraph
+            </label>
+          </div>
+
           <div className="flex flex-col gap-4 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
             {/* Basic Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider mb-1.5">
                 Basic
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2206,7 +2238,13 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
+                      handleAddNodeFromSelected(
+                        shapePicker.startNodeId,
+                        undefined,
+                        shape,
+                        undefined,
+                        insideNewSubgraph,
+                      );
                       setShapePicker(null);
                     }}
                     onClick={(e) => {
@@ -2226,7 +2264,7 @@ export function EditorCanvas({
 
             {/* Extended Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider mb-1.5">
                 Extended
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2236,7 +2274,13 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
+                      handleAddNodeFromSelected(
+                        shapePicker.startNodeId,
+                        undefined,
+                        shape,
+                        undefined,
+                        insideNewSubgraph,
+                      );
                       setShapePicker(null);
                     }}
                     onClick={(e) => {

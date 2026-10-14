@@ -1633,6 +1633,7 @@ export function useCanvasInteraction({
       targetNodeId?: string,
       shape?: ShapeOption,
       sequenceInsertIndex?: number,
+      insideNewSubgraph?: boolean,
     ) => {
       if (!startId) return;
 
@@ -1644,7 +1645,7 @@ export function useCanvasInteraction({
           newCode += `\n    ${startId} --> ${targetNodeId}`;
         } else {
           const prefix = startId.match(/^([a-zA-Z]+)/)?.[1] || "n";
-          newCode = addFlowchartConnectedNode(code, startId, shape, prefix);
+          newCode = addFlowchartConnectedNode(code, startId, shape, prefix, insideNewSubgraph);
         }
       } else if (diagramType === "sequence") {
         const actor = startId.replace("SEQ_ACTOR_", "");
