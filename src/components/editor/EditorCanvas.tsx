@@ -4,6 +4,7 @@ import {
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
 import { Lock, Plus, Pencil, RotateCcw, GitBranch, SquareStack } from "lucide-react";
+import { toast } from "sonner";
 import { CanvasZoomControls, CommentFocusSync } from "./CanvasTransform";
 import { CanvasPopovers } from "./CanvasPopovers";
 import {
@@ -18,6 +19,11 @@ import { makeClassConnectDrag } from "./ClassConnectDrag";
 import { makeErConnectDrag } from "./ErConnectDrag";
 import { useSequenceDragMachines } from "./SequenceInteractions";
 import { TimelineReorderOverlay, useTimelineReorderMachine } from "./TimelineInteractions";
+import { useFlowchartMembershipDragMachine } from "./FlowchartMembershipDrag";
+import {
+  FlowchartMembershipDropLayer,
+  flowchartDropBlockedMessage,
+} from "./FlowchartMembershipOverlay";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { ErPropertyPanel } from "./ErPropertyPanel";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
@@ -64,6 +70,15 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { nearestPerimeterAnchor } from "./canvasCoord";
+import {
+  flowchartNodeMoveBlockedMessage,
+  getFlowchartNodeMoveEligibility,
+  moveFlowchartNode,
+} from "@/lib/diagrams/flowchart/membership";
+import {
+  findFlowchartNodeLine,
+  findFlowchartNodeSubgraphId,
+} from "@/lib/diagrams/flowchart/selectionLineMap";
 
 interface EditorCanvasProps {
   code: string;
@@ -853,6 +868,114 @@ export function EditorCanvas({
     onTimelineMove,
   });
 
+  // Flowchart membership drag machine (issue #35: node into/out of/between
+  // subgraphs; issue #41: whole subgraph into another). Pure move math lives in
+  // `src/lib/diagrams/flowchart/`; this hook owns only the pointer gesture.
+  const {
+    active: flowchartMembershipActive,
+    draggedKind: flowchartMembershipDraggedKind,
+    draggedId: flowchartMembershipDraggedId,
+    highlight: flowchartMembershipHighlight,
+    startDrag: startFlowchartMembershipDrag,
+  } = useFlowchartMembershipDragMachine({
+    canvasShellRef,
+    containerRef,
+    code,
+    selectedNodeId,
+    isInlineEditing,
+    isConnectActive: connectionState.active,
+    handleCodeChange: handleCodeChange ?? (() => {}),
+    // Selection already happens on mousedown via the document-capture router
+    // above, so a sub-threshold pointerup needs no synthetic re-select here.
+    onNoDragTap: () => {},
+  });
+
+  // Blocked-drop feedback (issue #35): the membership machine commits through
+  // handleCodeChange only on change, so a rejected node drag is otherwise
+  // silent. On drag end with no code change, surface the blocked reason via
+  // toast. Subgraph drags (#41) stay silent on no-op.
+  const flowchartMembershipPrevActiveRef = useRef(false);
+  const flowchartMembershipStartCodeRef = useRef(code);
+  const flowchartMembershipCancelledRef = useRef(false);
+  const flowchartMembershipLastRef = useRef<{
+    kind: "node" | "subgraph";
+    id: string;
+    highlight: typeof flowchartMembershipHighlight;
+  } | null>(null);
+  // Escape cancels the drag (machine clears state without a drop) — never toast it.
+  useEffect(() => {
+    if (!flowchartMembershipActive) return;
+    flowchartMembershipCancelledRef.current = false;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") flowchartMembershipCancelledRef.current = true;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flowchartMembershipActive]);
+  useEffect(() => {
+    const wasActive = flowchartMembershipPrevActiveRef.current;
+    if (flowchartMembershipActive) {
+      if (!wasActive) flowchartMembershipStartCodeRef.current = code;
+      if (flowchartMembershipDraggedKind && flowchartMembershipDraggedId) {
+        flowchartMembershipLastRef.current = {
+          kind: flowchartMembershipDraggedKind,
+          id: flowchartMembershipDraggedId,
+          highlight: flowchartMembershipHighlight,
+        };
+      }
+    } else if (wasActive) {
+      const last = flowchartMembershipLastRef.current;
+      flowchartMembershipLastRef.current = null;
+      const cancelled = flowchartMembershipCancelledRef.current;
+      flowchartMembershipCancelledRef.current = false;
+      if (last && last.kind === "node" && last.id && !cancelled) {
+        const snapshot = flowchartMembershipStartCodeRef.current;
+        const nodeId = last.id;
+        const lastHighlight = last.highlight;
+        const dest =
+          lastHighlight && "subgraphId" in lastHighlight ? lastHighlight.subgraphId : null;
+        // Rejected boxes never commit; otherwise recompute the move to tell a
+        // successful drop (code will update) from a blocked one.
+        let blocked = lastHighlight?.kind === "rejected";
+        if (!blocked) {
+          try {
+            blocked = moveFlowchartNode(snapshot, nodeId, dest) === snapshot;
+          } catch {
+            blocked = false;
+          }
+        }
+        if (blocked) {
+          const hlReason = (lastHighlight as { reason?: unknown } | null)?.reason;
+          const owner = findFlowchartNodeSubgraphId(snapshot, nodeId);
+          let reason = typeof hlReason === "string" && hlReason ? hlReason : null;
+          if (!reason && dest !== null && owner === dest) reason = "same-owner";
+          const elig = getFlowchartNodeMoveEligibility(snapshot, nodeId);
+          if (!reason && !elig.eligible && elig.reason) reason = elig.reason;
+          if (!reason) {
+            if (findFlowchartNodeLine(snapshot, nodeId) === -1) reason = "unknown-node";
+            else if (dest === null && owner === null)
+              return; // already top-level: stay silent
+            else if (lastHighlight?.kind === "rejected")
+              reason = owner === null ? "unknown-dest" : "same-owner";
+            else reason = "unknown-dest";
+          }
+          const message =
+            reason === "same-owner" ||
+            reason === "edge-declaration" ||
+            reason === "edge-only" ||
+            reason === "multiline-block" ||
+            reason === "unknown-node" ||
+            reason === "unknown-dest"
+              ? flowchartNodeMoveBlockedMessage(reason)
+              : flowchartDropBlockedMessage(reason);
+          if (reason === "same-owner") toast.info(message);
+          else toast.error(message);
+        }
+      }
+    }
+    flowchartMembershipPrevActiveRef.current = flowchartMembershipActive;
+  });
+
   // Endpoint geometry (canvas coords) for the currently selected message — drives the source/
   // target drag handles. Canvas coords are transform-invariant, so this need only recompute when
   // the selection or the rendered diagram changes (NOT on pan/zoom). Null unless a sequence
@@ -1149,6 +1272,7 @@ export function EditorCanvas({
             seqEndpointDragging ||
             !!seqLifelineReorder ||
             !!timelineReorder ||
+            flowchartMembershipActive ||
             classConnecting ||
             erConnecting ||
             stateConnecting,
@@ -1226,6 +1350,19 @@ export function EditorCanvas({
               <div
                 ref={containerRef}
                 className={`w-full h-full relative flex items-center justify-center ${isCommentMode ? "cursor-copy" : "cursor-grab active:cursor-grabbing"}`}
+                onPointerDown={
+                  !isLocked &&
+                  !isCommentMode &&
+                  (currentType === "flowchart" || currentType === "graph") &&
+                  handleCodeChange
+                    ? (e) => {
+                        // Primary button only; the machine classifies the target
+                        // (.node / g.cluster) and ignores everything else.
+                        if (e.button !== 0) return;
+                        startFlowchartMembershipDrag(e);
+                      }
+                    : undefined
+                }
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
@@ -2021,6 +2158,14 @@ export function EditorCanvas({
           so pan/zoom never shifts them (panning disabled during drag). Rendered by
           TimelineReorderOverlay; slot/guide/ghost markup lives in TimelineInteractions.tsx. */}
       {timelineReorder && <TimelineReorderOverlay timelineReorder={timelineReorder} code={code} />}
+
+      {/* Flowchart membership drop highlight (issues #35/#41) — viewport-relative
+          (canvasShellRef), outside TransformWrapper, so pan/zoom never shifts it. */}
+      <FlowchartMembershipDropLayer
+        highlight={flowchartMembershipHighlight}
+        draggedKind={flowchartMembershipDraggedKind}
+        showTopLevelHint={flowchartMembershipActive && flowchartMembershipDraggedKind === "node"}
+      />
 
       {sequencePlusMenu && (
         <div
