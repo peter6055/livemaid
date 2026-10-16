@@ -64,13 +64,16 @@ describe("moveFlowchartNode", () => {
     expect(moveFlowchartNode(code, "A", "sg")).toBe(code);
   });
 
-  it("is a no-op when the declaration line contains an edge connector", () => {
+  it("auto-splits when the declaration line contains an edge connector", () => {
     const code = `flowchart TD
     A[Start] --> B[End]
     subgraph sg
         C[Other]
     end`;
-    expect(moveFlowchartNode(code, "A", "sg")).toBe(code);
+    const result = moveFlowchartNode(code, "A", "sg");
+    expect(result).not.toBe(code);
+    expect(result).toContain("A --> B[End]");
+    expect(result).toMatch(/^        A\[Start\]$/m);
   });
 
   it("is a no-op for a node defined only inside an edge line", () => {

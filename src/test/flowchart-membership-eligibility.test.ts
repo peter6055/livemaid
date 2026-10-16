@@ -4,9 +4,9 @@ import {
   resolveFlowchartNodeDropOutcome,
 } from "@/components/editor/FlowchartMembershipDrag";
 
-// Dragging a node whose line also defines an edge (e.g. `A[X] --> B`) must
-// never show a success target: the move would silently no-op. See private
-// issue peter6055/livemaid-project#35 comment 6190306005.
+// Dragging a node whose line also defines an edge (e.g. `A[X] --> B`) now
+// auto-splits on move (issue #47 supersedes the #35 no-op for splittable
+// lines): the bare edge stays and only the declaration moves.
 const EDGE_CODE = `flowchart TD
 A[X] --> B[Y]
 subgraph sg
@@ -32,7 +32,7 @@ end
 const RECTS = [{ id: "sg", x: 0, y: 0, w: 100, h: 100 }];
 
 describe("flowchart membership drag eligibility", () => {
-  it("rejects an edge-declared node over a new subgraph (no false success target)", () => {
+  it("targets a new subgraph for an auto-splittable edge-declared node", () => {
     expect(
       computeFlowchartMembershipHighlight({
         kind: "node",
@@ -41,7 +41,7 @@ describe("flowchart membership drag eligibility", () => {
         destId: "sg",
         rects: RECTS,
       }),
-    ).toMatchObject({ kind: "rejected", reason: "edge-declaration" });
+    ).toMatchObject({ kind: "node-target", subgraphId: "sg" });
   });
 
   it("rejects an edge-only node over a new subgraph", () => {
@@ -94,11 +94,14 @@ describe("flowchart membership drag eligibility", () => {
 });
 
 describe("resolveFlowchartNodeDropOutcome", () => {
-  it("blocks ineligible nodes with their block reason", () => {
+  it("allows auto-splittable edge-declared nodes", () => {
     expect(resolveFlowchartNodeDropOutcome(EDGE_CODE, "A", "sg")).toEqual({
-      ok: false,
-      reason: "edge-declaration",
+      ok: true,
+      reason: null,
     });
+  });
+
+  it("blocks ineligible nodes with their block reason", () => {
     expect(resolveFlowchartNodeDropOutcome(EDGE_ONLY_CODE, "B", "sg")).toEqual({
       ok: false,
       reason: "edge-only",

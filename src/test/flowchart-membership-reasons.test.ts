@@ -27,17 +27,20 @@ describe("getFlowchartNodeMoveEligibility", () => {
     });
   });
 
-  it("reports edge-declaration when the line also defines a connection", () => {
+  it("auto-splits an edge-bearing declaration into a moved decl and a bare edge", () => {
     const code = `flowchart TD
     A[Start] --> B[End]
     subgraph sg
         C[Other]
     end`;
     expect(getFlowchartNodeMoveEligibility(code, "A")).toEqual({
-      eligible: false,
-      reason: "edge-declaration",
+      eligible: true,
+      reason: null,
     });
-    expect(moveFlowchartNode(code, "A", "sg")).toBe(code);
+    const result = moveFlowchartNode(code, "A", "sg");
+    expect(result).not.toBe(code);
+    expect(result).toContain("A --> B[End]");
+    expect(result).toMatch(/^        A\[Start\]$/m);
   });
 
   it("reports edge-only for a node known only via an edge", () => {
