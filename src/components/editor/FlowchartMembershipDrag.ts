@@ -130,7 +130,47 @@ export type FlowchartDomRectEntry = {
 
 export type FlowchartShellOrigin = { left: number; top: number };
 
-/** Map viewport rects into canvasShell-relative space (captured shell origin). */
+/**
+ * Visual bounds of a `g.cluster` group: the drawn subgraph box is the
+ * largest-area DIRECT-child `rect` (the background). The outer group's bbox
+ * also unions the `g.cluster-label` and so reads taller than the visible
+ * box, and a naive descendant `querySelector("rect")` can grab a tiny nested
+ * node rect — so only direct children are considered, by explicit child scan
+ * (no `:scope` selector). Falls back to the group bbox when no direct-child
+ * rect exists. Returns null when neither element can be measured.
+ */
+export function getClusterVisualRect(g: Element): FlowchartDomRectEntry | null {
+  let best: { left: number; top: number; width: number; height: number } | null = null;
+  let bestArea = -1;
+  for (const child of Array.from(g.children)) {
+    if (child.tagName.toLowerCase() !== "rect") continue;
+    const candidate = child as unknown as SVGGraphicsElement | null;
+    if (!candidate || typeof candidate.getBoundingClientRect !== "function") continue;
+    const r = candidate.getBoundingClientRect();
+    const area = r.width * r.height;
+    if (area > bestArea) {
+      bestArea = area;
+      best = r;
+    }
+  }
+  const group = g as unknown as SVGGraphicsElement | null;
+  const r =
+    best ??
+    (group && typeof group.getBoundingClientRect === "function"
+      ? group.getBoundingClientRect()
+      : null);
+  if (!r) return null;
+  return { id: "", left: r.left, top: r.top, width: r.width, height: r.height };
+}
+
+/**
+ * Map viewport rects into canvasShell-relative (viewport) space, the coordinate
+ * space the drop overlay renders in. Kept in screen px on purpose: the overlay
+ * sits OUTSIDE the pan/zoom transform, so a plain-px border stays a constant
+ * on-screen size. A border drawn inside the transform cannot do this — Chrome
+ * floors `border-width` to 1 CSS px, so `calc(2px * 1/zoom)` renders 2, 3, 6 …
+ * screen px as you zoom in.
+ */
 export function toShellRelativeClusterRects(
   entries: FlowchartDomRectEntry[],
   origin: FlowchartShellOrigin,
@@ -271,7 +311,10 @@ interface ActiveFlowchartMembershipDrag {
 /**
  * Viewport-space flowchart membership drag machine (issues #35, #41): drag a
  * node into/out of/between subgraphs, or a whole subgraph into another.
- * Cluster rects are captured ONCE at pointerdown in shell-relative space and
+ * Cluster rects are captured in canvasShell (viewport) coords, the same space
+ * the drop highlight renders in — it lives OUTSIDE the pan/zoom transform so
+ * its plain-px border keeps a constant screen size. The rects are captured at
+ * pointerdown and refreshed once when the drag arms (past threshold), then
  * reused across moves; drops resolve via `resolveFlowchartDropTarget`
  * (smallest-area wins) and commit once through `handleCodeChange` (only when
  * the Wave-1 move fn returns a changed string). Sub-threshold pointerups fall
@@ -328,18 +371,29 @@ export function useFlowchartMembershipDragMachine({
       const shell = canvasShellRef.current;
       const container = containerRef.current;
       if (!shell || !container) return;
-      // Capture shell origin + cluster rects once (cf. TimelineInteractions);
-      // reused across moves, never re-queried per move.
+      // Capture the shell origin + cluster rects in VIEWPORT space at
+      // pointerdown and refresh once when the drag arms, so the highlight sits
+      // exactly on the drawn cluster rect. Viewport space (not canvas space) is
+      // deliberate: the overlay renders outside the pan/zoom transform, so its
+      // plain-px border keeps a constant on-screen width at any zoom.
       const shellRect = shell.getBoundingClientRect();
       const origin: FlowchartShellOrigin = { left: shellRect.left, top: shellRect.top };
-      const entries: FlowchartDomRectEntry[] = [];
-      container.querySelectorAll("g.cluster").forEach((g) => {
-        const r = (g as SVGGraphicsElement).getBoundingClientRect();
-        const id = resolveFlowchartDraggedId(snapshotCode, (g as SVGElement).id ?? "", "subgraph");
-        if (!id) return;
-        entries.push({ id, left: r.left, top: r.top, width: r.width, height: r.height });
-      });
-      const rects = toShellRelativeClusterRects(entries, origin);
+      const captureFrame = (): FlowchartClusterRect[] => {
+        const entries: FlowchartDomRectEntry[] = [];
+        container.querySelectorAll("g.cluster").forEach((g) => {
+          const r = getClusterVisualRect(g);
+          if (!r) return;
+          const id = resolveFlowchartDraggedId(
+            snapshotCode,
+            (g as SVGElement).id ?? "",
+            "subgraph",
+          );
+          if (!id) return;
+          entries.push({ id, left: r.left, top: r.top, width: r.width, height: r.height });
+        });
+        return toShellRelativeClusterRects(entries, origin);
+      };
+      let rects = captureFrame();
       const startClientX = e.clientX;
       const startClientY = e.clientY;
       let armed = false;
@@ -353,6 +407,7 @@ export function useFlowchartMembershipDragMachine({
         if (!armed) {
           if (!isBeyondDragThreshold(startClientX, startClientY, ev.clientX, ev.clientY)) return;
           armed = true;
+          rects = captureFrame();
           // Past threshold: this gesture is ours — keep it out of click routing.
           ev.stopPropagation();
           ev.preventDefault();

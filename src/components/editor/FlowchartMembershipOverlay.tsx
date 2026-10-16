@@ -64,23 +64,30 @@ export function FlowchartMembershipDropLayer(props: {
     );
   }
   const target = "subgraphId" in highlight ? highlight.subgraphId : "root";
+  // Viewport-space overlay (rendered outside the pan/zoom transform), so these
+  // lengths are plain px and keep a constant on-screen size at any zoom.
   const rectStyle =
     highlight.kind === "node-target"
       ? {
           backgroundColor: "rgba(99,102,241,0.10)",
-          border: "2px solid #6366f1",
+          border: "2px solid rgb(99, 102, 241)",
           borderRadius: 8,
+          boxSizing: "border-box" as const,
         }
       : highlight.kind === "subgraph-target"
         ? {
             backgroundColor: "transparent",
-            border: "2.5px solid #4f46e5",
+            border: "2.5px solid rgb(79, 70, 229)",
             borderRadius: 8,
+            boxSizing: "border-box" as const,
           }
         : {
-            backgroundColor: "transparent",
-            border: "2px dashed #ef4444",
+            backgroundColor: "rgba(239,68,68,0.10)",
+            border: "2px dashed rgb(239, 68, 68)",
             borderRadius: 8,
+            boxSizing: "border-box" as const,
+            pointerEvents: "auto" as const,
+            cursor: "not-allowed" as const,
           };
   const reason = highlight.kind === "rejected" ? (highlight as { reason?: unknown }).reason : null;
   const blockedMessage =

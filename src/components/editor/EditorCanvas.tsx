@@ -2160,7 +2160,10 @@ export function EditorCanvas({
       {timelineReorder && <TimelineReorderOverlay timelineReorder={timelineReorder} code={code} />}
 
       {/* Flowchart membership drop highlight (issues #35/#41) — viewport-relative
-          (canvasShellRef), outside TransformWrapper, so pan/zoom never shifts it. */}
+          (canvasShellRef), OUTSIDE the TransformWrapper. The rects are measured in
+          the same viewport space, so the plain-px border/chips sit exactly on the
+          drawn cluster and keep a constant on-screen size at any zoom (a border
+          inside the transform cannot: Chrome floors `border-width` to 1 CSS px). */}
       <FlowchartMembershipDropLayer
         highlight={flowchartMembershipHighlight}
         draggedKind={flowchartMembershipDraggedKind}
