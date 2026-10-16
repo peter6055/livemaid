@@ -1190,6 +1190,12 @@ export function useCanvasInteraction({
       ) {
         debugLog("enter-edit-mode-double-click", clicked.cleanId);
         lastClickRef.current = null;
+        // Mark this gesture as handled so the capture-phase native dblclick listener skips its
+        // own handleEditClick call. Without this the native dblclick re-resolves the target via
+        // elementsFromPoint (no pendingResult) and can open the whole-container editor instead of
+        // the subgraph title. Only real double-clicks (detail >= 2) dispatch a native dblclick to
+        // consume this flag; timing-only entries have none and must not set it.
+        if (e.detail >= 2) dblClickHandledRef.current = true;
         pendingEditTargetRef.current = clicked;
         handleEditClick(e);
         return;
@@ -1627,6 +1633,7 @@ export function useCanvasInteraction({
       targetNodeId?: string,
       shape?: ShapeOption,
       sequenceInsertIndex?: number,
+      insideNewSubgraph?: boolean,
     ) => {
       if (!startId) return;
 
@@ -1638,7 +1645,7 @@ export function useCanvasInteraction({
           newCode += `\n    ${startId} --> ${targetNodeId}`;
         } else {
           const prefix = startId.match(/^([a-zA-Z]+)/)?.[1] || "n";
-          newCode = addFlowchartConnectedNode(code, startId, shape, prefix);
+          newCode = addFlowchartConnectedNode(code, startId, shape, prefix, insideNewSubgraph);
         }
       } else if (diagramType === "sequence") {
         const actor = startId.replace("SEQ_ACTOR_", "");

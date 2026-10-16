@@ -4,6 +4,7 @@ import {
   type ReactZoomPanPinchRef,
 } from "react-zoom-pan-pinch";
 import { Lock, Plus, Pencil, RotateCcw, GitBranch, SquareStack } from "lucide-react";
+import { toast } from "sonner";
 import { CanvasZoomControls, CommentFocusSync } from "./CanvasTransform";
 import { CanvasPopovers } from "./CanvasPopovers";
 import {
@@ -18,12 +19,18 @@ import { makeClassConnectDrag } from "./ClassConnectDrag";
 import { makeErConnectDrag } from "./ErConnectDrag";
 import { useSequenceDragMachines } from "./SequenceInteractions";
 import { TimelineReorderOverlay, useTimelineReorderMachine } from "./TimelineInteractions";
+import { useFlowchartMembershipDragMachine } from "./FlowchartMembershipDrag";
+import {
+  FlowchartMembershipDropLayer,
+  flowchartDropBlockedMessage,
+} from "./FlowchartMembershipOverlay";
 import { SelectionToolbar } from "./SelectionToolbar";
 import { ErPropertyPanel } from "./ErPropertyPanel";
 import { ClassPropertyPanel } from "./ClassPropertyPanel";
 import type { ClassConnectMenuState } from "./ClassConnectMenu";
 import CanvasSvgLayer, { CanvasBackdrop } from "./CanvasSvgLayer";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import { isSubgraphTitleId } from "@/lib/diagrams/flowchart/subgraphTitle";
 import { classNameFromSvgId, getNamespaceNames } from "@/lib/diagrams/classDiagram";
 import type { ParsedClass, ClassEdits } from "@/lib/diagrams/classDiagram";
 import { entityNameFromSvgId } from "@/lib/diagrams/erDiagram";
@@ -63,6 +70,15 @@ import { BASIC_SHAPES, EXTENDED_SHAPES, type ShapeOption } from "@/lib/diagrams/
 import type { ConnectionState, ShapePicker } from "@/hooks/useCanvasInteraction";
 import type { DiagramComment } from "@/lib/api/storage";
 import { nearestPerimeterAnchor } from "./canvasCoord";
+import {
+  flowchartNodeMoveBlockedMessage,
+  getFlowchartNodeMoveEligibility,
+  moveFlowchartNode,
+} from "@/lib/diagrams/flowchart/membership";
+import {
+  findFlowchartNodeLine,
+  findFlowchartNodeSubgraphId,
+} from "@/lib/diagrams/flowchart/selectionLineMap";
 
 interface EditorCanvasProps {
   code: string;
@@ -247,6 +263,8 @@ interface EditorCanvasProps {
     startId: string | null,
     targetNodeId?: string,
     shape?: ShapeOption,
+    sequenceInsertIndex?: number,
+    insideNewSubgraph?: boolean,
   ) => void;
   handleUpdateStyle: (property: string, value: string) => void;
   handleFormatNodeLabel: (format: string, value?: string) => void;
@@ -472,10 +490,13 @@ export function EditorCanvas({
 
     if (selectedSvgSelector) {
       try {
+        // Subgraph title editing masks ONLY the label: hiding the bare cluster id
+        // would hide the whole g.cluster container (border + children).
+        const selector = isSubgraphTitleId(selectedNodeId)
+          ? `${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject`
+          : `${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`;
         container
-          .querySelectorAll<
-            HTMLElement | SVGElement
-          >(`${selectedSvgSelector}, ${selectedSvgSelector} .label, ${selectedSvgSelector} text, ${selectedSvgSelector} foreignObject, ${selectedSvgSelector} .nodeLabel, ${selectedSvgSelector} .cluster-label, ${selectedSvgSelector} .messageText, ${selectedSvgSelector} .noteText`)
+          .querySelectorAll<HTMLElement | SVGElement>(selector)
           .forEach((el) => elements.add(el));
       } catch {
         // Ignore invalid third-party SVG ids; overlap fallback still handles the visible label.
@@ -570,6 +591,9 @@ export function EditorCanvas({
   } | null>(null);
   // Drop-point "what shape?" popover shown when a state connect drag lands on empty canvas.
   const [stateConnectMenu, setStateConnectMenu] = useState<StateConnectMenuState | null>(null);
+  // Shape-picker option: wrap the newly created flowchart node in its own new subgraph.
+  const [insideNewSubgraph, setInsideNewSubgraph] = useState(false);
+  const shapePickerRef = useRef<HTMLDivElement | null>(null);
   const sequencePlusMenuRef = useRef<HTMLDivElement | null>(null);
   const fallbackRenderIdRef = useRef<string | null>(null);
   const lastScaleRef = useRef(0);
@@ -594,6 +618,11 @@ export function EditorCanvas({
     },
     [viewport, setShapePicker],
   );
+
+  // Default the new-subgraph option to off each time the picker opens.
+  useEffect(() => {
+    if (shapePicker) setInsideNewSubgraph(false);
+  }, [shapePicker]);
 
   const flowchartConnectionEnd = connectionState.mousePos;
   const flowchartConnectionStart =
@@ -665,7 +694,9 @@ export function EditorCanvas({
 
   useEffect(() => {
     if (!shapePicker) return;
-    const handleOutsideClick = () => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (target && shapePickerRef.current?.contains(target)) return;
       setShapePicker(null);
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -725,6 +756,7 @@ export function EditorCanvas({
           el.closest?.("[data-seq-plus-handle]") ||
           el.closest?.(".seq-msg-reorder-handle") ||
           el.closest?.(".timeline-reorder-handle") ||
+          el.closest?.("[data-flowchart-shape-picker]") ||
           el.closest?.('[data-slot^="dropdown-menu"]'),
         );
       });
@@ -747,10 +779,11 @@ export function EditorCanvas({
       const isGenericContainerTarget =
         tag === "svg" || tag === "div" || tag === "g" || target === container;
 
+      // Exclude cluster/subgraph containers from this fallback. Their backgrounds are made
+      // pointer-events: stroke (border only) in `addInteractionHelpersToSvg`, so clicks in the
+      // interior should pass through to nodes/edges rather than being re-selected by bounding box.
       const candidates = Array.from(
-        container.querySelectorAll(
-          ".node, .statediagram-state, .cluster, .statediagram-cluster, path.flowchart-link, .edgeLabel",
-        ),
+        container.querySelectorAll(".node, .statediagram-state, path.flowchart-link, .edgeLabel"),
       ) as SVGGraphicsElement[];
 
       const findBestAtPoint = () => {
@@ -833,6 +866,114 @@ export function EditorCanvas({
     handleSvgClick,
     onDeselect,
     onTimelineMove,
+  });
+
+  // Flowchart membership drag machine (issue #35: node into/out of/between
+  // subgraphs; issue #41: whole subgraph into another). Pure move math lives in
+  // `src/lib/diagrams/flowchart/`; this hook owns only the pointer gesture.
+  const {
+    active: flowchartMembershipActive,
+    draggedKind: flowchartMembershipDraggedKind,
+    draggedId: flowchartMembershipDraggedId,
+    highlight: flowchartMembershipHighlight,
+    startDrag: startFlowchartMembershipDrag,
+  } = useFlowchartMembershipDragMachine({
+    canvasShellRef,
+    containerRef,
+    code,
+    selectedNodeId,
+    isInlineEditing,
+    isConnectActive: connectionState.active,
+    handleCodeChange: handleCodeChange ?? (() => {}),
+    // Selection already happens on mousedown via the document-capture router
+    // above, so a sub-threshold pointerup needs no synthetic re-select here.
+    onNoDragTap: () => {},
+  });
+
+  // Blocked-drop feedback (issue #35): the membership machine commits through
+  // handleCodeChange only on change, so a rejected node drag is otherwise
+  // silent. On drag end with no code change, surface the blocked reason via
+  // toast. Subgraph drags (#41) stay silent on no-op.
+  const flowchartMembershipPrevActiveRef = useRef(false);
+  const flowchartMembershipStartCodeRef = useRef(code);
+  const flowchartMembershipCancelledRef = useRef(false);
+  const flowchartMembershipLastRef = useRef<{
+    kind: "node" | "subgraph";
+    id: string;
+    highlight: typeof flowchartMembershipHighlight;
+  } | null>(null);
+  // Escape cancels the drag (machine clears state without a drop) — never toast it.
+  useEffect(() => {
+    if (!flowchartMembershipActive) return;
+    flowchartMembershipCancelledRef.current = false;
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") flowchartMembershipCancelledRef.current = true;
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flowchartMembershipActive]);
+  useEffect(() => {
+    const wasActive = flowchartMembershipPrevActiveRef.current;
+    if (flowchartMembershipActive) {
+      if (!wasActive) flowchartMembershipStartCodeRef.current = code;
+      if (flowchartMembershipDraggedKind && flowchartMembershipDraggedId) {
+        flowchartMembershipLastRef.current = {
+          kind: flowchartMembershipDraggedKind,
+          id: flowchartMembershipDraggedId,
+          highlight: flowchartMembershipHighlight,
+        };
+      }
+    } else if (wasActive) {
+      const last = flowchartMembershipLastRef.current;
+      flowchartMembershipLastRef.current = null;
+      const cancelled = flowchartMembershipCancelledRef.current;
+      flowchartMembershipCancelledRef.current = false;
+      if (last && last.kind === "node" && last.id && !cancelled) {
+        const snapshot = flowchartMembershipStartCodeRef.current;
+        const nodeId = last.id;
+        const lastHighlight = last.highlight;
+        const dest =
+          lastHighlight && "subgraphId" in lastHighlight ? lastHighlight.subgraphId : null;
+        // Rejected boxes never commit; otherwise recompute the move to tell a
+        // successful drop (code will update) from a blocked one.
+        let blocked = lastHighlight?.kind === "rejected";
+        if (!blocked) {
+          try {
+            blocked = moveFlowchartNode(snapshot, nodeId, dest) === snapshot;
+          } catch {
+            blocked = false;
+          }
+        }
+        if (blocked) {
+          const hlReason = (lastHighlight as { reason?: unknown } | null)?.reason;
+          const owner = findFlowchartNodeSubgraphId(snapshot, nodeId);
+          let reason = typeof hlReason === "string" && hlReason ? hlReason : null;
+          if (!reason && dest !== null && owner === dest) reason = "same-owner";
+          const elig = getFlowchartNodeMoveEligibility(snapshot, nodeId);
+          if (!reason && !elig.eligible && elig.reason) reason = elig.reason;
+          if (!reason) {
+            if (findFlowchartNodeLine(snapshot, nodeId) === -1) reason = "unknown-node";
+            else if (dest === null && owner === null)
+              return; // already top-level: stay silent
+            else if (lastHighlight?.kind === "rejected")
+              reason = owner === null ? "unknown-dest" : "same-owner";
+            else reason = "unknown-dest";
+          }
+          const message =
+            reason === "same-owner" ||
+            reason === "edge-declaration" ||
+            reason === "edge-only" ||
+            reason === "multiline-block" ||
+            reason === "unknown-node" ||
+            reason === "unknown-dest"
+              ? flowchartNodeMoveBlockedMessage(reason)
+              : flowchartDropBlockedMessage(reason);
+          if (reason === "same-owner") toast.info(message);
+          else toast.error(message);
+        }
+      }
+    }
+    flowchartMembershipPrevActiveRef.current = flowchartMembershipActive;
   });
 
   // Endpoint geometry (canvas coords) for the currently selected message — drives the source/
@@ -1131,6 +1272,7 @@ export function EditorCanvas({
             seqEndpointDragging ||
             !!seqLifelineReorder ||
             !!timelineReorder ||
+            flowchartMembershipActive ||
             classConnecting ||
             erConnecting ||
             stateConnecting,
@@ -1208,6 +1350,19 @@ export function EditorCanvas({
               <div
                 ref={containerRef}
                 className={`w-full h-full relative flex items-center justify-center ${isCommentMode ? "cursor-copy" : "cursor-grab active:cursor-grabbing"}`}
+                onPointerDown={
+                  !isLocked &&
+                  !isCommentMode &&
+                  (currentType === "flowchart" || currentType === "graph") &&
+                  handleCodeChange
+                    ? (e) => {
+                        // Primary button only; the machine classifies the target
+                        // (.node / g.cluster) and ignores everything else.
+                        if (e.button !== 0) return;
+                        startFlowchartMembershipDrag(e);
+                      }
+                    : undefined
+                }
                 onDoubleClick={
                   !isLocked
                     ? (e) => {
@@ -1588,7 +1743,20 @@ export function EditorCanvas({
                      `}</style>
                 )}
 
-                {isInlineEditing && selectedSvgSelector && (
+                {isInlineEditing && selectedSvgSelector && isSubgraphTitleId(selectedNodeId) && (
+                  <style>{`
+                        ${selectedSvgSelector} .cluster-label,
+                        ${selectedSvgSelector} .label,
+                        ${selectedSvgSelector} text,
+                        ${selectedSvgSelector} foreignObject {
+                            opacity: 0 !important;
+                            visibility: hidden !important;
+                            pointer-events: none !important;
+                        }
+                     `}</style>
+                )}
+
+                {isInlineEditing && selectedSvgSelector && !isSubgraphTitleId(selectedNodeId) && (
                   <style>{`
                         ${selectedSvgSelector},
                         ${selectedSvgSelector} .label,
@@ -1991,6 +2159,17 @@ export function EditorCanvas({
           TimelineReorderOverlay; slot/guide/ghost markup lives in TimelineInteractions.tsx. */}
       {timelineReorder && <TimelineReorderOverlay timelineReorder={timelineReorder} code={code} />}
 
+      {/* Flowchart membership drop highlight (issues #35/#41) — viewport-relative
+          (canvasShellRef), OUTSIDE the TransformWrapper. The rects are measured in
+          the same viewport space, so the plain-px border/chips sit exactly on the
+          drawn cluster and keep a constant on-screen size at any zoom (a border
+          inside the transform cannot: Chrome floors `border-width` to 1 CSS px). */}
+      <FlowchartMembershipDropLayer
+        highlight={flowchartMembershipHighlight}
+        draggedKind={flowchartMembershipDraggedKind}
+        showTopLevelHint={flowchartMembershipActive && flowchartMembershipDraggedKind === "node"}
+      />
+
       {sequencePlusMenu && (
         <div
           ref={sequencePlusMenuRef}
@@ -2154,11 +2333,12 @@ export function EditorCanvas({
       {shapePicker && (
         <div
           data-flowchart-shape-picker
+          ref={shapePickerRef}
           className="absolute z-50 flex flex-col gap-3 rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-2xl animate-in fade-in zoom-in-95 duration-150"
           style={{
-            left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 250)),
+            left: Math.max(10, Math.min(shapePicker.x, viewportWidth - 340)),
             top: Math.max(10, Math.min(shapePicker.y, viewportHeight - 350)),
-            width: "230px",
+            width: "320px",
           }}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -2175,10 +2355,28 @@ export function EditorCanvas({
             </button>
           </div>
 
+          <div className="flex flex-col gap-3 mb-2">
+            <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
+              Options
+            </p>
+            <label
+              title="Put only the new shape inside a fresh subgraph; the selected node and its edge stay outside"
+              className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-sm font-medium text-foreground pl-[5px]"
+            >
+              <input
+                type="checkbox"
+                checked={insideNewSubgraph}
+                onChange={(e) => setInsideNewSubgraph(e.target.checked)}
+                className="h-4 w-4 rounded border-border accent-indigo-600"
+              />
+              Create inside a new subgraph
+            </label>
+          </div>
+
           <div className="flex flex-col gap-4 max-h-[250px] overflow-y-auto pr-1 custom-scrollbar">
             {/* Basic Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider mb-1.5">
                 Basic
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2188,7 +2386,13 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
+                      handleAddNodeFromSelected(
+                        shapePicker.startNodeId,
+                        undefined,
+                        shape,
+                        undefined,
+                        insideNewSubgraph,
+                      );
                       setShapePicker(null);
                     }}
                     onClick={(e) => {
@@ -2208,7 +2412,7 @@ export function EditorCanvas({
 
             {/* Extended Shapes */}
             <div>
-              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider mb-1.5">
                 Extended
               </p>
               <div className="grid grid-cols-5 gap-1.5">
@@ -2218,7 +2422,13 @@ export function EditorCanvas({
                     onMouseDown={(e) => {
                       e.stopPropagation();
                       e.preventDefault();
-                      handleAddNodeFromSelected(shapePicker.startNodeId, undefined, shape);
+                      handleAddNodeFromSelected(
+                        shapePicker.startNodeId,
+                        undefined,
+                        shape,
+                        undefined,
+                        insideNewSubgraph,
+                      );
                       setShapePicker(null);
                     }}
                     onClick={(e) => {

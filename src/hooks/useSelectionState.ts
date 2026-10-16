@@ -123,6 +123,7 @@ export function useSelectionState({
     const deps = recalcDepsRef.current;
     if (!selectedNodeId || !containerRef.current || !deps) return;
     if (selectedNodeId.startsWith("SEQ_BLK_")) return;
+    if (selectedNodeId.startsWith("SUBGRAPH_TITLE_")) return;
 
     let foundElement: SVGElement | null = null;
     let foundRawSvgId: string | null = null;
