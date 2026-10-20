@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from "vitest";
-import { getActiveFormats } from "@/components/editor/InlineTextEditor";
+import { useRef } from "react";
+import { createRoot } from "react-dom/client";
+import { flushSync } from "react-dom";
+import { InlineTextEditor, getActiveFormats } from "@/components/editor/InlineTextEditor";
 
 describe("InlineTextEditor getActiveFormats", () => {
   let el: HTMLDivElement;
@@ -120,5 +123,44 @@ describe("InlineTextEditor getActiveFormats", () => {
       italic: false,
       align: "",
     });
+  });
+});
+
+describe("InlineTextEditor rendering", () => {
+  function TestWrapper() {
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+      <InlineTextEditor
+        isInlineEditing
+        setIsInlineEditing={() => {}}
+        textBox={{ x: 0, y: 0, width: 120, height: 40 }}
+        selectionBox={{ x: 0, y: 0, width: 120, height: 40 }}
+        scale={1}
+        theme="light"
+        editingText="Hello"
+        setEditingText={() => {}}
+        handleEditSubmit={() => {}}
+        inlineInputRef={ref}
+        selectedSvgId="test"
+      />
+    );
+  }
+
+  it("uses overflow-y-auto so long content stays accessible", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    flushSync(() => {
+      root.render(<TestWrapper />);
+    });
+
+    const editor = container.querySelector('[data-inline-editor][contenteditable="true"]');
+    expect(editor).not.toBeNull();
+    expect((editor as HTMLElement).classList.contains("overflow-y-auto")).toBe(true);
+    expect((editor as HTMLElement).classList.contains("overflow-hidden")).toBe(false);
+    expect((editor as HTMLElement).style.height).toBe("auto");
+
+    root.unmount();
+    container.remove();
   });
 });

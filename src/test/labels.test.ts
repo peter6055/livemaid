@@ -13,9 +13,16 @@ describe("getLinkLabelFromMiddle", () => {
     expect(getLinkLabelFromMiddle("==>|thick label|")).toBe("thick label");
   });
 
-  it('extracts label from quote syntax "label"', () => {
-    expect(getLinkLabelFromMiddle('-->"quoted label"')).toBe("quoted label");
-    expect(getLinkLabelFromMiddle('==>"quoted thick"')).toBe("quoted thick");
+  it("ignores a quoted token directly after the connector (not a Mermaid edge label)", () => {
+    // UPDATED: previously the quote-first branch returned "quoted label" here.
+    // Mermaid only supports `|label|` and `-- label -->` edge text, so a quoted
+    // token sitting after the connector is not a label.
+    expect(getLinkLabelFromMiddle('-->"quoted label"')).toBe("");
+    expect(getLinkLabelFromMiddle('==>"quoted thick"')).toBe("");
+  });
+
+  it("extracts label when the entire middle is a quoted label", () => {
+    expect(getLinkLabelFromMiddle('"quoted label"')).toBe("quoted label");
   });
 
   it("extracts label from inline text syntax -- label -->", () => {
@@ -35,9 +42,14 @@ describe("getLinkLabelFromMiddle", () => {
     expect(getLinkLabelFromMiddle("e_A_B_0@-->|test|")).toBe("test");
   });
 
-  it("handles double-quoted labels inside bar syntax (inner quotes stripped by parser)", () => {
-    // The bar match extracts "quoted inside bar", then the quote match strips the inner quotes.
+  it("strips quotes that wrap the entire pipe label (matches Mermaid render)", () => {
+    // UPDATED again: Mermaid 11.16.1 renders |"quoted inside bar"| as
+    // `quoted inside bar` — quotes wrapping the WHOLE pipe content are delimiters.
     expect(getLinkLabelFromMiddle('|"quoted inside bar"|')).toBe("quoted inside bar");
+  });
+
+  it("preserves quotes that do not wrap the whole pipe label", () => {
+    expect(getLinkLabelFromMiddle('|say "hi"|')).toBe('say "hi"');
   });
 });
 
@@ -92,6 +104,24 @@ describe("updateLinkStyleAndLabel", () => {
     const lines = result.split("\n");
     expect(lines[0]).toContain("-->");
     expect(lines[1]).toContain("-->|second|");
+  });
+
+  it("preserves <br/> in multiline edge labels", () => {
+    const code = "A-->|line one<br/>line two|B";
+    const result = updateLinkStyleAndLabel(code, "A", "B", {
+      label: "updated one<br/>updated two",
+    });
+    expect(result).toContain("-->|updated one<br/>updated two|B");
+  });
+
+  it("updates multiline label without breaking the edge line structure", () => {
+    const code = "A-->B";
+    const result = updateLinkStyleAndLabel(code, "A", "B", {
+      label: "line one<br/>line two",
+    });
+    const lines = result.split("\n");
+    expect(lines).toHaveLength(1);
+    expect(result).toContain("-->|line one<br/>line two|B");
   });
 });
 

@@ -18,9 +18,125 @@ import {
   Workflow,
 } from "lucide-react";
 import { parseMermaidCurve, updateMermaidCurve } from "./utils";
+import { findFlowchartNodeLine } from "./flowchart/selectionLineMap";
 
 /** A flowchart shape option that can be inserted or applied to a node. */
 export type ShapeOption = { b?: string[] | null; isText?: boolean; expanded?: string };
+
+/**
+ * Generate the next unused node ID starting with `prefix` followed by an
+ * incrementing integer (e.g. `n1`, `n2`). The scan checks word boundaries so
+ * existing IDs like `note1` are not confused with `n1`.
+ */
+function getNextNodeId(codeStr: string, prefix: string): string {
+  let i = 1;
+  while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr)) {
+    i++;
+  }
+  return `${prefix}${i}`;
+}
+
+/**
+ * Build the Mermaid declaration line(s) for a new node with the chosen shape.
+ * Text shapes return a label line plus a `@{ shape: text }` directive; expanded
+ * shapes use the new `@{...}` syntax; bracket shapes use the legacy delimiters.
+ */
+function buildNodeDefLines(shape: ShapeOption | undefined, newNodeId: string): string[] {
+  const label = "New Node";
+  if (shape?.isText) {
+    return [`${newNodeId}["Text Block"]`, `${newNodeId}@{ shape: text }`];
+  }
+  if (shape?.expanded) {
+    return [`${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`];
+  }
+  if (shape?.b) {
+    const brackets = shape.b as [string, string];
+    return [`${newNodeId}${brackets[0]}${label}${brackets[1]}`];
+  }
+  return [`${newNodeId}[${label}]`];
+}
+
+/**
+ * Prefix every line in `lines` with `indent` and join them with newlines.
+ */
+function indentLines(lines: string[], indent: string): string {
+  return lines.map((line) => indent + line).join("\n");
+}
+
+/**
+ * Add a new flowchart node connected to `startId`, inserting it right after the
+ * source node's declaration line. This naturally keeps the new node inside the
+ * same subgraph (if any) and matches the visual placement users expect. Falls
+ * back to appending at top level when there is no source node or the source
+ * declaration cannot be found.
+ */
+export function addFlowchartConnectedNode(
+  code: string,
+  startId: string | null,
+  shape?: ShapeOption,
+  idPrefix?: string,
+  insideNewSubgraph = false,
+): string {
+  const lines = code.split("\n");
+  const prefix = idPrefix ?? (startId ? startId.match(/^([a-zA-Z]+)/)?.[1] : undefined) ?? "n";
+  const newNodeId = getNextNodeId(code, prefix);
+  const nodeDefLines = buildNodeDefLines(shape, newNodeId);
+
+  // Wrap only the new node in a fresh subgraph at the source node's scope; the
+  // edge stays outside so the source is never pulled into the new subgraph.
+  if (insideNewSubgraph) {
+    // Reserve the just-allocated node id too, so a `sub*` source prefix cannot
+    // hand the wrapper the same id as its own child node.
+    const subId = getNextNodeId(code + "\n" + nodeDefLines.join("\n"), "sub");
+    const subgraphLines = [
+      `subgraph ${subId}["Untitled subgraph"]`,
+      ...nodeDefLines.map((line) => "    " + line),
+      "end",
+    ];
+    const edgeLine = `${startId} --> ${newNodeId}`;
+
+    if (!startId) {
+      return code.replace(/\s*$/, "") + "\n    " + subgraphLines.join("\n    ");
+    }
+
+    const subgraphNodeLine = findFlowchartNodeLine(code, startId);
+    if (subgraphNodeLine === -1) {
+      return code.replace(/\s*$/, "") + "\n    " + [...subgraphLines, edgeLine].join("\n    ");
+    }
+
+    const subgraphIndent = " ".repeat(lines[subgraphNodeLine].match(/^(\s*)/)?.[1].length ?? 4);
+    lines.splice(
+      subgraphNodeLine + 1,
+      0,
+      indentLines([...subgraphLines, edgeLine], subgraphIndent),
+    );
+    return lines.join("\n");
+  }
+
+  if (!startId) {
+    return code.replace(/\s*$/, "") + "\n    " + nodeDefLines.join("\n    ");
+  }
+
+  const nodeLine = findFlowchartNodeLine(code, startId);
+  if (nodeLine === -1) {
+    const insertion =
+      shape && (shape.expanded || shape.isText)
+        ? [...nodeDefLines, `${startId} --> ${newNodeId}`]
+        : [`${startId} --> ${nodeDefLines[0]}`];
+    return code.replace(/\s*$/, "") + "\n    " + insertion.join("\n    ");
+  }
+
+  const baseIndent = lines[nodeLine].match(/^(\s*)/)?.[1].length ?? 4;
+  const indent = " ".repeat(baseIndent);
+
+  const insertionLines =
+    shape && (shape.expanded || shape.isText)
+      ? [...nodeDefLines, `${startId} --> ${newNodeId}`]
+      : [`${startId} --> ${nodeDefLines[0]}`];
+
+  lines.splice(nodeLine + 1, 0, indentLines(insertionLines, indent));
+  return lines.join("\n");
+}
 
 export const BASIC_SHAPES = [
   {
@@ -795,6 +911,15 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
 
   const activeCurve = parseMermaidCurve(code);
 
+  // This module is imported server-side (diagram registry / API defaultCode), so it cannot
+  // import React hooks. Read the uncontrolled checkbox straight from the open menu instead.
+  const readNewSubgraphOption = (target: HTMLElement): boolean =>
+    Boolean(
+      target
+        .closest('[data-slot="dropdown-menu-content"]')
+        ?.querySelector<HTMLInputElement>("[data-flowchart-new-subgraph-option]")?.checked,
+    );
+
   const handleCurveChange = (curve: string) => {
     setCode(updateMermaidCurve(code, curve));
   };
@@ -822,43 +947,21 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
     setCode(newCode);
   };
 
-  const getNextNodeId = (codeStr: string, prefix: string = "n"): string => {
-    let i = 1;
-    while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr)) {
-      i++;
+  const handleAddShape = (shape: ShapeOption, insideNewSubgraphFlag = false) => {
+    const newCode = addFlowchartConnectedNode(
+      code,
+      selectedNodeId || null,
+      shape,
+      "n",
+      insideNewSubgraphFlag,
+    );
+    if (newCode !== code) {
+      setCode(newCode);
     }
-    return `${prefix}${i}`;
-  };
-
-  const handleAddShape = (shape: ShapeOption) => {
-    let newCode = code;
-    const newNodeId = getNextNodeId(newCode);
-    const label = "New Node";
-
-    let nodeDef = "";
-    if (shape.isText) {
-      nodeDef = `${newNodeId}["Text Block"]\n    ${newNodeId}@{ shape: text }`;
-    } else if (shape.expanded) {
-      nodeDef = `${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
-    } else if (shape.b) {
-      const brackets = shape.b as [string, string];
-      nodeDef = `${newNodeId}${brackets[0]}${label}${brackets[1]}`;
-    }
-
-    if (selectedNodeId) {
-      if (shape.expanded || shape.isText) {
-        newCode += `\n    ${nodeDef}\n    ${selectedNodeId} --> ${newNodeId}`;
-      } else {
-        newCode += `\n    ${selectedNodeId} --> ${nodeDef}`;
-      }
-    } else {
-      newCode += `\n    ${nodeDef}`;
-    }
-    setCode(newCode);
   };
 
   const handleAddTextBlock = () => {
-    handleAddShape({ b: null, isText: true });
+    handleAddShape({ b: null, isText: true }, false);
   };
 
   const handleAddSubgraph = () => {
@@ -987,49 +1090,68 @@ const FlowchartToolbar = ({ code, setCode, selectedNodeId }: EditorContext) => {
             <span className="text-sm font-medium">Shape</span>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-[340px] max-h-[60vh] overflow-y-auto p-4 bg-background border-border rounded-xl flex flex-col gap-6"
+            className="w-[320px] p-4 bg-background border-border rounded-xl flex flex-col gap-4"
             sideOffset={10}
             align="start"
           >
-            {/* Basic Shapes */}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 mb-2">
               <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
-                Basic
+                Options
               </p>
-              <div className="grid grid-cols-6 gap-2">
-                {BASIC_SHAPES.map((shape, i) => (
-                  <DropdownMenuItem
-                    key={i}
-                    onClick={() => handleAddShape(shape)}
-                    className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
-                    title={shape.l}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-5 h-5">
-                      {shape.i}
-                    </svg>
-                  </DropdownMenuItem>
-                ))}
-              </div>
+              <label
+                title="Put only the new shape inside a fresh subgraph; the selected node and its edge stay outside"
+                className="flex items-center gap-2 cursor-pointer text-sm font-medium text-foreground pl-[5px]"
+              >
+                <input
+                  type="checkbox"
+                  data-flowchart-new-subgraph-option
+                  defaultChecked={false}
+                  className="h-4 w-4 rounded border-border accent-indigo-600"
+                />
+                Create inside a new subgraph
+              </label>
             </div>
+            <div className="max-h-[60vh] overflow-y-auto flex flex-col gap-6">
+              {/* Basic Shapes */}
+              <div className="flex flex-col gap-3">
+                <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
+                  Basic
+                </p>
+                <div className="grid grid-cols-6 gap-2">
+                  {BASIC_SHAPES.map((shape, i) => (
+                    <DropdownMenuItem
+                      key={i}
+                      onClick={(e) => handleAddShape(shape, readNewSubgraphOption(e.currentTarget))}
+                      className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                      title={shape.l}
+                    >
+                      <svg viewBox="0 0 24 24" className="w-5 h-5">
+                        {shape.i}
+                      </svg>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
+              </div>
 
-            {/* Extended Shapes */}
-            <div className="flex flex-col gap-3 mt-4">
-              <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
-                Extended (Mermaid v11+)
-              </p>
-              <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                {EXTENDED_SHAPES.map((shape, i) => (
-                  <DropdownMenuItem
-                    key={i}
-                    onClick={() => handleAddShape(shape)}
-                    className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
-                    title={shape.l}
-                  >
-                    <svg viewBox="0 0 24 24" className="w-5 h-5">
-                      {shape.i}
-                    </svg>
-                  </DropdownMenuItem>
-                ))}
+              {/* Extended Shapes */}
+              <div className="flex flex-col gap-3 mt-4">
+                <p className="text-xs font-semibold text-slate-500 px-1 uppercase tracking-wider">
+                  Extended (Mermaid v11+)
+                </p>
+                <div className="grid grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                  {EXTENDED_SHAPES.map((shape, i) => (
+                    <DropdownMenuItem
+                      key={i}
+                      onClick={(e) => handleAddShape(shape, readNewSubgraphOption(e.currentTarget))}
+                      className="flex items-center justify-center w-10 h-10 bg-background border border-border rounded hover:border-indigo-400 hover:bg-accent cursor-pointer text-foreground p-0"
+                      title={shape.l}
+                    >
+                      <svg viewBox="0 0 24 24" className="w-5 h-5">
+                        {shape.i}
+                      </svg>
+                    </DropdownMenuItem>
+                  ))}
+                </div>
               </div>
             </div>
           </DropdownMenuContent>

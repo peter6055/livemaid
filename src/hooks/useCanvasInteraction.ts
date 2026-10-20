@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, MutableRefObject, useEffect } from "react";
 import { isEdgeId } from "@/lib/diagrams/utils";
+import { addFlowchartConnectedNode } from "@/lib/diagrams/flowchart";
 import type { ShapeOption } from "@/lib/diagrams/flowchart";
 import { getSortedSequenceNoteTextElements } from "@/lib/diagrams/sequence/notes";
 
@@ -52,6 +53,12 @@ export interface ShapePicker {
   startNodeId: string;
 }
 
+/**
+ * Central hook for canvas pointer interaction: selection, drag-to-connect,
+ * inline-edit entry, shape-picker placement, and diagram-specific gestures.
+ * It owns the live connection state and delegates diagram mutations through
+ * `handleCodeChange` so Monaco remains the source of truth.
+ */
 export function useCanvasInteraction({
   code,
   svgContent,
@@ -1183,6 +1190,12 @@ export function useCanvasInteraction({
       ) {
         debugLog("enter-edit-mode-double-click", clicked.cleanId);
         lastClickRef.current = null;
+        // Mark this gesture as handled so the capture-phase native dblclick listener skips its
+        // own handleEditClick call. Without this the native dblclick re-resolves the target via
+        // elementsFromPoint (no pendingResult) and can open the whole-container editor instead of
+        // the subgraph title. Only real double-clicks (detail >= 2) dispatch a native dblclick to
+        // consume this flag; timing-only entries have none and must not set it.
+        if (e.detail >= 2) dblClickHandledRef.current = true;
         pendingEditTargetRef.current = clicked;
         handleEditClick(e);
         return;
@@ -1620,47 +1633,19 @@ export function useCanvasInteraction({
       targetNodeId?: string,
       shape?: ShapeOption,
       sequenceInsertIndex?: number,
+      insideNewSubgraph?: boolean,
     ) => {
       if (!startId) return;
 
       const diagramType = determineDiagramType(code);
       let newCode = code;
 
-      const getNextNodeId = (codeStr: string, prefix: string = "n"): string => {
-        let i = 1;
-        while (new RegExp(`(^|[^a-zA-Z0-9_])${prefix}${i}([^a-zA-Z0-9_]|$)`, "m").test(codeStr))
-          i++;
-        return `${prefix}${i}`;
-      };
-
       if (diagramType === "flowchart" || diagramType === "graph") {
         if (targetNodeId && targetNodeId !== startId) {
           newCode += `\n    ${startId} --> ${targetNodeId}`;
         } else {
           const prefix = startId.match(/^([a-zA-Z]+)/)?.[1] || "n";
-          const newNodeId = getNextNodeId(code, prefix);
-          const label = "New Node";
-          let nodeDef = "";
-          if (shape) {
-            if (shape.isText) {
-              nodeDef = `${newNodeId}["Text Block"]\n    ${newNodeId}@{ shape: text }`;
-            } else if (shape.expanded) {
-              nodeDef = `${newNodeId}@{ shape: ${shape.expanded}, label: "${label}" }`;
-            } else if (shape.b) {
-              const brackets = shape.b as [string, string];
-              nodeDef = `${newNodeId}${brackets[0]}${label}${brackets[1]}`;
-            } else {
-              nodeDef = `${newNodeId}[${label}]`;
-            }
-          } else {
-            nodeDef = `${newNodeId}[${label}]`;
-          }
-
-          if (shape && (shape.expanded || shape.isText)) {
-            newCode += `\n    ${nodeDef}\n    ${startId} --> ${newNodeId}`;
-          } else {
-            newCode += `\n    ${startId} --> ${nodeDef}`;
-          }
+          newCode = addFlowchartConnectedNode(code, startId, shape, prefix, insideNewSubgraph);
         }
       } else if (diagramType === "sequence") {
         const actor = startId.replace("SEQ_ACTOR_", "");

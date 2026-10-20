@@ -532,7 +532,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
   };
 }
 
-function addInteractionHelpersToSvg(svgString: string): string {
+export function addInteractionHelpersToSvg(svgString: string): string {
   if (typeof window === "undefined") return svgString;
   try {
     const parser = new DOMParser();
@@ -564,18 +564,36 @@ function addInteractionHelpersToSvg(svgString: string): string {
       }
 
       clone.removeAttribute("stroke-dasharray");
-      clone.setAttribute("stroke-width", "16px");
+      clone.setAttribute("stroke-width", "30px");
       clone.setAttribute("stroke", "transparent");
       clone.setAttribute("fill", "none");
       clone.setAttribute("opacity", "0.01");
       clone.setAttribute(
         "style",
-        "stroke-width: 16px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important;",
+        "stroke-width: 30px !important; stroke: transparent !important; fill: none !important; opacity: 0.01 !important; cursor: pointer !important; pointer-events: stroke !important;",
       );
 
       if (path.parentNode) {
         path.parentNode.insertBefore(clone, path);
       }
+    });
+
+    // Subgraph cluster backgrounds (`g.cluster > rect`) are filled rectangles. Without this
+    // tweak their painted interiors catch pointer events, so a double-click near an edge label
+    // can select the enclosing subgraph instead of editing the edge label. Make only the border
+    // clickable while keeping the cluster title/label itself clickable via `bounding-box`.
+    const clusterRects = doc.querySelectorAll("g.cluster > rect.rect, g.cluster > rect");
+    clusterRects.forEach((rect) => {
+      rect.setAttribute("pointer-events", "stroke");
+      const existingStyle = rect.getAttribute("style") || "";
+      rect.setAttribute("style", `${existingStyle};pointer-events: stroke !important;`);
+    });
+
+    const clusterLabels = doc.querySelectorAll("g.cluster-label");
+    clusterLabels.forEach((label) => {
+      label.setAttribute("pointer-events", "bounding-box");
+      const existingStyle = label.getAttribute("style") || "";
+      label.setAttribute("style", `${existingStyle};pointer-events: bounding-box !important;`);
     });
 
     // Edge label hit-targets: add invisible rects over each edge label so the label
@@ -594,7 +612,7 @@ function addInteractionHelpersToSvg(svgString: string): string {
       const h = parseFloat(fo.getAttribute("height") || "0");
       if (w === 0 || h === 0) return;
 
-      const padding = 8;
+      const padding = 16;
       const rect = doc.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.classList.add("edge-label-hit-target");
       rect.setAttribute("x", String(x - padding));

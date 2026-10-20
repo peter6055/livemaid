@@ -23,6 +23,12 @@ import {
   findFlowchartEdgeLine,
   findFlowchartSubgraphLine,
 } from "@/lib/diagrams/flowchart/selectionLineMap";
+import { deleteFlowchartSubgraph } from "@/lib/diagrams/flowchart/deletion";
+import {
+  isSubgraphTitleId,
+  subgraphIdFromTitleId,
+  setSubgraphTitle,
+} from "@/lib/diagrams/flowchart/subgraphTitle";
 import { findSequenceParticipantLine } from "@/lib/diagrams/sequence/selectionLineMap";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
 import { getSequenceMessageEntries } from "@/lib/diagrams/sequence/geometry";
@@ -247,6 +253,11 @@ function pruneEmptySequenceBlocks(lines: string[]): string[] {
 
 const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
 
+/**
+ * Main two-way editor component. Renders the Mermaid canvas alongside the
+ * Monaco code panel, synchronizes selection between them, and handles canvas
+ * mutations (add, edit, delete) by rewriting the Mermaid source.
+ */
 export function LiveMaidEditor({
   documentId,
   isDemo = false,
@@ -2245,6 +2256,17 @@ export function LiveMaidEditor({
 
   const handleEditorDidMount: OnMount = (editor) => {
     editorRef.current = editor;
+    // When the user intentionally returns to the code editor, clear any active
+    // canvas selection so Delete resumes normal text editing.
+    editor.onDidFocusEditorWidget(() => {
+      handleDeselect();
+    });
+    // Clicks on non-focusable SVG objects can leave Monaco focused; clicking
+    // back into Monaco then does not fire a focus transition. Clear the canvas
+    // selection on mouse-down as well so Delete is not mis-routed.
+    editor.onMouseDown(() => {
+      handleDeselect();
+    });
   };
 
   // Epic 4.1 — Canvas-to-code highlighting. Resolve the 0-indexed source line
@@ -3423,7 +3445,8 @@ export function LiveMaidEditor({
       const { src, dst, occurrenceIndex } = parseEdgeId(selectedNodeId);
       if (src && dst) {
         // Skip the update if the label hasn't changed to avoid unnecessary
-        // re-renders.
+        // re-renders. Normalize the label so line breaks from the contentEditable
+        // become <br/> and match the source convention used by node labels.
         const lines = code.split("\n");
         let currentLabel: string | null = null;
         let currentOcc = 0;
@@ -3437,16 +3460,21 @@ export function LiveMaidEditor({
             currentOcc++;
           }
         }
-        if (currentLabel === null || currentLabel !== latestEditingText) {
+        if (currentLabel === null || currentLabel !== normalizedText) {
           newCode = updateLinkStyleAndLabel(
             newCode,
             src,
             dst,
-            { label: latestEditingText },
+            { label: normalizedText },
             occurrenceIndex,
           );
         }
       }
+    } else if (isSubgraphTitleId(selectedNodeId)) {
+      // Flowchart subgraph title: rewrite ONLY the visible title, preserving the
+      // identifier, child nodes, edges and nesting.
+      const renamed = setSubgraphTitle(code, subgraphIdFromTitleId(selectedNodeId), normalizedText);
+      if (renamed !== code) newCode = renamed;
     } else {
       // Flowchart cluster/subgraph title rename path.
       // When a cluster is selected, selectedNodeId can be a normalized label-like id,
@@ -4142,6 +4170,9 @@ export function LiveMaidEditor({
         return true;
       });
       newCode = removeEmptySequenceBlocks(filtered.join("\n"));
+    } else if (findFlowchartSubgraphLine(code, selectedNodeId) >= 0) {
+      // Flowchart subgraph container deletion: unwrap children to the parent scope.
+      newCode = deleteFlowchartSubgraph(code, selectedNodeId);
     } else {
       // Flowchart deletion logic
       const escapedDeleteId = escapeRegExp(selectedNodeId);
@@ -4514,14 +4545,42 @@ export function LiveMaidEditor({
 
   useEffect(() => {
     const onKeyDownCapture = (e: KeyboardEvent) => {
+      const isAnyInlineEditing =
+        isInlineEditing ||
+        classTextEdit ||
+        stateTextEdit ||
+        erTitleEdit ||
+        erEdgeLabelEdit ||
+        timelineTitleEdit;
+
+      // Delete/Backspace: when a canvas object is selected, route the deletion
+      // to that object BEFORE Monaco (which may still have focus) can edit the
+      // source text at its cursor position.
+      const activeEl = document.activeElement as HTMLElement | null;
+      const inNonMonacoInput =
+        !!activeEl &&
+        !activeEl.closest(".monaco-editor") &&
+        (activeEl.tagName === "INPUT" ||
+          activeEl.tagName === "TEXTAREA" ||
+          activeEl.isContentEditable);
+      if (
+        !isLocked &&
+        !isAnyInlineEditing &&
+        !inNonMonacoInput &&
+        selectedNodeId &&
+        (e.key === "Backspace" || e.key === "Delete")
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (isEdgeId(selectedNodeId)) {
+          handleDeleteEdge();
+        } else {
+          handleDeleteNode();
+        }
+        return;
+      }
+
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
-        const isAnyInlineEditing =
-          isInlineEditing ||
-          classTextEdit ||
-          stateTextEdit ||
-          erTitleEdit ||
-          erEdgeLabelEdit ||
-          timelineTitleEdit;
         if (!isAnyInlineEditing) return;
         e.preventDefault();
         const textarea =
@@ -4545,6 +4604,10 @@ export function LiveMaidEditor({
     erTitleEdit,
     erEdgeLabelEdit,
     timelineTitleEdit,
+    isLocked,
+    selectedNodeId,
+    handleDeleteEdge,
+    handleDeleteNode,
   ]);
 
   useEffect(() => {
