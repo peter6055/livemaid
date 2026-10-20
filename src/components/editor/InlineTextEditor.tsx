@@ -590,9 +590,12 @@ export function InlineTextEditor({
           // div fill the width — so text-align: left/right/center keeps working.
           // A row flex with justify-content: center would shrink-wrap the wrapper and
           // re-center it as a block, making horizontal alignment a no-op.
+          // "safe center" falls back to start alignment when content overflows
+          // maxHeight, so the first lines stay at the scroll origin and remain
+          // reachable via overflow-y-auto (plain "center" pushes them above it).
           display: "flex",
           flexDirection: "column",
-          justifyContent: "center",
+          justifyContent: "safe center",
           boxSizing: "border-box",
           textAlign: "center",
           maxHeight: "clamp(240px, 50vh, 400px)",

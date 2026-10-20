@@ -33,7 +33,7 @@ describe("moveFlowchartNode autosplit (issue #47)", () => {
     expect(edgeCount(result)).toBe(before);
   });
 
-  it("splits to top level: bare edge stays in the subgraph, decl outdented", () => {
+  it("splits to top level: bare edge re-scoped out, leftover endpoint decl stays", () => {
     const code = `flowchart TD
     subgraph sg
         A[X] --> B
@@ -43,7 +43,12 @@ describe("moveFlowchartNode autosplit (issue #47)", () => {
     const result = moveFlowchartNode(code, "A", null);
     expect(result).not.toBe(code);
     const after = result.split("\n");
-    expect(after[2].trim()).toBe("A --> B");
+    // The stale `A --> B` line would keep sg owning A (Mermaid collects edge
+    // endpoints into the subgraph): it is re-scoped to top level, and a bare
+    // decl for B is left behind so B keeps its membership.
+    expect(after[2].trim()).toBe("B");
+    expect(result.indexOf("A --> B")).toBeGreaterThan(result.indexOf("    end"));
+    expect(after.filter((l) => l.includes("-->"))).toHaveLength(1);
     expect(result).toMatch(/^    A\[X\]$/m);
     expect(edgeCount(result)).toBe(before);
   });
@@ -123,7 +128,10 @@ describe("moveFlowchartNode autosplit (issue #47)", () => {
     ]) {
       expect(result).toContain(line);
     }
-    expect(result.split("\n")[2].trim()).toBe("A --> B");
+    const after = result.split("\n");
+    // Bare endpoint decl B stays in sg; the incident edge is re-scoped out.
+    expect(after[2].trim()).toBe("B");
+    expect(result.indexOf("A --> B")).toBeGreaterThan(result.indexOf("    end"));
     expect(result).toMatch(/^    A\[X\]$/m);
     expect(edgeCount(result)).toBe(edgeCount(code));
   });

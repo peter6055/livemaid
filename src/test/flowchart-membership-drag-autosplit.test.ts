@@ -138,7 +138,7 @@ describe("flowchart membership drag autosplit (issue #47)", () => {
     // The linkStyle line survives byte-for-byte (index order preserved).
     expect(after).toContain(linkLine);
     // Edge count identical: exactly one connector line before and after.
-    const edges = (ls: string[]) => ls.filter((l) => /-->/.test(l));
+    const edges = (ls: string[]) => ls.filter((l) => l.includes("-->"));
     expect(edges(after)).toHaveLength(edges(before).length);
     expect(edges(after)[0].trim()).toBe("A --> B");
     // Declaration moved with dest indent, no duplicate declarations.

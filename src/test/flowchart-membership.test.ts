@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import { moveFlowchartNode } from "@/lib/diagrams/flowchart/membership";
 
 function edgeCount(code: string): number {
-  return code.split("\n").filter((l) => /-->|---|==>/.test(l)).length;
+  return code.split("\n").filter((l) => l.includes("-->") || l.includes("---") || l.includes("==>"))
+    .length;
 }
 
 describe("moveFlowchartNode", () => {

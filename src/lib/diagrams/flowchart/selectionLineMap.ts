@@ -1,4 +1,5 @@
 import { CONNECTOR_REGEX } from "../utils";
+import { maskShapeBodies } from "./shapeScan";
 
 /**
  * Canvas-to-code line mapping helpers.
@@ -72,6 +73,11 @@ export function findFlowchartSubgraphLine(code: string, subgraphId: string): num
  * — its declaration — and falls back to the first line that references the id as
  * a standalone token.
  *
+ * Matching runs over the shape-masked line so declaration-like text inside
+ * another node's quoted label (e.g. `A["B[example]"]`) can never match;
+ * top-level quoted ids (e.g. `"My Node"[Label]`) survive the mask, so the
+ * sanitized fallback keeps working.
+ *
  * When the node ID comes from a Mermaid SVG element (after `normalizeId`), it
  * may have been sanitized — e.g. `"IPsec S2S"` becomes `IPsecS2S`. If the
  * direct search fails, we also try matching against quoted source IDs whose
@@ -89,8 +95,9 @@ export function findFlowchartNodeLine(code: string, nodeId: string): number {
   for (let i = 0; i < lines.length; i += 1) {
     const trimmed = lines[i].trim();
     if (isStructuralLine(trimmed)) continue;
-    if (!tokenRe.test(lines[i])) continue;
-    if (declRe.test(lines[i])) return i; // declaration wins immediately
+    const masked = maskShapeBodies(lines[i]);
+    if (!tokenRe.test(masked)) continue;
+    if (declRe.test(masked)) return i; // declaration wins immediately
     if (firstReference === -1) firstReference = i;
   }
 
@@ -103,8 +110,10 @@ export function findFlowchartNodeLine(code: string, nodeId: string): number {
     for (let i = 0; i < lines.length; i += 1) {
       const trimmed = lines[i].trim();
       if (isStructuralLine(trimmed)) continue;
+      const masked = maskShapeBodies(lines[i]);
       let match: RegExpExecArray | null;
-      while ((match = quotedRe.exec(lines[i]))) {
+      quotedRe.lastIndex = 0;
+      while ((match = quotedRe.exec(masked))) {
         if (match[1].replace(/\s+/g, "") === sanitized) return i;
       }
     }

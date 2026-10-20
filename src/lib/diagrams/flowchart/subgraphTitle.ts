@@ -29,14 +29,19 @@ export function getSubgraphTitle(code: string, subgraphId: string): string | nul
   if (lineIndex === -1) return null;
   const line = code.split("\n")[lineIndex].trim();
   const bracket = line.match(/^subgraph\s+\S+?\s*\[([\s\S]*)\]\s*$/i);
-  if (bracket) return bracket[1].replace(/^["']|["']$/g, "").trim();
+  if (bracket) return decodeTitle(bracket[1].replace(/^["']|["']$/g, "").trim());
   const plain = line.match(/^subgraph\s+(.+)$/i);
   if (!plain) return null;
   const raw = plain[1].trim();
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
-    return raw.slice(1, -1).trim();
+    return decodeTitle(raw.slice(1, -1).trim());
   }
   return raw;
+}
+
+/** `#quot;` is Mermaid's escape for a `"` inside a double-quoted label; undo it. */
+function decodeTitle(title: string): string {
+  return title.replace(/#quot;/g, '"');
 }
 
 /** Rewrite only the visible title of the matching subgraph declaration. */
@@ -50,9 +55,9 @@ export function setSubgraphTitle(code: string, subgraphId: string, newTitle: str
   if (!idMatch) return code;
   const subId = idMatch[1];
   const title = newTitle.replace(/\r?\n/g, "<br/>").trim();
-  // Use single quotes when the title contains a double quote so the delimiter is
-  // never ambiguous; escape any single quote as an HTML entity.
-  const quoted = title.includes('"') ? `'${title.replace(/'/g, "&#39;")}'` : `"${title}"`;
+  // Mermaid labels only support double-quoted strings; escape an embedded `"`
+  // with the `#quot;` entity so the delimiter is never ambiguous.
+  const quoted = `"${title.replace(/"/g, "#quot;")}"`;
   lines[lineIndex] = `${lead}subgraph ${subId}[${quoted}]`;
   return lines.join("\n");
 }

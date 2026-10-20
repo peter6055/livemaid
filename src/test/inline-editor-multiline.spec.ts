@@ -70,6 +70,31 @@ async function allLinesVisible(editor: import("@playwright/test").Locator) {
   });
 }
 
+/**
+ * True when the first text line sits fully inside the editor's bounding box
+ * after forcing scrollTop = 0. Inverse/scrollTop-aware variant of
+ * allLinesVisible: when content exceeds maxHeight, a centered flex layout
+ * pushes leading lines above the scroll origin, where overflow-y-auto can
+ * never scroll to them (livemaid-project#44).
+ */
+async function firstLineReachableAtTop(editor: import("@playwright/test").Locator) {
+  return editor.evaluate((el) => {
+    el.scrollTop = 0;
+    const editorRect = el.getBoundingClientRect();
+    const first = Array.from(el.childNodes).find(
+      (n) =>
+        (n.nodeType === Node.TEXT_NODE && !!n.textContent?.trim()) ||
+        n.nodeType === Node.ELEMENT_NODE,
+    );
+    if (!first) return false;
+    const range = document.createRange();
+    range.selectNodeContents(first);
+    const rect = range.getBoundingClientRect();
+    if (rect.height === 0) return false;
+    return rect.top >= editorRect.top - 1 && rect.bottom <= editorRect.bottom + 1;
+  });
+}
+
 test.describe("flowchart inline editor multiline expansion", () => {
   test("node label keeps all ten lines visible", async ({ page }) => {
     const { editor } = await openNodeEditor(page);
@@ -86,6 +111,24 @@ test.describe("flowchart inline editor multiline expansion", () => {
 
     const overflowY = await editor.evaluate((el) => window.getComputedStyle(el).overflowY);
     expect(overflowY).toBe("auto");
+  });
+
+  test("overflowing node label keeps the first line reachable at scrollTop 0", async ({ page }) => {
+    const { editor } = await openNodeEditor(page);
+
+    const html = Array.from({ length: 20 }, (_, i) => `<div>Line ${i + 1}</div>`).join("");
+    await editor.evaluate((el, htmlValue) => {
+      el.innerHTML = htmlValue;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    }, html);
+
+    // Only proves something if the content actually exceeds the height cap.
+    const overflows = await editor.evaluate((el) => el.scrollHeight > el.clientHeight);
+    expect(overflows).toBe(true);
+
+    await expect.poll(() => firstLineReachableAtTop(editor)).toBe(true);
+    await expect(editor).toContainText("Line 1");
+    await expect(editor).toContainText("Line 20");
   });
 
   test("edge label keeps all ten lines visible", async ({ page }) => {

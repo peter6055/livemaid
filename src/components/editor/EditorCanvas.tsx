@@ -949,12 +949,23 @@ export function EditorCanvas({
           const owner = findFlowchartNodeSubgraphId(snapshot, nodeId);
           let reason = typeof hlReason === "string" && hlReason ? hlReason : null;
           if (!reason && dest !== null && owner === dest) reason = "same-owner";
+          // Already-top-level drop on empty canvas requests no change — stay
+          // silent BEFORE the eligibility fallback, which would otherwise flag
+          // edge-only / multiline nodes. Keep the prev-active ref in sync (the
+          // common assignment at the end of this effect is skipped by return).
+          if (
+            !reason &&
+            dest === null &&
+            owner === null &&
+            findFlowchartNodeLine(snapshot, nodeId) !== -1
+          ) {
+            flowchartMembershipPrevActiveRef.current = flowchartMembershipActive;
+            return;
+          }
           const elig = getFlowchartNodeMoveEligibility(snapshot, nodeId);
           if (!reason && !elig.eligible && elig.reason) reason = elig.reason;
           if (!reason) {
             if (findFlowchartNodeLine(snapshot, nodeId) === -1) reason = "unknown-node";
-            else if (dest === null && owner === null)
-              return; // already top-level: stay silent
             else if (lastHighlight?.kind === "rejected")
               reason = owner === null ? "unknown-dest" : "same-owner";
             else reason = "unknown-dest";

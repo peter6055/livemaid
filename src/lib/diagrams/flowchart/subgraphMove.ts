@@ -1,4 +1,5 @@
 import { findFlowchartSubgraphEndLine, findFlowchartSubgraphLine } from "./selectionLineMap";
+import { CONNECTOR_REGEX, rebuildLinkStyles } from "../utils";
 
 function leadingSpaces(line: string): number {
   return line.match(/^(\s*)/)?.[1].length ?? 0;
@@ -53,6 +54,23 @@ function topLevelIndent(lines: string[]): number {
 }
 
 /**
+ * Mirror of rebuildLinkStyles' edge-line scan — determines whether any positional
+ * index exists at all (statements with a connector, excluding empty/comment/subgraph/end).
+ */
+function isFlowchartEdgeLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (
+    !trimmed ||
+    trimmed.startsWith("%%") ||
+    trimmed.startsWith("subgraph") ||
+    trimmed.startsWith("end")
+  ) {
+    return false;
+  }
+  return CONNECTOR_REGEX.test(trimmed);
+}
+
+/**
  * Move a WHOLE subgraph block (`subgraph <draggedId> ... end`) so it becomes
  * a nested child of `destId`, or a top-level block when `destId` is null.
  * Pure string transform; returns `code` unchanged on every no-op/invalid case.
@@ -70,6 +88,10 @@ export function moveFlowchartSubgraph(
   const eol = code.includes("\r\n") ? "\r\n" : "\n";
   const lines = code.split(eol);
 
+  // linkStyle indices are positional over edge lines; with zero edges rebuild would find no index and delete every linkStyle line instead of remapping it.
+  const done = (moved: string): string =>
+    moved === code || !lines.some(isFlowchartEdgeLine) ? moved : rebuildLinkStyles(code, moved);
+
   const dragStart = findFlowchartSubgraphLine(code, draggedId);
   if (dragStart === -1) return code;
   const dragEnd = findFlowchartSubgraphEndLine(code, draggedId);
@@ -85,7 +107,7 @@ export function moveFlowchartSubgraph(
     const rest = [...lines.slice(0, dragStart), ...lines.slice(dragEnd + 1)];
     let insertAt = rest.length;
     while (insertAt > 0 && !rest[insertAt - 1].trim()) insertAt -= 1;
-    return [...rest.slice(0, insertAt), ...moved, ...rest.slice(insertAt)].join(eol);
+    return done([...rest.slice(0, insertAt), ...moved, ...rest.slice(insertAt)].join(eol));
   }
 
   const destStartOrig = findFlowchartSubgraphLine(code, destId);
@@ -109,5 +131,5 @@ export function moveFlowchartSubgraph(
   const moved = slice.map((line) =>
     line.trim() ? " ".repeat(Math.max(0, leadingSpaces(line) + delta)) + line.trimStart() : line,
   );
-  return [...restLines.slice(0, destEnd), ...moved, ...restLines.slice(destEnd)].join(eol);
+  return done([...restLines.slice(0, destEnd), ...moved, ...restLines.slice(destEnd)].join(eol));
 }

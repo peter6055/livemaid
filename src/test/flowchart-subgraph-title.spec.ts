@@ -113,7 +113,6 @@ test.describe("Flowchart subgraph title editing (Issue #36)", () => {
 
       const editor = await openTitleEditor(page);
       await expect(editor).toHaveText(/Old Title/);
-      await page.screenshot({ path: "/tmp/opencode/subtitle-editor-open.png" });
 
       const editorBox = await editor.boundingBox();
       const clusterBox = await cluster.boundingBox();
@@ -170,7 +169,6 @@ test.describe("Flowchart subgraph title editing (Issue #36)", () => {
       await expect(page.locator("svg[id^='mermaid-svg']")).toContainText("New Title", {
         timeout: 10000,
       });
-      await page.screenshot({ path: "/tmp/opencode/subtitle-after-commit.png" });
     } finally {
       await removeSeed(request, doc.id);
     }

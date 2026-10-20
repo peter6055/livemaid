@@ -13,6 +13,7 @@ import {
 import { timelineNodeLabel } from "@/lib/diagrams/timeline";
 import { getMindmapNode } from "@/lib/diagrams/mindmap";
 import { getSubgraphTitle, subgraphTitleId } from "@/lib/diagrams/flowchart/subgraphTitle";
+import { findFlowchartSubgraphLine } from "@/lib/diagrams/flowchart/selectionLineMap";
 
 /**
  * Inline-editing state + entry logic extracted verbatim from useCanvasInteraction
@@ -37,6 +38,39 @@ export type ClickedNode = {
   newSelectionBox: { x: number; y: number; width: number; height: number };
   newTextBox: { x: number; y: number; width: number; height: number };
 };
+
+/**
+ * Resolve a cluster's raw SVG id to the subgraph id it names in `code`.
+ *
+ * `normalizeId` strips a trailing `-<digits>` / `_<digits>` (Mermaid's
+ * per-render counter), which also corrupts subgraph ids that legitimately end
+ * in digits (`group_1` → `group`). Try the id derived WITHOUT that heuristic
+ * first, then the heuristically stripped one, and use whichever actually
+ * resolves to a declared subgraph. Fall back to the stripped id so behaviour
+ * is unchanged when neither candidate resolves.
+ */
+export function resolveFlowchartSubgraphTitleTarget(
+  code: string,
+  rawSvgId: string,
+  normalizeId: (id: string) => string,
+): { subgraphId: string; titleId: string } {
+  const stripped = normalizeId(rawSvgId);
+  // Mirror of normalizeId's decoration steps minus the trailing-digit heuristic.
+  const unstripped = rawSvgId
+    .replace("-hit-target", "")
+    .replace(/^svg-/, "")
+    .replace(/^flowchart-/, "")
+    .replace(/^mermaid-svg-\d+-/, "");
+  const candidates = unstripped && unstripped !== stripped ? [unstripped, stripped] : [stripped];
+  let subgraphId = stripped;
+  for (const candidate of candidates) {
+    if (findFlowchartSubgraphLine(code, candidate) !== -1) {
+      subgraphId = candidate;
+      break;
+    }
+  }
+  return { subgraphId, titleId: subgraphTitleId(subgraphId) };
+}
 
 export function useInlineEditing({
   code,
@@ -270,8 +304,11 @@ export function useInlineEditing({
 
         if (clusterEl && container) {
           const rawSvgId = clusterEl.id;
-          const subgraphId = normalizeId(rawSvgId);
-          const titleId = subgraphTitleId(subgraphId);
+          const { subgraphId, titleId } = resolveFlowchartSubgraphTitleTarget(
+            code,
+            rawSvgId,
+            normalizeId,
+          );
 
           if (isInlineEditing) {
             if (titleId === selectedNodeIdRef.current) return; // already editing this title

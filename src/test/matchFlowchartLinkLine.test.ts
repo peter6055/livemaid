@@ -26,12 +26,14 @@ describe("matchFlowchartLinkLine", () => {
     expect(result).not.toBeNull();
   });
 
-  it("matches edge with quote label", () => {
+  it("matches edge with a quoted token after the connector (no label extracted)", () => {
+    // UPDATED: previously the quote-first branch returned "quoted" here.
+    // A quoted token adjacent to the connector is not a Mermaid edge label.
     const result = matchFlowchartLinkLine('A-->"quoted"B', "A", "B");
     expect(result).not.toBeNull();
     if (result) {
       const label = getLinkLabelFromMiddle(result[2]);
-      expect(label).toBe("quoted");
+      expect(label).toBe("");
     }
   });
 

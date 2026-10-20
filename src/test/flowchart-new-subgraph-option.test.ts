@@ -96,6 +96,32 @@ describe("addFlowchartConnectedNode insideNewSubgraph", () => {
     );
   });
 
+  it("option on from a sub-prefixed source does not give the wrapper the same id as the new node", () => {
+    const code = "flowchart TD\n    sub0[Start]";
+    const result = addFlowchartConnectedNode(code, "sub0", { b: ["[", "]"] }, "sub", true);
+
+    const subgraphIds = [...result.matchAll(/^\s*subgraph\s+([A-Za-z0-9_]+)/gm)].map((m) => m[1]);
+    const nodeDeclIds = [...result.matchAll(/^\s*([A-Za-z0-9_]+)\s*[\[(]/gm)].map((m) => m[1]);
+
+    expect(subgraphIds).toHaveLength(1);
+    // The generated node declaration must exist and must not be the wrapper id.
+    expect(nodeDeclIds).toContain("sub1");
+    expect(subgraphIds[0]).not.toBe("sub1");
+    // No id may be used both as `subgraph X` and as a node declaration `X[...]`.
+    expect(subgraphIds.filter((id) => nodeDeclIds.includes(id))).toEqual([]);
+
+    expect(result).toBe(
+      [
+        "flowchart TD",
+        "    sub0[Start]",
+        '    subgraph sub2["Untitled subgraph"]',
+        "        sub1[New Node]",
+        "    end",
+        "    sub0 --> sub1",
+      ].join("\n"),
+    );
+  });
+
   it("option on avoids reusing existing subgraph and node ids", () => {
     const code = 'flowchart TD\n    sub1["Existing Sub"]\n    n1["First"]\n    A[Start]';
     const result = addFlowchartConnectedNode(code, "A", { b: ["[", "]"] }, "n", true);

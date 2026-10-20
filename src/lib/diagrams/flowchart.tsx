@@ -85,7 +85,9 @@ export function addFlowchartConnectedNode(
   // Wrap only the new node in a fresh subgraph at the source node's scope; the
   // edge stays outside so the source is never pulled into the new subgraph.
   if (insideNewSubgraph) {
-    const subId = getNextNodeId(code, "sub");
+    // Reserve the just-allocated node id too, so a `sub*` source prefix cannot
+    // hand the wrapper the same id as its own child node.
+    const subId = getNextNodeId(code + "\n" + nodeDefLines.join("\n"), "sub");
     const subgraphLines = [
       `subgraph ${subId}["Untitled subgraph"]`,
       ...nodeDefLines.map((line) => "    " + line),

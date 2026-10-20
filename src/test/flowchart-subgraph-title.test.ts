@@ -68,8 +68,23 @@ describe("setSubgraphTitle", () => {
     expect(setSubgraphTitle(CODE, "missing", "X")).toBe(CODE);
   });
 
-  it("uses single quotes when the title contains a double quote", () => {
-    expect(setSubgraphTitle(CODE, "chunk1", 'Say "hi"')).toContain(`subgraph chunk1['Say "hi"']`);
+  it("escapes an embedded double quote with #quot; inside double quotes", () => {
+    expect(setSubgraphTitle(CODE, "chunk1", 'Say "hi"')).toContain(
+      `subgraph chunk1["Say #quot;hi#quot;"]`,
+    );
+  });
+});
+
+describe("quote escaping round-trip", () => {
+  it("emits a double-quoted #quot;-escaped label and round-trips on reopen", () => {
+    const title = 'Say "hi"';
+    const out = setSubgraphTitle(CODE, "chunk1", title);
+    // Mermaid labels are always double-quoted; embedded quotes become `#quot;`.
+    expect(out).toContain('subgraph chunk1["Say #quot;hi#quot;"]');
+    // Reopening the editor decodes the entity back to a real `"` …
+    expect(getSubgraphTitle(out, "chunk1")).toBe(title);
+    // … so committing the same title again is idempotent (no double escaping).
+    expect(setSubgraphTitle(out, "chunk1", title)).toBe(out);
   });
 });
 
