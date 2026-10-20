@@ -31,11 +31,21 @@ export function getLinkLabelFromMiddle(middlePart: string): string {
     new RegExp(`\\b[a-zA-Z0-9_-]+@(?=${CONNECTOR_PATTERN})`),
     "",
   );
-  const quoteMatch = withoutEdgeId.match(/"([^"]*)"/);
-  if (quoteMatch) return quoteMatch[1];
-
+  // Pipe-delimited label first: the pipe content is the label, so quotes in
+  // HTML attributes (style="...") belong to it — checking bare quotes first
+  // leaked e.g. `color:red` from a <span>.
   const barMatch = withoutEdgeId.match(/\|([^|]*)\|/);
-  if (barMatch) return barMatch[1];
+  if (barMatch) {
+    const bar = barMatch[1];
+    // Mermaid strips quotes that wrap the ENTIRE pipe content (`|"x"|` → `x`);
+    // quotes anywhere else stay literal (`|say "hi"|` → `say "hi"`).
+    return bar.length >= 2 && bar.startsWith('"') && bar.endsWith('"') ? bar.slice(1, -1) : bar;
+  }
+
+  // Bare quotes count as a label only when they delimit the ENTIRE middle.
+  // A quoted token after the connector (`--> "Some Node Id"`) is not a label.
+  const quoteMatch = withoutEdgeId.match(/^\s*"([^"]*)"\s*$/);
+  if (quoteMatch) return quoteMatch[1];
 
   const inlineTextMatch = withoutEdgeId.match(
     new RegExp(String.raw`(?:--|==|-\.)\s+([^|\n]+?)\s+(?:-->|---|==>|===|\.->|-\.-)`),

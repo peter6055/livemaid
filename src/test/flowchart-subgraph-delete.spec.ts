@@ -42,8 +42,9 @@ test.describe("Delete flowchart subgraph container (Issue #37)", () => {
       const svg = page.locator("svg[id^='mermaid-svg']");
       const cluster = svg.locator("g.cluster[id*='chunk1']");
       await expect(cluster).toHaveCount(1);
-      // Click the cluster background rect near the top-left corner so we don't land on a child node.
-      await cluster.locator("rect").click({ position: { x: 5, y: 5 } });
+      // Click the cluster title/label to select the container. The background interior is
+      // pointer-events: stroke only, so the border/title is the reliable selection target.
+      await cluster.locator("g.cluster-label").first().click();
       await page.waitForTimeout(200);
 
       await page.keyboard.press("Delete");
@@ -99,11 +100,8 @@ test.describe("Delete flowchart subgraph container (Issue #37)", () => {
       const svg = page.locator("svg[id^='mermaid-svg']");
       const outerCluster = svg.locator("g.cluster[id*='outer']");
       await expect(outerCluster).toHaveCount(1);
-      // Click the outer cluster background rect near the top-left corner to select the container.
-      await outerCluster
-        .locator("rect")
-        .first()
-        .click({ position: { x: 5, y: 5 } });
+      // Click the outer cluster title/label to select the container.
+      await outerCluster.locator("g.cluster-label").first().click();
       await page.waitForTimeout(200);
 
       await page.keyboard.press("Delete");
