@@ -18,6 +18,7 @@ export interface DiagramDocument {
   code: string;
   type: string;
   folderId: string | null;
+  workspaceId?: string;
   starred?: boolean;
   starredAt?: string | null;
   subPages: { id: string; name: string; code: string }[];
@@ -74,6 +75,7 @@ export interface Folder {
   id: string;
   name: string;
   parentId: string | null;
+  workspaceId?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -256,6 +258,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     code: raw.code || "",
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
+    workspaceId: typeof raw.workspaceId === "string" ? raw.workspaceId : undefined,
     starred: Boolean(raw.starred),
     starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
@@ -269,6 +272,7 @@ export function normalizeFolder(raw: Partial<Folder>): Folder {
     id: raw.id || "",
     name: raw.name || "Untitled Folder",
     parentId: typeof raw.parentId === "string" ? raw.parentId : null,
+    workspaceId: typeof raw.workspaceId === "string" ? raw.workspaceId : undefined,
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
     deletedAt: typeof raw.deletedAt === "string" ? raw.deletedAt : null,

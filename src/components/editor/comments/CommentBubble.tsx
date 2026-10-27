@@ -240,7 +240,7 @@ export function CommentBubble(props: CommentBubbleProps) {
                 className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-foreground dark:bg-muted/30"
               >
                 <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                  <span>{message.authorId}</span>
+                  <span>{message.authorId === "anonymous" ? "Anonymous" : "User"}</span>
                   <span>{new Date(message.timestamp).toLocaleString()}</span>
                 </div>
                 <p className="whitespace-pre-wrap text-foreground">{message.content}</p>

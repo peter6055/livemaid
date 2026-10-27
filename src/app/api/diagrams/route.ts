@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { getDiagrams, saveDiagram, DiagramDocument, IS_DEMO_MODE } from "@/lib/api/storage";
+import { getDiagrams, saveDiagram, DiagramDocument } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
 import {
   getDiagramCatalogItem,
   getDiagramTemplate,
   isCreatableDiagramType,
 } from "@/lib/diagrams/catalog";
+import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
+import { isDemoMode } from "@/lib/env";
+import { getRequiredSession, getUserWorkspaceId, handleRouteError } from "@/lib/auth/routeAuth";
 
 export async function GET(request: Request) {
   try {
@@ -13,8 +16,20 @@ export async function GET(request: Request) {
     const limitStr = searchParams.get("limit");
     const offsetStr = searchParams.get("offset");
     const search = searchParams.get("search");
+    const requestedWorkspaceId = searchParams.get("workspaceId") ?? undefined;
 
     let diagrams = await getDiagrams();
+
+    if (!isDemoMode() && isAuthEnabled()) {
+      const session = await getRequiredSession();
+      const workspaceId = requestedWorkspaceId ?? getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ items: [], total: 0 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      diagrams = diagrams.filter((d) => d.workspaceId === workspaceId);
+    }
 
     if (search) {
       const lowerSearch = search.toLowerCase();
@@ -31,12 +46,12 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ items: diagrams, total });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch diagrams" }, { status: 500 });
+    return handleRouteError(error);
   }
 }
 
 export async function POST(request: Request) {
-  if (IS_DEMO_MODE) {
+  if (isDemoMode()) {
     return NextResponse.json(
       { error: "Demo mode: creating diagrams is disabled" },
       { status: 403 },
@@ -44,7 +59,19 @@ export async function POST(request: Request) {
   }
 
   try {
+    const session = await getRequiredSession();
+    const sessionWorkspaceId = getUserWorkspaceId(session);
+    if (!sessionWorkspaceId) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+
     const body = await request.json();
+    const workspaceId =
+      typeof body.workspaceId === "string" ? body.workspaceId : sessionWorkspaceId;
+
+    const { requireMember } = await import("@/lib/auth");
+    await requireMember(session.user.id, workspaceId);
+
     const template =
       typeof body.templateId === "string" ? getDiagramTemplate(body.templateId) : null;
     const requestedType =
@@ -73,6 +100,7 @@ export async function POST(request: Request) {
       code: finalCode,
       type: requestedType,
       folderId,
+      workspaceId,
       starred: false,
       starredAt: null,
       subPages: [],
@@ -81,8 +109,15 @@ export async function POST(request: Request) {
     };
 
     await saveDiagram(newDiagram);
+    await writeAuditLog({
+      actorId: session.user.id,
+      workspaceId,
+      action: "diagram.create",
+      targetId: newDiagram.id,
+      request,
+    });
     return NextResponse.json(newDiagram, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to create diagram" }, { status: 500 });
+    return handleRouteError(error);
   }
 }

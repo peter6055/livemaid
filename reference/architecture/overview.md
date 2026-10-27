@@ -7,6 +7,7 @@ High-level system reference. For focused topics, read the split docs below.
 | Topic                        | Doc                                                    |
 | ---------------------------- | ------------------------------------------------------ |
 | Storage & adapter seam       | [`storage.md`](./storage.md)                           |
+| Authentication & workspaces  | [`auth.md`](./auth.md)                                 |
 | Split-screen editor model    | [`editor-split.md`](./editor-split.md)                 |
 | Tech stack & aesthetics      | [`tech-stack.md`](./tech-stack.md)                     |
 | Development workflow         | [`development-workflow.md`](./development-workflow.md) |
@@ -17,7 +18,7 @@ High-level system reference. For focused topics, read the split docs below.
 
 LiveMaid is a local-first Next.js WYSIWYG Mermaid editor:
 
-- **Persistence**: JSON documents on disk via `StorageAdapter` (`src/lib/api/storage.ts`). MongoDB-ready but deferred.
+- **Persistence**: JSON documents on disk via `StorageAdapter` (`src/lib/api/storage.ts`). MongoDB is used for users, workspaces, memberships, and audit logs when OIDC auth is enabled; diagram migration to MongoDB remains deferred.
 - **Editor**: Monaco (source of truth) + Mermaid SVG canvas with React overlays (`react-zoom-pan-pinch`).
 - **Diagrams**: Composition/plugin architecture — `flowchart`, `sequence`, `classDiagram`, `erDiagram`, `stateDiagram`, and `mindmap` registered in `src/lib/diagrams/registry.ts`. Other Mermaid types are code-only render/preview.
 - **Stack**: Next.js App Router, Tailwind v4, shadcn/ui, lucide-react, next-themes (system default).

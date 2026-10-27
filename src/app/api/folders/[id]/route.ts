@@ -1,24 +1,65 @@
 import { NextResponse } from "next/server";
+import { getFolders, getFolder, saveFolder, deleteFolderCascade } from "@/lib/api/storage";
+import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
+import { isDemoMode } from "@/lib/env";
 import {
-  getFolders,
-  getFolder,
-  saveFolder,
-  deleteFolderCascade,
-  IS_DEMO_MODE,
-} from "@/lib/api/storage";
+  getRequiredSession,
+  getUserWorkspaceId,
+  assertFolderAccess,
+  handleRouteError,
+} from "@/lib/auth/routeAuth";
+import type { AuditAction } from "@/lib/auth/audit";
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  try {
+    if (!isDemoMode() && isAuthEnabled()) {
+      const session = await getRequiredSession();
+      const workspaceId = getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      const folder = await getFolder(id);
+      if (!folder) {
+        return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+      }
+      assertFolderAccess(session.user.id, workspaceId, folder);
+      return NextResponse.json(folder);
+    }
+
+    const folder = await getFolder(id);
+    if (!folder) {
+      return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+    }
+    return NextResponse.json(folder);
+  } catch (error) {
+    return handleRouteError(error);
+  }
+}
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (IS_DEMO_MODE) {
+  if (isDemoMode()) {
     return NextResponse.json({ error: "Demo mode: editing folders is disabled" }, { status: 403 });
   }
 
   try {
+    const session = await getRequiredSession();
+    const workspaceId = getUserWorkspaceId(session);
+    if (!workspaceId) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+    const { requireMember } = await import("@/lib/auth");
+    await requireMember(session.user.id, workspaceId);
+
     const existing = await getFolder(id);
     if (!existing) {
       return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
+    assertFolderAccess(session.user.id, workspaceId, existing);
 
     const body = await request.json();
     const next = { ...existing };
@@ -80,26 +121,54 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 
     next.updatedAt = new Date().toISOString();
     await saveFolder(next);
+    await writeAuditLog({
+      actorId: session.user.id,
+      workspaceId,
+      action: "folder.update" as AuditAction,
+      targetId: id,
+      request,
+    });
     return NextResponse.json(next);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update folder" }, { status: 500 });
+    return handleRouteError(error);
   }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (IS_DEMO_MODE) {
+  if (isDemoMode()) {
     return NextResponse.json({ error: "Demo mode: deleting folders is disabled" }, { status: 403 });
   }
 
   try {
+    const session = await getRequiredSession();
+    const workspaceId = getUserWorkspaceId(session);
+    if (!workspaceId) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+    const { requireMember } = await import("@/lib/auth");
+    await requireMember(session.user.id, workspaceId);
+
+    const existing = await getFolder(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+    }
+    assertFolderAccess(session.user.id, workspaceId, existing);
+
     const success = await deleteFolderCascade(id);
     if (!success) {
       return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
+    await writeAuditLog({
+      actorId: session.user.id,
+      workspaceId,
+      action: "folder.delete" as AuditAction,
+      targetId: id,
+      request,
+    });
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to delete folder" }, { status: 500 });
+    return handleRouteError(error);
   }
 }

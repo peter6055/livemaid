@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
-import { getDiagram, saveDiagram, IS_DEMO_MODE, type DiagramComment } from "@/lib/api/storage";
+import { getDiagram, saveDiagram, type DiagramComment } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
 import { buildSequenceMessageAnchor } from "@/lib/diagrams/sequence/commentAnchor";
+import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
+import { isDemoMode } from "@/lib/env";
+import {
+  getRequiredSession,
+  getUserWorkspaceId,
+  assertDiagramAccess,
+  handleRouteError,
+} from "@/lib/auth/routeAuth";
+import type { AuditAction } from "@/lib/auth/audit";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -107,22 +116,46 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (!diagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
+
+    if (!isDemoMode() && isAuthEnabled()) {
+      const session = await getRequiredSession();
+      const workspaceId = getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      assertDiagramAccess(session.user.id, workspaceId, diagram);
+    }
+
     return NextResponse.json(diagram.comments ?? []);
-  } catch {
-    return NextResponse.json({ error: "Failed to fetch comments" }, { status: 500 });
+  } catch (error) {
+    return handleRouteError(error);
   }
 }
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (IS_DEMO_MODE) {
-    return NextResponse.json({ error: "Demo mode: comments are disabled" }, { status: 403 });
-  }
-
   try {
     const diagram = await getDiagram(id);
     if (!diagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
+    }
+
+    let authorId = "anonymous";
+    let session: Awaited<ReturnType<typeof getRequiredSession>> | undefined;
+    let workspaceId: string | undefined;
+
+    if (!isDemoMode() && isAuthEnabled()) {
+      session = await getRequiredSession();
+      workspaceId = getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      authorId = session.user.id;
     }
 
     const body = await request.json();
@@ -139,8 +172,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         {
           id: nanoid(),
           content,
-          authorId:
-            typeof body.authorId === "string" && body.authorId.trim() ? body.authorId : "anonymous",
+          authorId,
           timestamp: now,
         },
       ],
@@ -156,22 +188,44 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       updatedAt: now,
     };
     await saveDiagram(updated);
+
+    if (session && workspaceId) {
+      await writeAuditLog({
+        actorId: session.user.id,
+        workspaceId,
+        action: "comment.create",
+        targetId: comment.id,
+        request,
+      });
+    }
     return NextResponse.json(comment, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to create comment" }, { status: 500 });
+  } catch (error) {
+    return handleRouteError(error);
   }
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (IS_DEMO_MODE) {
-    return NextResponse.json({ error: "Demo mode: comments are disabled" }, { status: 403 });
-  }
-
   try {
     const diagram = await getDiagram(id);
     if (!diagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
+    }
+
+    let authorId = "anonymous";
+    let session: Awaited<ReturnType<typeof getRequiredSession>> | undefined;
+    let workspaceId: string | undefined;
+
+    if (!isDemoMode() && isAuthEnabled()) {
+      session = await getRequiredSession();
+      workspaceId = getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      authorId = session.user.id;
     }
 
     const body = await request.json();
@@ -181,6 +235,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
 
     const now = new Date().toISOString();
+
     const comments = (diagram.comments ?? []).map((comment) => {
       if (comment.id !== commentId) return comment;
 
@@ -192,10 +247,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
               {
                 id: nanoid(),
                 content: body.content.trim(),
-                authorId:
-                  typeof body.authorId === "string" && body.authorId.trim()
-                    ? body.authorId
-                    : "anonymous",
+                authorId,
                 timestamp: now,
               },
             ]
@@ -212,9 +264,19 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
     const updated = { ...diagram, comments, updatedAt: now };
     await saveDiagram(updated);
+
+    if (session && workspaceId) {
+      await writeAuditLog({
+        actorId: session.user.id,
+        workspaceId,
+        action: "comment.update" as AuditAction,
+        targetId: commentId,
+        request,
+      });
+    }
     const comment = comments.find((entry) => entry.id === commentId);
     return NextResponse.json(comment ?? null);
-  } catch {
-    return NextResponse.json({ error: "Failed to update comment" }, { status: 500 });
+  } catch (error) {
+    return handleRouteError(error);
   }
 }

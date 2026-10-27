@@ -80,10 +80,12 @@ export default function Dashboard({
   isDemo = false,
   appVersion,
   rawVersion,
+  workspaceId,
 }: {
   isDemo?: boolean;
   appVersion?: string;
   rawVersion?: string;
+  workspaceId?: string;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
@@ -168,36 +170,42 @@ export default function Dashboard({
   // doesn't clear `?folder=` on the very first render (before hydration runs).
   const didHydrateFolderRef = useRef(false);
 
-  const fetchData = useCallback(async (options: { silent?: boolean } = {}) => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
-    try {
-      const startTime = Date.now();
-      const [diagRes, folderRes] = await Promise.all([
-        fetch("/api/diagrams"),
-        fetch("/api/folders"),
-      ]);
-      if (!diagRes.ok) throw new Error("Failed to fetch");
-      const { items } = await diagRes.json();
-      const folderData = folderRes.ok ? await folderRes.json() : [];
+  const fetchData = useCallback(
+    async (options: { silent?: boolean } = {}) => {
+      if (isFetchingRef.current) return;
+      isFetchingRef.current = true;
+      try {
+        const startTime = Date.now();
+        const diagramsUrl = workspaceId
+          ? `/api/diagrams?workspaceId=${encodeURIComponent(workspaceId)}`
+          : "/api/diagrams";
+        const foldersUrl = workspaceId
+          ? `/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`
+          : "/api/folders";
+        const [diagRes, folderRes] = await Promise.all([fetch(diagramsUrl), fetch(foldersUrl)]);
+        if (!diagRes.ok) throw new Error("Failed to fetch");
+        const { items } = await diagRes.json();
+        const folderData = folderRes.ok ? await folderRes.json() : [];
 
-      const elapsedTime = Date.now() - startTime;
-      // Only enforce the minimum skeleton duration for the initial load; silent refreshes
-      // (e.g., after returning from another tab) should feel instant.
-      if (!options.silent && elapsedTime < 600) {
-        await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
+        const elapsedTime = Date.now() - startTime;
+        // Only enforce the minimum skeleton duration for the initial load; silent refreshes
+        // (e.g., after returning from another tab) should feel instant.
+        if (!options.silent && elapsedTime < 600) {
+          await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
+        }
+        setDiagrams(items);
+        setFolders(folderData);
+      } catch (error) {
+        toast.error("Failed to load diagrams");
+      } finally {
+        isFetchingRef.current = false;
+        if (!options.silent) {
+          setLoading(false);
+        }
       }
-      setDiagrams(items);
-      setFolders(folderData);
-    } catch (error) {
-      toast.error("Failed to load diagrams");
-    } finally {
-      isFetchingRef.current = false;
-      if (!options.silent) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [workspaceId],
+  );
 
   useEffect(() => {
     fetchData();
@@ -271,6 +279,7 @@ export default function Dashboard({
           templateId: payload.templateId,
           code: payload.code,
           folderId: currentFolderId,
+          ...(workspaceId && { workspaceId }),
         }),
       });
       if (!res.ok) throw new Error("Failed to create");
@@ -361,6 +370,7 @@ export default function Dashboard({
         body: JSON.stringify({
           name: createFolderName,
           parentId: ALLOW_NESTED_FOLDERS ? currentFolderId : null,
+          ...(workspaceId && { workspaceId }),
         }),
       });
       if (!res.ok) throw new Error("Failed to create folder");
@@ -488,6 +498,7 @@ export default function Dashboard({
           code: source.code,
           type: source.type,
           folderId: source.folderId ?? null,
+          ...(workspaceId && { workspaceId }),
         }),
       });
       if (!createRes.ok) throw new Error("Failed to duplicate diagram");

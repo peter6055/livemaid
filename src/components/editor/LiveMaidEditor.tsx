@@ -261,9 +261,11 @@ const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
 export function LiveMaidEditor({
   documentId,
   isDemo = false,
+  workspaceId,
 }: {
   documentId: string;
   isDemo?: boolean;
+  workspaceId?: string;
 }) {
   const IS_DEMO_MODE = isDemo;
   const router = useRouter();
@@ -458,7 +460,10 @@ export function LiveMaidEditor({
   // Load folders so the header breadcrumb can show the diagram's folder path.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/folders")
+    const foldersUrl = workspaceId
+      ? `/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`
+      : "/api/folders";
+    fetch(foldersUrl)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (!cancelled) setFolders(Array.isArray(data) ? data : []);
@@ -467,7 +472,7 @@ export function LiveMaidEditor({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [workspaceId]);
 
   const handleShapeCommentPlace = useCallback(
     (
@@ -2482,7 +2487,6 @@ export function LiveMaidEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: trimmed,
-            authorId: "anonymous",
             anchor: composer.anchor,
           }),
         });
@@ -2625,7 +2629,6 @@ export function LiveMaidEditor({
           body: JSON.stringify({
             commentId,
             content,
-            authorId: "anonymous",
           }),
         });
         if (!response.ok) throw new Error("Failed to update comment");
@@ -4302,7 +4305,9 @@ export function LiveMaidEditor({
       }),
     );
 
-    return `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
+    return workspaceId
+      ? `/workspace/${workspaceId}/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`
+      : `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
   };
 
   const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
@@ -4321,6 +4326,7 @@ export function LiveMaidEditor({
           templateId: payload.templateId,
           code: payload.code,
           folderId: doc?.folderId ?? null,
+          ...(workspaceId && { workspaceId }),
         }),
       });
       if (res.ok) {
@@ -4328,7 +4334,10 @@ export function LiveMaidEditor({
         setIsNewDiagramOpen(false);
         // Notify any open Dashboard tabs that the file list should refresh.
         broadcastDashboardRefresh();
-        handleNavigate(`/editor/${newDiagram.id}`, "Loading Workspace...");
+        const editorUrl = workspaceId
+          ? `/workspace/${workspaceId}/editor/${newDiagram.id}`
+          : `/editor/${newDiagram.id}`;
+        handleNavigate(editorUrl, "Loading Workspace...");
       } else {
         toast.error("Failed to create diagram");
       }

@@ -1,24 +1,48 @@
 import { NextResponse } from "next/server";
-import { getDiagram, saveDiagram, deleteDiagram, IS_DEMO_MODE } from "@/lib/api/storage";
+import { getDiagram, saveDiagram, deleteDiagram } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
+import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
+import { isDemoMode } from "@/lib/env";
+import {
+  getRequiredSession,
+  getUserWorkspaceId,
+  assertDiagramAccess,
+  handleRouteError,
+} from "@/lib/auth/routeAuth";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
+    if (!isDemoMode() && isAuthEnabled()) {
+      const session = await getRequiredSession();
+      const workspaceId = getUserWorkspaceId(session);
+      if (!workspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
+      const diagram = await getDiagram(id);
+      if (!diagram) {
+        return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
+      }
+      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      return NextResponse.json(diagram);
+    }
+
     const diagram = await getDiagram(id);
     if (!diagram) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
     return NextResponse.json(diagram);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to fetch diagram" }, { status: 500 });
+    return handleRouteError(error);
   }
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (IS_DEMO_MODE) {
+  if (isDemoMode()) {
     try {
       const body = await request.json();
       // Metadata writes (rename/move/star) are rejected in demo mode.
@@ -34,16 +58,25 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
         return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
       }
       return NextResponse.json(existing);
-    } catch (error) {
+    } catch {
       return NextResponse.json({ error: "Failed to fetch diagram" }, { status: 500 });
     }
   }
 
   try {
+    const session = await getRequiredSession();
+    const workspaceId = getUserWorkspaceId(session);
+    if (!workspaceId) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+    const { requireMember } = await import("@/lib/auth");
+    await requireMember(session.user.id, workspaceId);
+
     const existing = await getDiagram(id);
     if (!existing) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
+    assertDiagramAccess(session.user.id, workspaceId, existing);
 
     const body = await request.json();
 
@@ -58,6 +91,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     // `expectedCode` is a write precondition, not document data — never persist it.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { expectedCode: _expectedCode, ...updates } = body;
 
     const nextStarred = typeof updates.starred === "boolean" ? updates.starred : existing.starred;
@@ -94,6 +128,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...existing,
       ...updates,
       id, // Protect ID
+      workspaceId, // Protect workspace
       updatedAt: new Date().toISOString(),
       starred: Boolean(nextStarred),
       starredAt: nextStarred ? (nextStarredAt ?? new Date().toISOString()) : null,
@@ -101,16 +136,23 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     };
 
     await saveDiagram(updated);
+    await writeAuditLog({
+      actorId: session.user.id,
+      workspaceId,
+      action: "diagram.update",
+      targetId: id,
+      request,
+    });
     return NextResponse.json(updated);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update diagram" }, { status: 500 });
+    return handleRouteError(error);
   }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (IS_DEMO_MODE) {
+  if (isDemoMode()) {
     return NextResponse.json(
       { error: "Demo mode: deleting diagrams is disabled" },
       { status: 403 },
@@ -118,12 +160,33 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   try {
+    const session = await getRequiredSession();
+    const workspaceId = getUserWorkspaceId(session);
+    if (!workspaceId) {
+      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    }
+    const { requireMember } = await import("@/lib/auth");
+    await requireMember(session.user.id, workspaceId);
+
+    const existing = await getDiagram(id);
+    if (!existing) {
+      return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
+    }
+    assertDiagramAccess(session.user.id, workspaceId, existing);
+
     const success = await deleteDiagram(id);
     if (!success) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
+    await writeAuditLog({
+      actorId: session.user.id,
+      workspaceId,
+      action: "diagram.delete",
+      targetId: id,
+      request,
+    });
     return new NextResponse(null, { status: 204 });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to delete diagram" }, { status: 500 });
+    return handleRouteError(error);
   }
 }

@@ -12,6 +12,12 @@ interface DuplicatePayload {
   folderId: string | null;
 }
 
+interface AuthSession {
+  user?: {
+    workspaceId?: string;
+  };
+}
+
 function isDuplicatePayload(value: unknown): value is DuplicatePayload {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<DuplicatePayload>;
@@ -23,16 +29,34 @@ function isDuplicatePayload(value: unknown): value is DuplicatePayload {
   );
 }
 
+async function fetchSession(): Promise<AuthSession | null> {
+  try {
+    const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    if (!res.ok) return null;
+    return (await res.json()) as AuthSession;
+  } catch {
+    return null;
+  }
+}
+
 export default function DuplicateDiagramPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const [error, setError] = useState("");
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
 
-    const duplicate = async () => {
+    const run = async () => {
+      const session = await fetchSession();
+      if (session?.user?.workspaceId) {
+        router.replace(`/workspace/${session.user.workspaceId}/editor/${params.id}/duplicate`);
+        return;
+      }
+      setAuthChecked(true);
+
       const token = searchParams.get("token");
       const storageKey = token ? `livemaid:duplicate:${token}` : "";
       let payload: DuplicatePayload | null = null;
@@ -74,12 +98,21 @@ export default function DuplicateDiagramPage() {
       }
     };
 
-    duplicate();
+    run();
 
     return () => {
       cancelled = true;
     };
   }, [params.id, router, searchParams]);
+
+  if (!authChecked) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background text-foreground">
+        <Loader2 className="h-12 w-12 animate-spin text-indigo-500" />
+        <p className="text-lg font-medium">Checking session...</p>
+      </main>
+    );
+  }
 
   if (error) {
     return (
