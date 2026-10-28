@@ -1,5 +1,5 @@
 import { findFlowchartSubgraphEndLine, findFlowchartSubgraphLine } from "./selectionLineMap";
-import { CONNECTOR_REGEX, rebuildLinkStyles } from "../utils";
+import { rebuildLinkStyles } from "../utils";
 
 function leadingSpaces(line: string): number {
   return line.match(/^(\s*)/)?.[1].length ?? 0;
@@ -54,23 +54,6 @@ function topLevelIndent(lines: string[]): number {
 }
 
 /**
- * Mirror of rebuildLinkStyles' edge-line scan — determines whether any positional
- * index exists at all (statements with a connector, excluding empty/comment/subgraph/end).
- */
-function isFlowchartEdgeLine(line: string): boolean {
-  const trimmed = line.trim();
-  if (
-    !trimmed ||
-    trimmed.startsWith("%%") ||
-    trimmed.startsWith("subgraph") ||
-    trimmed.startsWith("end")
-  ) {
-    return false;
-  }
-  return CONNECTOR_REGEX.test(trimmed);
-}
-
-/**
  * Move a WHOLE subgraph block (`subgraph <draggedId> ... end`) so it becomes
  * a nested child of `destId`, or a top-level block when `destId` is null.
  * Pure string transform; returns `code` unchanged on every no-op/invalid case.
@@ -88,9 +71,16 @@ export function moveFlowchartSubgraph(
   const eol = code.includes("\r\n") ? "\r\n" : "\n";
   const lines = code.split(eol);
 
-  // linkStyle indices are positional over edge lines; with zero edges rebuild would find no index and delete every linkStyle line instead of remapping it.
-  const done = (moved: string): string =>
-    moved === code || !lines.some(isFlowchartEdgeLine) ? moved : rebuildLinkStyles(code, moved);
+  // Rebuild remaps positional linkStyle indices onto the moved edges, but it deletes any
+  // directive its edge extractor cannot index (zero-edge docs, `A --> B & C` counts one edge).
+  // shortcut: fall back to the raw move when a directive would drop; those docs keep stale
+  // indices — upgrade by fixing edge extraction in utils.ts.
+  const done = (moved: string): string => {
+    if (moved === code) return moved;
+    const rebuilt = rebuildLinkStyles(code, moved);
+    const styles = (s: string) => (s.match(/linkStyle/g) ?? []).length;
+    return styles(rebuilt) < styles(moved) ? moved : rebuilt;
+  };
 
   const dragStart = findFlowchartSubgraphLine(code, draggedId);
   if (dragStart === -1) return code;

@@ -71,27 +71,46 @@ async function allLinesVisible(editor: import("@playwright/test").Locator) {
 }
 
 /**
- * True when the first text line sits fully inside the editor's bounding box
- * after forcing scrollTop = 0. Inverse/scrollTop-aware variant of
- * allLinesVisible: when content exceeds maxHeight, a centered flex layout
- * pushes leading lines above the scroll origin, where overflow-y-auto can
- * never scroll to them (livemaid-project#44).
+ * Scroll-top-aware variant of allLinesVisible: pins the editor to
+ * scrollTop = 0 and reports whether the FIRST line ("Line 1") sits fully
+ * inside the editor's bounding box, together with the measured rects so a
+ * failure prints exactly how the line is clipped. With plain
+ * justify-content: center, content taller than the maxHeight cap is centred
+ * past the scroll origin, and scrollTop = 0 can never reveal those leading
+ * lines (livemaid-project#44).
  */
-async function firstLineReachableAtTop(editor: import("@playwright/test").Locator) {
+async function firstLineStateAtTop(editor: import("@playwright/test").Locator) {
   return editor.evaluate((el) => {
     el.scrollTop = 0;
     const editorRect = el.getBoundingClientRect();
-    const first = Array.from(el.childNodes).find(
-      (n) =>
-        (n.nodeType === Node.TEXT_NODE && !!n.textContent?.trim()) ||
-        n.nodeType === Node.ELEMENT_NODE,
-    );
-    if (!first) return false;
-    const range = document.createRange();
-    range.selectNodeContents(first);
-    const rect = range.getBoundingClientRect();
-    if (rect.height === 0) return false;
-    return rect.top >= editorRect.top - 1 && rect.bottom <= editorRect.bottom + 1;
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let lineRect: DOMRect | null = null;
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      const index = (node.textContent ?? "").indexOf("Line 1");
+      if (index < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, index);
+      range.setEnd(node, index + "Line 1".length);
+      lineRect = range.getBoundingClientRect();
+      break;
+    }
+    const inside =
+      !!lineRect &&
+      lineRect.height > 0 &&
+      lineRect.top >= editorRect.top - 1 &&
+      lineRect.bottom <= editorRect.bottom + 1 &&
+      lineRect.left >= editorRect.left - 1 &&
+      lineRect.right <= editorRect.right + 1;
+    return {
+      inside,
+      overflows: el.scrollHeight > el.clientHeight,
+      scrollTop: el.scrollTop,
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+      line: lineRect ? { top: lineRect.top, bottom: lineRect.bottom } : null,
+      editor: { top: editorRect.top, bottom: editorRect.bottom },
+    };
   });
 }
 
@@ -123,11 +142,13 @@ test.describe("flowchart inline editor multiline expansion", () => {
     }, html);
 
     // Only proves something if the content actually exceeds the height cap.
-    const overflows = await editor.evaluate((el) => el.scrollHeight > el.clientHeight);
-    expect(overflows).toBe(true);
+    await expect
+      .poll(() => firstLineStateAtTop(editor), { message: "editor must exceed its height cap" })
+      .toMatchObject({ overflows: true });
 
-    await expect.poll(() => firstLineReachableAtTop(editor)).toBe(true);
-    await expect(editor).toContainText("Line 1");
+    // scrollTop = 0 must show the first line fully inside the editor box.
+    const state = await firstLineStateAtTop(editor);
+    expect(state.inside, `first line clipped at scrollTop 0: ${JSON.stringify(state)}`).toBe(true);
     await expect(editor).toContainText("Line 20");
   });
 

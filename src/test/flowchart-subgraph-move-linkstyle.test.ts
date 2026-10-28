@@ -109,4 +109,22 @@ describe("moveFlowchartSubgraph linkStyle remapping", () => {
     expect(moveFlowchartSubgraph(invalidDest, "src", "missing")).toBe(invalidDest);
     expect(moveFlowchartSubgraph(invalidDest, "src", "A")).toBe(invalidDest);
   });
+
+  it("does not delete a linkStyle line whose edge the helper cannot index", () => {
+    // `A --> B & C` is two Mermaid edges (A->B, A->C) but counts as one extracted
+    // link, so `linkStyle 1` (A->C) is out of the helper's range while valid.
+    const code = `flowchart TD
+    subgraph src
+        A[Alpha]
+    end
+    subgraph dest
+        C[Gamma]
+    end
+    A --> B & C
+    linkStyle 1 stroke:#0f0`;
+
+    const result = moveFlowchartSubgraph(code, "src", "dest");
+
+    expect(result).toContain("linkStyle 1 stroke:#0f0");
+  });
 });
