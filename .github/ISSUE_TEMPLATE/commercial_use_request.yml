@@ -7,7 +7,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Some hosted, managed-service, commercial redistribution, commercial product, and competing-service uses require prior written approval. See COMMERCIAL_USE.md before submitting.
+        Some hosted, managed-service, commercial redistribution, commercial product, and competing-service uses require prior written approval. See the [commercial use policy](https://peter6055.github.io/livemaid/project/commercial-use) before submitting.
   - type: input
     id: organization
     attributes:

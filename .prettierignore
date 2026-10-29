@@ -5,6 +5,11 @@ build/
 node_modules/
 coverage/
 
+# Docusaurus docs site
+docs/node_modules/
+docs/.docusaurus/
+docs/build/
+
 # Generated / vendored
 next-env.d.ts
 package-lock.json

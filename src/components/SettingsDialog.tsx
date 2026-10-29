@@ -105,7 +105,7 @@ function PrivacyPanel() {
           </div>
 
           <a
-            href="https://github.com/peter6055/livemaid/blob/main/COLLECTION_NOTICE.md"
+            href="https://peter6055.github.io/livemaid/docs/project/collection-notice"
             target="_blank"
             rel="noopener noreferrer"
             className="block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors pt-2"

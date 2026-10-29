@@ -1,3 +1,7 @@
+---
+sidebar_position: 4
+---
+
 # Data Collection Notice
 
 **Last updated: June 2026**
@@ -13,7 +17,7 @@ Collected when **Usage Data** is enabled. Disabled by default.
 ### What is collected
 
 - App version, browser, OS, and viewport size
-- Current route and diagram type (e.g. flowchart, sequenceDiagram)
+- Current route and diagram type (for example, flowchart, sequenceDiagram)
 - Feature usage: diagram loaded, auto-saved, exported, undo/redo
 - Non-sensitive metrics: render duration, node/edge counts (bucketed)
 - Anonymous session ID (random, generated locally — not tied to your identity)
@@ -57,8 +61,8 @@ Mermaid parser error messages sometimes include the diagram code that caused the
 
 Regardless of the above tiers, you can manually create a support report from the browser console:
 
-```
-LiveMaidDiagnostics.reportIssue("canvas selection stopped working")
+```js
+LiveMaidDiagnostics.reportIssue("canvas selection stopped working");
 ```
 
 This sends a single event with current sanitised state and returns a report ID. Share that ID with the LiveMaid team so they can investigate.
