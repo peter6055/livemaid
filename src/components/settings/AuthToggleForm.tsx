@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Sparkles, ShieldCheck } from "lucide-react";
 
 export function AuthToggleForm({
   authEnabled,
@@ -46,11 +47,17 @@ export function AuthToggleForm({
           <Label htmlFor="auth-toggle" className="text-base font-medium">
             Enable auth / workspaces
           </Label>
-          <p className="text-sm text-muted-foreground">
-            {enabled
-              ? "Users must sign in with OIDC and diagrams are scoped to workspaces."
-              : "The app is a public portal: no login, all diagrams are editable."}
-          </p>
+          {enabled ? (
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-sm font-medium text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-400">
+              <ShieldCheck className="w-4 h-4" />
+              <span>OIDC sign-in required; diagrams scoped to workspaces</span>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-400">
+              <Sparkles className="w-4 h-4" />
+              <span>Public portal: no login, all diagrams editable</span>
+            </div>
+          )}
         </div>
         <button
           type="button"
