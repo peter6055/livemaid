@@ -309,14 +309,17 @@ export function SettingsDialog({
         { id: "preferences", label: "Preferences", icon: Settings },
       ],
     },
-    {
+  ];
+
+  if (workspaceId) {
+    groups.push({
       label: "Workspace",
       items: [
         { id: "workspace-general", label: "General", icon: Briefcase },
         { id: "workspace-members", label: "Members", icon: Users },
       ],
-    },
-  ];
+    });
+  }
 
   if (showAdmin) {
     groups.push({
