@@ -28,6 +28,8 @@ import {
   List,
   Settings,
   Star,
+  Shield,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
@@ -81,11 +83,13 @@ export default function Dashboard({
   appVersion,
   rawVersion,
   workspaceId,
+  authEnabled,
 }: {
   isDemo?: boolean;
   appVersion?: string;
   rawVersion?: string;
   workspaceId?: string;
+  authEnabled?: boolean;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
@@ -889,6 +893,35 @@ export default function Dashboard({
       {isDemo && (
         <div className="sticky top-0 z-50">
           <DemoBanner />
+        </div>
+      )}
+
+      {/* Legacy-mode prompt to enable OIDC workspaces. */}
+      {!authEnabled && !isDemo && (
+        <div className="sticky top-0 z-40 border-b border-primary/20 bg-primary/10">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 py-3">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Enable workspaces</p>
+                  <p className="text-sm text-muted-foreground">
+                    Legacy mode is active. Add OIDC sign-in to get per-user workspaces, members, and
+                    audit logs.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={() => {
+                  window.location.href = "/admin/setup";
+                }}
+                className="shrink-0 gap-2"
+              >
+                Migrate to workspace
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -31,5 +31,12 @@ export default async function Home() {
     redirect(redirectPath);
   }
 
-  return <Dashboard isDemo={isDemo} appVersion={displayVersion} rawVersion={rawVersion} />;
+  return (
+    <Dashboard
+      isDemo={isDemo}
+      appVersion={displayVersion}
+      rawVersion={rawVersion}
+      authEnabled={authEnabled}
+    />
+  );
 }

@@ -19,9 +19,21 @@ Before enabling OIDC, have these ready:
 - A MongoDB database for users, workspaces, memberships, and audit logs.
 - The callback URL your provider will use: `https://your-domain.com/api/auth/callback/oidc`.
 
+## Setup UI (legacy mode only)
+
+When LiveMaid is running in legacy mode (no OIDC environment variables set), an admin can use the built-in setup UI at **`/admin/setup`** to configure OIDC without hand-editing `.env`.
+
+1. Open `/admin/setup` in your browser.
+2. Select your provider template and enter the OIDC issuer, client ID, and client secret.
+3. Submit the form. LiveMaid will validate the provider's discovery document, generate an `AUTH_SECRET` if needed, and write the variables to `.env` when the filesystem is writable.
+4. If the filesystem is read-only (common in Docker), the UI will show the environment variables and a Docker Compose snippet to copy instead.
+5. Restart the server to apply the new environment variables.
+
+The setup UI is only available while legacy mode is active. Once OIDC is enabled, `/admin/setup` redirects to `/`.
+
 ## Environment variables
 
-Add these to your `.env` file or Docker Compose environment:
+Add these to your `.env` file or Docker Compose environment (the setup UI above can do this for you):
 
 ```bash
 # Required for OIDC mode
