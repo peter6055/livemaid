@@ -1,5 +1,7 @@
 import { isAuthEnabled } from "@/lib/auth";
+import { areOidcCredentialsConfigured, getAppConfigDoc } from "@/lib/auth/appConfig";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { cookies } from "next/headers";
 import { submitOidcSetup, type OidcSetupResult } from "./actions";
 import { Button } from "@/components/ui/button";
@@ -24,7 +26,17 @@ const TEMPLATE_HINTS: Record<string, string> = {
 };
 
 export default async function SetupPage() {
-  if (isAuthEnabled()) {
+  // Opt out of build-time prerendering so the DB config can be read at request time.
+  await connection();
+
+  const authEnabled = await isAuthEnabled();
+  if (authEnabled) {
+    redirect("/");
+  }
+
+  const appConfig = await getAppConfigDoc();
+  const oidcConfigured = areOidcCredentialsConfigured();
+  if (!appConfig.authEnabled && oidcConfigured) {
     redirect("/");
   }
 

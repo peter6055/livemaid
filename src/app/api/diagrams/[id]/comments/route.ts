@@ -117,7 +117,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
 
-    if (!isDemoMode() && isAuthEnabled()) {
+    const authEnabled = await isAuthEnabled();
+    if (!isDemoMode() && authEnabled) {
       const session = await getRequiredSession();
       const workspaceId = getUserWorkspaceId(session);
       if (!workspaceId) {
@@ -146,7 +147,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     let session: Awaited<ReturnType<typeof getRequiredSession>> | undefined;
     let workspaceId: string | undefined;
 
-    if (!isDemoMode() && isAuthEnabled()) {
+    const authEnabled = await isAuthEnabled();
+    if (!isDemoMode() && authEnabled) {
       session = await getRequiredSession();
       workspaceId = getUserWorkspaceId(session);
       if (!workspaceId) {
@@ -216,7 +218,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     let session: Awaited<ReturnType<typeof getRequiredSession>> | undefined;
     let workspaceId: string | undefined;
 
-    if (!isDemoMode() && isAuthEnabled()) {
+    const authEnabled = await isAuthEnabled();
+    if (!isDemoMode() && authEnabled) {
       session = await getRequiredSession();
       workspaceId = getUserWorkspaceId(session);
       if (!workspaceId) {

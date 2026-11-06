@@ -1,8 +1,10 @@
 import { signIn, isAuthEnabled } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
+import { connection } from "next/server";
 
-export default function LoginPage() {
-  const authEnabled = isAuthEnabled();
+export default async function LoginPage() {
+  await connection();
+  const authEnabled = await isAuthEnabled();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-background px-6 text-foreground">

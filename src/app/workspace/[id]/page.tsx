@@ -16,7 +16,7 @@ export default async function WorkspaceDashboardPage({
   const rawVersion = getRawVersion();
   const displayVersion = getDisplayVersion();
 
-  const authEnabled = isAuthEnabled();
+  const authEnabled = await isAuthEnabled();
   const session = authEnabled ? await auth() : null;
   const userWorkspaceId = session?.user?.workspaceId;
 
@@ -30,6 +30,7 @@ export default async function WorkspaceDashboardPage({
       appVersion={displayVersion}
       rawVersion={rawVersion}
       workspaceId={workspaceId}
+      authEnabled={authEnabled}
     />
   );
 }

@@ -22,7 +22,7 @@ export default async function EditorPage({ params }: { params: Promise<{ id: str
   await connection();
   const { id } = await params;
   const isDemo = isDemoMode();
-  const authEnabled = isAuthEnabled();
+  const authEnabled = await isAuthEnabled();
 
   const session = authEnabled ? await auth() : null;
   const redirectPath = getEditorRedirect(session, isDemo, authEnabled, id);

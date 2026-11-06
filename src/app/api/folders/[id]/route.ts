@@ -13,7 +13,8 @@ import type { AuditAction } from "@/lib/auth/audit";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   try {
-    if (!isDemoMode() && isAuthEnabled()) {
+    const authEnabled = await isAuthEnabled();
+    if (!isDemoMode() && authEnabled) {
       const session = await getRequiredSession();
       const workspaceId = getUserWorkspaceId(session);
       if (!workspaceId) {
@@ -47,6 +48,76 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   }
 
   try {
+    const authEnabled = await isAuthEnabled();
+    const body = await request.json();
+
+    if (!authEnabled) {
+      const existing = await getFolder(id);
+      if (!existing) {
+        return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+      }
+
+      const next = { ...existing };
+
+      if (typeof body.name === "string") {
+        const trimmed = body.name.trim();
+        if (!trimmed) {
+          return NextResponse.json({ error: "Name cannot be empty" }, { status: 400 });
+        }
+        next.name = trimmed;
+      }
+
+      if ("parentId" in body) {
+        const newParentId = typeof body.parentId === "string" ? body.parentId : null;
+
+        if (newParentId === id) {
+          return NextResponse.json({ error: "A folder cannot be its own parent" }, { status: 400 });
+        }
+
+        if (newParentId) {
+          const parent = await getFolder(newParentId);
+          if (!parent) {
+            return NextResponse.json({ error: "Parent folder not found" }, { status: 400 });
+          }
+
+          const allFolders = await getFolders();
+          const childrenOf = (pid: string) => allFolders.filter((f) => f.parentId === pid);
+          const descendants = new Set<string>();
+          const stack = [id];
+          while (stack.length) {
+            const current = stack.pop()!;
+            for (const child of childrenOf(current)) {
+              if (!descendants.has(child.id)) {
+                descendants.add(child.id);
+                stack.push(child.id);
+              }
+            }
+          }
+          if (descendants.has(newParentId)) {
+            return NextResponse.json(
+              { error: "Cannot move a folder into its own subtree" },
+              { status: 400 },
+            );
+          }
+        }
+
+        next.parentId = newParentId;
+      }
+
+      if (typeof body.starred === "boolean") {
+        next.starred = body.starred;
+        next.starredAt = body.starred
+          ? typeof body.starredAt === "string"
+            ? body.starredAt
+            : new Date().toISOString()
+          : null;
+      }
+
+      next.updatedAt = new Date().toISOString();
+      await saveFolder(next);
+      return NextResponse.json(next);
+    }
+
     const session = await getRequiredSession();
     const workspaceId = getUserWorkspaceId(session);
     if (!workspaceId) {
@@ -61,7 +132,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
     assertFolderAccess(session.user.id, workspaceId, existing);
 
-    const body = await request.json();
     const next = { ...existing };
 
     if (typeof body.name === "string") {
@@ -85,7 +155,6 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
           return NextResponse.json({ error: "Parent folder not found" }, { status: 400 });
         }
 
-        // Cycle guard: the new parent must not be a descendant of this folder.
         const allFolders = await getFolders();
         const childrenOf = (pid: string) => allFolders.filter((f) => f.parentId === pid);
         const descendants = new Set<string>();
@@ -142,6 +211,20 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   try {
+    const authEnabled = await isAuthEnabled();
+
+    if (!authEnabled) {
+      const existing = await getFolder(id);
+      if (!existing) {
+        return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+      }
+      const success = await deleteFolderCascade(id);
+      if (!success) {
+        return NextResponse.json({ error: "Folder not found" }, { status: 404 });
+      }
+      return new NextResponse(null, { status: 204 });
+    }
+
     const session = await getRequiredSession();
     const workspaceId = getUserWorkspaceId(session);
     if (!workspaceId) {

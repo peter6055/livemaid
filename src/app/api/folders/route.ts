@@ -12,8 +12,9 @@ export async function GET(request: Request) {
     const requestedWorkspaceId = searchParams.get("workspaceId") ?? undefined;
 
     let folders = await getFolders();
+    const authEnabled = await isAuthEnabled();
 
-    if (!isDemoMode() && isAuthEnabled()) {
+    if (!isDemoMode() && authEnabled) {
       const session = await getRequiredSession();
       const workspaceId = requestedWorkspaceId ?? getUserWorkspaceId(session);
       if (!workspaceId) {
@@ -36,18 +37,24 @@ export async function POST(request: Request) {
   }
 
   try {
-    const session = await getRequiredSession();
-    const sessionWorkspaceId = getUserWorkspaceId(session);
-    if (!sessionWorkspaceId) {
-      return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+    const authEnabled = await isAuthEnabled();
+    let workspaceId: string | undefined;
+
+    if (authEnabled) {
+      const session = await getRequiredSession();
+      const sessionWorkspaceId = getUserWorkspaceId(session);
+      if (!sessionWorkspaceId) {
+        return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
+      }
+      workspaceId = sessionWorkspaceId;
+      const { requireMember } = await import("@/lib/auth");
+      await requireMember(session.user.id, workspaceId);
     }
 
     const body = await request.json();
-    const workspaceId =
-      typeof body.workspaceId === "string" ? body.workspaceId : sessionWorkspaceId;
-
-    const { requireMember } = await import("@/lib/auth");
-    await requireMember(session.user.id, workspaceId);
+    if (authEnabled && typeof body.workspaceId === "string") {
+      workspaceId = body.workspaceId;
+    }
 
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const parentId = typeof body.parentId === "string" ? body.parentId : null;
@@ -78,13 +85,17 @@ export async function POST(request: Request) {
     };
 
     await saveFolder(folder);
-    await writeAuditLog({
-      actorId: session.user.id,
-      workspaceId,
-      action: "folder.create" as AuditAction,
-      targetId: folder.id,
-      request,
-    });
+
+    if (authEnabled && workspaceId) {
+      const session = await getRequiredSession();
+      await writeAuditLog({
+        actorId: session.user.id,
+        workspaceId,
+        action: "folder.create" as AuditAction,
+        targetId: folder.id,
+        request,
+      });
+    }
     return NextResponse.json(folder, { status: 201 });
   } catch (error) {
     return handleRouteError(error);

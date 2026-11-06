@@ -5,9 +5,35 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(() =>
     vi.fn(() => Promise.resolve(NextResponse.redirect(new URL("http://localhost/login")))),
   ),
-  isAuthEnabled: vi.fn(() => !!process.env.AUTH_SECRET),
+  isAuthEnabled: vi.fn(() =>
+    Promise.resolve(
+      !!process.env.AUTH_SECRET &&
+        !!process.env.AUTH_OIDC_ISSUER &&
+        !!process.env.AUTH_OIDC_CLIENT_ID &&
+        !!process.env.AUTH_OIDC_CLIENT_SECRET,
+    ),
+  ),
   isMember: vi.fn(() => Promise.resolve(true)),
   isAdmin: vi.fn(() => Promise.resolve(true)),
+}));
+
+vi.mock("@/lib/auth/appConfig", () => ({
+  areOidcCredentialsConfigured: vi.fn(
+    () =>
+      !!process.env.AUTH_SECRET &&
+      !!process.env.AUTH_OIDC_ISSUER &&
+      !!process.env.AUTH_OIDC_CLIENT_ID &&
+      !!process.env.AUTH_OIDC_CLIENT_SECRET,
+  ),
+  getAppConfigDoc: vi.fn(() =>
+    Promise.resolve({
+      _id: { toString: () => "config-id" },
+      authEnabled: false,
+      updatedAt: new Date(),
+      updatedByUserId: null,
+    }),
+  ),
+  setAuthEnabled: vi.fn(() => Promise.resolve()),
 }));
 
 import middleware from "@/middleware";

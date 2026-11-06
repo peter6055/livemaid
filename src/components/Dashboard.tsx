@@ -28,8 +28,6 @@ import {
   List,
   Settings,
   Star,
-  Shield,
-  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useUserPreferences } from "@/hooks/useUserPreferences";
@@ -896,35 +894,6 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Legacy-mode prompt to enable OIDC workspaces. */}
-      {!authEnabled && !isDemo && (
-        <div className="sticky top-0 z-40 border-b border-primary/20 bg-primary/10">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-10 py-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="flex items-start gap-3">
-                <Shield className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">Enable workspaces</p>
-                  <p className="text-sm text-muted-foreground">
-                    Legacy mode is active. Add OIDC sign-in to get per-user workspaces, members, and
-                    audit logs.
-                  </p>
-                </div>
-              </div>
-              <Button
-                onClick={() => {
-                  window.location.href = "/admin/setup";
-                }}
-                className="shrink-0 gap-2"
-              >
-                Migrate to workspace
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="flex flex-1 min-h-0">
         {/* ---- Left Sidebar ---- */}
         <aside
@@ -934,6 +903,11 @@ export default function Dashboard({
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
             <BrandLogo className="w-8 h-8 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
+            {authEnabled === false && !isDemo && (
+              <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground border border-border rounded-full px-2 py-0.5">
+                Public portal
+              </span>
+            )}
           </div>
 
           {/* Sidebar navigation: Recent + Folders */}
@@ -1098,6 +1072,11 @@ export default function Dashboard({
             </DropdownMenu>
             <BrandLogo className="w-8 h-8 mr-2 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
+            {authEnabled === false && !isDemo && (
+              <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground border border-border rounded-full px-2 py-0.5">
+                Public portal
+              </span>
+            )}
           </nav>
 
           {/* Main Content */}

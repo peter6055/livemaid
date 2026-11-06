@@ -2,6 +2,7 @@ import { auth, signOut, isAuthEnabled } from "@/lib/auth";
 import { isDemoMode } from "@/lib/env";
 import { Button } from "@/components/ui/button";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 
 export default async function WorkspaceLayout({
   children,
@@ -10,11 +11,12 @@ export default async function WorkspaceLayout({
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }) {
+  await connection();
   const { id: workspaceId } = await params;
   // workspaceId will be used by the workspace shell in Task #51.
   void workspaceId;
   const isDemo = isDemoMode();
-  const authEnabled = isAuthEnabled();
+  const authEnabled = await isAuthEnabled();
 
   if (!isDemo && authEnabled) {
     const session = await auth();

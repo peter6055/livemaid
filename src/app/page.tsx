@@ -23,7 +23,7 @@ export default async function Home() {
   const isDemo = isDemoMode();
   const rawVersion = getRawVersion();
   const displayVersion = getDisplayVersion();
-  const authEnabled = isAuthEnabled();
+  const authEnabled = await isAuthEnabled();
 
   const session = authEnabled ? await auth() : null;
   const redirectPath = getHomeRedirect(session, isDemo, authEnabled);

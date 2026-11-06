@@ -13,7 +13,7 @@ export class RouteAuthError extends Error {
 }
 
 export async function getSessionOrNull(): Promise<Session | null> {
-  if (!isAuthEnabled()) return null;
+  if (!(await isAuthEnabled())) return null;
   try {
     return await auth();
   } catch {

@@ -8,7 +8,7 @@ vi.mock("@/lib/env", () => ({
 
 vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
-  isAuthEnabled: vi.fn(() => true),
+  isAuthEnabled: vi.fn(() => Promise.resolve(true)),
   requireMember: vi.fn(),
   requireAdmin: vi.fn(),
   writeAuditLog: vi.fn(),
@@ -69,7 +69,7 @@ import {
 
 const mockedAuth = {
   auth: auth.auth as unknown as Mock<() => Promise<Session | null>>,
-  isAuthEnabled: auth.isAuthEnabled as unknown as Mock<() => boolean>,
+  isAuthEnabled: auth.isAuthEnabled as unknown as Mock<() => Promise<boolean>>,
   requireMember: auth.requireMember as unknown as Mock<
     (userId: string, workspaceId: string) => Promise<void>
   >,
@@ -145,7 +145,7 @@ describe("API route protection and workspace scoping", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockedEnv.isDemoMode.mockReturnValue(false);
-    mockedAuth.isAuthEnabled.mockReturnValue(true);
+    mockedAuth.isAuthEnabled.mockResolvedValue(true);
   });
 
   describe("diagram list", () => {

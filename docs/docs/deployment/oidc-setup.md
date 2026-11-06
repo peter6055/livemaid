@@ -1,48 +1,50 @@
 # OIDC / OAuth Setup
 
-LiveMaid can run without authentication for personal or trusted local use, or you can enable OIDC-based sign-in to add workspaces, members, and audit logs.
+LiveMaid can run without authentication for personal or trusted local use, or you can enable OIDC-based sign-in to add workspaces, members, and audit logs. Auth is controlled by a runtime database flag and OIDC credentials.
 
-## Two modes
+## Runtime modes
 
-| Mode                 | Auth required | Best for                                                                        |
-| -------------------- | ------------- | ------------------------------------------------------------------------------- |
-| **Legacy** (default) | No            | Local development, single-user Docker, or trusted networks                      |
-| **OIDC**             | Yes           | Teams, shared servers, or any deployment where you need per-user access control |
+| Mode                  | Auth required | Best for                                                                        |
+| --------------------- | ------------- | ------------------------------------------------------------------------------- |
+| **Public portal**     | No            | Local development, single-user Docker, or trusted networks                      |
+| **Auth / workspaces** | Yes           | Teams, shared servers, or any deployment where you need per-user access control |
 
-Legacy mode is active when **any** of the OIDC environment variables are missing. OIDC mode activates only when **all four** are set.
+The app is in **public portal** mode when the `authEnabled` DB flag is `false` or when OIDC credentials are missing. **Auth / workspaces** mode is active only when the DB flag is `true` **and** all four OIDC environment variables are present.
 
 ## What you need
 
-Before enabling OIDC, have these ready:
+Before enabling auth, have these ready:
 
 - An OIDC-compatible identity provider (Google Workspace, Okta, Auth0, Keycloak, Authentik, etc.).
-- A MongoDB database for users, workspaces, memberships, and audit logs.
+- A MongoDB database for users, workspaces, memberships, audit logs, and the `appConfig` collection.
 - The callback URL your provider will use: `https://your-domain.com/api/auth/callback/oidc`.
 
-## Setup UI (legacy mode only)
+## Enabling auth via the UI
 
-When LiveMaid is running in legacy mode (no OIDC environment variables set), an admin can use the built-in setup UI at **`/admin/setup`** to configure OIDC without hand-editing `.env`.
+1. Start LiveMaid with `MONGODB_URI` set.
+2. Open **`/admin/settings`**.
+3. Toggle **Enable auth / workspaces** on and save.
+4. If OIDC credentials are not configured, you will be redirected to **`/admin/setup`**.
+5. In `/admin/setup`, select your provider template and enter the OIDC issuer, client ID, and client secret.
+6. Submit the form. LiveMaid validates the provider's discovery document, generates an `AUTH_SECRET` if needed, writes the variables to `.env` when the filesystem is writable, and enables auth immediately.
+7. If the filesystem is read-only (common in Docker), the UI shows the environment variables and a Docker Compose snippet to copy instead. Restart the server after updating the environment.
 
-1. Open `/admin/setup` in your browser.
-2. Select your provider template and enter the OIDC issuer, client ID, and client secret.
-3. Submit the form. LiveMaid will validate the provider's discovery document, generate an `AUTH_SECRET` if needed, and write the variables to `.env` when the filesystem is writable.
-4. If the filesystem is read-only (common in Docker), the UI will show the environment variables and a Docker Compose snippet to copy instead.
-5. Restart the server to apply the new environment variables.
+## Disabling auth via the UI
 
-The setup UI is only available while legacy mode is active. Once OIDC is enabled, `/admin/setup` redirects to `/`.
+An admin can return to `/admin/settings` and toggle **Enable auth / workspaces** off. The app becomes a public portal again. Existing diagrams keep any `workspaceId` they had; new diagrams are created without one.
 
-## Environment variables
+## Environment variables (manual fallback)
 
-Add these to your `.env` file or Docker Compose environment (the setup UI above can do this for you):
+You can also set these directly in your `.env` file or Docker Compose environment:
 
 ```bash
-# Required for OIDC mode
+# Required for auth / workspace mode
 AUTH_SECRET="openssl rand -base64 32"
 AUTH_OIDC_ISSUER="https://accounts.google.com"
 AUTH_OIDC_CLIENT_ID="your-client-id"
 AUTH_OIDC_CLIENT_SECRET="your-client-secret"
 
-# Required for workspaces/users/audit logs
+# Required for users, workspaces, memberships, audit logs, and the app config
 MONGODB_URI="mongodb://localhost:27017/livemaid"
 
 # Optional but recommended
@@ -54,6 +56,8 @@ AUDIT_IP_PEPPER="another-random-string-for-ip-hashing"
 - `AUTH_OIDC_CLIENT_ID` and `AUTH_OIDC_CLIENT_SECRET` — from your OIDC app registration.
 - `MONGODB_URI` — connection string to a MongoDB deployment.
 - `AUDIT_IP_PEPPER` — a secret pepper used when hashing IP addresses in audit logs.
+
+When the environment variables are present, use `/admin/settings` to turn auth on. The setup UI at `/admin/setup` can also write them for you.
 
 ## Provider-specific notes
 
@@ -70,7 +74,7 @@ AUDIT_IP_PEPPER="another-random-string-for-ip-hashing"
 
 ## First login and legacy adoption
 
-When OIDC mode starts for the first time:
+When auth mode starts for the first time:
 
 1. The first person to sign in becomes the default workspace's **admin**.
 2. Existing diagrams in `data/` are automatically adopted into that workspace.
@@ -131,7 +135,7 @@ npm run test:e2e -- src/test/e2e/auth-routes.spec.ts src/test/e2e/auth-workspace
 
 ## Relationship with demo mode
 
-`DEMO_MODE=true` disables writes regardless of auth mode. You can run OIDC + demo, but since demo mode is read-only, members and workspaces will not be created.
+`DEMO_MODE=true` disables writes regardless of auth mode. You can run auth + demo, but since demo mode is read-only, members and workspaces will not be created.
 
 ## See also
 

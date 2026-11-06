@@ -42,38 +42,23 @@ declare module "@auth/core/jwt" {
 
 export type { User, Session } from "next-auth";
 
-function getAuthSecret() {
+export function getAuthSecret() {
   return process.env.AUTH_SECRET;
 }
 
-function getOidcIssuer() {
+export function getOidcIssuer() {
   return process.env.AUTH_OIDC_ISSUER;
 }
 
-function getOidcClientId() {
+export function getOidcClientId() {
   return process.env.AUTH_OIDC_CLIENT_ID;
 }
 
-function getOidcClientSecret() {
+export function getOidcClientSecret() {
   return process.env.AUTH_OIDC_CLIENT_SECRET;
 }
 
-export function isAuthEnabled(): boolean {
-  return !!(getAuthSecret() && getOidcIssuer() && getOidcClientId() && getOidcClientSecret());
-}
-
-export function assertAuthConfigured(): void {
-  const missing: string[] = [];
-  if (!getAuthSecret()) missing.push("AUTH_SECRET");
-  if (!getOidcIssuer()) missing.push("AUTH_OIDC_ISSUER");
-  if (!getOidcClientId()) missing.push("AUTH_OIDC_CLIENT_ID");
-  if (!getOidcClientSecret()) missing.push("AUTH_OIDC_CLIENT_SECRET");
-  if (missing.length > 0) {
-    throw new Error(
-      `Authentication is not configured. Missing environment variables: ${missing.join(", ")}`,
-    );
-  }
-}
+import { areOidcCredentialsConfigured } from "./appConfig";
 
 const DAY_IN_SECONDS = 24 * 60 * 60;
 
@@ -127,7 +112,9 @@ export const authConfig: NextAuthConfig = {
       return !!auth?.user;
     },
     async signIn({ profile }) {
-      assertAuthConfigured();
+      if (!areOidcCredentialsConfigured()) {
+        throw new Error("Authentication is not configured. Missing OIDC environment variables.");
+      }
 
       if (isDemoMode()) {
         return true;

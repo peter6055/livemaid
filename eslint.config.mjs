@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
       "next-env.d.ts",
       // Project-generated / vendored / data dirs:
       "node_modules/**",
+      "docs/node_modules/**",
+      "docs/.docusaurus/**",
+      "docs/build/**",
       ".git/**",
       "playwright-report/**",
       "test-results/**",

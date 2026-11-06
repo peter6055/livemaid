@@ -3,7 +3,8 @@ import { authConfig } from "./config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
-export { authConfig, isAuthEnabled, assertAuthConfigured, type User, type Session } from "./config";
+export { authConfig, type User, type Session } from "./config";
+export { isAuthEnabled, areOidcCredentialsConfigured, setAuthEnabled } from "./appConfig";
 export {
   normalizeEmail,
   findOrCreateUser,

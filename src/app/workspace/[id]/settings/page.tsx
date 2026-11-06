@@ -15,7 +15,7 @@ export default async function WorkspaceSettingsPage({
 
   const { id: workspaceId } = await params;
   const isDemo = isDemoMode();
-  const authEnabled = isAuthEnabled();
+  const authEnabled = await isAuthEnabled();
   const session = !isDemo && authEnabled ? await auth() : null;
 
   let workspaceName = "Workspace";

@@ -1,6 +1,7 @@
 "use server";
 
 import { validateOidcDiscovery, generateAuthSecret } from "@/lib/auth/setup";
+import { setAuthEnabled } from "@/lib/auth/appConfig";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { promises as fs } from "fs";
@@ -21,12 +22,6 @@ export interface OidcSetupResult {
 
 function escapeEnvValue(value: string): string {
   return value.replace(/"/g, '\\"');
-}
-
-function buildEnvBlock(vars: Record<string, string>): string {
-  return Object.entries(vars)
-    .map(([key, value]) => `${key}="${escapeEnvValue(value)}"`)
-    .join("\n");
 }
 
 function buildComposeSnippet(vars: Record<string, string>): string {
@@ -104,10 +99,22 @@ export async function submitOidcSetup(formData: FormData): Promise<void> {
     wroteFile = false;
   }
 
+  // Apply the credentials to the running process so auth becomes effective
+  // immediately without requiring a server restart.
+  process.env.AUTH_SECRET = env.AUTH_SECRET;
+  process.env.AUTH_OIDC_ISSUER = env.AUTH_OIDC_ISSUER;
+  process.env.AUTH_OIDC_CLIENT_ID = env.AUTH_OIDC_CLIENT_ID;
+  process.env.AUTH_OIDC_CLIENT_SECRET = env.AUTH_OIDC_CLIENT_SECRET;
+
   const result: OidcSetupResult = wroteFile
     ? { ok: true, wroteFile: true, env }
     : { ok: true, wroteFile: false, env, composeSnippet: buildComposeSnippet(env) };
 
   await setSetupCookie(result);
+
+  // Enable auth automatically once credentials are present so the toggle takes
+  // effect immediately.
+  await setAuthEnabled(true);
+
   redirect("/admin/setup");
 }

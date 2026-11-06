@@ -2,33 +2,28 @@
 
 This document describes LiveMaid's authentication modes, the workspace data model, and how to run and test the auth features.
 
-## Two runtime modes
+## Runtime modes
 
-The app runs in one of two mutually exclusive modes depending on whether OIDC environment variables are present.
+Auth state is stored in MongoDB (`appConfig.authEnabled`, default `false`). The app is **effectively** in auth mode only when the DB flag is `true` **and** all four OIDC environment variables are present.
 
-### Legacy mode (auth disabled)
+### Public portal mode (auth disabled)
 
-Triggered when **any** of these is missing:
-
-- `AUTH_SECRET`
-- `AUTH_OIDC_ISSUER`
-- `AUTH_OIDC_CLIENT_ID`
-- `AUTH_OIDC_CLIENT_SECRET`
+Triggered when `appConfig.authEnabled === false`.
 
 Behavior:
 
 - No login required.
-- No MongoDB required.
-- All diagrams/folders in `data/` are globally visible.
+- All diagrams/folders in `data/` are globally visible and editable.
+- New diagrams and folders are created without a `workspaceId`.
 - New comments are stored with `authorId: "anonymous"`.
 - URLs are flat: `/`, `/editor/{id}`, `/editor/{id}/duplicate`.
 - Writes are allowed unless `DEMO_MODE=true`.
 
 This preserves local development, self-hosting, and existing deployments that do not have an OIDC provider.
 
-### OIDC mode (auth enabled)
+### Auth / workspaces mode (auth enabled)
 
-Triggered when **all four** `AUTH_*` variables are set (plus `MONGODB_URI` for workspaces).
+Triggered when `appConfig.authEnabled === true` **and** all four `AUTH_*` variables are set (plus `MONGODB_URI` for users, workspaces, memberships, audit logs, and app config).
 
 Behavior:
 
@@ -39,6 +34,14 @@ Behavior:
 - Comments are attributed to the signed-in user via the session.
 - URLs are workspace-scoped: `/workspace/{id}`, `/workspace/{id}/editor/{id}`, etc.
 - Roles: **admin** (invite/remove/change roles, settings) vs. **member** (create/edit/delete diagrams).
+
+### Setup mode
+
+If `appConfig.authEnabled` is toggled on but OIDC credentials are missing, the app forces the setup flow:
+
+- `/admin/settings`, `/admin/setup`, and `/api/admin/auth-toggle` are accessible.
+- All other routes redirect to `/admin/setup` so the admin can enter OIDC credentials.
+- Once credentials are written, auth becomes effective immediately.
 
 ## Environment variables
 
