@@ -31,6 +31,8 @@ export default async function Home() {
     redirect(redirectPath);
   }
 
+  const showAdmin = !authEnabled || session?.user?.role === "admin";
+
   return (
     <Dashboard
       isDemo={isDemo}
@@ -38,7 +40,7 @@ export default async function Home() {
       rawVersion={rawVersion}
       authEnabled={authEnabled}
       workspaceId={session?.user?.workspaceId}
-      session={session}
+      showAdmin={showAdmin}
     />
   );
 }

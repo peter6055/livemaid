@@ -14,9 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { AuthToggleForm } from "@/components/settings/AuthToggleForm";
-import type { Session } from "@/lib/auth";
 import {
-  User,
   Settings,
   Briefcase,
   Shield,
@@ -151,39 +149,6 @@ function AboutSection() {
   );
 }
 
-function ProfilePanel({ session }: { session?: Session | null }) {
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-4">Profile</h3>
-        {session?.user ? (
-          <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-2">
-            {session.user.name && (
-              <p className="text-sm">
-                <span className="text-muted-foreground">Name:</span> {session.user.name}
-              </p>
-            )}
-            {session.user.email && (
-              <p className="text-sm">
-                <span className="text-muted-foreground">Email:</span> {session.user.email}
-              </p>
-            )}
-            {session.user.role && (
-              <p className="text-sm capitalize">
-                <span className="text-muted-foreground">Role:</span> {session.user.role}
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="p-4 rounded-lg bg-muted/50 border border-border text-sm text-muted-foreground">
-            Account creation and profile settings will be available here in the future.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function PreferencesPanel() {
   return (
     <div className="space-y-8">
@@ -292,22 +257,17 @@ export function SettingsDialog({
   open,
   onOpenChange,
   workspaceId,
-  session,
   showAdmin,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId?: string;
-  session?: Session | null;
   showAdmin: boolean;
 }) {
   const groups: SidebarGroup[] = [
     {
-      label: "Account",
-      items: [
-        { id: "profile", label: "Profile", icon: User },
-        { id: "preferences", label: "Preferences", icon: Settings },
-      ],
+      label: "User",
+      items: [{ id: "preferences", label: "Preferences", icon: Settings }],
     },
   ];
 
@@ -328,7 +288,7 @@ export function SettingsDialog({
     });
   }
 
-  const [activeItem, setActiveItem] = useState("profile");
+  const [activeItem, setActiveItem] = useState("preferences");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -373,7 +333,6 @@ export function SettingsDialog({
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-6">
-            {activeItem === "profile" && <ProfilePanel session={session} />}
             {activeItem === "preferences" && <PreferencesPanel />}
             {activeItem === "workspace-general" &&
               (workspaceId ? (
