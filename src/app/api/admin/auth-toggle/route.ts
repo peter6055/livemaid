@@ -1,6 +1,18 @@
 import { NextResponse } from "next/server";
 import { auth, isAuthEnabled } from "@/lib/auth";
-import { setAuthEnabled } from "@/lib/auth/appConfig";
+import {
+  areOidcCredentialsConfigured,
+  getAppConfigDoc,
+  setAuthEnabled,
+} from "@/lib/auth/appConfig";
+
+export async function GET() {
+  const appConfig = await getAppConfigDoc();
+  return NextResponse.json({
+    authFlagEnabled: appConfig.authEnabled,
+    oidcConfigured: areOidcCredentialsConfigured(),
+  });
+}
 
 export async function POST(request: Request) {
   let body: { enabled?: unknown } = {};

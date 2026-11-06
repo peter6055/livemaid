@@ -37,6 +37,8 @@ export default async function Home() {
       appVersion={displayVersion}
       rawVersion={rawVersion}
       authEnabled={authEnabled}
+      workspaceId={session?.user?.workspaceId}
+      session={session}
     />
   );
 }

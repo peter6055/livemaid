@@ -37,6 +37,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 
 import { SettingsDialog } from "@/components/SettingsDialog";
+import type { Session } from "@/lib/auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -82,12 +83,14 @@ export default function Dashboard({
   rawVersion,
   workspaceId,
   authEnabled,
+  session,
 }: {
   isDemo?: boolean;
   appVersion?: string;
   rawVersion?: string;
   workspaceId?: string;
   authEnabled?: boolean;
+  session?: Session | null;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
@@ -1671,7 +1674,13 @@ export default function Dashboard({
         </AlertDialogContent>
       </AlertDialog>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        workspaceId={workspaceId}
+        session={session}
+        showAdmin={!authEnabled || session?.user?.role === "admin"}
+      />
     </div>
   );
 }
