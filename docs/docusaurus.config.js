@@ -11,7 +11,7 @@ const config = {
   favicon: "img/icon.svg",
 
   url: "https://peter6055.github.io",
-  baseUrl: "/livemaid/",
+  baseUrl: process.env.DOCUSAURUS_BASE_URL || "/livemaid/",
 
   organizationName: "peter6055",
   projectName: "livemaid",
@@ -92,55 +92,6 @@ const config = {
             position: "right",
           },
         ],
-      },
-      footer: {
-        style: "light",
-        links: [
-          {
-            title: "Docs",
-            items: [
-              {
-                label: "Introduction",
-                to: "/",
-              },
-              {
-                label: "Supported Diagrams",
-                to: "/supported-diagrams",
-              },
-              {
-                label: "Contributing",
-                to: "/project/contributing",
-              },
-            ],
-          },
-          {
-            title: "Project",
-            items: [
-              {
-                label: "License",
-                to: "/project/license",
-              },
-              {
-                label: "Data Collection Notice",
-                to: "/project/collection-notice",
-              },
-              {
-                label: "Third-Party Notices",
-                to: "/project/third-party-notices",
-              },
-            ],
-          },
-          {
-            title: "More",
-            items: [
-              {
-                label: "GitHub",
-                href: "https://github.com/peter6055/livemaid",
-              },
-            ],
-          },
-        ],
-        copyright: `Copyright © ${new Date().getFullYear()} LiveMaid. Built with Docusaurus.`,
       },
       prism: {
         theme: prismThemes.github,
