@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { AuthToggleForm } from "@/components/settings/AuthToggleForm";
+import { OidcSetupForm } from "@/components/settings/OidcSetupForm";
 import {
   Settings,
   Briefcase,
@@ -243,10 +244,20 @@ function AdminPanel() {
         ) : error ? (
           <div className="text-sm text-destructive">{error}</div>
         ) : status ? (
-          <AuthToggleForm
-            authEnabled={status.authFlagEnabled}
-            oidcConfigured={status.oidcConfigured}
-          />
+          <div className="space-y-6">
+            <AuthToggleForm
+              authEnabled={status.authFlagEnabled}
+              oidcConfigured={status.oidcConfigured}
+            />
+            {status.authFlagEnabled && !status.oidcConfigured && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
+                <p className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-3">
+                  OIDC credentials required
+                </p>
+                <OidcSetupForm />
+              </div>
+            )}
+          </div>
         ) : null}
       </div>
     </div>

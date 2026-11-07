@@ -40,22 +40,20 @@ async function setSetupCookie(result: OidcSetupResult) {
   });
 }
 
-export async function submitOidcSetup(formData: FormData): Promise<void> {
-  const issuer = String(formData.get("issuer") ?? "").trim();
-  const clientId = String(formData.get("clientId") ?? "").trim();
-  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
-
+async function applyOidcSetup(
+  issuer: string,
+  clientId: string,
+  clientSecret: string,
+): Promise<OidcSetupResult> {
   if (!issuer || !clientId || !clientSecret) {
-    await setSetupCookie({ ok: false, error: "Issuer, Client ID, and Client Secret are required" });
-    redirect("/admin/setup");
+    return { ok: false, error: "Issuer, Client ID, and Client Secret are required" };
   }
 
   const normalizedIssuer = issuer.replace(/\/$/, "");
 
   const discovery = await validateOidcDiscovery(normalizedIssuer);
   if (!discovery.ok) {
-    await setSetupCookie({ ok: false, error: discovery.error });
-    redirect("/admin/setup");
+    return { ok: false, error: discovery.error };
   }
 
   const authSecret = process.env.AUTH_SECRET || generateAuthSecret();
@@ -106,15 +104,29 @@ export async function submitOidcSetup(formData: FormData): Promise<void> {
   process.env.AUTH_OIDC_CLIENT_ID = env.AUTH_OIDC_CLIENT_ID;
   process.env.AUTH_OIDC_CLIENT_SECRET = env.AUTH_OIDC_CLIENT_SECRET;
 
-  const result: OidcSetupResult = wroteFile
-    ? { ok: true, wroteFile: true, env }
-    : { ok: true, wroteFile: false, env, composeSnippet: buildComposeSnippet(env) };
-
-  await setSetupCookie(result);
-
   // Enable auth automatically once credentials are present so the toggle takes
   // effect immediately.
   await setAuthEnabled(true);
 
+  return wroteFile
+    ? { ok: true, wroteFile: true, env }
+    : { ok: true, wroteFile: false, env, composeSnippet: buildComposeSnippet(env) };
+}
+
+export async function submitOidcSetup(formData: FormData): Promise<void> {
+  const issuer = String(formData.get("issuer") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
+
+  const result = await applyOidcSetup(issuer, clientId, clientSecret);
+  await setSetupCookie(result);
   redirect("/admin/setup");
+}
+
+export async function submitOidcSetupInline(formData: FormData): Promise<OidcSetupResult> {
+  const issuer = String(formData.get("issuer") ?? "").trim();
+  const clientId = String(formData.get("clientId") ?? "").trim();
+  const clientSecret = String(formData.get("clientSecret") ?? "").trim();
+
+  return applyOidcSetup(issuer, clientId, clientSecret);
 }

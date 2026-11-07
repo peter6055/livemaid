@@ -28,10 +28,8 @@ export function AuthToggleForm({
       if (!res.ok) {
         throw new Error(data.error || "Failed to update setting");
       }
-      if (data.authEnabled && !data.oidcConfigured) {
-        window.location.href = "/admin/setup";
-        return;
-      }
+      // Reload so the Authentication panel reflects the new auth state. If OIDC
+      // credentials are still missing, the panel will show the inline setup form.
       window.location.reload();
     } finally {
       setSubmitting(false);
