@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
 import { getDisplayVersion, getRawVersion } from "@/lib/env";
@@ -13,19 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { AuthToggleForm } from "@/components/settings/AuthToggleForm";
-import { OidcSetupForm } from "@/components/settings/OidcSetupForm";
-import {
-  Settings,
-  Briefcase,
-  Shield,
-  Palette,
-  Lock,
-  Info,
-  Users,
-  ExternalLink,
-  Loader2,
-} from "lucide-react";
+import { Settings, Briefcase, Palette, Users, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
 type SidebarItem = {
@@ -204,76 +192,14 @@ function WorkspaceMembersPanel({ workspaceId }: { workspaceId: string }) {
   );
 }
 
-function AdminPanel() {
-  const [status, setStatus] = useState<{
-    authFlagEnabled: boolean;
-    oidcConfigured: boolean;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    fetch("/api/admin/auth-toggle")
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Failed to load auth status");
-        const data = await res.json();
-        if (!cancelled) setStatus(data);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Unknown error");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-4">Authentication</h3>
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading auth status...
-          </div>
-        ) : error ? (
-          <div className="text-sm text-destructive">{error}</div>
-        ) : status ? (
-          <div className="space-y-6">
-            <AuthToggleForm
-              authEnabled={status.authFlagEnabled}
-              oidcConfigured={status.oidcConfigured}
-            />
-            {status.authFlagEnabled && !status.oidcConfigured && (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/50 dark:bg-amber-950/30">
-                <p className="text-sm font-medium text-amber-700 dark:text-amber-400 mb-3">
-                  OIDC credentials required
-                </p>
-                <OidcSetupForm />
-              </div>
-            )}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 export function SettingsDialog({
   open,
   onOpenChange,
   workspaceId,
-  showAdmin,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId?: string;
-  showAdmin: boolean;
 }) {
   const groups: SidebarGroup[] = [
     {
@@ -289,13 +215,6 @@ export function SettingsDialog({
         { id: "workspace-general", label: "General", icon: Briefcase },
         { id: "workspace-members", label: "Members", icon: Users },
       ],
-    });
-  }
-
-  if (showAdmin) {
-    groups.push({
-      label: "Admin",
-      items: [{ id: "admin-auth", label: "Authentication", icon: Shield }],
     });
   }
 
@@ -357,7 +276,6 @@ export function SettingsDialog({
               ) : (
                 <WorkspaceEmptyPanel />
               ))}
-            {activeItem === "admin-auth" && showAdmin && <AdminPanel />}
           </div>
         </div>
       </DialogContent>

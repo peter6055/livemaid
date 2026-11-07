@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextFetchEvent, NextRequest } from "next/server";
 import type { NextAuthRequest } from "next-auth";
 import { auth, isAuthEnabled, isAdmin, isMember } from "@/lib/auth";
-import { areOidcCredentialsConfigured, getAppConfigDoc } from "@/lib/auth/appConfig";
 import { isDemoMode } from "@/lib/env";
 
 function isPublicPath(pathname: string): boolean {
@@ -20,7 +19,9 @@ function getWorkspaceIdFromPath(pathname: string): string | null {
 }
 
 function redirectToLogin(request: NextRequest): Response {
-  return NextResponse.redirect(new URL("/login", request.url));
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  return NextResponse.redirect(url);
 }
 
 export default async function middleware(
@@ -31,23 +32,6 @@ export default async function middleware(
   const pathname = request.nextUrl.pathname;
 
   if (isDemoMode() || !authEnabled) {
-    // Auth may be turned off (public portal) or requested but not yet
-    // configured. In the latter case, force the setup flow but still allow the
-    // admin to reach /admin/settings to cancel the toggle.
-    const appConfig = await getAppConfigDoc();
-    if (appConfig.authEnabled && !areOidcCredentialsConfigured()) {
-      if (
-        pathname === "/admin/setup" ||
-        pathname === "/admin/settings" ||
-        pathname.startsWith("/api/admin/auth-toggle") ||
-        pathname === "/login" ||
-        pathname.startsWith("/api/auth/") ||
-        isPublicPath(pathname)
-      ) {
-        return NextResponse.next();
-      }
-      return NextResponse.redirect(new URL("/admin/setup", request.url));
-    }
     return NextResponse.next();
   }
 

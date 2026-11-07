@@ -1,13 +1,6 @@
 import type { Collection, ObjectId } from "mongodb";
 import { getMongoClient } from "./client";
 
-export interface DbAppConfig {
-  _id: ObjectId;
-  authEnabled: boolean;
-  updatedAt: Date;
-  updatedByUserId: ObjectId | null;
-}
-
 export interface DbUser {
   _id: ObjectId;
   email: string;
@@ -62,8 +55,4 @@ export async function getMembershipsCollection(): Promise<Collection<DbMembershi
 
 export async function getMigrationMarkersCollection(): Promise<Collection<DbMigrationMarker>> {
   return (await getDb()).collection<DbMigrationMarker>("migrationMarkers");
-}
-
-export async function getAppConfigCollection(): Promise<Collection<DbAppConfig>> {
-  return (await getDb()).collection<DbAppConfig>("appConfig");
 }

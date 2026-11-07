@@ -15,6 +15,7 @@ const nextConfig: NextConfig = {
   distDir: requestedDistDir
     ? path.relative(process.cwd(), path.resolve(requestedDistDir)) || ".next"
     : ".next",
+  basePath: process.env.NEXT_PUBLIC_BASE_PATH || undefined,
   allowedDevOrigins: process.env.ALLOWED_DEV_ORIGINS
     ? process.env.ALLOWED_DEV_ORIGINS.split(",").map((s) => s.trim())
     : [],

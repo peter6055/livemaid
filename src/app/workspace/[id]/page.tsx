@@ -24,16 +24,12 @@ export default async function WorkspaceDashboardPage({
   // requested workspace id even if it does not match the user's own workspace.
   void userWorkspaceId;
 
-  const showAdmin = !authEnabled || session?.user?.role === "admin";
-
   return (
     <Dashboard
       isDemo={isDemo}
       appVersion={displayVersion}
       rawVersion={rawVersion}
       workspaceId={workspaceId}
-      authEnabled={authEnabled}
-      showAdmin={showAdmin}
     />
   );
 }

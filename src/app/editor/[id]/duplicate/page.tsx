@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { apiUrl } from "@/lib/api/url";
 import { Loader2, FileQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -31,7 +32,7 @@ function isDuplicatePayload(value: unknown): value is DuplicatePayload {
 
 async function fetchSession(): Promise<AuthSession | null> {
   try {
-    const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    const res = await fetch(apiUrl("/api/auth/session"), { credentials: "same-origin" });
     if (!res.ok) return null;
     return (await res.json()) as AuthSession;
   } catch {
@@ -71,7 +72,7 @@ export default function DuplicateDiagramPage() {
         }
 
         if (!payload) {
-          const sourceRes = await fetch(`/api/diagrams/${params.id}`);
+          const sourceRes = await fetch(apiUrl(`/api/diagrams/${params.id}`));
           if (!sourceRes.ok) throw new Error("Source diagram not found");
           const source = await sourceRes.json();
           payload = {
@@ -82,7 +83,7 @@ export default function DuplicateDiagramPage() {
           };
         }
 
-        const createRes = await fetch("/api/diagrams", {
+        const createRes = await fetch(apiUrl("/api/diagrams"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),

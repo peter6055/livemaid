@@ -103,7 +103,7 @@ describe("audit", () => {
     expect(log.ipHash).toBe(hashIp("192.168.1.1"));
   });
 
-  it("stores a null IP hash when the pepper is missing", async () => {
+  it("stores a hashed IP when no pepper is configured", async () => {
     const request = new Request("http://localhost/", {
       headers: { "x-forwarded-for": "192.168.1.1" },
     });
@@ -111,7 +111,7 @@ describe("audit", () => {
     await writeAuditLog({ actorId: "user-1", action: "user.login", request });
 
     expect(auditLogs).toHaveLength(1);
-    expect(auditLogs[0].ipHash).toBeNull();
+    expect(auditLogs[0].ipHash).toBe(hashIp("192.168.1.1"));
   });
 
   it("stores a null IP hash when no request is provided", async () => {

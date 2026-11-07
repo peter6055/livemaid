@@ -9,6 +9,7 @@ import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/Cre
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/BrandLogo";
 import { broadcastDashboardRefresh, onDashboardRefresh } from "@/lib/dashboardSync";
+import { apiUrl } from "@/lib/api/url";
 import {
   Plus,
   LayoutTemplate,
@@ -81,15 +82,11 @@ export default function Dashboard({
   appVersion,
   rawVersion,
   workspaceId,
-  authEnabled,
-  showAdmin,
 }: {
   isDemo?: boolean;
   appVersion?: string;
   rawVersion?: string;
   workspaceId?: string;
-  authEnabled?: boolean;
-  showAdmin: boolean;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
@@ -181,11 +178,11 @@ export default function Dashboard({
       try {
         const startTime = Date.now();
         const diagramsUrl = workspaceId
-          ? `/api/diagrams?workspaceId=${encodeURIComponent(workspaceId)}`
-          : "/api/diagrams";
+          ? apiUrl(`/api/diagrams?workspaceId=${encodeURIComponent(workspaceId)}`)
+          : apiUrl("/api/diagrams");
         const foldersUrl = workspaceId
-          ? `/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`
-          : "/api/folders";
+          ? apiUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
+          : apiUrl("/api/folders");
         const [diagRes, folderRes] = await Promise.all([fetch(diagramsUrl), fetch(foldersUrl)]);
         if (!diagRes.ok) throw new Error("Failed to fetch");
         const { items } = await diagRes.json();
@@ -274,7 +271,7 @@ export default function Dashboard({
     setIsCreateOpen(false);
 
     try {
-      const res = await fetch("/api/diagrams", {
+      const res = await fetch(apiUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -291,7 +288,11 @@ export default function Dashboard({
       setDiagrams((prev) => [newDoc, ...prev]);
       // Notify other open Dashboard tabs that a new file exists so they can refresh.
       broadcastDashboardRefresh();
-      window.open(`/editor/${newDoc.id}`, "_blank", "noopener,noreferrer");
+      window.open(
+        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/editor/${newDoc.id}`,
+        "_blank",
+        "noopener,noreferrer",
+      );
     } catch (error) {
       toast.error("Failed to create diagram");
     }
@@ -309,7 +310,7 @@ export default function Dashboard({
     }
     setIsDeleteOpen(false);
     try {
-      const res = await fetch(`/api/diagrams/${deleteId}`, { method: "DELETE" });
+      const res = await fetch(apiUrl(`/api/diagrams/${deleteId}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       setDiagrams(diagrams.filter((d) => d.id !== deleteId));
       toast.success("Diagram deleted");
@@ -333,7 +334,7 @@ export default function Dashboard({
     setIsRenameOpen(false);
 
     try {
-      const res = await fetch(`/api/diagrams/${renameId}`, {
+      const res = await fetch(apiUrl(`/api/diagrams/${renameId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameName }),
@@ -366,7 +367,7 @@ export default function Dashboard({
     if (!createFolderName.trim()) return;
     setIsCreateFolderOpen(false);
     try {
-      const res = await fetch("/api/folders", {
+      const res = await fetch(apiUrl("/api/folders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Nesting disabled → always create at root. When ALLOW_NESTED_FOLDERS is enabled, new
@@ -400,7 +401,7 @@ export default function Dashboard({
     if (!renameFolderName.trim()) return;
     setIsRenameFolderOpen(false);
     try {
-      const res = await fetch(`/api/folders/${renameFolderId}`, {
+      const res = await fetch(apiUrl(`/api/folders/${renameFolderId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameFolderName }),
@@ -427,7 +428,7 @@ export default function Dashboard({
     }
     setIsDeleteFolderOpen(false);
     try {
-      const res = await fetch(`/api/folders/${deleteFolderId}`, { method: "DELETE" });
+      const res = await fetch(apiUrl(`/api/folders/${deleteFolderId}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete folder");
       // Folder delete reparents contents to the deleted folder's parent — refetch to resync.
       await fetchData();
@@ -443,7 +444,7 @@ export default function Dashboard({
       return;
     }
     try {
-      const res = await fetch(`/api/folders/${id}`, {
+      const res = await fetch(apiUrl(`/api/folders/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentId }),
@@ -465,7 +466,7 @@ export default function Dashboard({
       return;
     }
     try {
-      const res = await fetch(`/api/diagrams/${id}`, {
+      const res = await fetch(apiUrl(`/api/diagrams/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folderId }),
@@ -491,10 +492,10 @@ export default function Dashboard({
       return;
     }
     try {
-      const sourceRes = await fetch(`/api/diagrams/${id}`);
+      const sourceRes = await fetch(apiUrl(`/api/diagrams/${id}`));
       if (!sourceRes.ok) throw new Error("Source diagram not found");
       const source = await sourceRes.json();
-      const createRes = await fetch("/api/diagrams", {
+      const createRes = await fetch(apiUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -530,7 +531,7 @@ export default function Dashboard({
     const previous = diagrams;
     setDiagrams((prev) => prev.map((d) => (d.id === id ? { ...d, starred, starredAt } : d)));
     try {
-      const res = await fetch(`/api/diagrams/${id}`, {
+      const res = await fetch(apiUrl(`/api/diagrams/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ starred, starredAt }),
@@ -557,7 +558,7 @@ export default function Dashboard({
     const previous = folders;
     setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, starred, starredAt } : f)));
     try {
-      const res = await fetch(`/api/folders/${id}`, {
+      const res = await fetch(apiUrl(`/api/folders/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ starred, starredAt }),
@@ -905,11 +906,6 @@ export default function Dashboard({
           <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
             <BrandLogo className="w-8 h-8 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
-            {authEnabled === false && !isDemo && (
-              <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground border border-border rounded-full px-2 py-0.5">
-                Public portal
-              </span>
-            )}
           </div>
 
           {/* Sidebar navigation: Recent + Folders */}
@@ -1074,11 +1070,6 @@ export default function Dashboard({
             </DropdownMenu>
             <BrandLogo className="w-8 h-8 mr-2 rounded-lg" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
-            {authEnabled === false && !isDemo && (
-              <span className="ml-auto text-[10px] uppercase tracking-wider text-muted-foreground border border-border rounded-full px-2 py-0.5">
-                Public portal
-              </span>
-            )}
           </nav>
 
           {/* Main Content */}
@@ -1677,7 +1668,6 @@ export default function Dashboard({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         workspaceId={workspaceId}
-        showAdmin={showAdmin}
       />
     </div>
   );

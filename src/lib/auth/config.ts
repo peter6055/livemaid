@@ -10,8 +10,14 @@ import {
 } from "./workspace";
 import { runLegacyAdoptionIfNeeded } from "./migration";
 import { acceptInviteByEmail } from "./invites";
+import { ensureAuthSecret } from "./secrets";
 
 import type { DbWorkspace } from "@/lib/db/collections";
+
+// Ensure a signing secret is available. If the operator did not set one via the
+// environment, we generate one and persist it under data/.livemaid/ so sessions
+// survive container restarts.
+ensureAuthSecret();
 
 declare module "next-auth" {
   interface User {
@@ -43,7 +49,7 @@ declare module "@auth/core/jwt" {
 export type { User, Session } from "next-auth";
 
 export function getAuthSecret() {
-  return process.env.AUTH_SECRET;
+  return ensureAuthSecret();
 }
 
 export function getOidcIssuer() {
@@ -105,6 +111,7 @@ export const authConfig: NextAuthConfig = {
     signIn: "/login",
   },
   trustHost: true,
+  secret: ensureAuthSecret(),
   callbacks: {
     async authorized({ request, auth }) {
       const pathname = request.nextUrl.pathname;

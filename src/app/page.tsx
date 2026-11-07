@@ -5,7 +5,7 @@ import { isDemoMode, getDisplayVersion, getRawVersion } from "@/lib/env";
 import { redirect } from "next/navigation";
 import type { Session } from "@/lib/auth";
 
-export function getHomeRedirect(
+function getHomeRedirect(
   session: Session | null,
   isDemo: boolean,
   authEnabled: boolean,
@@ -31,16 +31,12 @@ export default async function Home() {
     redirect(redirectPath);
   }
 
-  const showAdmin = !authEnabled || session?.user?.role === "admin";
-
   return (
     <Dashboard
       isDemo={isDemo}
       appVersion={displayVersion}
       rawVersion={rawVersion}
-      authEnabled={authEnabled}
       workspaceId={session?.user?.workspaceId}
-      showAdmin={showAdmin}
     />
   );
 }

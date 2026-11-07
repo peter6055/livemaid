@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { apiUrl } from "@/lib/api/url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,7 +24,7 @@ type Member = {
 
 async function fetchSessionUser(): Promise<{ id?: string } | null> {
   try {
-    const res = await fetch("/api/auth/session", { credentials: "same-origin" });
+    const res = await fetch(apiUrl("/api/auth/session"), { credentials: "same-origin" });
     if (!res.ok) return null;
     const data = (await res.json()) as { user?: { id?: string } };
     return data.user ?? null;
@@ -50,7 +51,7 @@ export default function WorkspaceMembersPage() {
     setLoading(true);
     try {
       const [membersRes, user] = await Promise.all([
-        fetch(`/api/workspace/${workspaceId}/members`),
+        fetch(apiUrl(`/api/workspace/${workspaceId}/members`)),
         fetchSessionUser(),
       ]);
       if (user?.id) setCurrentUserId(user.id);
@@ -76,7 +77,7 @@ export default function WorkspaceMembersPage() {
     if (!email.trim() || !isAdmin) return;
     setInviting(true);
     try {
-      const res = await fetch(`/api/workspace/${workspaceId}/members`, {
+      const res = await fetch(apiUrl(`/api/workspace/${workspaceId}/members`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), role }),
@@ -100,7 +101,7 @@ export default function WorkspaceMembersPage() {
     if (!isAdmin) return;
     setRemovingId(memberId);
     try {
-      const res = await fetch(`/api/workspace/${workspaceId}/members/${memberId}`, {
+      const res = await fetch(apiUrl(`/api/workspace/${workspaceId}/members/${memberId}`), {
         method: "DELETE",
       });
       if (!res.ok) throw new Error("Failed to remove member");

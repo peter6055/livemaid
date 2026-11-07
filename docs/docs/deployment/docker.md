@@ -32,3 +32,7 @@ LiveMaid is containerized and available on the GitHub Container Registry. Since 
    ```
 
 Your diagrams will be saved permanently in the `./data` folder on your server!
+
+## Environment variables
+
+LiveMaid is configured through environment variables. See the [environment variables reference](./environment-variables) for the full list, including the OIDC credentials required for auth / workspace mode and the `DEMO_MODE` variable used by the [demo mode](./demo-mode) service.

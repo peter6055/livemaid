@@ -17,25 +17,6 @@ vi.mock("@/lib/auth", () => ({
   isAdmin: vi.fn(() => Promise.resolve(true)),
 }));
 
-vi.mock("@/lib/auth/appConfig", () => ({
-  areOidcCredentialsConfigured: vi.fn(
-    () =>
-      !!process.env.AUTH_SECRET &&
-      !!process.env.AUTH_OIDC_ISSUER &&
-      !!process.env.AUTH_OIDC_CLIENT_ID &&
-      !!process.env.AUTH_OIDC_CLIENT_SECRET,
-  ),
-  getAppConfigDoc: vi.fn(() =>
-    Promise.resolve({
-      _id: { toString: () => "config-id" },
-      authEnabled: false,
-      updatedAt: new Date(),
-      updatedByUserId: null,
-    }),
-  ),
-  setAuthEnabled: vi.fn(() => Promise.resolve()),
-}));
-
 import middleware from "@/middleware";
 
 function makeRequest(pathname: string): NextRequest {

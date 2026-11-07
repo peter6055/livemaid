@@ -5,7 +5,7 @@ import { isDemoMode } from "@/lib/env";
 import { redirect } from "next/navigation";
 import type { Session } from "@/lib/auth";
 
-export function getEditorRedirect(
+function getEditorRedirect(
   session: Session | null,
   isDemo: boolean,
   authEnabled: boolean,

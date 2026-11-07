@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { getTelemetry } from "@/lib/telemetry";
+import { apiUrl } from "@/lib/api/url";
 import { DiagramDocument } from "@/lib/api/storage";
 import { toast } from "sonner";
 import mermaid from "mermaid";
@@ -195,7 +196,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     const fetchDoc = async () => {
       try {
         const startTime = Date.now();
-        const res = await fetch(`/api/diagrams/${documentId}`);
+        const res = await fetch(apiUrl(`/api/diagrams/${documentId}`));
         if (res.ok) {
           const data = await res.json();
           setDoc(data);
@@ -275,7 +276,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
         // server moved on — e.g. the user edited offline and reconnected within the debounce
         // window, or another tab saved — so surface a conflict instead of silently clobbering
         // the concurrent change.
-        const res = await fetch(`/api/diagrams/${documentId}`, {
+        const res = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: newCode, expectedCode: baseCodeRef.current }),
@@ -376,7 +377,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
     try {
       // Conditional PUT: the server rejects with 409 + its current doc when the base this
       // edit was built on no longer matches — a single atomic check, no GET→PUT race window.
-      const putRes = await fetch(`/api/diagrams/${documentId}`, {
+      const putRes = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: edit.pendingCode, expectedCode: edit.baseCode }),
@@ -476,7 +477,7 @@ export function useEditorState(documentId: string, isDemo: boolean = false) {
         // Conditional on the server version the user just reviewed and chose to override: if
         // yet another save landed in the meantime, re-surface the conflict with the fresher
         // server copy instead of silently overwriting it.
-        const res = await fetch(`/api/diagrams/${documentId}`, {
+        const res = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: conflict.pendingCode, expectedCode: conflict.serverCode }),

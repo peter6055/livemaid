@@ -4,7 +4,7 @@ import { authConfig } from "./config";
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
 export { authConfig, type User, type Session } from "./config";
-export { isAuthEnabled, areOidcCredentialsConfigured, setAuthEnabled } from "./appConfig";
+export { isAuthEnabled, areOidcCredentialsConfigured } from "./appConfig";
 export {
   normalizeEmail,
   findOrCreateUser,

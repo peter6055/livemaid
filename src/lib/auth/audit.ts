@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { ObjectId, type Collection } from "mongodb";
 import { getMongoClient } from "@/lib/db/client";
 import { isDemoMode } from "@/lib/env";
+import { ensureAuditIpPepper } from "./secrets";
 
 export type AuditAction =
   | `user.${"login" | "logout"}`
@@ -28,10 +29,9 @@ async function getAuditLogsCollection(): Promise<Collection<AuditLog>> {
 }
 
 export function hashIp(ip: string): string {
-  const pepper = process.env.AUDIT_IP_PEPPER ?? "";
   return crypto
     .createHash("sha256")
-    .update(ip + pepper)
+    .update(ip + ensureAuditIpPepper())
     .digest("hex");
 }
 
@@ -60,7 +60,7 @@ export async function writeAuditLog(args: {
   }
 
   const ip = args.request ? getClientIp(args.request) : null;
-  const ipHash = ip && process.env.AUDIT_IP_PEPPER ? hashIp(ip) : null;
+  const ipHash = ip ? hashIp(ip) : null;
 
   const auditLogs = await getAuditLogsCollection();
   await auditLogs.insertOne({

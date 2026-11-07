@@ -4,11 +4,11 @@ This document describes LiveMaid's authentication modes, the workspace data mode
 
 ## Runtime modes
 
-Auth state is stored in MongoDB (`appConfig.authEnabled`, default `false`). The app is **effectively** in auth mode only when the DB flag is `true` **and** all four OIDC environment variables are present.
+Auth state is determined purely by the presence of OIDC environment variables. The app is effectively in auth mode only when all five required variables are present.
 
-### Public portal mode (auth disabled)
+### No auth / local mode (auth disabled)
 
-Triggered when `appConfig.authEnabled === false`.
+Triggered when any of `AUTH_SECRET`, `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`, `AUTH_OIDC_CLIENT_SECRET`, or `MONGODB_URI` is missing.
 
 Behavior:
 
@@ -23,7 +23,13 @@ This preserves local development, self-hosting, and existing deployments that do
 
 ### Auth / workspaces mode (auth enabled)
 
-Triggered when `appConfig.authEnabled === true` **and** all four `AUTH_*` variables are set (plus `MONGODB_URI` for users, workspaces, memberships, audit logs, and app config).
+Triggered when all five required environment variables are set:
+
+- `AUTH_SECRET`
+- `AUTH_OIDC_ISSUER`
+- `AUTH_OIDC_CLIENT_ID`
+- `AUTH_OIDC_CLIENT_SECRET`
+- `MONGODB_URI`
 
 Behavior:
 
@@ -34,14 +40,6 @@ Behavior:
 - Comments are attributed to the signed-in user via the session.
 - URLs are workspace-scoped: `/workspace/{id}`, `/workspace/{id}/editor/{id}`, etc.
 - Roles: **admin** (invite/remove/change roles, settings) vs. **member** (create/edit/delete diagrams).
-
-### Setup mode
-
-If `appConfig.authEnabled` is toggled on but OIDC credentials are missing, the app forces the setup flow:
-
-- `/admin/settings`, `/admin/setup`, and `/api/admin/auth-toggle` are accessible.
-- All other routes redirect to `/admin/setup` so the admin can enter OIDC credentials.
-- Once credentials are written, auth becomes effective immediately.
 
 ## Environment variables
 
@@ -73,7 +71,7 @@ MongoDB collections:
 
 There is no manual migration command. Transition happens automatically on the first OIDC login.
 
-1. Deploy with OIDC vars and `MONGODB_URI` set.
+1. Deploy with all five required OIDC/MongoDB variables set.
 2. The first person logs in via `/login`.
 3. The app creates a `users` record, a default workspace, and an `admin` membership.
 4. Legacy adoption runs once:
@@ -92,7 +90,7 @@ There is no manual migration command. Transition happens automatically on the fi
 | --------------- | ------------- | ----------------------------------- | --------------- |
 | Legacy + demo   | No            | `demo/`                             | No-op           |
 | Legacy + normal | No            | `data/`                             | Allowed         |
-| OIDC + demo     | No            | `demo/`                             | No-op           |
+| OIDC + demo     | Yes           | `demo/`                             | No-op           |
 | OIDC + normal   | Yes           | MongoDB workspaces + scoped `data/` | Allowed by role |
 
 ## Testing

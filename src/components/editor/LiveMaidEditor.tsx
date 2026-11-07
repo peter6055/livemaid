@@ -2,6 +2,7 @@
 
 import { getTelemetry } from "@/lib/telemetry";
 import { broadcastDashboardRefresh } from "@/lib/dashboardSync";
+import { apiUrl } from "@/lib/api/url";
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import {
@@ -461,8 +462,8 @@ export function LiveMaidEditor({
   useEffect(() => {
     let cancelled = false;
     const foldersUrl = workspaceId
-      ? `/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`
-      : "/api/folders";
+      ? apiUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
+      : apiUrl("/api/folders");
     fetch(foldersUrl)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
@@ -2482,7 +2483,7 @@ export function LiveMaidEditor({
       setCommentComposer(null);
       setActiveCommentId(tempCommentId);
       try {
-        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2623,7 +2624,7 @@ export function LiveMaidEditor({
       replaceCommentInDoc(commentId, optimisticComment);
       setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
       try {
-        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2648,7 +2649,7 @@ export function LiveMaidEditor({
   const toggleCommentResolved = useCallback(
     async (commentId: string, resolved: boolean) => {
       try {
-        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commentId, resolved }),
@@ -2668,7 +2669,7 @@ export function LiveMaidEditor({
   const toggleCommentStar = useCallback(
     async (commentId: string, starred: boolean) => {
       try {
-        const response = await fetch(`/api/diagrams/${documentId}/comments`, {
+        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commentId, starred }),
@@ -2698,7 +2699,7 @@ export function LiveMaidEditor({
       if (!doc) return;
 
       try {
-        const response = await fetch(`/api/diagrams/${documentId}`, {
+        const response = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ versionHistory: updatedHistory }),
@@ -4317,7 +4318,7 @@ export function LiveMaidEditor({
     }
     if (!payload.name.trim()) return;
     try {
-      const res = await fetch("/api/diagrams", {
+      const res = await fetch(apiUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4361,7 +4362,7 @@ export function LiveMaidEditor({
     if (!trimmed) return false;
     if (trimmed === doc?.name) return true;
     try {
-      const res = await fetch(`/api/diagrams/${documentId}`, {
+      const res = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed }),

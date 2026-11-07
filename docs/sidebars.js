@@ -8,7 +8,12 @@ const sidebars = {
     {
       type: "category",
       label: "Deployment",
-      items: ["deployment/docker", "deployment/demo-mode", "deployment/oidc-setup"],
+      items: [
+        "deployment/docker",
+        "deployment/demo-mode",
+        "deployment/environment-variables",
+        "deployment/authentication",
+      ],
     },
     {
       type: "category",

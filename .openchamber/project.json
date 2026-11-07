@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "projectActions": [
+    {
+      "id": "6e3d4e58-11a1-4742-9787-5f68eed1d34f",
+      "name": "Start Dev",
+      "command": "npm run dev & npm run docs:dev",
+      "icon": "play"
+    }
+  ]
+}
