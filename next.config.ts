@@ -9,6 +9,9 @@ const requestedDistDir = process.env.NEXT_TEST_DIST_DIR;
 
 const nextConfig: NextConfig = {
   /* config options here */
+  experimental: {
+    agentUpgrade: "security",
+  },
   output: "standalone",
   // Use a unique distDir per test server so multiple Next.js dev servers can run
   // concurrently without conflicting on the same project directory.
