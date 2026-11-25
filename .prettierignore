@@ -13,6 +13,8 @@ docs/build/
 # Generated / vendored
 next-env.d.ts
 package-lock.json
+# Next.js rewrites tsconfig.json on every `next dev` run (distDir type paths)
+tsconfig.json
 
 # Playwright artifacts
 playwright-report/

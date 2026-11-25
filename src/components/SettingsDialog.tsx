@@ -3,17 +3,13 @@
 import { useState } from "react";
 import { useTheme } from "next-themes";
 import { useTelemetry } from "@/lib/telemetry/telemetryProvider";
+import { usePreferences } from "@/lib/preferences/provider";
 import { getDisplayVersion, getRawVersion } from "@/lib/env";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Settings, Briefcase, Palette, Users, ExternalLink } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { WorkspaceMembersManager } from "@/components/WorkspaceMembersManager";
+import { Settings, Briefcase, Users, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 type SidebarItem = {
@@ -27,120 +23,159 @@ type SidebarGroup = {
   items: SidebarItem[];
 };
 
-function Toggle({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!enabled)}
-      className={`w-8 h-4 rounded-full transition-colors flex items-center relative focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 ${enabled ? "bg-indigo-500" : "bg-slate-300"}`}
-    >
-      <div
-        className={`w-3 h-3 bg-white rounded-full transition-transform absolute ${enabled ? "left-4" : "left-1"}`}
-      />
-    </button>
-  );
-}
+const pageDetails: Record<string, { title: string; subtitle: string }> = {
+  preferences: {
+    title: "Preferences",
+    subtitle: "Personalize LiveMaid and control the data you share.",
+  },
+  "workspace-general": {
+    title: "General",
+    subtitle: "View the details used to identify this workspace.",
+  },
+  "workspace-members": {
+    title: "Members",
+    subtitle: "Manage who can access this workspace and their roles.",
+  },
+};
 
 function AppearanceSection() {
   const { setTheme, theme } = useTheme();
+  const { update } = usePreferences();
+
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground">Appearance</h3>
-      <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
-        <span className="text-sm font-medium">Colour mode</span>
-        <Select value={theme} onValueChange={(v) => v && setTheme(v)}>
-          <SelectTrigger className="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="light">Light</SelectItem>
-            <SelectItem value="dark">Dark</SelectItem>
-            <SelectItem value="system">System</SelectItem>
-          </SelectContent>
-        </Select>
+    <section className="space-y-3" aria-labelledby="appearance-heading">
+      <h3 id="appearance-heading" className="text-sm font-semibold text-foreground">
+        Appearance
+      </h3>
+      <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-medium">Colour mode</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">Choose how LiveMaid looks.</p>
+        </div>
+        <fieldset className="inline-flex w-fit rounded-lg border border-border bg-background p-0.5">
+          <legend className="sr-only">Colour mode</legend>
+          {[
+            ["system", "System"],
+            ["light", "Light"],
+            ["dark", "Dark"],
+          ].map(([value, label]) => (
+            <label
+              key={value}
+              className="relative cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground has-checked:bg-primary/10 has-checked:text-primary"
+            >
+              <input
+                type="radio"
+                name="settings-theme"
+                value={value}
+                checked={theme === value}
+                onChange={() => {
+                  setTheme(value);
+                  update("theme", value as "system" | "light" | "dark");
+                }}
+                className="sr-only"
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
       </div>
-    </div>
+    </section>
   );
 }
 
 function PrivacySection() {
   const { usageAnalytics, debugReporting, setUsageAnalytics, setDebugReporting } = useTelemetry();
 
-  const handleUsageToggle = (v: boolean) => {
-    setUsageAnalytics(v);
-    toast.success(v ? "Usage data collection enabled" : "Usage data collection disabled");
+  const handleUsageToggle = (value: boolean) => {
+    setUsageAnalytics(value);
+    toast.success(value ? "Usage data collection enabled" : "Usage data collection disabled");
   };
 
-  const handleDebugToggle = (v: boolean) => {
-    setDebugReporting(v);
-    toast.success(v ? "Debug data collection enabled" : "Debug data collection disabled");
+  const handleDebugToggle = (value: boolean) => {
+    setDebugReporting(value);
+    toast.success(value ? "Debug data collection enabled" : "Debug data collection disabled");
   };
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground">Data Collection</h3>
-      <div className="space-y-3">
-        <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50 border border-border">
-          <div className="flex-1 mr-4">
-            <div className="text-sm font-medium">Usage Data</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              Anonymous feature usage and interaction patterns. No diagram content.
-            </div>
+    <section className="space-y-3" aria-labelledby="data-collection-heading">
+      <h3 id="data-collection-heading" className="text-sm font-semibold text-foreground">
+        Data collection
+      </h3>
+      <div className="overflow-hidden rounded-lg border border-border bg-muted/20">
+        <div className="flex items-center justify-between gap-4 p-3">
+          <div className="min-w-0">
+            <label htmlFor="usage-data" className="text-sm font-medium">
+              Usage data
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Anonymous feature usage and interactions. No diagram content.
+            </p>
           </div>
-          <Toggle enabled={usageAnalytics} onChange={handleUsageToggle} />
+          <Switch
+            id="usage-data"
+            checked={usageAnalytics}
+            onCheckedChange={handleUsageToggle}
+            aria-label="Collect usage data"
+          />
         </div>
-        <div className="flex items-start justify-between p-4 rounded-lg bg-red-500/3 border border-red-500/50">
-          <div className="flex-1 mr-4">
-            <div className="text-sm font-medium">Debug Data</div>
-            <div className="text-xs text-muted-foreground mt-1">
+        <div className="flex items-start justify-between gap-4 border-t border-border p-3">
+          <div className="min-w-0">
+            <label htmlFor="debug-data" className="text-sm font-medium">
+              Debug data
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
               Error reports and parse failures. May contain code snippets.
-            </div>
-            <div className="flex items-start gap-2 mt-2.5">
-              <div className="w-1 h-1 rounded-full bg-red-500 mt-1.5 shrink-0" />
-              <p className="text-xs text-red-600 dark:text-red-400">
-                Error messages may include fragments of your diagram code. Only enable if you are
-                comfortable sharing this data.
-              </p>
-            </div>
+            </p>
+            <p className="mt-2 text-xs text-destructive">
+              Error messages may include fragments of diagram code. Only enable if you are
+              comfortable sharing this data.
+            </p>
           </div>
-          <Toggle enabled={debugReporting} onChange={handleDebugToggle} />
+          <Switch
+            id="debug-data"
+            checked={debugReporting}
+            onCheckedChange={handleDebugToggle}
+            aria-label="Collect debug data"
+          />
         </div>
-
-        <a
-          href="https://peter6055.github.io/livemaid/docs/project/collection-notice"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors pt-2"
-        >
-          View full collection notice
-        </a>
       </div>
-    </div>
+      <a
+        href="https://peter6055.github.io/livemaid/project/collection-notice"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-block text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
+      >
+        View full collection notice
+      </a>
+    </section>
   );
 }
 
 function AboutSection() {
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-semibold text-foreground">About</h3>
-      <div className="p-4 rounded-lg bg-muted/50 border border-border flex justify-between items-center text-sm">
-        <span className="text-sm font-medium text-foreground">Version</span>
-        <span className="font-mono text-xs text-foreground">{getDisplayVersion()}</span>
+    <section className="space-y-3" aria-labelledby="about-heading">
+      <h3 id="about-heading" className="text-sm font-semibold text-foreground">
+        About
+      </h3>
+      <div className="flex items-center justify-between rounded-lg border border-border bg-muted/20 p-3">
+        <span className="text-sm font-medium">Version</span>
+        <span className="font-mono text-xs text-muted-foreground">{getDisplayVersion()}</span>
       </div>
       <a
         href={`https://github.com/peter6055/livemaid/releases/tag/v${getRawVersion()}`}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground transition-colors"
+        className="inline-block text-xs text-muted-foreground underline underline-offset-2 transition-colors hover:text-foreground"
       >
-        View Changelogs
+        View Changelog
       </a>
-    </div>
+    </section>
   );
 }
 
 function PreferencesPanel() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <AppearanceSection />
       <PrivacySection />
       <AboutSection />
@@ -150,56 +185,71 @@ function PreferencesPanel() {
 
 function WorkspaceEmptyPanel() {
   return (
-    <div className="space-y-8">
-      <div className="p-4 rounded-lg bg-muted/50 border border-border text-sm text-muted-foreground">
-        No workspace is active. Workspace settings appear when auth and workspaces are enabled.
-      </div>
+    <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
+      No workspace is active. Workspace settings appear when auth and workspaces are enabled.
     </div>
   );
 }
 
 function WorkspaceGeneralPanel({ workspaceId }: { workspaceId: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyWorkspaceId = async () => {
+    try {
+      await navigator.clipboard.writeText(workspaceId);
+      setCopied(true);
+      toast.success("Workspace ID copied");
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Failed to copy workspace ID");
+    }
+  };
+
   return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-4">General</h3>
-        <div className="p-4 rounded-lg bg-muted/50 border border-border space-y-2 text-sm">
-          <p>
-            <span className="text-muted-foreground">Workspace ID:</span>{" "}
-            <span className="font-mono">{workspaceId}</span>
-          </p>
+    <section className="space-y-3" aria-labelledby="workspace-details-heading">
+      <h3 id="workspace-details-heading" className="text-sm font-semibold text-foreground">
+        Workspace details
+      </h3>
+      <div className="rounded-lg border border-border bg-muted/20 p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <label htmlFor="workspace-id" className="text-sm font-medium">
+            Workspace ID
+          </label>
+          <Button type="button" variant="ghost" size="sm" onClick={copyWorkspaceId}>
+            {copied ? <Check /> : <Copy />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
         </div>
+        <input
+          id="workspace-id"
+          readOnly
+          value={workspaceId}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+        />
+        <p className="mt-2 text-xs text-muted-foreground">
+          This ID uniquely identifies the active workspace.
+        </p>
       </div>
-    </div>
+    </section>
   );
 }
 
 function WorkspaceMembersPanel({ workspaceId }: { workspaceId: string }) {
-  return (
-    <div className="space-y-8">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground mb-4">Members</h3>
-        <a
-          href={`/workspace/${workspaceId}/settings/members`}
-          className="inline-flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors"
-        >
-          <Users className="w-4 h-4" />
-          Manage members
-          <ExternalLink className="w-3 h-3" />
-        </a>
-      </div>
-    </div>
-  );
+  return <WorkspaceMembersManager workspaceId={workspaceId} />;
 }
 
 export function SettingsDialog({
   open,
   onOpenChange,
   workspaceId,
+  isAdmin = false,
+  defaultTab = "preferences",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   workspaceId?: string;
+  isAdmin?: boolean;
+  defaultTab?: string;
 }) {
   const groups: SidebarGroup[] = [
     {
@@ -208,7 +258,8 @@ export function SettingsDialog({
     },
   ];
 
-  if (workspaceId) {
+  // Workspace settings (general details + members) are admin-only.
+  if (workspaceId && isAdmin) {
     groups.push({
       label: "Workspace",
       items: [
@@ -218,39 +269,50 @@ export function SettingsDialog({
     });
   }
 
-  const [activeItem, setActiveItem] = useState("preferences");
+  const [selectedItem, setSelectedItem] = useState<string | null>(null);
+  const activeItem = open && selectedItem === null ? defaultTab : (selectedItem ?? defaultTab);
+
+  const activePage = pageDetails[activeItem] ?? pageDetails.preferences;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (nextOpen) setSelectedItem(null);
+    onOpenChange(nextOpen);
+  };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[900px] p-0 gap-0 overflow-hidden">
-        <DialogHeader className="px-6 pt-5 pb-3 border-b border-border">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] p-0 gap-0 overflow-hidden sm:max-w-[920px]">
+        <DialogHeader className="border-b border-border px-4 pt-4 pb-3 sm:px-5">
           <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
 
-        <div className="flex h-[640px]">
-          {/* Sidebar */}
-          <div className="w-56 shrink-0 border-r border-border flex flex-col bg-muted/20">
-            <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-5">
+        <div className="flex h-[600px] max-h-[calc(100dvh-5rem)] min-h-0 flex-col sm:flex-row">
+          <aside className="shrink-0 border-b border-border bg-muted/20 sm:w-48 sm:border-r sm:border-b-0">
+            <nav
+              className="flex gap-4 overflow-x-auto px-3 py-3 sm:flex-col sm:gap-5 sm:py-4"
+              aria-label="Settings sections"
+            >
               {groups.map((group) => (
-                <div key={group.label}>
-                  <div className="px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div key={group.label} className="flex shrink-0 items-center gap-1 sm:block">
+                  <div className="hidden px-3 mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:block">
                     {group.label}
                   </div>
-                  <div className="space-y-0.5">
+                  <div className="flex gap-1 sm:flex-col sm:gap-0.5">
                     {group.items.map((item) => {
                       const Icon = item.icon;
                       const isActive = item.id === activeItem;
                       return (
                         <button
                           key={item.id}
-                          onClick={() => setActiveItem(item.id)}
+                          onClick={() => setSelectedItem(item.id)}
                           data-active={isActive}
-                          className="relative flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-left transition-colors text-muted-foreground hover:text-foreground hover:bg-accent/50 data-[active=true]:bg-accent data-[active=true]:text-accent-foreground"
+                          aria-current={isActive ? "page" : undefined}
+                          className="relative flex items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-accent-foreground"
                         >
                           {isActive && (
-                            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-full bg-primary" />
+                            <span className="absolute left-0 top-1/2 hidden h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary sm:block" />
                           )}
-                          <Icon className="w-4 h-4 shrink-0" />
+                          <Icon className="h-4 w-4 shrink-0" />
                           {item.label}
                         </button>
                       );
@@ -259,10 +321,13 @@ export function SettingsDialog({
                 </div>
               ))}
             </nav>
-          </div>
+          </aside>
 
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+            <header className="mb-5">
+              <h2 className="text-lg font-semibold text-foreground">{activePage.title}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">{activePage.subtitle}</p>
+            </header>
             {activeItem === "preferences" && <PreferencesPanel />}
             {activeItem === "workspace-general" &&
               (workspaceId ? (

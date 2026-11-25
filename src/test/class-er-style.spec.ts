@@ -120,7 +120,7 @@ test.describe("class + er unified style popover (issue #31)", () => {
     await expect(toolbar.getByText("Border color", { exact: true })).toBeVisible();
 
     await toolbar.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "/tmp/opencode/class-style-popover.png" });
+    await page.screenshot({ path: "test-results/screenshots/class-style-popover.png" });
 
     // Core new behavior: the Border (stroke-dasharray) section must be ABSENT for class diagrams.
     for (const label of ["Border", "Solid", "Dashed", "Dotted", "Large Dashed"]) {
@@ -211,7 +211,7 @@ test.describe("class + er unified style popover (issue #31)", () => {
     await expect(toolbar.getByText("Border color", { exact: true })).toBeVisible();
 
     await toolbar.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "/tmp/opencode/er-style-popover.png" });
+    await page.screenshot({ path: "test-results/screenshots/er-style-popover.png" });
 
     // Core new behavior: the Border (stroke-dasharray) section must be ABSENT for ER diagrams.
     for (const label of ["Border", "Solid", "Dashed", "Dotted", "Large Dashed"]) {

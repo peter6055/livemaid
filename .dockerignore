@@ -8,6 +8,7 @@ playwright-report
 test-results
 
 .config
+.openchamber
 *.log
 tsconfig.tsbuildinfo
 

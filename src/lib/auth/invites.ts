@@ -3,6 +3,16 @@ import type { DbMembership, DbUser } from "@/lib/db/collections";
 import { getMembershipsCollection, getUsersCollection } from "@/lib/db/collections";
 import { normalizeEmail } from "./workspace";
 
+export type WorkspaceMemberView = {
+  _id: string;
+  userId: string | null;
+  invitedEmail: string | null;
+  role: "admin" | "member";
+  status: "active" | "pending";
+  email: string;
+  active: boolean;
+};
+
 export async function inviteMember(
   workspaceId: string,
   invitedEmail: string,
@@ -97,12 +107,36 @@ export async function updateMemberRole(
   );
 }
 
-export async function getWorkspaceMembers(workspaceId: string): Promise<DbMembership[]> {
+export async function setUserActive(userId: string, active: boolean): Promise<void> {
+  const users = await getUsersCollection();
+  await users.updateOne({ _id: new ObjectId(userId) }, { $set: { active, updatedAt: new Date() } });
+}
+
+export async function getWorkspaceMembers(workspaceId: string): Promise<WorkspaceMemberView[]> {
   const memberships = await getMembershipsCollection();
-  return memberships
-    .find({
-      workspaceId: new ObjectId(workspaceId),
-      status: "active",
-    })
+  const rows = await memberships
+    .aggregate<DbMembership & { user?: DbUser[] }>([
+      {
+        $match: {
+          workspaceId: new ObjectId(workspaceId),
+          status: { $in: ["active", "pending"] },
+        },
+      },
+      // One round trip for the whole list instead of a users.findOne per member.
+      { $lookup: { from: "users", localField: "userId", foreignField: "_id", as: "user" } },
+    ])
     .toArray();
+
+  return rows.map((row) => {
+    const user = row.user?.[0] ?? null;
+    return {
+      _id: row._id.toString(),
+      userId: row.userId?.toString() ?? null,
+      invitedEmail: row.invitedEmail,
+      role: row.role,
+      status: row.status,
+      email: user?.email ?? row.invitedEmail ?? "",
+      active: user ? user.active !== false : true,
+    };
+  });
 }

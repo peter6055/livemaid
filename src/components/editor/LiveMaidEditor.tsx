@@ -2,7 +2,8 @@
 
 import { getTelemetry } from "@/lib/telemetry";
 import { broadcastDashboardRefresh } from "@/lib/dashboardSync";
-import { apiUrl } from "@/lib/api/url";
+import { appUrl } from "@/lib/api/url";
+import { apiFetch } from "@/lib/api/client";
 import { useEditorState } from "@/hooks/useEditorState";
 import { useCanvasInteraction } from "@/hooks/useCanvasInteraction";
 import {
@@ -462,9 +463,9 @@ export function LiveMaidEditor({
   useEffect(() => {
     let cancelled = false;
     const foldersUrl = workspaceId
-      ? apiUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
-      : apiUrl("/api/folders");
-    fetch(foldersUrl)
+      ? appUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
+      : appUrl("/api/folders");
+    apiFetch(foldersUrl)
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (!cancelled) setFolders(Array.isArray(data) ? data : []);
@@ -2483,7 +2484,7 @@ export function LiveMaidEditor({
       setCommentComposer(null);
       setActiveCommentId(tempCommentId);
       try {
-        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
+        const response = await apiFetch(appUrl(`/api/diagrams/${documentId}/comments`), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2624,7 +2625,7 @@ export function LiveMaidEditor({
       replaceCommentInDoc(commentId, optimisticComment);
       setCommentReplyDrafts((current) => ({ ...current, [commentId]: "" }));
       try {
-        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
+        const response = await apiFetch(appUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -2649,7 +2650,7 @@ export function LiveMaidEditor({
   const toggleCommentResolved = useCallback(
     async (commentId: string, resolved: boolean) => {
       try {
-        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
+        const response = await apiFetch(appUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commentId, resolved }),
@@ -2669,7 +2670,7 @@ export function LiveMaidEditor({
   const toggleCommentStar = useCallback(
     async (commentId: string, starred: boolean) => {
       try {
-        const response = await fetch(apiUrl(`/api/diagrams/${documentId}/comments`), {
+        const response = await apiFetch(appUrl(`/api/diagrams/${documentId}/comments`), {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ commentId, starred }),
@@ -2699,7 +2700,7 @@ export function LiveMaidEditor({
       if (!doc) return;
 
       try {
-        const response = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
+        const response = await apiFetch(appUrl(`/api/diagrams/${documentId}`), {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ versionHistory: updatedHistory }),
@@ -4248,7 +4249,7 @@ export function LiveMaidEditor({
     (url: string, message: string) => {
       setNavigatingState({ isNavigating: true, message });
       setTimeout(() => {
-        router.push(url);
+        router.push(appUrl(url));
       }, 400);
     },
     [router],
@@ -4306,9 +4307,11 @@ export function LiveMaidEditor({
       }),
     );
 
-    return workspaceId
-      ? `/workspace/${workspaceId}/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`
-      : `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`;
+    return appUrl(
+      workspaceId
+        ? `/workspace/${workspaceId}/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`
+        : `/editor/${doc.id}/duplicate?token=${encodeURIComponent(token)}`,
+    );
   };
 
   const handleCreateSubmit = async (payload: CreateDiagramPayload) => {
@@ -4318,7 +4321,7 @@ export function LiveMaidEditor({
     }
     if (!payload.name.trim()) return;
     try {
-      const res = await fetch(apiUrl("/api/diagrams"), {
+      const res = await apiFetch(appUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -4362,7 +4365,7 @@ export function LiveMaidEditor({
     if (!trimmed) return false;
     if (trimmed === doc?.name) return true;
     try {
-      const res = await fetch(apiUrl(`/api/diagrams/${documentId}`), {
+      const res = await apiFetch(appUrl(`/api/diagrams/${documentId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: trimmed }),
@@ -4703,7 +4706,7 @@ export function LiveMaidEditor({
             The diagram you&apos;re looking for doesn&apos;t exist or may have been deleted.
           </p>
         </div>
-        <Button onClick={() => router.push("/")} className="mt-1">
+        <Button onClick={() => router.push(appUrl("/"))} className="mt-1">
           Back to Workspace
         </Button>
       </div>

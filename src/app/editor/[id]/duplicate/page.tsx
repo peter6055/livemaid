@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { apiUrl } from "@/lib/api/url";
+import { appUrl } from "@/lib/api/url";
+import { apiFetch } from "@/lib/api/client";
 import { Loader2, FileQuestion } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -32,7 +33,7 @@ function isDuplicatePayload(value: unknown): value is DuplicatePayload {
 
 async function fetchSession(): Promise<AuthSession | null> {
   try {
-    const res = await fetch(apiUrl("/api/auth/session"), { credentials: "same-origin" });
+    const res = await fetch(appUrl("/api/auth/session"), { credentials: "same-origin" });
     if (!res.ok) return null;
     return (await res.json()) as AuthSession;
   } catch {
@@ -53,7 +54,9 @@ export default function DuplicateDiagramPage() {
     const run = async () => {
       const session = await fetchSession();
       if (session?.user?.workspaceId) {
-        router.replace(`/workspace/${session.user.workspaceId}/editor/${params.id}/duplicate`);
+        router.replace(
+          appUrl(`/workspace/${session.user.workspaceId}/editor/${params.id}/duplicate`),
+        );
         return;
       }
       setAuthChecked(true);
@@ -72,7 +75,7 @@ export default function DuplicateDiagramPage() {
         }
 
         if (!payload) {
-          const sourceRes = await fetch(apiUrl(`/api/diagrams/${params.id}`));
+          const sourceRes = await apiFetch(appUrl(`/api/diagrams/${params.id}`));
           if (!sourceRes.ok) throw new Error("Source diagram not found");
           const source = await sourceRes.json();
           payload = {
@@ -83,7 +86,7 @@ export default function DuplicateDiagramPage() {
           };
         }
 
-        const createRes = await fetch(apiUrl("/api/diagrams"), {
+        const createRes = await apiFetch(appUrl("/api/diagrams"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -92,7 +95,7 @@ export default function DuplicateDiagramPage() {
         if (!createRes.ok) throw new Error("Failed to duplicate diagram");
         const newDiagram = await createRes.json();
         if (storageKey) window.localStorage.removeItem(storageKey);
-        if (!cancelled) router.replace(`/editor/${newDiagram.id}`);
+        if (!cancelled) router.replace(appUrl(`/editor/${newDiagram.id}`));
       } catch {
         if (storageKey) window.localStorage.removeItem(storageKey);
         if (!cancelled) setError("Failed to duplicate diagram.");
@@ -125,7 +128,7 @@ export default function DuplicateDiagramPage() {
           <h1 className="text-2xl font-semibold">Duplicate failed</h1>
           <p className="max-w-md text-sm text-muted-foreground">{error}</p>
         </div>
-        <Button onClick={() => router.replace(`/editor/${params.id}`)}>
+        <Button onClick={() => router.replace(appUrl(`/editor/${params.id}`))}>
           Back to source diagram
         </Button>
       </main>

@@ -3,6 +3,7 @@ import { isDemoMode } from "@/lib/env";
 import { getWorkspaceById } from "@/lib/auth/workspace";
 import { Button } from "@/components/ui/button";
 import { connection } from "next/server";
+import { appUrl } from "@/lib/api/url";
 import Link from "next/link";
 
 export default async function WorkspaceSettingsPage({
@@ -34,7 +35,7 @@ export default async function WorkspaceSettingsPage({
         <p className="text-sm text-muted-foreground">Signed in as {session.user.email}</p>
       )}
       <div className="mt-6">
-        <Link href={`/workspace/${workspaceId}/settings/members`}>
+        <Link href={appUrl(`/workspace/${workspaceId}/settings/members`)}>
           <Button variant="outline">Manage members</Button>
         </Link>
       </div>

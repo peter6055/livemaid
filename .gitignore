@@ -61,6 +61,7 @@ data/
 
 # opencode agent config
 .opencode/
+.openchamber/
 
 .config/
 

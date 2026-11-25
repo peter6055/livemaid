@@ -7,6 +7,7 @@ import {
   getUserWorkspaceId,
   assertFolderAccess,
   handleRouteError,
+  getVisibilityScope,
 } from "@/lib/auth/routeAuth";
 import type { AuditAction } from "@/lib/auth/audit";
 
@@ -20,13 +21,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       if (!workspaceId) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
+      const scope = await getVisibilityScope(session, workspaceId);
       const folder = await getFolder(id);
       if (!folder) {
         return NextResponse.json({ error: "Folder not found" }, { status: 404 });
       }
-      assertFolderAccess(session.user.id, workspaceId, folder);
+      assertFolderAccess(scope, folder);
       return NextResponse.json(folder);
     }
 
@@ -123,14 +123,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
-    const { requireMember } = await import("@/lib/auth");
-    await requireMember(session.user.id, workspaceId);
+    const scope = await getVisibilityScope(session, workspaceId);
 
     const existing = await getFolder(id);
     if (!existing) {
       return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
-    assertFolderAccess(session.user.id, workspaceId, existing);
+    assertFolderAccess(scope, existing);
 
     const next = { ...existing };
 
@@ -230,14 +229,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
-    const { requireMember } = await import("@/lib/auth");
-    await requireMember(session.user.id, workspaceId);
+    const scope = await getVisibilityScope(session, workspaceId);
 
     const existing = await getFolder(id);
     if (!existing) {
       return NextResponse.json({ error: "Folder not found" }, { status: 404 });
     }
-    assertFolderAccess(session.user.id, workspaceId, existing);
+    assertFolderAccess(scope, existing);
 
     const success = await deleteFolderCascade(id);
     if (!success) {

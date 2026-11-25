@@ -105,24 +105,60 @@ export async function getWorkspaceById(
   return workspaces.findOne({ _id: new ObjectId(workspaceId) });
 }
 
-export async function ensureDefaultWorkspace(
-  profile: OidcProfile,
-): Promise<{ user: DbUser; workspace: DbWorkspace; membership: DbMembership }> {
-  const user = await findOrCreateUser(profile);
+/**
+ * Resolves a user's active membership and its workspace in one round trip.
+ * `workspaces._id` is always indexed, so the $lookup is cheap.
+ */
+export async function getActiveWorkspace(
+  userId: string | ObjectId,
+): Promise<{ workspace: DbWorkspace; membership: DbMembership } | null> {
   const memberships = await getMembershipsCollection();
-  const workspaces = await getWorkspacesCollection();
+  const [row] = await memberships
+    .aggregate<DbMembership & { workspace: DbWorkspace[] }>([
+      { $match: { userId: new ObjectId(userId), status: "active" } },
+      {
+        $lookup: {
+          from: "workspaces",
+          localField: "workspaceId",
+          foreignField: "_id",
+          as: "workspace",
+        },
+      },
+      { $limit: 1 },
+    ])
+    .toArray();
 
-  const existingMembership = await memberships.findOne({
+  const workspace = row?.workspace[0];
+  if (!row || !workspace) return null;
+  return { workspace, membership: row };
+}
+
+export async function ensureDefaultWorkspace(
+  user: DbUser,
+): Promise<{ user: DbUser; workspace: DbWorkspace; membership: DbMembership }> {
+  const existing = await getActiveWorkspace(user._id);
+  if (existing) {
+    return { user, ...existing };
+  }
+
+  // getActiveWorkspace returns null for both "no membership" and "membership
+  // without a workspace"; only the latter must fail instead of creating one.
+  const memberships = await getMembershipsCollection();
+  const danglingMembership = await memberships.findOne({
     userId: user._id,
     status: "active",
   });
+  if (danglingMembership) {
+    throw new Error("Membership references a missing workspace");
+  }
 
-  if (existingMembership) {
-    const workspace = await workspaces.findOne({ _id: existingMembership.workspaceId });
-    if (!workspace) {
-      throw new Error("Membership references a missing workspace");
-    }
-    return { user, workspace, membership: existingMembership };
+  // Invite-only while the deployment has a single workspace (multi-workspace
+  // support will replace this gate with explicit create/join). Creating one here
+  // would make every OIDC account an admin of its own workspace, with
+  // system-wide visibility.
+  const workspaces = await getWorkspacesCollection();
+  if (await workspaces.findOne({})) {
+    throw new Error("Workspace already exists; an invite is required");
   }
 
   const workspace = await createDefaultWorkspace(user._id);

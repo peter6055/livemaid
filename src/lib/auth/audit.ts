@@ -5,7 +5,7 @@ import { isDemoMode } from "@/lib/env";
 import { ensureAuditIpPepper } from "./secrets";
 
 export type AuditAction =
-  | `user.${"login" | "logout"}`
+  | `user.${"login" | "logout" | "active_change"}`
   | `workspace.${"create" | "update" | "delete"}`
   | `membership.${"invite" | "accept" | "remove" | "role_change"}`
   | `diagram.${"create" | "update" | "delete" | "duplicate"}`

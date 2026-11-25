@@ -57,7 +57,7 @@ test.describe("auth routes", () => {
   test("/workspace/{id} renders the dashboard shell", async ({ page }) => {
     await signInAsTestUser(page);
     await page.goto(`/workspace/${TEST_WORKSPACE_ID}`);
-    await expect(page.locator("header").getByText("Workspace")).toBeVisible();
+    await expect(page.locator("header").getByText("LiveMaid")).toBeVisible();
     await expect(page.getByRole("button", { name: /sign out/i })).toBeVisible();
   });
 });

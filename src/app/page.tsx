@@ -3,6 +3,7 @@ import Dashboard from "@/components/Dashboard";
 import { connection } from "next/server";
 import { isDemoMode, getDisplayVersion, getRawVersion } from "@/lib/env";
 import { redirect } from "next/navigation";
+import { appUrl } from "@/lib/api/url";
 import type { Session } from "@/lib/auth";
 
 function getHomeRedirect(
@@ -11,7 +12,8 @@ function getHomeRedirect(
   authEnabled: boolean,
 ): string | null {
   if (isDemo || !authEnabled) return null;
-  if (session?.user?.workspaceId) return `/workspace/${session.user.workspaceId}`;
+  if (!session?.user?.id) return appUrl("/login");
+  if (session.user.workspaceId) return appUrl(`/workspace/${session.user.workspaceId}`);
   return null;
 }
 
@@ -37,6 +39,8 @@ export default async function Home() {
       appVersion={displayVersion}
       rawVersion={rawVersion}
       workspaceId={session?.user?.workspaceId}
+      workspacesEnabled={authEnabled}
+      session={session}
     />
   );
 }

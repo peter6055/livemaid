@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { getDiagramCapability } from "@/lib/diagrams/catalog";
 import { diagramTypeLabel } from "@/lib/diagrams/utils";
+import { appUrl } from "@/lib/api/url";
 
 interface EditorHeaderProps {
   doc: DiagramDocument | null;
@@ -139,7 +140,7 @@ export function EditorHeader({
   }, [isEditingName]);
 
   return (
-    <header className="h-14 border-b border-border bg-background flex items-center px-4 justify-between shrink-0 z-20">
+    <header className="h-14 border-b border-border bg-background flex items-center px-5 justify-between shrink-0 z-20">
       <div className="flex items-center">
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -168,7 +169,7 @@ export function EditorHeader({
             )}
             {!isDemo && (
               <a
-                href="/"
+                href={appUrl("/")}
                 target="_blank"
                 rel="noopener noreferrer"
                 onMouseDown={(e) => {
@@ -225,7 +226,7 @@ export function EditorHeader({
               </div>
             </DropdownMenuItem>
             <Link
-              href="/"
+              href={appUrl("/")}
               onClick={(e) => {
                 e.preventDefault();
                 onNavigate("/", "Returning to Workspace...");
@@ -239,7 +240,7 @@ export function EditorHeader({
           </DropdownMenuContent>
         </DropdownMenu>
         <Link
-          href="/"
+          href={appUrl("/")}
           onClick={(e) => {
             e.preventDefault();
             onNavigate("/", "Returning to Workspace...");
@@ -258,7 +259,7 @@ export function EditorHeader({
               <BreadcrumbLink
                 render={
                   <Link
-                    href="/"
+                    href={appUrl("/")}
                     onClick={(e) => {
                       e.preventDefault();
                       onNavigate("/", "Returning to Workspace...");
@@ -276,7 +277,7 @@ export function EditorHeader({
                   <BreadcrumbLink
                     render={
                       <Link
-                        href={`/?folder=${folder.id}`}
+                        href={appUrl(`/?folder=${folder.id}`)}
                         onClick={(e) => {
                           e.preventDefault();
                           onNavigate(`/?folder=${folder.id}`, "Returning to Workspace...");

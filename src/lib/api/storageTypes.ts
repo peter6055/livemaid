@@ -19,6 +19,8 @@ export interface DiagramDocument {
   type: string;
   folderId: string | null;
   workspaceId?: string;
+  /** User id that created the record. Never rewritten; members see only their own. */
+  createdBy?: string;
   starred?: boolean;
   starredAt?: string | null;
   subPages: { id: string; name: string; code: string }[];
@@ -76,6 +78,8 @@ export interface Folder {
   name: string;
   parentId: string | null;
   workspaceId?: string;
+  /** User id that created the record. Never rewritten; members see only their own. */
+  createdBy?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -91,6 +95,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+// Mermaid sequence-diagram statement keywords that are not message lines.
+const SEQUENCE_KEYWORDS = [
+  "sequenceDiagram",
+  "Note",
+  "note",
+  "rect",
+  "alt",
+  "opt",
+  "loop",
+  "par",
+  "critical",
+  "option",
+  "else",
+  "end",
+  "participant",
+  "actor",
+  "autonumber",
+  "activate",
+  "deactivate",
+  "box",
+  "links",
+  "link",
+  "properties",
+  "details",
+];
+
 // Coerce an arbitrary parsed record into a fully-formed DiagramDocument with safe defaults. Backend-
 // agnostic so both the FS adapter and a future Mongo adapter hydrate documents identically.
 export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): DiagramDocument {
@@ -100,31 +130,9 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     .filter(({ line }) => {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith("%%")) return false;
-      const keywords = [
-        "sequenceDiagram",
-        "Note",
-        "note",
-        "rect",
-        "alt",
-        "opt",
-        "loop",
-        "par",
-        "critical",
-        "option",
-        "else",
-        "end",
-        "participant",
-        "actor",
-        "autonumber",
-        "activate",
-        "deactivate",
-        "box",
-        "links",
-        "link",
-        "properties",
-        "details",
-      ];
-      if (keywords.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) return false;
+      if (SEQUENCE_KEYWORDS.some((kw) => trimmed === kw || trimmed.startsWith(kw + " "))) {
+        return false;
+      }
       return trimmed.includes(":");
     });
 
@@ -259,6 +267,7 @@ export function normalizeDiagramDocument(raw: Partial<DiagramDocument>): Diagram
     type: raw.type || "flowchart",
     folderId: typeof raw.folderId === "string" ? raw.folderId : null,
     workspaceId: typeof raw.workspaceId === "string" ? raw.workspaceId : undefined,
+    createdBy: typeof raw.createdBy === "string" ? raw.createdBy : undefined,
     starred: Boolean(raw.starred),
     starredAt: typeof raw.starredAt === "string" ? raw.starredAt : null,
     subPages: Array.isArray(raw.subPages) ? raw.subPages : [],
@@ -273,6 +282,7 @@ export function normalizeFolder(raw: Partial<Folder>): Folder {
     name: raw.name || "Untitled Folder",
     parentId: typeof raw.parentId === "string" ? raw.parentId : null,
     workspaceId: typeof raw.workspaceId === "string" ? raw.workspaceId : undefined,
+    createdBy: typeof raw.createdBy === "string" ? raw.createdBy : undefined,
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
     deletedAt: typeof raw.deletedAt === "string" ? raw.deletedAt : null,

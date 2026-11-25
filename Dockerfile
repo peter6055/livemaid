@@ -18,6 +18,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 ARG VERSION
 ARG APP_VERSION
+# Public URL including reverse-proxy prefix. Path is baked into Next basePath
+# at build time so /_next and routes work when the proxy does not strip.
+ARG BASE_URL
+ENV BASE_URL=$BASE_URL
 
 RUN VERSION="${VERSION:-$APP_VERSION}" npm run build
 
@@ -55,7 +59,8 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT=3000
-# set hostname to localhost
+# Bind address for the standalone server. This is NOT the public URL — set
+# BASE_URL for the public site URL (including any reverse-proxy prefix).
 ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]

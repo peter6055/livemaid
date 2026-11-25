@@ -9,7 +9,8 @@ import { CreateDiagramDialog, type CreateDiagramPayload } from "@/components/Cre
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/BrandLogo";
 import { broadcastDashboardRefresh, onDashboardRefresh } from "@/lib/dashboardSync";
-import { apiUrl } from "@/lib/api/url";
+import { appUrl } from "@/lib/api/url";
+import { apiFetch } from "@/lib/api/client";
 import {
   Plus,
   LayoutTemplate,
@@ -29,10 +30,14 @@ import {
   List,
   Settings,
   Star,
+  User,
+  LogOut,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useUserPreferences } from "@/hooks/useUserPreferences";
+import { usePreferences } from "@/lib/preferences/provider";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
+import { signOutAction } from "@/lib/auth/signOutAction";
+import type { Session } from "@/lib/auth";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
@@ -77,44 +82,122 @@ const ALLOW_NESTED_FOLDERS = false;
 
 const OFFLINE_ACTION_MESSAGE = "This action requires an internet connection.";
 
+function DiagramCardSkeleton() {
+  return (
+    <Card className="flex flex-col h-full bg-background border-border shadow-sm">
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between w-full">
+          <Skeleton className="h-6 w-2/3 rounded-md bg-zinc-200/60 dark:bg-zinc-800/60" />
+          <div className="flex gap-1">
+            <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+            <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+          </div>
+        </div>
+        <div className="flex items-center mt-2 gap-2">
+          <Skeleton className="h-3.5 w-4 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
+          <Skeleton className="h-4 w-1/4 rounded bg-zinc-200/60 dark:bg-zinc-800/60" />
+        </div>
+      </CardHeader>
+      <CardContent className="flex-grow">
+        <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center overflow-hidden relative">
+          {/* High fidelity animated flowchart node shapes inside skeleton */}
+          <div className="flex items-center justify-center gap-3 w-full h-full px-4 opacity-50 dark:opacity-40 animate-pulse">
+            {/* Node 1: Start (stadium) */}
+            <div className="h-7 w-12 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+              <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+            </div>
+            {/* Connector Arrow 1 */}
+            <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+              <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+            </div>
+            {/* Node 2: Decision (diamond) */}
+            <div className="h-8 w-8 rotate-45 border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+              <div className="-rotate-45 h-2 w-2 bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
+            </div>
+            {/* Connector Arrow 2 */}
+            <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
+              <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
+            </div>
+            {/* Node 3: End (rectangle) */}
+            <div className="h-7 w-12 rounded border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
+              <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+      <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
+        <Skeleton className="h-3.5 w-24 bg-zinc-200/60 dark:bg-zinc-800/60" />
+      </CardFooter>
+    </Card>
+  );
+}
+
+function DiagramSkeletonGrid({ count }: { count: number }) {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {Array.from({ length: count }).map((_, i) => (
+        <DiagramCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
 export default function Dashboard({
   isDemo = false,
   appVersion,
   rawVersion,
   workspaceId,
+  workspacesEnabled = false,
+  session = null,
 }: {
   isDemo?: boolean;
   appVersion?: string;
   rawVersion?: string;
   workspaceId?: string;
+  workspacesEnabled?: boolean;
+  session?: Session | null;
 }) {
   const { setTheme, resolvedTheme } = useTheme();
   // next-themes resolves the active theme only on the client, so theme-dependent UI must wait until
   // after mount to avoid a server/client hydration mismatch (server has no theme, client does).
   const [mounted, setMounted] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const signingOutRef = useRef(false);
+  const handleSignOut = useCallback(async () => {
+    if (signingOutRef.current) return;
+    signingOutRef.current = true;
+    setSigningOut(true);
+    try {
+      await signOutAction();
+      window.location.assign(appUrl("/login"));
+    } catch (error) {
+      signingOutRef.current = false;
+      setSigningOut(false);
+      toast.error(error instanceof Error ? error.message : "Failed to sign out");
+    }
+  }, []);
   useEffect(() => {
     setMounted(true);
   }, []);
   const isDark = resolvedTheme === "dark";
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("preferences");
 
-  const openSettings = () => setSettingsOpen(true);
+  const openSettings = () => {
+    setSettingsTab("preferences");
+    setSettingsOpen(true);
+  };
   const closeSettings = () => setSettingsOpen(false);
   const [diagrams, setDiagrams] = useState<DiagramDocument[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const isOnline = useOnlineStatus();
-  const { prefs: userPrefs, hydrated, update: setUserPref } = useUserPreferences();
+  const { prefs: userPrefs, hydrated, update: setUserPref } = usePreferences();
   const { viewMode, sortBy, currentFolderId: savedFolderId } = userPrefs;
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [folderLoading, setFolderLoading] = useState(false);
-  const folderSwitchTimer = useRef<NodeJS.Timeout | null>(null);
-  // `searchInput` is the raw, instant value bound to the text field; `searchQuery` is the DEBOUNCED
-  // value that actually drives filtering. `searchLoading` is true during the debounce window so the
-  // grid shows a brief loading state instead of filtering on every keystroke.
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchLoading, setSearchLoading] = useState(false);
-  const searchTimer = useRef<NodeJS.Timeout | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [displayCount, setDisplayCount] = useState(12);
@@ -176,24 +259,20 @@ export default function Dashboard({
       if (isFetchingRef.current) return;
       isFetchingRef.current = true;
       try {
-        const startTime = Date.now();
         const diagramsUrl = workspaceId
-          ? apiUrl(`/api/diagrams?workspaceId=${encodeURIComponent(workspaceId)}`)
-          : apiUrl("/api/diagrams");
+          ? appUrl(`/api/diagrams?workspaceId=${encodeURIComponent(workspaceId)}`)
+          : appUrl("/api/diagrams");
         const foldersUrl = workspaceId
-          ? apiUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
-          : apiUrl("/api/folders");
-        const [diagRes, folderRes] = await Promise.all([fetch(diagramsUrl), fetch(foldersUrl)]);
+          ? appUrl(`/api/folders?workspaceId=${encodeURIComponent(workspaceId)}`)
+          : appUrl("/api/folders");
+        const [diagRes, folderRes] = await Promise.all([
+          apiFetch(diagramsUrl),
+          apiFetch(foldersUrl),
+        ]);
         if (!diagRes.ok) throw new Error("Failed to fetch");
         const { items } = await diagRes.json();
         const folderData = folderRes.ok ? await folderRes.json() : [];
 
-        const elapsedTime = Date.now() - startTime;
-        // Only enforce the minimum skeleton duration for the initial load; silent refreshes
-        // (e.g., after returning from another tab) should feel instant.
-        if (!options.silent && elapsedTime < 600) {
-          await new Promise((resolve) => setTimeout(resolve, 600 - elapsedTime));
-        }
         setDiagrams(items);
         setFolders(folderData);
       } catch (error) {
@@ -271,7 +350,7 @@ export default function Dashboard({
     setIsCreateOpen(false);
 
     try {
-      const res = await fetch(apiUrl("/api/diagrams"), {
+      const res = await apiFetch(appUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -288,11 +367,7 @@ export default function Dashboard({
       setDiagrams((prev) => [newDoc, ...prev]);
       // Notify other open Dashboard tabs that a new file exists so they can refresh.
       broadcastDashboardRefresh();
-      window.open(
-        `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/editor/${newDoc.id}`,
-        "_blank",
-        "noopener,noreferrer",
-      );
+      window.open(appUrl(`/editor/${newDoc.id}`), "_blank", "noopener,noreferrer");
     } catch (error) {
       toast.error("Failed to create diagram");
     }
@@ -310,7 +385,7 @@ export default function Dashboard({
     }
     setIsDeleteOpen(false);
     try {
-      const res = await fetch(apiUrl(`/api/diagrams/${deleteId}`), { method: "DELETE" });
+      const res = await apiFetch(appUrl(`/api/diagrams/${deleteId}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
       setDiagrams(diagrams.filter((d) => d.id !== deleteId));
       toast.success("Diagram deleted");
@@ -334,7 +409,7 @@ export default function Dashboard({
     setIsRenameOpen(false);
 
     try {
-      const res = await fetch(apiUrl(`/api/diagrams/${renameId}`), {
+      const res = await apiFetch(appUrl(`/api/diagrams/${renameId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameName }),
@@ -367,7 +442,7 @@ export default function Dashboard({
     if (!createFolderName.trim()) return;
     setIsCreateFolderOpen(false);
     try {
-      const res = await fetch(apiUrl("/api/folders"), {
+      const res = await apiFetch(appUrl("/api/folders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // Nesting disabled → always create at root. When ALLOW_NESTED_FOLDERS is enabled, new
@@ -401,7 +476,7 @@ export default function Dashboard({
     if (!renameFolderName.trim()) return;
     setIsRenameFolderOpen(false);
     try {
-      const res = await fetch(apiUrl(`/api/folders/${renameFolderId}`), {
+      const res = await apiFetch(appUrl(`/api/folders/${renameFolderId}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: renameFolderName }),
@@ -428,7 +503,7 @@ export default function Dashboard({
     }
     setIsDeleteFolderOpen(false);
     try {
-      const res = await fetch(apiUrl(`/api/folders/${deleteFolderId}`), { method: "DELETE" });
+      const res = await apiFetch(appUrl(`/api/folders/${deleteFolderId}`), { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete folder");
       // Folder delete reparents contents to the deleted folder's parent — refetch to resync.
       await fetchData();
@@ -444,7 +519,7 @@ export default function Dashboard({
       return;
     }
     try {
-      const res = await fetch(apiUrl(`/api/folders/${id}`), {
+      const res = await apiFetch(appUrl(`/api/folders/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parentId }),
@@ -466,7 +541,7 @@ export default function Dashboard({
       return;
     }
     try {
-      const res = await fetch(apiUrl(`/api/diagrams/${id}`), {
+      const res = await apiFetch(appUrl(`/api/diagrams/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folderId }),
@@ -492,10 +567,10 @@ export default function Dashboard({
       return;
     }
     try {
-      const sourceRes = await fetch(apiUrl(`/api/diagrams/${id}`));
+      const sourceRes = await apiFetch(appUrl(`/api/diagrams/${id}`));
       if (!sourceRes.ok) throw new Error("Source diagram not found");
       const source = await sourceRes.json();
-      const createRes = await fetch(apiUrl("/api/diagrams"), {
+      const createRes = await apiFetch(appUrl("/api/diagrams"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -531,7 +606,7 @@ export default function Dashboard({
     const previous = diagrams;
     setDiagrams((prev) => prev.map((d) => (d.id === id ? { ...d, starred, starredAt } : d)));
     try {
-      const res = await fetch(apiUrl(`/api/diagrams/${id}`), {
+      const res = await apiFetch(appUrl(`/api/diagrams/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ starred, starredAt }),
@@ -558,7 +633,7 @@ export default function Dashboard({
     const previous = folders;
     setFolders((prev) => prev.map((f) => (f.id === id ? { ...f, starred, starredAt } : f)));
     try {
-      const res = await fetch(apiUrl(`/api/folders/${id}`), {
+      const res = await apiFetch(appUrl(`/api/folders/${id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ starred, starredAt }),
@@ -605,37 +680,16 @@ export default function Dashboard({
 
   const isSearching = searchQuery.trim().length > 0;
 
-  // Debounce the search: typing updates `searchInput` instantly, but the actual filter
-  // (`searchQuery`) only updates ~450ms after the user stops typing. During that window
-  // `searchLoading` shows a spinner + skeletons so the result swap feels like a deliberate fetch
-  // rather than a jittery per-keystroke filter. Clearing the field applies immediately (no delay).
-  const SEARCH_DEBOUNCE_MS = 450;
+  // Filtering is entirely local, so apply it synchronously. This avoids an artificial
+  // 450ms delay without turning every keystroke into a network request.
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    if (searchInput === searchQuery) {
-      setSearchLoading(false);
-      return;
-    }
-    if (searchInput.trim() === "") {
-      // Instant clear — no spinner.
-      setSearchQuery("");
-      setSearchLoading(false);
-      return;
-    }
-    setSearchLoading(true);
-    searchTimer.current = setTimeout(() => {
-      setSearchQuery(searchInput);
-      setSearchLoading(false);
-    }, SEARCH_DEBOUNCE_MS);
-    return () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    };
-  }, [searchInput, searchQuery]);
+    setSearchQuery(searchInput);
+    setSearchLoading(false);
+  }, [searchInput]);
 
   // Apply (or clear) the search field and its debounced value together. Used by folder navigation
   // and the "clear" affordances so they reset both the input and the applied filter atomically.
   const resetSearch = () => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
     setSearchInput("");
     setSearchQuery("");
     setSearchLoading(false);
@@ -658,7 +712,6 @@ export default function Dashboard({
       if (e.key === "Escape" && document.activeElement === searchInputRef.current) {
         if (searchInput.trim() || searchQuery.trim()) {
           e.preventDefault();
-          if (searchTimer.current) clearTimeout(searchTimer.current);
           setSearchInput("");
           setSearchQuery("");
           setSearchLoading(false);
@@ -726,36 +779,21 @@ export default function Dashboard({
       .slice(0, 5);
   }, [diagrams]);
 
-  // Switch the current folder with a brief loading transition. Even though folder contents are
-  // already in client state (so switching is instant), a short skeleton avoids a jarring flash and
-  // reassures the user that content is being prepared — matching the perceived-load pattern used
-  // elsewhere. Clearing the search keeps the destination folder's contents in scope.
+  // Folder and quick-view contents are already in client state, so switch immediately.
   const navigateToFolder = (id: string | null) => {
     if (id === currentFolderId && searchInput.trim() === "" && searchQuery.trim() === "") return;
     resetSearch();
-    setFolderLoading(true);
+    setFolderLoading(false);
     setQuickView(null);
     setCurrentFolderId(id);
-    if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
-    folderSwitchTimer.current = setTimeout(() => setFolderLoading(false), 350);
   };
 
   const selectQuickView = (view: "all" | "recent" | "starred") => {
     resetSearch();
-    setFolderLoading(true);
+    setFolderLoading(false);
     setQuickView(view);
     setCurrentFolderId(null);
-    if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
-    folderSwitchTimer.current = setTimeout(() => setFolderLoading(false), 350);
   };
-
-  // Clean up the folder-switch timer on unmount.
-  useEffect(
-    () => () => {
-      if (folderSwitchTimer.current) clearTimeout(folderSwitchTimer.current);
-    },
-    [],
-  );
 
   // Folders shown in the current view. Searching filters within that same view so the search scope
   // matches the selected sidebar/folder context.
@@ -801,21 +839,29 @@ export default function Dashboard({
     return sorted;
   }, [diagrams, searchQuery, isSearching, currentFolderId, sortBy, quickView]);
 
-  // Lazy-load: show 12 items at a time, reveal next batch via IntersectionObserver.
+  // Lazy-load: show 12 items at a time, reveal the next batch only after the skeleton placeholder
+  // has been visible long enough to register, so the swap doesn't flash while scrolling.
   const LAZY_BATCH = 12;
-  const LAZY_DELAY_MS = 1500;
+  const LOAD_MORE_DELAY = 500;
   const [loadingMore, setLoadingMore] = useState(false);
-  const loadMoreTimer = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setDisplayCount(12);
     setLoadingMore(false);
-    if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
   }, [currentFolderId, searchQuery, sortBy, quickView]);
 
   const displayedDiagrams = useMemo(() => {
     return filteredDiagrams.slice(0, displayCount);
   }, [filteredDiagrams, displayCount]);
+
+  useEffect(() => {
+    if (!loadingMore) return;
+    const timer = setTimeout(() => {
+      setDisplayCount((prev) => Math.min(prev + LAZY_BATCH, filteredDiagrams.length));
+      setLoadingMore(false);
+    }, LOAD_MORE_DELAY);
+    return () => clearTimeout(timer);
+  }, [loadingMore, filteredDiagrams.length]);
 
   useEffect(() => {
     if (loading || folderLoading || searchLoading) return;
@@ -826,11 +872,6 @@ export default function Dashboard({
       (entries) => {
         if (entries[0].isIntersecting && !loadingMore && displayCount < filteredDiagrams.length) {
           setLoadingMore(true);
-          if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
-          loadMoreTimer.current = setTimeout(() => {
-            setDisplayCount((prev) => Math.min(prev + LAZY_BATCH, filteredDiagrams.length));
-            setLoadingMore(false);
-          }, LAZY_DELAY_MS);
         }
       },
       { threshold: 0.1 },
@@ -839,21 +880,6 @@ export default function Dashboard({
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [displayCount, filteredDiagrams.length, loadingMore, loading, folderLoading, searchLoading]);
-
-  useEffect(
-    () => () => {
-      if (loadMoreTimer.current) clearTimeout(loadMoreTimer.current);
-    },
-    [],
-  );
-
-  // Clean up the search debounce timer on unmount.
-  useEffect(
-    () => () => {
-      if (searchTimer.current) clearTimeout(searchTimer.current);
-    },
-    [],
-  );
 
   const headerTitle =
     quickView === "all"
@@ -884,7 +910,9 @@ export default function Dashboard({
           ? "Search starred items"
           : currentFolderId
             ? `Search in ${headerTitle}`
-            : "Search workspace";
+            : workspacesEnabled
+              ? "Search workspace"
+              : "Search files";
   const searchResultCount = visibleFolders.length + filteredDiagrams.length;
   const searchResultLabel = `${searchResultCount} result${searchResultCount === 1 ? "" : "s"}`;
 
@@ -897,24 +925,90 @@ export default function Dashboard({
         </div>
       )}
 
+      {/* App header */}
+      <header
+        className={`hidden md:block border-b border-border bg-background/95 backdrop-blur z-40 ${isDemo ? "sticky top-[41px]" : "sticky top-0"}`}
+      >
+        <div className="px-5 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <BrandLogo className="w-8 h-8 rounded-lg" />
+            <span className="font-semibold text-base tracking-tight">LiveMaid</span>
+            <span className="inline-flex h-6 items-center gap-1 rounded-md bg-muted/70 px-2 text-xs font-medium text-muted-foreground">
+              {workspacesEnabled ? <Home className="h-3 w-3" /> : <User className="h-3 w-3" />}
+              {isDemo ? "Demo" : workspacesEnabled ? "Workspace" : "Standalone"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            {session?.user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      className="h-10 cursor-pointer gap-2.5 rounded-lg px-2"
+                      aria-label="Account menu"
+                    />
+                  }
+                >
+                  {session.user.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- OIDC avatar on an arbitrary host
+                    <img
+                      src={session.user.image}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#5B2FD0]/10 text-xs font-semibold text-[#5B2FD0] dark:bg-[#5B2FD0]/25 dark:text-purple-200">
+                      {(session.user.name ?? session.user.email ?? "?").charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="max-w-[180px] truncate text-sm font-normal text-muted-foreground">
+                    {session.user.email}
+                  </span>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-60">
+                  <div className="px-2 py-2">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {session.user.name ?? session.user.email}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">{session.user.email}</p>
+                  </div>
+                  <DropdownMenuItem
+                    disabled={signingOut}
+                    aria-busy={signingOut}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleSignOut();
+                    }}
+                    className="cursor-pointer gap-2"
+                  >
+                    {signingOut ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <LogOut className="w-4 h-4" />
+                    )}
+                    {signingOut ? "Signing out…" : "Sign out"}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        </div>
+      </header>
+
       <div className="flex flex-1 min-h-0">
         {/* ---- Left Sidebar ---- */}
         <aside
-          className={`hidden md:flex w-80 shrink-0 flex-col border-r border-border bg-background/60 sticky ${isDemo ? "top-[41px] h-[calc(100vh-41px)]" : "top-0 h-screen"}`}
+          className={`hidden md:flex w-72 shrink-0 flex-col border-r border-border bg-muted/20 sticky ${isDemo ? "top-[97px] h-[calc(100vh-97px)]" : "top-14 h-[calc(100vh-3.5rem)]"}`}
         >
-          {/* Brand */}
-          <div className="flex items-center gap-2.5 px-4 h-16 border-b border-border shrink-0">
-            <BrandLogo className="w-8 h-8 rounded-lg" />
-            <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
-          </div>
-
           {/* Sidebar navigation: Recent + Folders */}
-          <div className="flex-1 overflow-y-auto px-2 py-3 flex flex-col gap-5">
+          <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-5">
             {/* Quick views */}
             <div>
-              <div className="flex items-center gap-1.5 px-2 mb-2">
-                <LayoutGrid className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center gap-2 px-2 mb-2">
+                <LayoutGrid className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Quick views
                 </span>
               </div>
@@ -929,7 +1023,7 @@ export default function Dashboard({
                     <button
                       key={item.id}
                       onClick={() => selectQuickView(item.id)}
-                      className={`flex items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm transition-colors text-left ${quickView === item.id ? "bg-accent text-foreground" : "text-foreground/80 hover:bg-accent hover:text-foreground"}`}
+                      className={`flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm transition-colors text-left ${quickView === item.id ? "bg-[#5B2FD0]/10 text-[#5B2FD0] dark:bg-[#5B2FD0]/25 dark:text-purple-200" : "text-foreground/75 hover:bg-accent hover:text-foreground"}`}
                     >
                       <Icon className="w-4 h-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{item.label}</span>
@@ -941,9 +1035,9 @@ export default function Dashboard({
 
             {/* Recent */}
             <div>
-              <div className="flex items-center gap-1.5 px-2 mb-2">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="flex items-center gap-2 px-2 mb-2">
+                <Clock className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Recent
                 </span>
               </div>
@@ -954,7 +1048,7 @@ export default function Dashboard({
                   {recentDiagrams.map((d) => (
                     <a
                       key={d.id}
-                      href={`/editor/${d.id}`}
+                      href={appUrl(`/editor/${d.id}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       draggable
@@ -963,7 +1057,7 @@ export default function Dashboard({
                         e.dataTransfer.effectAllowed = "move";
                       }}
                       title={d.name}
-                      className="flex items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors text-left"
+                      className="flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm text-foreground/75 hover:bg-accent hover:text-foreground transition-colors text-left"
                     >
                       <FileText className="w-4 h-4 shrink-0 text-muted-foreground" />
                       <span className="truncate">{d.name}</span>
@@ -975,11 +1069,11 @@ export default function Dashboard({
 
             {/* Folders */}
             <div>
-              <div className="border-t border-border -mx-2 mb-4" />
-              <div className="flex items-center justify-between px-2 mb-2">
-                <div className="flex items-center gap-1.5">
-                  <FolderPlus className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="border-t border-border -mx-4 mb-4" />
+              <div className="flex items-center justify-between px-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <FolderPlus className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     Folders
                   </span>
                 </div>
@@ -1006,10 +1100,11 @@ export default function Dashboard({
           </div>
 
           {/* Sidebar footer: settings + version */}
-          <div className="border-t border-border p-3 shrink-0">
+          <div className="border-t border-border p-4 shrink-0 bg-background/30">
             <button
+              aria-label="Settings"
               onClick={openSettings}
-              className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-foreground/80 hover:bg-accent hover:text-foreground transition-colors w-full text-left"
+              className="flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm text-foreground/75 hover:bg-accent hover:text-foreground transition-colors w-full text-left"
             >
               <Settings className="w-4 h-4" />
               Settings
@@ -1034,7 +1129,7 @@ export default function Dashboard({
         {/* ---- Right Main Area ---- */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Mobile top bar (sidebar hidden) */}
-          <nav className="md:hidden h-16 border-b border-border bg-background flex items-center px-4 shrink-0 sticky top-0 z-10">
+          <nav className="md:hidden h-14 border-b border-border bg-background/95 backdrop-blur flex items-center px-4 shrink-0 sticky top-0 z-10">
             <DropdownMenu>
               <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="mr-2" />}>
                 <Menu className="w-5 h-5" />
@@ -1066,84 +1161,80 @@ export default function Dashboard({
                 >
                   <Settings className="w-4 h-4" /> Settings
                 </DropdownMenuItem>
+                {session?.user && (
+                  <DropdownMenuItem
+                    disabled={signingOut}
+                    aria-busy={signingOut}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleSignOut();
+                    }}
+                    className="cursor-pointer gap-2"
+                  >
+                    {signingOut ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <LogOut className="w-4 h-4" />
+                    )}
+                    {signingOut ? "Signing out…" : "Sign out"}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
-            <BrandLogo className="w-8 h-8 mr-2 rounded-lg" />
+            <BrandLogo className="w-10 h-10 mr-3 rounded-xl" />
             <span className="font-semibold text-lg tracking-tight">LiveMaid</span>
           </nav>
 
           {/* Main Content */}
-          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 md:px-10 py-5 md:py-7 flex-grow">
-            <div className="mb-6 border-b border-border pb-4">
-              <div className="flex flex-col gap-3">
+          <div className="w-full max-w-[1280px] mx-auto px-4 sm:px-6 md:px-8 py-4 md:py-5 flex-grow">
+            <div className="mb-5 border-b border-border pb-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
                   <div className="min-w-0">
-                    <nav className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground flex-wrap">
-                      <button
-                        onClick={() => navigateToFolder(null)}
-                        onDragOver={(e) => {
-                          if (e.dataTransfer.types.includes("application/x-livemaid-diagram")) {
-                            e.preventDefault();
-                            setBreadcrumbDragOverId("__root__");
-                          }
-                        }}
-                        onDragLeave={() => setBreadcrumbDragOverId(null)}
-                        onDrop={(e) => {
-                          const diagramId = e.dataTransfer.getData(
-                            "application/x-livemaid-diagram",
-                          );
-                          setBreadcrumbDragOverId(null);
-                          if (diagramId) {
-                            e.preventDefault();
-                            handleFolderDrop(diagramId, null);
-                          }
-                        }}
-                        className={`flex items-center gap-1 rounded-full px-2 py-1 transition-colors hover:bg-accent hover:text-foreground ${currentFolderId === null && !quickView ? "text-foreground" : ""} ${breadcrumbDragOverId === "__root__" ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
-                      >
-                        <Home className="w-3.5 h-3.5" /> Workspace
-                      </button>
-                      {quickViewBreadcrumb && (
-                        <span className="flex min-w-0 items-center gap-1">
-                          <ChevronRight className="w-3.5 h-3.5 opacity-50" />
-                          <span className="truncate rounded-full bg-accent px-2 py-1 text-foreground">
-                            {quickViewBreadcrumb}
+                    {(quickViewBreadcrumb || breadcrumb.length > 0) && (
+                      <nav className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground flex-wrap">
+                        {quickViewBreadcrumb && (
+                          <span className="flex min-w-0 items-center gap-1">
+                            <span className="truncate rounded-full bg-accent px-2 py-1 text-foreground">
+                              {quickViewBreadcrumb}
+                            </span>
                           </span>
-                        </span>
-                      )}
-                      {!quickView &&
-                        breadcrumb.map((f) => (
-                          <span key={f.id} className="flex min-w-0 items-center gap-1">
-                            <ChevronRight className="w-3.5 h-3.5 opacity-50" />
-                            <button
-                              onClick={() => navigateToFolder(f.id)}
-                              onDragOver={(e) => {
-                                if (
-                                  e.dataTransfer.types.includes("application/x-livemaid-diagram")
-                                ) {
-                                  e.preventDefault();
-                                  setBreadcrumbDragOverId(f.id);
-                                }
-                              }}
-                              onDragLeave={() => setBreadcrumbDragOverId(null)}
-                              onDrop={(e) => {
-                                const diagramId = e.dataTransfer.getData(
-                                  "application/x-livemaid-diagram",
-                                );
-                                setBreadcrumbDragOverId(null);
-                                if (diagramId) {
-                                  e.preventDefault();
-                                  handleFolderDrop(diagramId, f.id);
-                                }
-                              }}
-                              className={`max-w-[180px] truncate rounded-full px-2 py-1 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "bg-accent text-foreground" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
-                            >
-                              {f.name}
-                            </button>
-                          </span>
-                        ))}
-                    </nav>
+                        )}
+                        {!quickView &&
+                          breadcrumb.map((f) => (
+                            <span key={f.id} className="flex min-w-0 items-center gap-1">
+                              <ChevronRight className="w-3.5 h-3.5 opacity-50" />
+                              <button
+                                onClick={() => navigateToFolder(f.id)}
+                                onDragOver={(e) => {
+                                  if (
+                                    e.dataTransfer.types.includes("application/x-livemaid-diagram")
+                                  ) {
+                                    e.preventDefault();
+                                    setBreadcrumbDragOverId(f.id);
+                                  }
+                                }}
+                                onDragLeave={() => setBreadcrumbDragOverId(null)}
+                                onDrop={(e) => {
+                                  const diagramId = e.dataTransfer.getData(
+                                    "application/x-livemaid-diagram",
+                                  );
+                                  setBreadcrumbDragOverId(null);
+                                  if (diagramId) {
+                                    e.preventDefault();
+                                    handleFolderDrop(diagramId, f.id);
+                                  }
+                                }}
+                                className={`max-w-[180px] truncate rounded-full px-2 py-1 transition-colors hover:bg-accent hover:text-foreground ${f.id === currentFolderId ? "bg-accent text-foreground" : ""} ${breadcrumbDragOverId === f.id ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+                              >
+                                {f.name}
+                              </button>
+                            </span>
+                          ))}
+                      </nav>
+                    )}
 
-                    <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
+                    <h1 className="truncate text-3xl font-semibold tracking-tight text-foreground">
                       {headerTitle}
                     </h1>
                   </div>
@@ -1154,7 +1245,7 @@ export default function Dashboard({
                         <Button
                           onClick={openCreateFolderDialog}
                           variant="outline"
-                          className="h-10 w-[168px] justify-center gap-2 whitespace-nowrap"
+                          className="h-10 w-[160px] justify-center gap-2 whitespace-nowrap rounded-lg"
                         >
                           <FolderPlus className="w-4 h-4" />
                           New Folder
@@ -1167,7 +1258,7 @@ export default function Dashboard({
                             <TooltipTrigger render={<span className="inline-flex" />}>
                               <Button
                                 disabled
-                                className="bg-[#7a3dff]/40 text-white rounded-lg h-10 w-[168px] justify-center gap-2 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
+                                className="bg-[#7a3dff]/40 text-white rounded-lg h-10 w-[160px] justify-center gap-2 text-sm font-medium whitespace-nowrap pointer-events-none opacity-60"
                               >
                                 <Plus className="w-5 h-5" />
                                 New Diagram
@@ -1179,7 +1270,7 @@ export default function Dashboard({
                       ) : (
                         <Button
                           onClick={openCreateDialog}
-                          className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg h-10 w-[168px] justify-center gap-2 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
+                          className="bg-[#7a3dff] hover:bg-[#5B2FD0] text-white rounded-lg h-10 w-[160px] justify-center gap-2 text-sm font-medium shadow-sm transition-all hover:shadow-md whitespace-nowrap"
                         >
                           <Plus className="w-5 h-5" />
                           New Diagram
@@ -1190,7 +1281,7 @@ export default function Dashboard({
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
-                          <Button className="h-10 gap-2 bg-[#7a3dff] text-white hover:bg-[#6b33e6] sm:hidden" />
+                          <Button className="h-10 gap-2 rounded-lg bg-[#7a3dff] text-white hover:bg-[#5B2FD0] sm:hidden" />
                         }
                       >
                         <Plus className="w-4 h-4" />
@@ -1227,7 +1318,7 @@ export default function Dashboard({
                         onChange={(e) => setSearchInput(e.target.value)}
                         placeholder={searchPlaceholder}
                         aria-label="Search dashboard"
-                        className="h-10 pl-9 pr-9"
+                        className="h-10 rounded-lg pl-10 pr-10 text-sm shadow-sm bg-background"
                       />
                       {searchLoading ? (
                         <Loader2 className="w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground animate-spin" />
@@ -1251,13 +1342,13 @@ export default function Dashboard({
                   </div>
 
                   <div className="flex shrink-0 flex-wrap items-center gap-2 sm:flex-nowrap sm:pt-0.5">
-                    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 p-1">
+                    <div className="flex h-10 items-center gap-1 rounded-lg border border-border bg-muted/20 p-1">
                       <DropdownMenu>
                         <DropdownMenuTrigger
                           render={
                             <Button
                               variant="ghost"
-                              className="h-8 gap-2 px-2.5 text-sm whitespace-nowrap"
+                              className="h-8 gap-2 px-2.5 text-sm whitespace-nowrap rounded-md"
                               aria-label="Sort diagrams"
                             />
                           }
@@ -1329,62 +1420,11 @@ export default function Dashboard({
             </div>
 
             {loading || folderLoading || searchLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <Card
-                    key={i}
-                    className="flex flex-col h-full bg-background border-border shadow-sm"
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex items-start justify-between w-full">
-                        <Skeleton className="h-6 w-2/3 rounded-md bg-zinc-200/60 dark:bg-zinc-800/60" />
-                        <div className="flex gap-1">
-                          <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
-                          <Skeleton className="h-8 w-8 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
-                        </div>
-                      </div>
-                      <div className="flex items-center mt-2 gap-2">
-                        <Skeleton className="h-3.5 w-4 rounded-full bg-zinc-200/60 dark:bg-zinc-800/60" />
-                        <Skeleton className="h-4 w-1/4 rounded bg-zinc-200/60 dark:bg-zinc-800/60" />
-                      </div>
-                    </CardHeader>
-                    <CardContent className="flex-grow">
-                      <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center overflow-hidden relative">
-                        {/* High fidelity animated flowchart node shapes inside skeleton */}
-                        <div className="flex items-center justify-center gap-3 w-full h-full px-4 opacity-50 dark:opacity-40 animate-pulse">
-                          {/* Node 1: Start (stadium) */}
-                          <div className="h-7 w-12 rounded-full border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                            <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
-                          </div>
-                          {/* Connector Arrow 1 */}
-                          <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
-                            <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
-                          </div>
-                          {/* Node 2: Decision (diamond) */}
-                          <div className="h-8 w-8 rotate-45 border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                            <div className="-rotate-45 h-2 w-2 bg-zinc-200 dark:bg-zinc-700 rounded-sm" />
-                          </div>
-                          {/* Connector Arrow 2 */}
-                          <div className="h-[2px] flex-grow max-w-[24px] bg-zinc-200 dark:bg-zinc-800 shrink-0 relative flex items-center justify-end">
-                            <div className="absolute right-0 w-0 h-0 border-t-[3px] border-t-transparent border-b-[3px] border-b-transparent border-l-[5px] border-l-zinc-300 dark:border-l-zinc-700" />
-                          </div>
-                          {/* Node 3: End (rectangle) */}
-                          <div className="h-7 w-12 rounded border border-dashed border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center shrink-0">
-                            <div className="h-1.5 w-6 bg-zinc-200 dark:bg-zinc-700 rounded-full" />
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter className="pt-3 border-t border-border text-xs text-muted-foreground flex items-center mt-2">
-                      <Skeleton className="h-3.5 w-24 bg-zinc-200/60 dark:bg-zinc-800/60" />
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
+              <DiagramSkeletonGrid count={6} />
             ) : filteredDiagrams.length === 0 && visibleFolders.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 border-2 border-dashed border-border rounded-lg bg-background/50 backdrop-blur-sm">
-                <div className="bg-muted p-4 rounded-full mb-4">
-                  <LayoutTemplate className="w-8 h-8 text-muted-foreground" />
+              <div className="flex min-h-56 flex-col items-center justify-center rounded-xl border-2 border-dashed border-border bg-muted/10 px-6 py-6">
+                <div className="bg-[#5B2FD0]/10 p-3.5 rounded-xl mb-3 dark:bg-[#5B2FD0]/20">
+                  <LayoutTemplate className="w-8 h-8 text-[#5B2FD0] dark:text-purple-200" />
                 </div>
                 <h3 className="text-lg font-semibold text-foreground">
                   {diagrams.length === 0
@@ -1393,7 +1433,7 @@ export default function Dashboard({
                       ? `No results found for "${searchQuery}"`
                       : "No diagrams found"}
                 </h3>
-                <p className="text-muted-foreground text-sm mb-6 max-w-xs text-center">
+                <p className="text-muted-foreground text-sm mb-4 max-w-xs text-center">
                   {diagrams.length === 0
                     ? "Get started by creating your first diagram. Choose a template above or create from scratch."
                     : isSearching
@@ -1407,7 +1447,7 @@ export default function Dashboard({
                         <TooltipTrigger render={<span className="inline-flex" />}>
                           <Button
                             disabled
-                            className="bg-[#7a3dff]/40 text-white rounded-lg px-6 shadow-sm pointer-events-none opacity-60"
+                            className="bg-[#7a3dff]/40 text-white rounded-lg h-10 px-6 shadow-sm pointer-events-none opacity-60"
                           >
                             Create Diagram
                           </Button>
@@ -1418,13 +1458,17 @@ export default function Dashboard({
                   ) : (
                     <Button
                       onClick={openCreateDialog}
-                      className="bg-[#7a3dff] hover:bg-[#6b33e6] text-white rounded-lg px-6 shadow-sm"
+                      className="bg-[#7a3dff] hover:bg-[#5B2FD0] text-white rounded-lg h-10 px-6 shadow-sm"
                     >
                       Create Diagram
                     </Button>
                   )}
                   {diagrams.length > 0 && (
-                    <Button variant="outline" onClick={resetSearch}>
+                    <Button
+                      variant="outline"
+                      onClick={resetSearch}
+                      className="h-10 rounded-lg px-6"
+                    >
                       Clear Search
                     </Button>
                   )}
@@ -1433,7 +1477,7 @@ export default function Dashboard({
             ) : (
               <>
                 {visibleFolders.length > 0 && (
-                  <div className="mb-8">
+                  <div className="mb-5">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
                       Folders{" "}
                       <span className="text-muted-foreground/60">({visibleFolders.length})</span>
@@ -1499,8 +1543,27 @@ export default function Dashboard({
                   </div>
                 )}
                 {displayCount < filteredDiagrams.length && (
-                  <div ref={sentinelRef} className="flex justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                  <div ref={sentinelRef} className="py-8" data-testid="dashboard-load-more">
+                    {loadingMore ? (
+                      viewMode === "list" ? (
+                        <div
+                          className="flex flex-col gap-2"
+                          data-testid="dashboard-load-more-skeleton"
+                        >
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <Skeleton key={i} className="h-[60px] w-full rounded-xl" />
+                          ))}
+                        </div>
+                      ) : (
+                        <div data-testid="dashboard-load-more-skeleton">
+                          <DiagramSkeletonGrid count={3} />
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex justify-center">
+                        <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -1668,6 +1731,8 @@ export default function Dashboard({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         workspaceId={workspaceId}
+        isAdmin={session?.user?.role === "admin"}
+        defaultTab={settingsTab}
       />
     </div>
   );

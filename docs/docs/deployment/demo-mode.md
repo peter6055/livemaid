@@ -6,6 +6,8 @@ sidebar_position: 2
 
 Demo mode lets you run a **public, read-only instance** of LiveMaid pre-loaded with sample diagrams. Visitors can freely explore and edit diagrams in-browser, but nothing is ever persisted to disk.
 
+Demo is one of three modes; see [Modes](../access/modes) for the comparison with standalone and workspace deployments.
+
 ## How it works
 
 - Diagrams are read from the `./demo/` folder instead of `./data/`.

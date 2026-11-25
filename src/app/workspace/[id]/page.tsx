@@ -30,6 +30,8 @@ export default async function WorkspaceDashboardPage({
       appVersion={displayVersion}
       rawVersion={rawVersion}
       workspaceId={workspaceId}
+      workspacesEnabled={authEnabled}
+      session={session}
     />
   );
 }

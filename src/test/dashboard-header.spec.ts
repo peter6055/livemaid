@@ -96,10 +96,16 @@ test.describe("dashboard header", () => {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "Your Diagrams" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Workspace/ })).toBeVisible();
+    // One full-width header only — no duplicate bar and no max-width gutter.
+    const header = page.locator("header:visible");
+    await expect(header).toHaveCount(1);
+    const headerBox = await header.boundingBox();
+    expect(headerBox?.x).toBe(0);
+    expect(headerBox?.width).toBe(1440);
+    await expect(page.getByText(/Workspace|Standalone/, { exact: true }).first()).toBeVisible();
     await expect(page.getByLabel("Search dashboard")).toHaveAttribute(
       "placeholder",
-      "Search workspace",
+      /Search workspace|Search files/,
     );
     await expect(page.getByRole("button", { name: "Sort diagrams" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Grid view" })).toHaveAttribute(
@@ -138,7 +144,7 @@ test.describe("dashboard header", () => {
     await page.getByText("Design Systems").last().click();
 
     await expect(page.getByRole("heading", { name: "Design Systems" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Workspace/ })).toBeVisible();
+    await expect(page.getByText(/Workspace|Standalone/, { exact: true }).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Design Systems" }).first()).toBeVisible();
     await expect(page.getByLabel("Search dashboard")).toHaveAttribute(
       "placeholder",

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import type { DbUser, DbWorkspace, DbMembership, DbMigrationMarker } from "@/lib/db/collections";
+import type { DbUser, DbWorkspace, DbMembership } from "@/lib/db/collections";
 import { ObjectId } from "mongodb";
 
 vi.mock("@/lib/db/collections", async () => {
@@ -8,7 +8,6 @@ vi.mock("@/lib/db/collections", async () => {
   const users: DbUser[] = [];
   const workspaces: DbWorkspace[] = [];
   const memberships: DbMembership[] = [];
-  const migrationMarkers: DbMigrationMarker[] = [];
 
   function matches<T extends { _id: ObjectId }>(item: T, filter: Record<string, unknown>): boolean {
     return Object.entries(filter).every(([key, value]) => {
@@ -69,12 +68,6 @@ vi.mock("@/lib/db/collections", async () => {
       Promise.resolve(
         createCollection(memberships) as unknown as import("mongodb").Collection<DbMembership>,
       ),
-    getMigrationMarkersCollection: () =>
-      Promise.resolve(
-        createCollection(
-          migrationMarkers,
-        ) as unknown as import("mongodb").Collection<DbMigrationMarker>,
-      ),
   };
 });
 
@@ -82,11 +75,12 @@ import {
   getMembership,
   isAdmin,
   isMember,
+  isUserActive,
   requireAdmin,
   requireMember,
   AuthorizationError,
 } from "@/lib/auth/permissions";
-import { getMembershipsCollection } from "@/lib/db/collections";
+import { getMembershipsCollection, getUsersCollection } from "@/lib/db/collections";
 
 async function seedMembership(role: "admin" | "member", status: "active" | "pending") {
   const memberships = await getMembershipsCollection();
@@ -140,6 +134,29 @@ describe("permissions", () => {
   it("isMember returns false for pending memberships", async () => {
     const { userId, workspaceId } = await seedMembership("member", "pending");
     expect(await isMember(userId, workspaceId)).toBe(false);
+  });
+
+  it("isUserActive treats a missing flag as active and false as disabled", async () => {
+    const users = await getUsersCollection();
+    const active = new ObjectId();
+    const disabled = new ObjectId();
+    await users.insertOne({
+      _id: active,
+      email: "active@example.com",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await users.insertOne({
+      _id: disabled,
+      email: "disabled@example.com",
+      active: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(await isUserActive(active.toString())).toBe(true);
+    expect(await isUserActive(disabled.toString())).toBe(false);
+    expect(await isUserActive(new ObjectId().toString())).toBe(false);
   });
 
   it("requireAdmin throws AuthorizationError for non-admins", async () => {

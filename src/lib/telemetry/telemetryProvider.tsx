@@ -1,45 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { initTelemetry, getTelemetry, STORAGE_KEY } from "./index";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
+import { initTelemetry } from "./index";
 import type { TelemetryConfig } from "./types";
+import { usePreferences } from "@/lib/preferences/provider";
 
 interface TelemetryContextValue {
   usageAnalytics: boolean;
   debugReporting: boolean;
   setUsageAnalytics: (enabled: boolean) => void;
   setDebugReporting: (enabled: boolean) => void;
-}
-
-interface TelemetryPreferences {
-  usageAnalytics: boolean;
-  debugReporting: boolean;
-}
-
-function loadTelemetryPreferences(): TelemetryPreferences {
-  if (typeof window === "undefined") {
-    return { usageAnalytics: false, debugReporting: false };
-  }
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { usageAnalytics: false, debugReporting: false };
-    const parsed = JSON.parse(raw);
-    return {
-      usageAnalytics: parsed.usageAnalytics === true,
-      debugReporting: parsed.debugReporting === true,
-    };
-  } catch {
-    return { usageAnalytics: false, debugReporting: false };
-  }
-}
-
-function saveTelemetryPreferences(usageAnalytics: boolean, debugReporting: boolean) {
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ usageAnalytics, debugReporting }));
-  } catch {
-    // Ignore storage failures so privacy toggles still work for the current session.
-  }
 }
 
 const TelemetryContext = createContext<TelemetryContextValue>({
@@ -60,32 +30,20 @@ export function TelemetryProvider({
   children: ReactNode;
   config: TelemetryConfig;
 }) {
-  const [{ usageAnalytics, debugReporting }, setTelemetryPreferences] =
-    useState(loadTelemetryPreferences);
+  // Consent lives with the rest of the user preferences, so it follows the account across devices.
+  const { prefs, update } = usePreferences();
+  const { usageAnalytics, debugReporting } = prefs;
 
+  // Runs on mount with the cached consent and again when the stored document arrives or a toggle
+  // flips; initTelemetry is a singleton, so re-running only re-applies the flags.
   useEffect(() => {
-    const prefs = loadTelemetryPreferences();
-    initTelemetry(config, prefs);
-    setTelemetryPreferences(prefs);
-  }, [config]);
+    const telemetry = initTelemetry(config, { usageAnalytics, debugReporting });
+    telemetry.setUsageAnalytics(usageAnalytics);
+    telemetry.setDebugReporting(debugReporting);
+  }, [config, usageAnalytics, debugReporting]);
 
-  const setUsageAnalytics = (value: boolean) => {
-    setTelemetryPreferences((prev) => {
-      const next = { ...prev, usageAnalytics: value };
-      saveTelemetryPreferences(next.usageAnalytics, next.debugReporting);
-      return next;
-    });
-    getTelemetry()?.setUsageAnalytics(value);
-  };
-
-  const setDebugReporting = (value: boolean) => {
-    setTelemetryPreferences((prev) => {
-      const next = { ...prev, debugReporting: value };
-      saveTelemetryPreferences(next.usageAnalytics, next.debugReporting);
-      return next;
-    });
-    getTelemetry()?.setDebugReporting(value);
-  };
+  const setUsageAnalytics = (value: boolean) => update("usageAnalytics", value);
+  const setDebugReporting = (value: boolean) => update("debugReporting", value);
 
   return (
     <TelemetryContext.Provider

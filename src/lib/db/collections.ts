@@ -6,6 +6,8 @@ export interface DbUser {
   email: string;
   name?: string;
   image?: string;
+  /** When false, sign-in is rejected. Omitted/true means active. */
+  active?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,13 +31,6 @@ export interface DbMembership {
   updatedAt: Date;
 }
 
-export interface DbMigrationMarker {
-  _id: ObjectId;
-  key: string;
-  workspaceId: ObjectId;
-  completedAt: Date;
-}
-
 async function getDb() {
   const client = await getMongoClient();
   return client.db();
@@ -51,8 +46,4 @@ export async function getWorkspacesCollection(): Promise<Collection<DbWorkspace>
 
 export async function getMembershipsCollection(): Promise<Collection<DbMembership>> {
   return (await getDb()).collection<DbMembership>("memberships");
-}
-
-export async function getMigrationMarkersCollection(): Promise<Collection<DbMigrationMarker>> {
-  return (await getDb()).collection<DbMigrationMarker>("migrationMarkers");
 }

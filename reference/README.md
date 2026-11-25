@@ -38,6 +38,7 @@ Source of truth for LiveMaid architecture, design, and features. **Read only wha
 | --------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | [`overview.md`](./architecture/overview.md)                                       | Full architecture reference                             |
 | [`storage.md`](./architecture/storage.md)                                         | Local-first storage, adapter seam                       |
+| [`preferences.md`](./architecture/preferences.md)                                 | Per-user preferences (MongoDB), client sync, consent    |
 | [`auth.md`](./architecture/auth.md)                                               | Authentication, workspaces, and legacy transition       |
 | [`editor-split.md`](./architecture/editor-split.md)                               | Split-screen WYSIWYG model                              |
 | [`plugins.md`](./architecture/plugins.md)                                         | Diagram plugin architecture                             |

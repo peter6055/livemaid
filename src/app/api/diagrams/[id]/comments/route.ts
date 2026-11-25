@@ -9,8 +9,13 @@ import {
   getUserWorkspaceId,
   assertDiagramAccess,
   handleRouteError,
+  getVisibilityScope,
 } from "@/lib/auth/routeAuth";
 import type { AuditAction } from "@/lib/auth/audit";
+
+// Comments are gated by diagram ownership today. When diagram sharing ships, this is the seam:
+// member → own or shared with them, admin → own or shared or creator-less (records with no
+// `createdBy`, i.e. created in standalone mode).
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -124,9 +129,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       if (!workspaceId) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
-      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      const scope = await getVisibilityScope(session, workspaceId);
+      assertDiagramAccess(scope, diagram);
     }
 
     return NextResponse.json(diagram.comments ?? []);
@@ -154,9 +158,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       if (!workspaceId) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
-      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      const scope = await getVisibilityScope(session, workspaceId);
+      assertDiagramAccess(scope, diagram);
       authorId = session.user.id;
     }
 
@@ -225,9 +228,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       if (!workspaceId) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
-      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      const scope = await getVisibilityScope(session, workspaceId);
+      assertDiagramAccess(scope, diagram);
       authorId = session.user.id;
     }
 

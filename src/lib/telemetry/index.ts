@@ -11,8 +11,6 @@ let instance: Telemetry | null = null;
 
 const DEBUG_CATEGORIES = new Set(["render", "preview"]);
 
-export const STORAGE_KEY = "livemaid:telemetry";
-
 export class Telemetry {
   private adapter: TelemetryAdapter;
   usageAnalytics: boolean;
@@ -99,30 +97,15 @@ export class Telemetry {
 
 export function initTelemetry(
   config: TelemetryConfig,
-  prefs?: { usageAnalytics: boolean; debugReporting: boolean },
+  prefs: { usageAnalytics: boolean; debugReporting: boolean },
 ): Telemetry {
   if (instance) return instance;
 
   const sessionId = generateSessionId();
 
-  let usagePref = false;
-  let debugPref = false;
-
-  if (prefs) {
-    usagePref = prefs.usageAnalytics;
-    debugPref = prefs.debugReporting;
-  } else if (typeof window !== "undefined") {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        usagePref = typeof parsed.usageAnalytics === "boolean" ? parsed.usageAnalytics : false;
-        debugPref = typeof parsed.debugReporting === "boolean" ? parsed.debugReporting : false;
-      }
-    } catch {
-      // ignore
-    }
-  }
+  // The caller passes normalized consent; coerce anyway so a bad value can never opt a user in.
+  const usagePref = prefs?.usageAnalytics === true;
+  const debugPref = prefs?.debugReporting === true;
 
   const adapter = config.dsn
     ? createSentryAdapter({

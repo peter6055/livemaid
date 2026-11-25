@@ -15,9 +15,10 @@ import {
   Star,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { determineDiagramType, diagramTypeLabel } from "@/lib/diagrams/utils";
 import { getDiagramCapability } from "@/lib/diagrams/catalog";
+import { appUrl } from "@/lib/api/url";
 import { useMermaidPreview } from "@/hooks/useMermaidPreview";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -37,6 +38,30 @@ function StableSvgHtml({ html, className }: { html: string; className?: string }
     if (ref.current) ref.current.innerHTML = html;
   }, [html]);
   return <div ref={ref} className={className} />;
+}
+
+// Defers the (expensive) Mermaid compile until the card is near the viewport. `rootMargin` gives a
+// little runway so the preview is usually ready by the time the card is actually scrolled into view.
+function useInView<T extends Element>(enabled: boolean) {
+  const ref = useRef<T>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    if (!enabled || inView) return;
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setInView(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: "300px" },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [enabled, inView]);
+  return { ref, inView: inView || !enabled };
 }
 
 export interface DiagramDocument {
@@ -76,12 +101,13 @@ export function DiagramCard({
   isDemo?: boolean;
   view?: "grid" | "list";
 }) {
+  const { ref: cardRef, inView } = useInView<HTMLDivElement>(view === "grid");
   const {
     svg: svgContent,
     loading: isCompiling,
     error: previewError,
-  } = useMermaidPreview(diagram.code, diagram.id);
-  const showPreviewLoader = Boolean(diagram.code) && isCompiling;
+  } = useMermaidPreview(view === "grid" && inView ? diagram.code : undefined, diagram.id);
+  const showPreviewLoader = Boolean(diagram.code) && (isCompiling || !inView);
 
   useEffect(() => {
     const id = "diagram-card-highlight-pulse";
@@ -101,7 +127,7 @@ export function DiagramCard({
 
   const parsedType = diagram.code ? determineDiagramType(diagram.code) : diagram.type;
   const isSupported = getDiagramCapability(parsedType) === "two-way";
-  const href = `/editor/${diagram.id}`;
+  const href = appUrl(`/editor/${diagram.id}`);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData("application/x-livemaid-diagram", diagram.id);
@@ -297,6 +323,8 @@ export function DiagramCard({
   if (view === "list") {
     return (
       <Card
+        ref={cardRef}
+        data-diagram-id={diagram.id}
         draggable={!!onMove}
         onDragStart={handleDragStart}
         style={{ contentVisibility: "auto", containIntrinsicSize: "auto 60px" }}
@@ -344,6 +372,8 @@ export function DiagramCard({
   // ---- Grid view (default): the full preview card ------------------------
   return (
     <Card
+      ref={cardRef}
+      data-diagram-id={diagram.id}
       draggable={!!onMove}
       onDragStart={handleDragStart}
       style={{ contentVisibility: "auto", containIntrinsicSize: "auto 300px" }}
@@ -377,7 +407,13 @@ export function DiagramCard({
       </CardHeader>
       <CardContent className="flex-grow">
         <div className="relative z-10 pointer-events-none">
-          <div className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative">
+          <div
+            data-preview-state={
+              showPreviewLoader ? "loading" : svgContent ? "ready" : "unavailable"
+            }
+            data-preview-compiled={svgContent ? "true" : "false"}
+            className="w-full h-32 bg-white rounded-md border border-border flex items-center justify-center cursor-pointer group-hover:border-accent-foreground/30 transition-colors overflow-hidden relative"
+          >
             {showPreviewLoader ? (
               <div className="w-full h-full flex items-center justify-center gap-3 px-4 animate-pulse opacity-50 dark:opacity-40">
                 {/* Node 1: Start (stadium) */}

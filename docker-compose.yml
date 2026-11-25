@@ -5,18 +5,15 @@ services:
       dockerfile: Dockerfile
       args:
         VERSION: ${VERSION:-}
+        BASE_URL: ${BASE_URL:-}
     ports:
       - "3000:3000"
     volumes:
       - ./data:/app/data
     environment:
       - NODE_ENV=production
-      - AUTH_OIDC_ISSUER=${AUTH_OIDC_ISSUER:-}
-      - AUTH_OIDC_CLIENT_ID=${AUTH_OIDC_CLIENT_ID:-}
-      - AUTH_OIDC_CLIENT_SECRET=${AUTH_OIDC_CLIENT_SECRET:-}
-      - AUTH_SECRET=${AUTH_SECRET:-}
       - MONGODB_URI=${MONGODB_URI:-}
-      - AUDIT_IP_PEPPER=${AUDIT_IP_PEPPER:-}
+      - BASE_URL=${BASE_URL:-}
     restart: unless-stopped
 
   livemaid-demo:
@@ -32,5 +29,4 @@ services:
     environment:
       - NODE_ENV=production
       - DEMO_MODE=true
-      - MONGODB_URI=${MONGODB_URI:-}
     restart: unless-stopped

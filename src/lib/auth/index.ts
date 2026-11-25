@@ -1,9 +1,12 @@
 import NextAuth from "next-auth";
-import { authConfig } from "./config";
+import { createAuthConfig } from "./config";
 
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+// Lazy init: Auth.js resolves providers once per config object, so a static
+// config would freeze the OIDC credentials present at module load. The factory
+// runs per request and reads the credentials stored at runtime.
+export const { handlers, auth, signIn, signOut } = NextAuth(() => createAuthConfig());
 
-export { authConfig, type User, type Session } from "./config";
+export { type User, type Session } from "./config";
 export { isAuthEnabled, areOidcCredentialsConfigured } from "./appConfig";
 export {
   normalizeEmail,
@@ -14,18 +17,14 @@ export {
   type OidcProfile,
 } from "./workspace";
 export {
-  adoptLegacyDiagrams,
-  markLegacyAdoptionComplete,
-  isLegacyAdoptionComplete,
-  runLegacyAdoptionIfNeeded,
-} from "./migration";
-export {
   AuthorizationError,
   getMembership,
   isAdmin,
   isMember,
+  isUserActive,
   requireAdmin,
   requireMember,
+  requireMemberRole,
 } from "./permissions";
 export { type AuditAction, hashIp, getClientIp, writeAuditLog } from "./audit";
 export {
@@ -33,5 +32,7 @@ export {
   acceptInviteByEmail,
   removeMember,
   updateMemberRole,
+  setUserActive,
   getWorkspaceMembers,
+  type WorkspaceMemberView,
 } from "./invites";

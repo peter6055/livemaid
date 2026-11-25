@@ -3,7 +3,13 @@ import { getFolders, saveFolder, getFolder, Folder } from "@/lib/api/storage";
 import { nanoid } from "nanoid";
 import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
 import { isDemoMode } from "@/lib/env";
-import { getRequiredSession, getUserWorkspaceId, handleRouteError } from "@/lib/auth/routeAuth";
+import {
+  filterVisibleResources,
+  getRequiredSession,
+  getUserWorkspaceId,
+  handleRouteError,
+  getVisibilityScope,
+} from "@/lib/auth/routeAuth";
 import type { AuditAction } from "@/lib/auth/audit";
 
 export async function GET(request: Request) {
@@ -20,9 +26,8 @@ export async function GET(request: Request) {
       if (!workspaceId) {
         return NextResponse.json([]);
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
-      folders = folders.filter((f) => f.workspaceId === workspaceId);
+      const scope = await getVisibilityScope(session, workspaceId);
+      folders = filterVisibleResources(folders, scope);
     }
 
     return NextResponse.json(folders);
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
     const authEnabled = await isAuthEnabled();
     let workspaceId: string | undefined;
 
+    let createdBy: string | undefined;
     if (authEnabled) {
       const session = await getRequiredSession();
       const sessionWorkspaceId = getUserWorkspaceId(session);
@@ -47,6 +53,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
       workspaceId = sessionWorkspaceId;
+      createdBy = session.user.id;
       const { requireMember } = await import("@/lib/auth");
       await requireMember(session.user.id, workspaceId);
     }
@@ -77,6 +84,7 @@ export async function POST(request: Request) {
       name,
       parentId,
       workspaceId,
+      createdBy,
       createdAt: now,
       updatedAt: now,
       deletedAt: null,

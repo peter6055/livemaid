@@ -118,7 +118,7 @@ test.describe("state + flowchart unified style popover (issue #31)", () => {
     await expect(toolbar.getByText("Dashed", { exact: true })).toBeVisible();
 
     await toolbar.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "/tmp/opencode/state-style-popover.png" });
+    await page.screenshot({ path: "test-results/screenshots/state-style-popover.png" });
 
     // Border + Text rows use STRONG shades; Fill uses LIGHT tints + a 10th Transparent swatch.
     const borderSwatches = await readRowSwatches(page, "[data-state-node-toolbar]", "Border color");
@@ -210,7 +210,7 @@ test.describe("state + flowchart unified style popover (issue #31)", () => {
     }
 
     await toolbar.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "/tmp/opencode/flowchart-style-popover.png" });
+    await page.screenshot({ path: "test-results/screenshots/flowchart-style-popover.png" });
 
     // Red fill swatch (light) -> writes `style A fill:#ffe3dc` (toggles the trigger open state off
     // is NOT what happens here — we click the swatch, which stays).

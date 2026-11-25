@@ -8,6 +8,7 @@ import {
   getUserWorkspaceId,
   assertDiagramAccess,
   handleRouteError,
+  getVisibilityScope,
 } from "@/lib/auth/routeAuth";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -20,13 +21,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       if (!workspaceId) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
+      const scope = await getVisibilityScope(session, workspaceId);
       const diagram = await getDiagram(id);
       if (!diagram) {
         return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
       }
-      assertDiagramAccess(session.user.id, workspaceId, diagram);
+      assertDiagramAccess(scope, diagram);
       return NextResponse.json(diagram);
     }
 
@@ -131,14 +131,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
-    const { requireMember } = await import("@/lib/auth");
-    await requireMember(session.user.id, workspaceId);
+    const scope = await getVisibilityScope(session, workspaceId);
 
     const existing = await getDiagram(id);
     if (!existing) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
-    assertDiagramAccess(session.user.id, workspaceId, existing);
+    assertDiagramAccess(scope, existing);
 
     if (typeof body.expectedCode === "string" && body.expectedCode !== existing.code) {
       return NextResponse.json(existing, { status: 409 });
@@ -180,7 +179,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       ...existing,
       ...updates,
       id,
-      workspaceId,
+      // Ownership is immutable: a client payload can never reassign a diagram to another user
+      // or workspace.
+      createdBy: existing.createdBy,
+      workspaceId: existing.workspaceId,
       updatedAt: new Date().toISOString(),
       starred: Boolean(nextStarred),
       starredAt: nextStarred ? (nextStarredAt ?? new Date().toISOString()) : null,
@@ -227,14 +229,13 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     if (!workspaceId) {
       return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
     }
-    const { requireMember } = await import("@/lib/auth");
-    await requireMember(session.user.id, workspaceId);
+    const scope = await getVisibilityScope(session, workspaceId);
 
     const existing = await getDiagram(id);
     if (!existing) {
       return NextResponse.json({ error: "Diagram not found" }, { status: 404 });
     }
-    assertDiagramAccess(session.user.id, workspaceId, existing);
+    assertDiagramAccess(scope, existing);
 
     const success = await deleteDiagram(id);
     if (!success) {

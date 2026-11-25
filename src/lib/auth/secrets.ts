@@ -7,7 +7,6 @@ const SECRETS_DIR = path.join(DATA_DIR, ".livemaid");
 
 const AUTH_SECRET_FILE = path.join(SECRETS_DIR, "auth-secret");
 const AUDIT_PEPPER_FILE = path.join(SECRETS_DIR, "audit-ip-pepper");
-
 const isTest = process.env.NODE_ENV === "test" || process.env.VITEST === "true";
 
 function generateSecret(): string {

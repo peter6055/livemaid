@@ -28,6 +28,11 @@ npm run dev
 
 Open [http://localhost:3434](http://localhost:3434) to see the dashboard.
 
+## Contributing
+
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+- All participants are expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## License
 
 LiveMaid is source-available under the [LiveMaid Source Available License 1.0](LICENSE). It is not OSI open-source software; please review the license before using, modifying, redistributing, or offering it as a service.

@@ -8,12 +8,12 @@ const sidebars = {
     {
       type: "category",
       label: "Deployment",
-      items: [
-        "deployment/docker",
-        "deployment/demo-mode",
-        "deployment/environment-variables",
-        "deployment/authentication",
-      ],
+      items: ["deployment/docker", "deployment/demo-mode", "deployment/environment-variables"],
+    },
+    {
+      type: "category",
+      label: "Access control",
+      items: ["access/modes", "access/permissions"],
     },
     {
       type: "category",

@@ -8,7 +8,13 @@ import {
 } from "@/lib/diagrams/catalog";
 import { isAuthEnabled, writeAuditLog } from "@/lib/auth";
 import { isDemoMode } from "@/lib/env";
-import { getRequiredSession, getUserWorkspaceId, handleRouteError } from "@/lib/auth/routeAuth";
+import {
+  filterVisibleResources,
+  getRequiredSession,
+  getUserWorkspaceId,
+  handleRouteError,
+  getVisibilityScope,
+} from "@/lib/auth/routeAuth";
 
 export async function GET(request: Request) {
   try {
@@ -27,9 +33,8 @@ export async function GET(request: Request) {
       if (!workspaceId) {
         return NextResponse.json({ items: [], total: 0 });
       }
-      const { requireMember } = await import("@/lib/auth");
-      await requireMember(session.user.id, workspaceId);
-      diagrams = diagrams.filter((d) => d.workspaceId === workspaceId);
+      const scope = await getVisibilityScope(session, workspaceId);
+      diagrams = filterVisibleResources(diagrams, scope);
     }
 
     if (search) {
@@ -63,6 +68,7 @@ export async function POST(request: Request) {
     const authEnabled = await isAuthEnabled();
     let workspaceId: string | undefined;
 
+    let createdBy: string | undefined;
     if (authEnabled) {
       const session = await getRequiredSession();
       const sessionWorkspaceId = getUserWorkspaceId(session);
@@ -70,6 +76,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Workspace not found" }, { status: 404 });
       }
       workspaceId = sessionWorkspaceId;
+      createdBy = session.user.id;
       const { requireMember } = await import("@/lib/auth");
       await requireMember(session.user.id, workspaceId);
     }
@@ -108,6 +115,7 @@ export async function POST(request: Request) {
       type: requestedType,
       folderId,
       workspaceId,
+      createdBy,
       starred: false,
       starredAt: null,
       subPages: [],

@@ -7,6 +7,7 @@
 // backend (e.g. MongoDB) means writing a sibling adapter and changing one line in `storage.ts`.
 
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 import {
   DiagramDocument,
@@ -39,27 +40,39 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
     }
   }
 
-  async function getDiagrams(): Promise<DiagramDocument[]> {
-    await ensureDataDir();
-    const files = await fs.readdir(DATA_DIR);
-    const diagrams: DiagramDocument[] = [];
+  // Both list endpoints read every record file, which is the hot path once an install has a few
+  // thousand diagrams. `fs.promises` hands each read to libuv's 4-thread pool and measured ~30x
+  // slower than a synchronous read here, so read synchronously and yield to the event loop
+  // periodically to keep concurrent requests responsive.
+  const YIELD_EVERY = 200;
 
-    for (const file of files) {
-      if (file.endsWith(".json")) {
-        const filePath = path.join(DATA_DIR, file);
-        const content = await fs.readFile(filePath, "utf-8");
-        try {
-          const doc = normalizeDiagramDocument(JSON.parse(content) as DiagramDocument);
-          if (!doc.deletedAt) {
-            diagrams.push(doc);
-          }
-        } catch (e) {
-          console.error(`Failed to parse diagram file: ${file}`, e);
-        }
+  async function readRecords<T>(dir: string, parse: (raw: unknown) => T | null): Promise<T[]> {
+    const files = (await fs.readdir(dir)).filter((file) => file.endsWith(".json"));
+    const records: T[] = [];
+
+    for (const [index, file] of files.entries()) {
+      if (index > 0 && index % YIELD_EVERY === 0) await new Promise(setImmediate);
+      try {
+        const record = parse(JSON.parse(fsSync.readFileSync(path.join(dir, file), "utf-8")));
+        if (record) records.push(record);
+      } catch (e) {
+        console.error(`Failed to read record file: ${file}`, e);
       }
     }
 
-    // Sort by updatedAt descending
+    return records;
+  }
+
+  async function getDiagrams(): Promise<DiagramDocument[]> {
+    await ensureDataDir();
+    const diagrams = await readRecords(DATA_DIR, (raw) => {
+      const doc = raw as Partial<DiagramDocument>;
+      // Skip normalization for soft-deleted records: it scans the whole code body, and most files
+      // in a long-lived install are deleted.
+      if (typeof doc.deletedAt === "string" && doc.deletedAt) return null;
+      return normalizeDiagramDocument(doc);
+    });
+
     return diagrams.sort(
       (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
     );
@@ -113,20 +126,10 @@ export function createFileSystemStorageAdapter(): StorageAdapter {
 
   async function getFolders(): Promise<Folder[]> {
     await ensureFoldersDir();
-    const files = await fs.readdir(FOLDERS_DIR);
-    const folders: Folder[] = [];
-
-    for (const file of files) {
-      if (file.endsWith(".json")) {
-        try {
-          const content = await fs.readFile(path.join(FOLDERS_DIR, file), "utf-8");
-          const folder = normalizeFolder(JSON.parse(content) as Folder);
-          if (!folder.deletedAt) folders.push(folder);
-        } catch (e) {
-          console.error(`Failed to parse folder file: ${file}`, e);
-        }
-      }
-    }
+    const folders = await readRecords(FOLDERS_DIR, (raw) => {
+      const folder = normalizeFolder(raw as Folder);
+      return folder.deletedAt ? null : folder;
+    });
 
     return folders.sort((a, b) => a.name.localeCompare(b.name));
   }

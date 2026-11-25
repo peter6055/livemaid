@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { auth, isAuthEnabled } from "@/lib/auth";
 import { isDemoMode } from "@/lib/env";
 import { redirect } from "next/navigation";
+import { appUrl } from "@/lib/api/url";
 import type { Session } from "@/lib/auth";
 
 function getEditorRedirect(
@@ -13,7 +14,7 @@ function getEditorRedirect(
 ): string | null {
   if (isDemo || !authEnabled) return null;
   if (session?.user?.workspaceId)
-    return `/workspace/${session.user.workspaceId}/editor/${diagramId}`;
+    return appUrl(`/workspace/${session.user.workspaceId}/editor/${diagramId}`);
   return null;
 }
 

@@ -10,6 +10,7 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(),
   isAuthEnabled: vi.fn(() => Promise.resolve(true)),
   requireMember: vi.fn(),
+  requireMemberRole: vi.fn(),
   requireAdmin: vi.fn(),
   writeAuditLog: vi.fn(),
   getWorkspaceMembers: vi.fn(),
@@ -23,6 +24,12 @@ vi.mock("@/lib/auth", () => ({
       this.name = "AuthorizationError";
     }
   },
+}));
+
+vi.mock("@/lib/db/collections", () => ({
+  getMembershipsCollection: vi.fn(async () => ({
+    findOne: vi.fn(async () => null),
+  })),
 }));
 
 vi.mock("@/lib/api/storage", () => ({
@@ -73,6 +80,9 @@ const mockedAuth = {
   requireMember: auth.requireMember as unknown as Mock<
     (userId: string, workspaceId: string) => Promise<void>
   >,
+  requireMemberRole: auth.requireMemberRole as unknown as Mock<
+    (userId: string, workspaceId: string) => Promise<"admin" | "member">
+  >,
   requireAdmin: auth.requireAdmin as unknown as Mock<
     (userId: string, workspaceId: string) => Promise<void>
   >,
@@ -87,9 +97,13 @@ const mockedAuth = {
 const mockedStorage = vi.mocked(storage);
 const mockedEnv = vi.mocked(env);
 
-function makeSession(workspaceId: string, userId = "user-1"): Session {
+function makeSession(
+  workspaceId: string,
+  userId = "user-1",
+  role: "admin" | "member" = "member",
+): Session {
   return {
-    user: { id: userId, email: "test@example.com", name: "Test User", workspaceId },
+    user: { id: userId, email: "test@example.com", name: "Test User", workspaceId, role },
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
   } as Session;
 }
@@ -109,6 +123,7 @@ function makeDiagram(
     type: "flowchart",
     folderId: null,
     workspaceId,
+    createdBy: "user-1",
     starred: false,
     starredAt: null,
     subPages: [],
@@ -125,6 +140,7 @@ function makeFolder(workspaceId: string, overrides: Partial<Folder> = {}): Folde
     name: "Test Folder",
     parentId: null,
     workspaceId,
+    createdBy: "user-1",
     createdAt: now,
     updatedAt: now,
     deletedAt: null,
@@ -146,14 +162,33 @@ describe("API route protection and workspace scoping", () => {
     vi.clearAllMocks();
     mockedEnv.isDemoMode.mockReturnValue(false);
     mockedAuth.isAuthEnabled.mockResolvedValue(true);
+    mockedAuth.requireMemberRole.mockImplementation(async (_userId, workspaceId) =>
+      workspaceId === "ws-1" ? "member" : "member",
+    );
   });
 
   describe("diagram list", () => {
-    it("filters diagrams to the user's workspace", async () => {
+    it("lists every diagram in standalone mode", async () => {
+      mockedAuth.isAuthEnabled.mockResolvedValue(false);
+      mockedStorage.getDiagrams.mockResolvedValue([
+        makeDiagram("workspace-a", { id: "workspace" }),
+        makeDiagram("", { id: "standalone" }),
+      ]);
+
+      const res = await getDiagrams(new Request("http://localhost/api/diagrams"));
+      const json = await res.json();
+
+      expect(json.items.map((item: DiagramDocument) => item.id)).toEqual([
+        "workspace",
+        "standalone",
+      ]);
+    });
+
+    it("shows a member only the diagrams they created", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
       mockedStorage.getDiagrams.mockResolvedValue([
-        makeDiagram("ws-1", { id: "d1", name: "Mine" }),
-        makeDiagram("ws-2", { id: "d2", name: "Other" }),
+        makeDiagram("ws-1", { id: "d1", name: "Mine", createdBy: "user-1" }),
+        makeDiagram("ws-1", { id: "d2", name: "Other member", createdBy: "user-2" }),
       ]);
 
       const res = await getDiagrams(new Request("http://localhost/api/diagrams"));
@@ -162,6 +197,46 @@ describe("API route protection and workspace scoping", () => {
       expect(res.status).toBe(200);
       expect(json.items).toHaveLength(1);
       expect(json.items[0].id).toBe("d1");
+    });
+
+    it("shows an admin their own diagrams plus standalone-created ones, but not other members'", async () => {
+      const standalone = makeDiagram("6b0035ed9681f63044d91917", { id: "standalone" });
+      delete standalone.createdBy;
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "admin-1", "admin"));
+      mockedAuth.requireMemberRole.mockResolvedValue("admin");
+      mockedStorage.getDiagrams.mockResolvedValue([
+        makeDiagram("ws-1", { id: "admin-own", createdBy: "admin-1" }),
+        standalone,
+        makeDiagram("ws-1", { id: "member-diagram", createdBy: "user-2" }),
+      ]);
+
+      const res = await getDiagrams(new Request("http://localhost/api/diagrams"));
+      const json = await res.json();
+
+      expect(json.items.map((item: DiagramDocument) => item.id)).toEqual([
+        "admin-own",
+        "standalone",
+      ]);
+    });
+
+    it("does not show a member another member's diagrams, standalone diagrams, or legacy records", async () => {
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
+      const legacy = makeDiagram("6b0035ed9681f63044d91917", { id: "legacy-workspace" });
+      delete legacy.createdBy;
+      const standalone = makeDiagram("", { id: "standalone" });
+      delete standalone.createdBy;
+      mockedStorage.getDiagrams.mockResolvedValue([
+        makeDiagram("ws-1", { id: "mine", createdBy: "user-1" }),
+        legacy,
+        standalone,
+        makeDiagram("ws-1", { id: "their-diagram", createdBy: "user-2" }),
+        makeDiagram("ws-2", { id: "other-workspace", createdBy: "user-3" }),
+      ]);
+
+      const res = await getDiagrams(new Request("http://localhost/api/diagrams"));
+      const json = await res.json();
+
+      expect(json.items.map((item: DiagramDocument) => item.id)).toEqual(["mine"]);
     });
 
     it("returns 401 when there is no session", async () => {
@@ -174,6 +249,22 @@ describe("API route protection and workspace scoping", () => {
   });
 
   describe("diagram CRUD", () => {
+    it("updates workspace-scoped diagrams in standalone mode without changing ownership", async () => {
+      mockedAuth.isAuthEnabled.mockResolvedValue(false);
+      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("workspace-a"));
+      mockedStorage.saveDiagram.mockResolvedValue(undefined);
+
+      const res = await putDiagram(
+        jsonRequest("http://localhost/api/diagrams/diagram-1", "PUT", { name: "Standalone edit" }),
+        { params: Promise.resolve({ id: "diagram-1" }) },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockedStorage.saveDiagram).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Standalone edit", workspaceId: "workspace-a" }),
+      );
+    });
+
     it("creates a diagram in the user's workspace and writes an audit log", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
       mockedStorage.saveDiagram.mockResolvedValue(undefined);
@@ -185,6 +276,7 @@ describe("API route protection and workspace scoping", () => {
 
       expect(res.status).toBe(201);
       expect(json.workspaceId).toBe("ws-1");
+      expect(json.createdBy).toBe("user-1");
       expect(mockedStorage.saveDiagram).toHaveBeenCalledWith(
         expect.objectContaining({ workspaceId: "ws-1" }),
       );
@@ -206,15 +298,74 @@ describe("API route protection and workspace scoping", () => {
       expect(json.id).toBe("diagram-1");
     });
 
-    it("returns 404 when the diagram belongs to another workspace", async () => {
+    it("returns 404 when the diagram was created by another member", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
-      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-2"));
+      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-1", { createdBy: "user-2" }));
 
       const res = await getDiagram(new Request("http://localhost/api/diagrams/diagram-1"), {
         params: Promise.resolve({ id: "diagram-1" }),
       });
 
       expect(res.status).toBe(404);
+    });
+
+    it("lets admins read and update standalone-created diagrams without changing ownership", async () => {
+      const otherWorkspace = "6af948aebc57a59c868280b9";
+      const standalone = makeDiagram(otherWorkspace);
+      delete standalone.createdBy;
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "admin-1", "admin"));
+      mockedAuth.requireMemberRole.mockResolvedValue("admin");
+      mockedStorage.getDiagram.mockResolvedValue(standalone);
+      mockedStorage.saveDiagram.mockResolvedValue(undefined);
+
+      const read = await getDiagram(new Request("http://localhost/api/diagrams/diagram-1"), {
+        params: Promise.resolve({ id: "diagram-1" }),
+      });
+      expect(read.status).toBe(200);
+
+      const res = await putDiagram(
+        jsonRequest("http://localhost/api/diagrams/diagram-1", "PUT", { name: "Renamed" }),
+        { params: Promise.resolve({ id: "diagram-1" }) },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockedStorage.saveDiagram).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Renamed", workspaceId: otherWorkspace }),
+      );
+    });
+
+    it("returns 404 when an admin opens a diagram another member created", async () => {
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "admin-1", "admin"));
+      mockedAuth.requireMemberRole.mockResolvedValue("admin");
+      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-1", { createdBy: "user-2" }));
+
+      const res = await getDiagram(new Request("http://localhost/api/diagrams/diagram-1"), {
+        params: Promise.resolve({ id: "diagram-1" }),
+      });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("ignores attempts to rewrite createdBy or workspaceId on update", async () => {
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
+      mockedStorage.getDiagram.mockResolvedValue(
+        makeDiagram("ws-1", { createdBy: "user-1", id: "diagram-1" }),
+      );
+      mockedStorage.saveDiagram.mockResolvedValue(undefined);
+
+      const res = await putDiagram(
+        jsonRequest("http://localhost/api/diagrams/diagram-1", "PUT", {
+          name: "Mine",
+          createdBy: "user-2",
+          workspaceId: "ws-2",
+        }),
+        { params: Promise.resolve({ id: "diagram-1" }) },
+      );
+
+      expect(res.status).toBe(200);
+      expect(mockedStorage.saveDiagram).toHaveBeenCalledWith(
+        expect.objectContaining({ createdBy: "user-1", workspaceId: "ws-1" }),
+      );
     });
 
     it("updates a diagram in the user's workspace and writes an audit log", async () => {
@@ -254,7 +405,9 @@ describe("API route protection and workspace scoping", () => {
   describe("comments", () => {
     it("uses session.user.id as authorId for new comments", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "user-session"));
-      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-1"));
+      mockedStorage.getDiagram.mockResolvedValue(
+        makeDiagram("ws-1", { createdBy: "user-session" }),
+      );
       mockedStorage.saveDiagram.mockResolvedValue(undefined);
 
       const res = await postComment(
@@ -274,6 +427,7 @@ describe("API route protection and workspace scoping", () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "user-session"));
       mockedStorage.getDiagram.mockResolvedValue(
         makeDiagram("ws-1", {
+          createdBy: "user-session",
           comments: [
             {
               id: "comment-1",
@@ -303,9 +457,9 @@ describe("API route protection and workspace scoping", () => {
       expect(json.messages[json.messages.length - 1].authorId).toBe("user-session");
     });
 
-    it("returns 404 when fetching comments for a diagram in another workspace", async () => {
+    it("returns 404 when fetching comments for another member's diagram", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
-      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-2"));
+      mockedStorage.getDiagram.mockResolvedValue(makeDiagram("ws-1", { createdBy: "user-2" }));
 
       const res = await getComments(
         new Request("http://localhost/api/diagrams/diagram-1/comments"),
@@ -317,11 +471,28 @@ describe("API route protection and workspace scoping", () => {
   });
 
   describe("folder CRUD", () => {
-    it("filters folders to the user's workspace", async () => {
+    it("shows an admin their own folders plus standalone-created ones, but not other members'", async () => {
+      const standalone = makeFolder("6af948aebc57a59c868280b9", { id: "standalone" });
+      delete standalone.createdBy;
+      mockedAuth.auth.mockResolvedValue(makeSession("ws-1", "admin-1", "admin"));
+      mockedAuth.requireMemberRole.mockResolvedValue("admin");
+      mockedStorage.getFolders.mockResolvedValue([
+        makeFolder("ws-1", { id: "admin-own", createdBy: "admin-1" }),
+        standalone,
+        makeFolder("ws-1", { id: "member-folder", createdBy: "user-2" }),
+      ]);
+
+      const res = await getFolders(new Request("http://localhost/api/folders"));
+      const json = await res.json();
+
+      expect(json.map((item: Folder) => item.id)).toEqual(["admin-own", "standalone"]);
+    });
+
+    it("shows a member only the folders they created", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
       mockedStorage.getFolders.mockResolvedValue([
-        makeFolder("ws-1", { id: "f1" }),
-        makeFolder("ws-2", { id: "f2" }),
+        makeFolder("ws-1", { id: "f1", createdBy: "user-1" }),
+        makeFolder("ws-1", { id: "f2", createdBy: "user-2" }),
       ]);
 
       const res = await getFolders(new Request("http://localhost/api/folders"));
@@ -332,9 +503,9 @@ describe("API route protection and workspace scoping", () => {
       expect(json[0].id).toBe("f1");
     });
 
-    it("returns 404 when the folder belongs to another workspace", async () => {
+    it("returns 404 when the folder was created by another member", async () => {
       mockedAuth.auth.mockResolvedValue(makeSession("ws-1"));
-      mockedStorage.getFolder.mockResolvedValue(makeFolder("ws-2"));
+      mockedStorage.getFolder.mockResolvedValue(makeFolder("ws-1", { createdBy: "user-2" }));
 
       const res = await getFolder(new Request("http://localhost/api/folders/folder-1"), {
         params: Promise.resolve({ id: "folder-1" }),
@@ -354,6 +525,7 @@ describe("API route protection and workspace scoping", () => {
 
       expect(res.status).toBe(201);
       expect(json.workspaceId).toBe("ws-1");
+      expect(json.createdBy).toBe("user-1");
       expect(mockedAuth.writeAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({ action: "folder.create" as const, workspaceId: "ws-1" }),
       );

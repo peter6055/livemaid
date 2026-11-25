@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { appUrl } from "@/lib/api/url";
 
 export default async function WorkspaceDuplicateDiagramPage({
   params,
@@ -8,5 +9,5 @@ export default async function WorkspaceDuplicateDiagramPage({
   const { id: workspaceId, diagramId } = await params;
   // The actual duplication logic will be updated in Task #51. For now, redirect back to the
   // source diagram's editor page.
-  redirect(`/workspace/${workspaceId}/editor/${diagramId}`);
+  redirect(appUrl(`/workspace/${workspaceId}/editor/${diagramId}`));
 }

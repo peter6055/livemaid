@@ -82,24 +82,26 @@ function TreeNode({
             onDropDiagram(diagramId, folder.id);
           }
         }}
-        style={{ paddingLeft: `${0.5 + depth * 0.85}rem` }}
-        className={`group flex items-center gap-1.5 rounded-md py-1.5 pr-1 text-sm cursor-pointer transition-colors ${
+        style={{ paddingLeft: `${0.75 + depth * 0.75}rem` }}
+        className={`group flex h-10 items-center gap-2 rounded-lg pr-2 text-sm cursor-pointer transition-colors ${
           isActive
-            ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium"
+            ? "bg-[#EFE9FD] text-[#7A3DFF] dark:bg-purple-500/20 dark:text-purple-300 font-medium"
             : "text-foreground/80 hover:bg-accent hover:text-foreground"
-        } ${dragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+        } ${dragOver ? "ring-2 ring-purple-500/50 bg-purple-500/10" : ""}`}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (hasChildren) toggleExpand(folder.id);
-          }}
-          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded ${hasChildren ? "hover:bg-foreground/10" : "invisible"}`}
-        >
-          <ChevronRight
-            className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
-          />
-        </button>
+        {hasChildren && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleExpand(folder.id);
+            }}
+            className="flex h-4 w-4 shrink-0 items-center justify-center rounded hover:bg-foreground/10"
+          >
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform ${isOpen ? "rotate-90" : ""}`}
+            />
+          </button>
+        )}
         {isActive ? (
           <FolderOpen className="h-4 w-4 shrink-0" />
         ) : (
@@ -213,11 +215,11 @@ export function FolderTree({
             onDropDiagram(diagramId, null);
           }
         }}
-        className={`flex items-center gap-1.5 rounded-md py-1.5 pl-2 pr-2 text-sm cursor-pointer transition-colors ${
+        className={`flex h-10 items-center gap-2 rounded-lg pl-3 pr-2 text-sm cursor-pointer transition-colors ${
           currentFolderId === null
-            ? "bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-medium"
+            ? "bg-[#EFE9FD] text-[#7A3DFF] dark:bg-purple-500/20 dark:text-purple-300 font-medium"
             : "text-foreground/80 hover:bg-accent hover:text-foreground"
-        } ${rootDragOver ? "ring-2 ring-indigo-500/50 bg-indigo-500/10" : ""}`}
+        } ${rootDragOver ? "ring-2 ring-purple-500/50 bg-purple-500/10" : ""}`}
       >
         <Home className="h-4 w-4 shrink-0" />
         <span className="truncate">Workspace</span>

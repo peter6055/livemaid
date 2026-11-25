@@ -4,45 +4,34 @@ sidebar_position: 3
 
 # Environment Variables
 
-LiveMaid is configured entirely through environment variables. Set them in your Docker Compose file, container orchestrator, or hosting platform (Railway, etc.).
+LiveMaid is configured through environment variables. For local development, copy `.env.example` to `.env` and edit that one file. Do not use `.env.local`. In production, set the same variables in Docker Compose, your orchestrator, or the host platform (Railway, etc.).
 
-The auth signing secret and the audit IP pepper are generated and persisted automatically, so you do not need to set them.
+Workspace mode is env-only: set the System + Workspace variables below, then restart. There is no Settings UI.
 
 ## Quick reference
 
-| Variable                  | Required      | Description                                                                                                                      |
-| ------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                | No            | `production` disables dev-only behaviour and warnings. Defaults to development.                                                  |
-| `NEXT_PUBLIC_APP_VERSION` | No            | Display version shown in the UI. The build script sets this automatically from the git tag or `VERSION`/`APP_VERSION` build arg. |
-| `NEXT_PUBLIC_BASE_PATH`   | No            | Serve the app under a sub-path, e.g. `/livemaid`. Must match your reverse proxy.                                                 |
-| `ALLOWED_DEV_ORIGINS`     | No            | Comma-separated list of extra origins allowed by the Next.js dev server.                                                         |
-| `MONGODB_URI`             | For auth mode | MongoDB connection string for users, workspaces, memberships, and audit logs.                                                    |
-| `AUTH_OIDC_ISSUER`        | For auth mode | OIDC issuer URL from your provider's discovery document.                                                                         |
-| `AUTH_OIDC_CLIENT_ID`     | For auth mode | Client ID from your OIDC app registration.                                                                                       |
-| `AUTH_OIDC_CLIENT_SECRET` | For auth mode | Client secret from your OIDC app registration.                                                                                   |
-| `AUTH_SECRET`             | For auth mode | Signing secret for session tokens. Auto-generated and persisted if not set.                                                      |
-| `AUDIT_IP_PEPPER`         | No            | Pepper for hashing IPs in audit logs. Auto-generated and persisted if not set.                                                   |
-| `DEMO_MODE`               | No            | Set to `true` to run a read-only demo instance. See [Demo mode](./demo-mode).                                                    |
+| Category  | Variable                  | Required            | Description                                                                                          |
+| --------- | ------------------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Dev       | `ALLOWED_DEV_ORIGINS`     | No                  | Comma-separated list of extra origins allowed by the Next.js dev server.                             |
+| Dev       | `DEMO_MODE`               | No                  | Set to `true` for a read-only demo instance. See [Demo mode](./demo-mode).                           |
+| System    | `NODE_ENV`                | No                  | `production` disables dev-only behaviour and warnings. Defaults to development.                      |
+| System    | `BASE_URL`                | For sub-path setups | Full public URL of the app, including any reverse-proxy prefix, e.g. `https://example.com/livemaid`. |
+| System    | `MONGODB_URI`             | For workspace mode  | MongoDB connection string for users, workspaces, memberships, and audit logs.                        |
+| Workspace | `WORKSPACES_ENABLED`      | For workspace mode  | Set to `true` / `1` / `yes` (also needs Mongo + OIDC).                                               |
+| Workspace | `AUTH_OIDC_ISSUER`        | For workspace mode  | OIDC issuer URL (must expose `/.well-known/openid-configuration`).                                   |
+| Workspace | `AUTH_OIDC_CLIENT_ID`     | For workspace mode  | OIDC client ID.                                                                                      |
+| Workspace | `AUTH_OIDC_CLIENT_SECRET` | For workspace mode  | OIDC client secret.                                                                                  |
 
-## General variables
+## Local setup
 
-### `NODE_ENV`
+```bash
+cp .env.example .env
+# edit .env, then restart `npm run dev`
+```
 
-Set to `production` for deployed containers. The included `Dockerfile` and `docker-compose.yml` already set this.
+Next.js loads `.env` automatically. Keep secrets out of git — `.env` is gitignored.
 
-### `NEXT_PUBLIC_APP_VERSION`
-
-Version label shown in the settings dialog and footer. The production build (`npm run build`) sets this automatically from:
-
-1. The `VERSION` or `APP_VERSION` build arg.
-2. The latest `v*.*.*` git tag.
-3. Falls back to `0.0.0`.
-
-You only need to set this manually if you want to override the displayed version.
-
-### `NEXT_PUBLIC_BASE_PATH`
-
-Use this when serving LiveMaid behind a reverse proxy under a sub-path, for example `https://example.com/livemaid/`. Set `NEXT_PUBLIC_BASE_PATH=/livemaid` and ensure your proxy strips that prefix before forwarding to the container.
+## Dev settings
 
 ### `ALLOWED_DEV_ORIGINS`
 
@@ -52,74 +41,91 @@ Dev-only. Comma-separated list of extra origins allowed by the Next.js dev serve
 ALLOWED_DEV_ORIGINS=*.mytail.ts.net,my-machine.mytail.ts.net
 ```
 
-## Auth / workspace variables
+### `DEMO_MODE`
 
-Auth mode is enabled automatically when `MONGODB_URI` and the three OIDC variables below are set. If any are missing, the app runs in no-auth / local mode. The signing secret is generated and persisted automatically.
+Set to `true` to run a read-only demo instance. See [Demo mode](./demo-mode).
 
-### `AUTH_OIDC_ISSUER`
+## System settings
 
-Your provider's OIDC issuer URL. This is used to fetch `/.well-known/openid-configuration`.
+### `NODE_ENV`
 
-Examples:
+Set to `production` for deployed containers. The included `Dockerfile` and `docker-compose.yml` already set this.
 
-- Google: `https://accounts.google.com`
-- Okta: `https://your-org.okta.com`
-- Authentik: `https://authentik.example.com/application/o/your-app`
-- Generic: `https://idp.example.com`
+### `BASE_URL`
 
-### `AUTH_OIDC_CLIENT_ID` and `AUTH_OIDC_CLIENT_SECRET`
-
-From your OIDC app registration. Use the provider's client credentials, not end-user credentials.
-
-### `AUTH_SECRET`
-
-A random 32-byte string used to sign session tokens. If you do not set one, LiveMaid generates it on first startup and persists it in `data/.livemaid/auth-secret` so sessions survive container restarts.
-
-You can also generate one manually:
+Set this when LiveMaid is reachable at a public URL that differs from the container's internal address, and in particular when serving behind a reverse proxy under a sub-path, for example `https://example.com/livemaid/`. Set it to the full public URL including the prefix:
 
 ```bash
-openssl rand -base64 32
+BASE_URL=https://example.com/livemaid
 ```
 
-### Provider-specific notes
+LiveMaid uses this value for OIDC callbacks, server-side redirects, and every client-side link. The pathname is also baked into Next.js `basePath` at **build time**, so the reverse proxy must forward the prefix intact (a request to `https://example.com/livemaid/login` must reach the container as `/livemaid/login`). Changing the path requires a rebuild.
 
-- **Google**: Create credentials in Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs.
-- **Generic OIDC (Okta, Auth0, Keycloak, Authentik, etc.)**: Use the provider's OIDC discovery issuer URL.
+Leave `BASE_URL` unset for local development at the root (`http://localhost:3434`).
 
-In all cases the authorized redirect URI must be:
+Auth.js derives its own `basePath` from the pathname of `AUTH_URL` (for example `/livemaid/api/auth`). The auth route rewrites requests onto that path when needed so OIDC `redirect_uri` values keep the proxy prefix.
 
-```text
-https://your-domain.com/api/auth/callback/oidc
+### `MONGODB_URI`
+
+MongoDB stores users, workspaces, memberships, and audit logs. Required for workspace mode. Without it, LiveMaid runs in no-auth / local mode and stores diagrams on disk only.
+
+```bash
+MONGODB_URI=mongodb://mongo:27017/livemaid
 ```
 
-(Adjust the origin to match your deployment.)
+You can point this at a MongoDB container in the same Compose stack or at an external database. See the [Docker Compose guide](./docker#self-contained-stack-with-mongodb).
 
-## Audit logging
+## Workspace settings
 
-### `AUDIT_IP_PEPPER`
+Enable workspace mode by setting System `MONGODB_URI` plus all Workspace settings, then restarting:
 
-Optional secret used as a pepper when hashing IP addresses before writing audit logs. If unset, LiveMaid generates one on first startup and persists it in `data/.livemaid/audit-ip-pepper` so hashes remain stable across restarts.
+```bash
+WORKSPACES_ENABLED=true
+AUTH_OIDC_ISSUER=https://idp.example.com
+AUTH_OIDC_CLIENT_ID=your-client-id
+AUTH_OIDC_CLIENT_SECRET=your-client-secret
+```
+
+If any required value is missing or `WORKSPACES_ENABLED` is not truthy, LiveMaid stays in no-auth / local mode. There is no Settings UI.
+
+See [Modes](../access/modes) for how standalone, workspace, and demo differ, and [Permissions](../access/permissions) for who can see which diagrams.
+
+### `WORKSPACES_ENABLED`
+
+Truthy values: `true`, `1`, `yes` (case-insensitive). Without this flag, LiveMaid stays in no-auth / local mode even if Mongo and OIDC are configured.
+
+### `AUTH_OIDC_ISSUER` / `AUTH_OIDC_CLIENT_ID` / `AUTH_OIDC_CLIENT_SECRET`
+
+OIDC credentials for Auth.js. The issuer must expose `/.well-known/openid-configuration`. Read at startup only.
 
 ## Docker Compose example
 
 ```yaml
 services:
+  mongo:
+    image: mongo:7
+    container_name: livemaid-mongo
+    volumes:
+      - ./mongo-data:/data/db
+    restart: unless-stopped
+
   livemaid:
     image: ghcr.io/peter6055/livemaid:latest
     container_name: livemaid
     ports:
       - "3000:3000"
+    depends_on:
+      - mongo
     volumes:
       - ./data:/app/data
     environment:
       - NODE_ENV=production
-      - MONGODB_URI=${MONGODB_URI:-}
-      - AUTH_OIDC_ISSUER=${AUTH_OIDC_ISSUER:-}
-      - AUTH_OIDC_CLIENT_ID=${AUTH_OIDC_CLIENT_ID:-}
-      - AUTH_OIDC_CLIENT_SECRET=${AUTH_OIDC_CLIENT_SECRET:-}
-      - AUTH_SECRET=${AUTH_SECRET:-}
-      - AUDIT_IP_PEPPER=${AUDIT_IP_PEPPER:-}
-      - NEXT_PUBLIC_BASE_PATH=${NEXT_PUBLIC_BASE_PATH:-}
+      - BASE_URL=${BASE_URL:-}
+      - MONGODB_URI=mongodb://mongo:27017/livemaid
+      - WORKSPACES_ENABLED=true
+      - AUTH_OIDC_ISSUER=https://idp.example.com
+      - AUTH_OIDC_CLIENT_ID=your-client-id
+      - AUTH_OIDC_CLIENT_SECRET=your-client-secret
     restart: unless-stopped
 ```
 
